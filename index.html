@@ -216,7 +216,10 @@
 
   @media print{
     .side-nav, .topbar, .sync-panel, .summary-row{display:none !important;}
-    .view{padding:0 !important;}
+    .app-shell{display:block !important;}
+    .main-area{display:block !important;}
+    .view{display:none !important;padding:0 !important;}
+    .view.active{display:block !important;}
     .table-wrap{border:none !important;overflow:visible !important;}
     thead th{position:static !important;}
     table{font-size:11px;}
@@ -412,8 +415,18 @@
       <tbody class="q-kpi-body"></tbody>
     </table>
   </div>
+  <div class="summary-row" style="margin-bottom:18px;">
+    <div class="stat-card"><div class="label" style="color:var(--text-mute);">이번달 실적</div><div class="q-this-month" style="margin-top:6px;"></div></div>
+    <div class="stat-card"><div class="label" style="color:var(--text-mute);">저번달 실적</div><div class="q-last-month" style="margin-top:6px;"></div></div>
+  </div>
   <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+    <div class="q-target-row" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <span style="font-size:13px;color:var(--text-mute);">목표(ppm):</span>
+      <input type="number" class="q-target-input" style="width:110px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;" placeholder="예: 1000">
+      <button class="btn-plain q-target-apply">적용</button>
+    </div>
     <div class="q-monthly-chart"></div>
+    <div class="q-monthly-table" style="margin-top:14px;overflow-x:auto;"></div>
   </div>
   <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
     <div class="q-weekly-section"></div>
@@ -914,6 +927,7 @@ const QUALITY_CATEGORIES = {
 };
 const QUALITY_YEARS = [2020,2021,2022,2023,2024,2025,2026];
 let qualityRawData = {};
+let qualityTargets = { process:1000, incoming:1000, shipping:1000 };
 let qualityYear = 2026;
 let qualityMonth = 12;
 
@@ -966,20 +980,20 @@ function renderQualityButtons(){
     `<button class="quality-btn ${y===qualityYear?'active':''}" data-year="${y}">${y}</button>`
   ).join("");
   yearWrap.querySelectorAll(".quality-btn").forEach(btn=>{
-    btn.addEventListener("click", ()=>{ qualityYear = Number(btn.dataset.year); renderQualityAll(); });
+    btn.addEventListener("click", ()=>{ qualityYear = Number(btn.dataset.year); renderQualityButtons(); renderQualityAll(); });
   });
   const monthWrap = document.getElementById("quality-monthBtns");
   monthWrap.innerHTML = Array.from({length:12}, (_,i)=>i+1).map(m=>
     `<button class="quality-btn ${m===qualityMonth?'active':''}" data-month="${m}">${m}월</button>`
   ).join("");
   monthWrap.querySelectorAll(".quality-btn").forEach(btn=>{
-    btn.addEventListener("click", ()=>{ qualityMonth = Number(btn.dataset.month); renderQualityAll(); });
+    btn.addEventListener("click", ()=>{ qualityMonth = Number(btn.dataset.month); renderQualityButtons(); renderQualityAll(); });
   });
 }
 
-function drawLineChart(container, labels, values, title){
+function drawLineChart(container, labels, values, title, target){
   const w = 860, h = 200, padL = 50, padR = 20, padT = 20, padB = 30;
-  const maxV = Math.max(...values, 10);
+  const maxV = Math.max(...values, target||0, 10);
   const stepX = labels.length>1 ? (w-padL-padR)/(labels.length-1) : 0;
   const points = values.map((v,i)=>{
     const x = padL + stepX*i;
@@ -988,11 +1002,18 @@ function drawLineChart(container, labels, values, title){
   });
   const pathD = points.map((p,i)=>(i===0?"M":"L")+p[0]+","+p[1]).join(" ");
   const circles = points.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="#E02424"></circle><text x="${p[0]}" y="${h-8}" font-size="11" text-anchor="middle" fill="#6B7280">${labels[i]}</text>`).join("");
+  let targetLine = "";
+  if(target){
+    const ty = padT + (h-padT-padB)*(1 - target/maxV);
+    targetLine = `<line x1="${padL}" y1="${ty}" x2="${w-padR}" y2="${ty}" stroke="#0B5CAB" stroke-width="1.5" stroke-dasharray="5,4"></line>
+      <text x="${w-padR}" y="${ty-6}" font-size="11" text-anchor="end" fill="#0B5CAB">목표 ${target.toLocaleString()}ppm</text>`;
+  }
   container.innerHTML = `
     <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}</div>
     <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;">
       <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${h-padB}" stroke="#DDE1E8"></line>
       <line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" stroke="#DDE1E8"></line>
+      ${targetLine}
       <path d="${pathD}" fill="none" stroke="#E02424" stroke-width="2"></path>
       ${circles}
     </svg>
@@ -1046,20 +1067,65 @@ function renderCategoryKPI(panel, catKey){
   body.appendChild(tr);
 }
 
+function computeCategoryMonthStats(catKey, year, month){
+  let qty=0, defect=0;
+  QUALITY_CATEGORIES[catKey].sheetKeys.forEach(key=>{
+    (qualityRawData[key]||[]).forEach(r=>{
+      if(r.date.getFullYear()===year && (r.date.getMonth()+1)===month){ qty+=r.qty; defect+=r.defect; }
+    });
+  });
+  return { qty, defect, ppm: qty>0 ? Math.round((defect/qty)*1000000) : 0 };
+}
+
 function renderCategoryMonthlyChart(panel, catKey){
   const cat = QUALITY_CATEGORIES[catKey];
-  const monthlyPpm = [];
+  const monthlyQty = [], monthlyDefect = [], monthlyPpm = [];
   for(let m=1;m<=12;m++){
-    let qty=0, defect=0;
-    cat.sheetKeys.forEach(key=>{
-      (qualityRawData[key]||[]).forEach(r=>{
-        if(r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)===m){ qty+=r.qty; defect+=r.defect; }
-      });
-    });
-    monthlyPpm.push(qty>0 ? Math.round((defect/qty)*1000000) : 0);
+    const {qty, defect, ppm} = computeCategoryMonthStats(catKey, qualityYear, m);
+    monthlyQty.push(qty); monthlyDefect.push(defect); monthlyPpm.push(ppm);
   }
   const labels = Array.from({length:12},(_,i)=>(i+1)+"월");
-  drawLineChart(panel.querySelector(".q-monthly-chart"), labels, monthlyPpm, qualityYear+"년 "+cat.label+" 월별 부적합율(ppm) 추이");
+
+  // 이번달 / 저번달 실적 카드
+  const thisM = computeCategoryMonthStats(catKey, qualityYear, qualityMonth);
+  let prevYear = qualityYear, prevMonth = qualityMonth-1;
+  if(prevMonth<1){ prevMonth = 12; prevYear = qualityYear-1; }
+  const prevM = computeCategoryMonthStats(catKey, prevYear, prevMonth);
+  panel.querySelector(".q-this-month").innerHTML =
+    `<div style="font-size:22px;font-weight:700;">${thisM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span></div>
+     <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${qualityYear}년 ${qualityMonth}월 · 검사수 ${thisM.qty.toLocaleString()} · 부적합 ${thisM.defect.toLocaleString()}</div>`;
+  panel.querySelector(".q-last-month").innerHTML =
+    `<div style="font-size:22px;font-weight:700;">${prevM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span></div>
+     <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevYear}년 ${prevMonth}월 · 검사수 ${prevM.qty.toLocaleString()} · 부적합 ${prevM.defect.toLocaleString()}</div>`;
+
+  // 목표(ppm) 입력 연결
+  const targetInput = panel.querySelector(".q-target-input");
+  if(!targetInput.dataset.wired){
+    targetInput.value = qualityTargets[catKey] || "";
+    targetInput.dataset.wired = "1";
+    panel.querySelector(".q-target-apply").addEventListener("click", ()=>{
+      qualityTargets[catKey] = Number(targetInput.value)||0;
+      renderCategoryMonthlyChart(panel, catKey);
+    });
+  }
+
+  drawLineChart(panel.querySelector(".q-monthly-chart"), labels, monthlyPpm, qualityYear+"년 "+cat.label+" 월별 부적합율(ppm) 추이", qualityTargets[catKey]);
+
+  // 월별 검사수/부적합수/ppm 상세 표
+  const totalQty = monthlyQty.reduce((a,b)=>a+b,0);
+  const totalDefect = monthlyDefect.reduce((a,b)=>a+b,0);
+  const totalPpm = totalQty>0 ? Math.round((totalDefect/totalQty)*1000000) : 0;
+  const tableHtml = `
+    <table style="min-width:820px;">
+      <thead><tr><th style="text-align:left;">항목</th>${labels.map(l=>`<th>${l}</th>`).join("")}<th>합계</th></tr></thead>
+      <tbody>
+        <tr><td style="text-align:left;">검사수</td>${monthlyQty.map(v=>`<td>${v.toLocaleString()}</td>`).join("")}<td>${totalQty.toLocaleString()}</td></tr>
+        <tr><td style="text-align:left;">부적합수</td>${monthlyDefect.map(v=>`<td class="${v>0?'cell-defect':''}">${v.toLocaleString()}</td>`).join("")}<td>${totalDefect.toLocaleString()}</td></tr>
+        <tr><td style="text-align:left;">부적합율(ppm)</td>${monthlyPpm.map(v=>`<td>${v.toLocaleString()}</td>`).join("")}<td>${totalPpm.toLocaleString()}</td></tr>
+      </tbody>
+    </table>
+  `;
+  panel.querySelector(".q-monthly-table").innerHTML = tableHtml;
 }
 
 function renderCategoryWeekly(panel, catKey){
