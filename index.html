@@ -258,7 +258,7 @@
         <table>
           <thead>
             <tr>
-              <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>품번</th><th>품명</th><th>수량</th>
+              <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>품번</th><th>기존도번</th><th>품명</th><th>수량</th>
               <th>최종납기</th><th>외주발주(납품처)</th><th>납품일자</th><th>납품여부</th>
               <th class="wait-col">납품대기</th><th class="wait-col">측정실검사대기</th>
               <th class="wait-col">크린룸검사대기</th><th class="wait-col">비젼검사대기</th><th>선출고</th>
@@ -375,6 +375,30 @@ function isOverdue(dateStr){
   const today = new Date(); today.setHours(0,0,0,0);
   return d < today;
 }
+// 재고 선출고와 마찬가지로, 측정실/크린룸 검사대기 수량도 품번 기준으로 대조해서 가져옵니다
+function computeWaitMeasure(r){
+  const key = String(r.partNo||"").trim();
+  if(key in measureWaitMap) return measureWaitMap[key];
+  return Number(r.waitMeasure)||0;
+}
+// 납품대기 = 해당 품번의 현재 재고 보유 수량 (입출고 데이터 기준: 총입고 - 총출고)
+function computeWaitDeliver(r){
+  if(typeof invComputeStock !== "function") return Number(r.waitDeliver)||0;
+  const key = String(r.partNo||"").trim();
+  if(!key) return Number(r.waitDeliver)||0;
+  return invComputeStock(key).stock;
+}
+function computeWaitClean(r){
+  const key = String(r.partNo||"").trim();
+  if(key in cleanWaitMap) return cleanWaitMap[key];
+  return Number(r.waitClean)||0;
+}
+function computeWaitVision(r){
+  const key = String(r.partNo||"").trim();
+  if(key in visionWaitMap) return visionWaitMap[key];
+  return Number(r.waitVision)||0;
+}
+
 // 원본 MAIN 시트 수식(제품상태) 로직을 그대로 재현
 // I=수량, N=납품여부, V=재고선출고, Q=납품대기, S=크린룸검사대기, R=측정실검사대기, T=비젼검사대기
 function computeProductStatus(r){
@@ -382,10 +406,10 @@ function computeProductStatus(r){
   if(I === 0) return "";
   if(r.shipped === "납품완료") return "완료";
   const V = computeStockPreShip(r);
-  const Q = Number(r.waitDeliver)||0;
-  const S = Number(r.waitClean)||0;
-  const R = Number(r.waitMeasure)||0;
-  const T = Number(r.waitVision)||0;
+  const Q = computeWaitDeliver(r);
+  const S = computeWaitClean(r);
+  const R = computeWaitMeasure(r);
+  const T = computeWaitVision(r);
   if(V - I >= 0) return "출고";
   if(Q - I >= 0) return "재고";
   if(S - I >= 0) return "외관";
@@ -407,7 +431,7 @@ function computeStockPreShip(r){
 
 function mainRenderStats(data){
   const prod = data.filter(r=>computeProductStatus(r)==="생산").length;
-  const qc = data.filter(r=>(r.waitMeasure>0||r.waitClean>0||r.waitVision>0)).length;
+  const qc = data.filter(r=>(computeWaitMeasure(r)>0||computeWaitClean(r)>0||computeWaitVision(r)>0)).length;
   const done = data.filter(r=>r.shipped==="납품완료").length;
   const total = data.length || 1;
   const pct = Math.round((done/total)*100);
@@ -431,13 +455,14 @@ function mainRenderTable(data){
     const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
     tr.innerHTML = `
       <td>${statusBadge(_status)}</td><td>${r.orderNo}</td><td>${r.customer}</td><td>${r.partNo}</td>
+      <td>${r.oldDrawingNo||''}</td>
       <td style="text-align:left;">${r.partName}</td><td>${r.qty}</td>
       <td class="${overdue?'cell-overdue':''}">${r.dueDate||''}</td>
       <td style="text-align:left;">${r.vendor||''}</td><td>${r.shipDate||''}</td><td>${r.shipped||''}</td>
-      <td class="${r.waitDeliver>0?'cell-wait-hi':''}">${r.waitDeliver}</td>
-      <td class="${r.waitMeasure>0?'cell-wait-hi':''}">${r.waitMeasure}</td>
-      <td class="${r.waitClean>0?'cell-wait-hi':''}">${r.waitClean}</td>
-      <td class="${r.waitVision>0?'cell-wait-hi':''}">${r.waitVision}</td>
+      <td class="${computeWaitDeliver(r)>0?'cell-wait-hi':''}">${computeWaitDeliver(r)}</td>
+      <td class="${computeWaitMeasure(r)>0?'cell-wait-hi':''}">${computeWaitMeasure(r)}</td>
+      <td class="${computeWaitClean(r)>0?'cell-wait-hi':''}">${computeWaitClean(r)}</td>
+      <td class="${computeWaitVision(r)>0?'cell-wait-hi':''}">${computeWaitVision(r)}</td>
       <td style="color:var(--text);font-style:normal;font-weight:700;">${computeStockPreShip(r)}</td>
     `;
     tbody.appendChild(tr);
@@ -452,15 +477,15 @@ function mainRenderCards(data){
     div.className = "p-card";
     div.innerHTML = `
       <div class="p-card-top"><span class="p-card-title">${r.orderNo} · ${r.partName}</span>${statusBadge(computeProductStatus(r))}</div>
-      <div class="p-card-sub">${r.customer} · 품번 ${r.partNo}</div>
+      <div class="p-card-sub">${r.customer} · 품번 ${r.partNo}${r.oldDrawingNo ? ' · 기존도번 '+r.oldDrawingNo : ''}</div>
       <div class="p-card-grid">
         <div><span>수량 </span>${r.qty}</div>
         <div><span>최종납기 </span><span class="${overdue?'cell-overdue':''}">${r.dueDate||'-'}</span></div>
         <div><span>납품처 </span>${r.vendor||'-'}</div>
         <div><span>납품여부 </span>${r.shipped||'-'}</div>
-        <div><span>측정대기 </span>${r.waitMeasure}</div>
-        <div><span>크린룸대기 </span>${r.waitClean}</div>
-        <div><span>비젼대기 </span>${r.waitVision}</div>
+        <div><span>측정대기 </span>${computeWaitMeasure(r)}</div>
+        <div><span>크린룸대기 </span>${computeWaitClean(r)}</div>
+        <div><span>비젼대기 </span>${computeWaitVision(r)}</div>
         <div><span>선출고 </span><span style="color:var(--text);font-style:normal;font-weight:700;">${computeStockPreShip(r)}</span></div>
       </div>
     `;
@@ -471,7 +496,7 @@ function mainRenderAll(data){ mainRenderStats(data); mainRenderTable(data); main
 function mainApplySearch(){
   const q = document.getElementById("main-searchInput").value.trim().toLowerCase();
   if(!q){ mainRenderAll(mainData); return; }
-  const filtered = mainData.filter(r=>[r.orderNo,r.customer,r.partNo,r.partName,r.vendor].join(" ").toLowerCase().includes(q));
+  const filtered = mainData.filter(r=>[r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.oldDrawingNo].join(" ").toLowerCase().includes(q));
   mainRenderAll(filtered);
 }
 document.getElementById("main-searchBtn").addEventListener("click", mainApplySearch);
@@ -486,21 +511,47 @@ function mapRowToMain(row){
     status:row["제품상태"]||"", orderNo:combinedOrderNo, customer:row["고객사"]||"",
     partNo:row["품 번"]||row["품번"]||"", partName:row["품 명"]||row["품명"]||"", qty:Number(row["수량"]||0),
     dueDate:row["최종납기"]||"", vendor:row["외주발주(납품처)"]||"", shipDate:row["납품일자"]||"",
+    oldDrawingNo:row["기존도번(유진테크)"]||row["기존도번"]||"",
     shipped:row["납품여부"]||"", stockPreShip:Number(row["재고선출고"]||row["재고\n선출고"]||0), waitDeliver:Number(row["납품대기"]||0), waitMeasure:Number(row["측정실검사대기"]||0),
     waitClean:Number(row["크린룸검사대기"]||0), waitVision:Number(row["비젼검사대기"]||0),
   };
 }
 let mainApiUrl = "";
 const CURRENT_YEAR = new Date().getFullYear();
+let measureWaitMap = {};
+let cleanWaitMap = {};
+let visionWaitMap = {};
+
+function fetchWaitMap(url, datasetName, keyField, valueField, targetMap){
+  return fetch(url + "?dataset=" + encodeURIComponent(datasetName))
+    .then(r=>r.json())
+    .then(res=>{
+      if(!res.success) return;
+      const map = {};
+      res.rows.forEach(row=>{
+        const key = row[keyField];
+        if(key===undefined || key==="") return;
+        map[String(key).trim()] = Number(row[valueField])||0;
+      });
+      Object.assign(targetMap, map);
+      for(const k in targetMap){ if(!(k in map)) delete targetMap[k]; }
+    })
+    .catch(()=>{});
+}
+
 function fetchMainData(yearsParam){
   const url = document.getElementById("main-appsScriptUrl").value.trim();
   const statusEl = document.getElementById("main-apiStatus");
   if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return; }
   statusEl.textContent = "불러오는 중...";
   const yearsQuery = yearsParam ? "&years=" + encodeURIComponent(yearsParam) : "";
-  fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery)
-    .then(r=>r.json())
-    .then(res=>{
+  Promise.all([
+    fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery).then(r=>r.json()),
+    fetchWaitMap(url, "측정실검사대기", "품 번", "측정실대기", measureWaitMap),
+    fetchWaitMap(url, "크린룸검사대기", "품 번", "검사대기", cleanWaitMap),
+    fetchWaitMap(url, "비젼검사대기", "구 분", "검사대기", visionWaitMap)
+  ])
+    .then(([res])=>{
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       mainApiUrl = url;
       mainData = res.rows.map(mapRowToMain);
