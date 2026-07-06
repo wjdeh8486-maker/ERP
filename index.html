@@ -29,6 +29,7 @@
     color:var(--text);
   }
   a{color:inherit;}
+
   /* ---------- App shell ---------- */
   .app-shell{
     display:flex;
@@ -224,18 +225,22 @@
     .table-wrap{display:none;}
     .cards-view{display:flex;}
     .table-scroll table{min-width:640px;}
+    .view{padding:10px 8px 20px;}
+    .tab-panel{padding:12px;}
+    .stock-summary{gap:8px;}
+    .stock-card{min-width:0;padding:10px 12px;}
+    .search-row{gap:6px;}
+    .search-row input{min-width:0;width:100%;}
+    .search-row button{width:100%;}
+    .search-row label{width:100%;}
   }
 
   @media print{
-    .side-nav, .topbar, .sync-panel, .summary-row{display:none !important;}
-    .app-shell{display:block !important;}
-    .main-area{display:block !important;}
-    .view{display:none !important;padding:0 !important;}
-    .view.active{display:block !important;}
-    .table-wrap{border:none !important;overflow:visible !important;}
-    thead th{position:static !important;}
-    table{font-size:11px;}
-    .cards-view{display:none !important;}
+    body > *:not(#print-area){display:none !important;}
+    #print-area{display:block !important;}
+    #print-area table{width:100%;border-collapse:collapse;font-size:11px;}
+    #print-area th, #print-area td{border:1px solid #999;padding:5px;text-align:center;}
+    #print-area h2{font-size:16px;margin:0 0 10px;}
   }
 </style>
 </head>
@@ -341,7 +346,7 @@
         <input type="file" id="inv-fileInput" accept=".csv,.xlsx,.xls">
       </label>
       <button id="inv-resetBtn">샘플 데이터로</button>
-      <div class="sync-note">※ Apps Script로 연동하면 "출고 처리"가 실제 구글시트에 저장됩니다. 열 이름: 품번 / 입고일자 / S/N / 입고수량 / 출고일자 / 출고수량 / 관리번호 / 비고.</div>
+      <div class="sync-note">※ Apps Script로 연동하면 구글시트의 최신 데이터를 실시간으로 읽어옵니다. 열 이름: 품번 / 입고일자 / S/N / 입고수량 / 출고일자 / 출고수량 / 관리번호 / 비고.</div>
       <div class="sync-note" id="inv-apiStatus"></div>
     </div>
 
@@ -646,7 +651,38 @@ function mainApplySearch(){
   mainRenderAll(filtered);
 }
 document.getElementById("main-statusFilter").addEventListener("change", mainApplySearch);
-document.getElementById("main-printBtn").addEventListener("click", ()=>{ mainApplySearch(); window.print(); });
+document.getElementById("main-printBtn").addEventListener("click", ()=>{
+  mainApplySearch();
+  const statusFilter = document.getElementById("main-statusFilter").value;
+  const q = document.getElementById("main-searchInput").value.trim();
+  let filtered = mainData;
+  if(q){
+    const ql = q.toLowerCase();
+    filtered = filtered.filter(r=>[r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.oldDrawingNo].join(" ").toLowerCase().includes(ql));
+  }
+  if(statusFilter){ filtered = filtered.filter(r=>computeProductStatus(r)===statusFilter); }
+
+  const rowsHtml = filtered.map(r=>{
+    const status = computeProductStatus(r);
+    return `<tr>
+      <td>${status}</td><td>${r.orderNo}</td><td>${r.customer}</td><td>${r.partNo}</td><td>${r.oldDrawingNo||''}</td>
+      <td style="text-align:left;">${r.partName}</td><td>${r.qty}</td><td>${r.dueDate||''}</td>
+      <td style="text-align:left;">${r.vendor||''}</td><td>${r.shipDate||''}</td><td>${r.shipped||''}</td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("print-area").innerHTML = `
+    <h2>종합제품관리 · MAIN 대시보드 (${new Date().toLocaleString("ko-KR")})</h2>
+    <table>
+      <thead><tr>
+        <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>품번</th><th>기존도번</th>
+        <th>품명</th><th>수량</th><th>최종납기</th><th>외주발주(납품처)</th><th>납품일자</th><th>납품여부</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
+  window.print();
+});
 document.getElementById("main-searchBtn").addEventListener("click", mainApplySearch);
 document.getElementById("main-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") mainApplySearch(); });
 document.getElementById("main-syncToggle").addEventListener("click", ()=>document.getElementById("main-syncPanel").classList.toggle("open"));
@@ -976,6 +1012,15 @@ function getWeekOfMonth(date){
   return 4;
 }
 
+// 열 이름에 보이지 않는 공백/줄바꿈 차이가 있어도 매칭되도록, 공백을 무시하고 비교합니다.
+function normalizeHeaderKey(k){ return String(k).replace(/\s+/g,"").trim(); }
+function getFieldFlexible(row, label){
+  if(label in row) return row[label];
+  const target = normalizeHeaderKey(label);
+  const foundKey = Object.keys(row).find(k=>normalizeHeaderKey(k)===target);
+  return foundKey ? row[foundKey] : undefined;
+}
+
 function fetchQualityData(){
   const url = document.getElementById("quality-appsScriptUrl").value.trim();
   const statusEl = document.getElementById("quality-apiStatus");
@@ -990,22 +1035,43 @@ function fetchQualityData(){
       if(!res || !res.success){ warnings.push(s.label + " 오류: " + (res&&res.error||"알 수 없음")); qualityRawData[s.key] = []; return; }
       qualityRawData[s.key] = res.rows.map(row=>{
         const typeVals = {};
-        Object.keys(s.types).forEach(tk=>{ typeVals[tk] = Number(row[s.types[tk]])||0; });
+        Object.keys(s.types).forEach(tk=>{ typeVals[tk] = Number(getFieldFlexible(row, s.types[tk]))||0; });
         return {
-          date: parseQualityDate(row[s.dateField]),
+          date: parseQualityDate(getFieldFlexible(row, s.dateField)),
           partNo: row["도 번"]||row["도번"]||"",
           sn: row["S/N"]||"",
-          qty: Number(row[s.qtyField])||0,
-          good: Number(row[s.goodField])||0,
-          defect: Number(row[s.defectField])||0,
+          note: row["비 고"]||row["비고"]||"",
+          qty: Number(getFieldFlexible(row, s.qtyField))||0,
+          good: Number(getFieldFlexible(row, s.goodField))||0,
+          defect: Number(getFieldFlexible(row, s.defectField))||0,
           types: typeVals
         };
       }).filter(r=>r.date);
       if(res.warnings && res.warnings.length) warnings.push(s.label+": "+res.warnings.join(" / "));
     });
-    statusEl.textContent = "연동 완료" + (warnings.length ? " · 일부 오류: "+warnings.join(" / ") : "");
+    cacheSetQualityData();
+    const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
+    statusEl.textContent = "연동 완료 · 마지막 업데이트 " + nowStr + (warnings.length ? " · 일부 오류: "+warnings.join(" / ") : "");
     renderQualityAll();
   }).catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
+}
+
+// 품질분석 데이터는 날짜(Date 객체)가 있어 JSON으로 그대로 저장이 안 되므로 문자열로 바꿔서 저장/복원합니다.
+function cacheSetQualityData(){
+  const serializable = {};
+  Object.keys(qualityRawData).forEach(k=>{
+    serializable[k] = qualityRawData[k].map(r=>Object.assign({}, r, { date: r.date.toISOString() }));
+  });
+  cacheSet("cache_qualityRawData", serializable);
+}
+function cacheGetQualityData(){
+  const cached = cacheGet("cache_qualityRawData");
+  if(!cached) return null;
+  const result = {};
+  Object.keys(cached).forEach(k=>{
+    result[k] = cached[k].map(r=>Object.assign({}, r, { date: new Date(r.date) }));
+  });
+  return result;
 }
 
 function renderQualityButtons(){
@@ -1198,12 +1264,14 @@ function renderCategoryDetailList(panel, catKey){
         const typeLabels = Object.keys(meta.types)
           .filter(tk=>r.types[tk]>0)
           .map(tk=>meta.types[tk]+"("+r.types[tk]+")");
+        let typeDisplay = typeLabels.join(", ");
+        if(!typeDisplay){ typeDisplay = r.note ? ("비고: "+r.note) : "-"; }
         rows.push({
           partNo: r.partNo, sn: r.sn,
           date: r.date.toISOString().slice(0,10),
           sheetLabel: meta.label,
           defect: r.defect,
-          types: typeLabels.join(", ") || "-"
+          types: typeDisplay
         });
       }
     });
@@ -1277,7 +1345,14 @@ function renderQualityAll(){
 
 function initQualityView(){
   renderQualityButtons();
-  fetchQualityData();
+  const cached = cacheGetQualityData();
+  if(cached){
+    qualityRawData = cached;
+    renderQualityAll();
+    document.getElementById("quality-apiStatus").textContent = "저장된 데이터를 표시 중입니다 (마지막 연동 데이터). 최신 내용을 반영하려면 'API로 불러오기'를 눌러주세요.";
+  } else {
+    fetchQualityData();
+  }
 }
 document.getElementById("quality-syncToggle").addEventListener("click", ()=>document.getElementById("quality-syncPanel").classList.toggle("open"));
 document.getElementById("quality-apiSyncBtn").addEventListener("click", fetchQualityData);
@@ -1320,5 +1395,6 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
   }
 })();
 </script>
+<div id="print-area" style="display:none;"></div>
 </body>
 </html>
