@@ -138,6 +138,11 @@
   .badge.status-생산{background:#FDEBEB;color:var(--red);border:1px solid var(--red);}
   .badge.status-재고{background:#EAF4EC;color:var(--green);border:1px solid var(--green);}
   .badge.status-출고{background:var(--navy);color:#fff;}
+  .badge.status-완료{background:#F1E9F7;color:var(--purple);border:1px solid var(--purple);}
+  .badge.status-외관{background:#E7F0FB;color:var(--blue);border:1px solid var(--blue);}
+  .badge.status-측정{background:#E7F0FB;color:var(--blue);border:1px solid var(--blue);}
+  .badge.status-비젼{background:#E7F0FB;color:var(--blue);border:1px solid var(--blue);}
+  .badge.status-OK{background:#FFF6D6;color:#8a6d00;border:1px solid #C9A400;}
   .cell-overdue{color:var(--red);font-weight:700;}
   .cell-defect{color:var(--red);font-weight:700;}
   .cell-wait-hi{background:#FFF6D6;font-weight:700;}
@@ -255,8 +260,7 @@
               <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>품번</th><th>품명</th><th>수량</th>
               <th>최종납기</th><th>외주발주(납품처)</th><th>납품일자</th><th>납품여부</th>
               <th class="wait-col">납품대기</th><th class="wait-col">측정실검사대기</th>
-              <th class="wait-col">크린룸검사대기</th><th class="wait-col">비젼검사대기</th>
-              <th class="defect-col">부적합건수</th><th>성적서</th>
+              <th class="wait-col">크린룸검사대기</th><th class="wait-col">비젼검사대기</th><th>선출고</th>
             </tr>
           </thead>
           <tbody id="main-tableBody"></tbody>
@@ -290,7 +294,6 @@
     <div class="view" id="view-inventory">
       <div class="tabs">
         <button class="tab-btn active" data-tab="check">재고확인</button>
-        <button class="tab-btn" data-tab="out">출고처리</button>
         <button class="tab-btn" data-tab="all">전체 재고 현황</button>
       </div>
 
@@ -313,20 +316,6 @@
         <div class="empty-state" id="inv-checkEmpty">품번을 검색하면 해당 재고 이력이 표시됩니다.</div>
       </div>
 
-      <div class="tab-panel" id="panel-out">
-        <div class="search-row">
-          <input id="inv-outSearch" type="text" placeholder="관리번호 또는 품번으로 검색 (예: 26-234-1)">
-          <button id="inv-outSearchBtn">검색</button>
-        </div>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>품번</th><th>S/N</th><th>입고일자</th><th>입고수량</th><th>관리번호</th><th>상태</th><th>처리</th></tr></thead>
-            <tbody id="inv-outBody"></tbody>
-          </table>
-        </div>
-        <div class="empty-state" id="inv-outEmpty">관리번호 또는 품번을 검색해 출고 대상을 찾으세요.</div>
-      </div>
-
       <div class="tab-panel" id="panel-all">
         <div class="search-row">
           <input id="inv-allSearch" type="text" placeholder="품번으로 필터">
@@ -345,8 +334,6 @@
   </div>
 </div>
 
-<div id="shipModalRoot"></div>
-
 <script>
 /* ============ NAVIGATION ============ */
 document.querySelectorAll(".nav-item").forEach(item=>{
@@ -363,20 +350,20 @@ document.querySelectorAll(".nav-item").forEach(item=>{
 
 /* ============ MAIN DASHBOARD LOGIC ============ */
 const MAIN_SAMPLE = [
-  {status:"생산", orderNo:"26-234-1", customer:"유진테크", partNo:"110006106", partName:"GAS LINE HOLDER", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0, defect:0, report:""},
-  {status:"생산", orderNo:"26-234-2", customer:"유진테크", partNo:"110006119", partName:"N2 IN PORT", qty:2, dueDate:"2026-08-05", vendor:"신우(명석),와이엔티", shipDate:"", shipped:"", waitDeliver:1, waitMeasure:35, waitClean:0, waitVision:0, defect:0, report:""},
-  {status:"생산", orderNo:"26-234-3", customer:"유진테크", partNo:"110006120", partName:"CHAMBER PIN", qty:4, dueDate:"2026-08-05", vendor:"창록", shipDate:"", shipped:"", waitDeliver:7, waitMeasure:0, waitClean:0, waitVision:0, defect:0, report:""},
-  {status:"재고", orderNo:"26-234-4", customer:"유진테크", partNo:"110006146", partName:"GAS ADAPTOR", qty:2, dueDate:"2026-08-05", vendor:"용기테크,삼영", shipDate:"", shipped:"", waitDeliver:1, waitMeasure:3, waitClean:0, waitVision:0, defect:0, report:""},
-  {status:"생산", orderNo:"26-234-5", customer:"유진테크", partNo:"110006223", partName:"VACUUM COVER", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", waitDeliver:6, waitMeasure:0, waitClean:10, waitVision:0, defect:0, report:""},
-  {status:"생산", orderNo:"26-234-6", customer:"유진테크", partNo:"110006253", partName:"CHAMBER", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0, defect:1, report:""},
-  {status:"출고", orderNo:"26-234-7", customer:"유진테크", partNo:"110006262", partName:"CHAMBER LID", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"2026-07-01", shipped:"납품완료", waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0, defect:0, report:"발행"},
-  {status:"생산", orderNo:"26-234-8", customer:"유진테크", partNo:"110006478", partName:"TUBE ADAPTOR", qty:2, dueDate:"2026-06-20", vendor:"삼영", shipDate:"", shipped:"", waitDeliver:1, waitMeasure:0, waitClean:0, waitVision:0, defect:0, report:""},
-  {status:"생산", orderNo:"26-234-9", customer:"유진테크", partNo:"110006529", partName:"COOLING ADAPTOR", qty:2, dueDate:"2026-08-05", vendor:"와이엔티", shipDate:"", shipped:"", waitDeliver:0, waitMeasure:23, waitClean:17, waitVision:0, defect:0, report:""},
-  {status:"재고", orderNo:"26-234-10", customer:"유진테크", partNo:"110006534", partName:"COOLING ADAPTOR", qty:2, dueDate:"2026-08-05", vendor:"와이엔티", shipDate:"", shipped:"", waitDeliver:2, waitMeasure:0, waitClean:0, waitVision:0, defect:0, report:""},
-  {status:"생산", orderNo:"26-234-11", customer:"유진테크", partNo:"110006981", partName:"CHAMBER VACUUM PORT", qty:2, dueDate:"2026-05-30", vendor:"와이엔티,더광명", shipDate:"", shipped:"", waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0, defect:1, report:""},
-  {status:"생산", orderNo:"26-234-12", customer:"유진테크", partNo:"110007981", partName:"TUBE ADAPTOR FLANGE", qty:2, dueDate:"2026-08-05", vendor:"명석정밀,삼영", shipDate:"", shipped:"", waitDeliver:3, waitMeasure:0, waitClean:0, waitVision:0, defect:0, report:""},
-  {status:"생산", orderNo:"26-234-13", customer:"유진테크", partNo:"120077685", partName:"COUPLER SAFETY COVER", qty:4, dueDate:"2026-08-05", vendor:"케미수지", shipDate:"", shipped:"", waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0, defect:0, report:""},
-  {status:"생산", orderNo:"26-234-17", customer:"유진테크", partNo:"110006296", partName:"SHOWERHEAD", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", waitDeliver:0, waitMeasure:12, waitClean:0, waitVision:16, defect:9, report:""},
+  {status:"생산", orderNo:"26-234-1", customer:"유진테크", partNo:"110006106", partName:"GAS LINE HOLDER", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-2", customer:"유진테크", partNo:"110006119", partName:"N2 IN PORT", qty:2, dueDate:"2026-08-05", vendor:"신우(명석),와이엔티", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:1, waitMeasure:35, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-3", customer:"유진테크", partNo:"110006120", partName:"CHAMBER PIN", qty:4, dueDate:"2026-08-05", vendor:"창록", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:7, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"재고", orderNo:"26-234-4", customer:"유진테크", partNo:"110006146", partName:"GAS ADAPTOR", qty:2, dueDate:"2026-08-05", vendor:"용기테크,삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:1, waitMeasure:3, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-5", customer:"유진테크", partNo:"110006223", partName:"VACUUM COVER", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:6, waitMeasure:0, waitClean:10, waitVision:0},
+  {status:"생산", orderNo:"26-234-6", customer:"유진테크", partNo:"110006253", partName:"CHAMBER", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"출고", orderNo:"26-234-7", customer:"유진테크", partNo:"110006262", partName:"CHAMBER LID", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"2026-07-01", shipped:"납품완료", stockPreShip:0, waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-8", customer:"유진테크", partNo:"110006478", partName:"TUBE ADAPTOR", qty:2, dueDate:"2026-06-20", vendor:"삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:1, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-9", customer:"유진테크", partNo:"110006529", partName:"COOLING ADAPTOR", qty:2, dueDate:"2026-08-05", vendor:"와이엔티", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:23, waitClean:17, waitVision:0},
+  {status:"재고", orderNo:"26-234-10", customer:"유진테크", partNo:"110006534", partName:"COOLING ADAPTOR", qty:2, dueDate:"2026-08-05", vendor:"와이엔티", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:2, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-11", customer:"유진테크", partNo:"110006981", partName:"CHAMBER VACUUM PORT", qty:2, dueDate:"2026-05-30", vendor:"와이엔티,더광명", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-12", customer:"유진테크", partNo:"110007981", partName:"TUBE ADAPTOR FLANGE", qty:2, dueDate:"2026-08-05", vendor:"명석정밀,삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:3, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-13", customer:"유진테크", partNo:"120077685", partName:"COUPLER SAFETY COVER", qty:4, dueDate:"2026-08-05", vendor:"케미수지", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-17", customer:"유진테크", partNo:"110006296", partName:"SHOWERHEAD", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:12, waitClean:0, waitVision:16},
 ];
 let mainData = MAIN_SAMPLE.slice();
 
@@ -387,10 +374,38 @@ function isOverdue(dateStr){
   const today = new Date(); today.setHours(0,0,0,0);
   return d < today;
 }
+// 원본 MAIN 시트 수식(제품상태) 로직을 그대로 재현
+// I=수량, N=납품여부, V=재고선출고, Q=납품대기, S=크린룸검사대기, R=측정실검사대기, T=비젼검사대기
+function computeProductStatus(r){
+  const I = Number(r.qty)||0;
+  if(I === 0) return "";
+  if(r.shipped === "납품완료") return "완료";
+  const V = computeStockPreShip(r);
+  const Q = Number(r.waitDeliver)||0;
+  const S = Number(r.waitClean)||0;
+  const R = Number(r.waitMeasure)||0;
+  const T = Number(r.waitVision)||0;
+  if(V - I >= 0) return "출고";
+  if(Q - I >= 0) return "재고";
+  if(S - I >= 0) return "외관";
+  if(T - I >= 0) return "비젼";
+  if(R - I >= 0) return "측정";
+  const sum = Q + R + S + T + V;
+  if(sum >= I) return "OK";
+  return "생산";
+}
 function statusBadge(status){ return `<span class="badge status-${status}">${status}</span>`; }
 
+// 재고 선출고 판정: MAIN의 ORDER NO.(관리번호 형식, 예: 26-234-1)가
+// 입출고 시트의 관리번호에 있고 출고수량이 기록되어 있으면 그 수량을 선출고로 인정
+function computeStockPreShip(r){
+  if(typeof invData === "undefined") return 0;
+  const matches = invData.filter(iv => iv.ctrlNo === r.orderNo);
+  return matches.reduce((s,m)=>s+(Number(m.outQty)||0),0);
+}
+
 function mainRenderStats(data){
-  const prod = data.filter(r=>r.status==="생산").length;
+  const prod = data.filter(r=>computeProductStatus(r)==="생산").length;
   const qc = data.filter(r=>(r.waitMeasure>0||r.waitClean>0||r.waitVision>0)).length;
   const done = data.filter(r=>r.shipped==="납품완료").length;
   const total = data.length || 1;
@@ -410,10 +425,11 @@ function mainRenderTable(data){
   data.forEach(r=>{
     const tr = document.createElement("tr");
     if(r.shipped==="납품완료") tr.classList.add("row-shipped");
-    if(r.status==="재고") tr.classList.add("row-instock");
+    const _status = computeProductStatus(r);
+    if(_status==="재고") tr.classList.add("row-instock");
     const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
     tr.innerHTML = `
-      <td>${statusBadge(r.status)}</td><td>${r.orderNo}</td><td>${r.customer}</td><td>${r.partNo}</td>
+      <td>${statusBadge(_status)}</td><td>${r.orderNo}</td><td>${r.customer}</td><td>${r.partNo}</td>
       <td style="text-align:left;">${r.partName}</td><td>${r.qty}</td>
       <td class="${overdue?'cell-overdue':''}">${r.dueDate||''}</td>
       <td style="text-align:left;">${r.vendor||''}</td><td>${r.shipDate||''}</td><td>${r.shipped||''}</td>
@@ -421,7 +437,7 @@ function mainRenderTable(data){
       <td class="${r.waitMeasure>0?'cell-wait-hi':''}">${r.waitMeasure}</td>
       <td class="${r.waitClean>0?'cell-wait-hi':''}">${r.waitClean}</td>
       <td class="${r.waitVision>0?'cell-wait-hi':''}">${r.waitVision}</td>
-      <td class="${r.defect>0?'cell-defect':''}">${r.defect}</td><td>${r.report||''}</td>
+      <td style="color:var(--text);font-style:normal;font-weight:700;">${computeStockPreShip(r)}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -434,7 +450,7 @@ function mainRenderCards(data){
     const div = document.createElement("div");
     div.className = "p-card";
     div.innerHTML = `
-      <div class="p-card-top"><span class="p-card-title">${r.orderNo} · ${r.partName}</span>${statusBadge(r.status)}</div>
+      <div class="p-card-top"><span class="p-card-title">${r.orderNo} · ${r.partName}</span>${statusBadge(computeProductStatus(r))}</div>
       <div class="p-card-sub">${r.customer} · 품번 ${r.partNo}</div>
       <div class="p-card-grid">
         <div><span>수량 </span>${r.qty}</div>
@@ -444,7 +460,7 @@ function mainRenderCards(data){
         <div><span>측정대기 </span>${r.waitMeasure}</div>
         <div><span>크린룸대기 </span>${r.waitClean}</div>
         <div><span>비젼대기 </span>${r.waitVision}</div>
-        <div><span>부적합 </span><span class="${r.defect>0?'cell-defect':''}">${r.defect}</span></div>
+        <div><span>선출고 </span><span style="color:var(--text);font-style:normal;font-weight:700;">${computeStockPreShip(r)}</span></div>
       </div>
     `;
     wrap.appendChild(div);
@@ -466,9 +482,8 @@ function mapRowToMain(row){
     status:row["제품상태"]||"", orderNo:row["ORDER NO."]||"", customer:row["고객사"]||"",
     partNo:row["품번"]||"", partName:row["품명"]||"", qty:Number(row["수량"]||0),
     dueDate:row["최종납기"]||"", vendor:row["외주발주(납품처)"]||"", shipDate:row["납품일자"]||"",
-    shipped:row["납품여부"]||"", waitDeliver:Number(row["납품대기"]||0), waitMeasure:Number(row["측정실검사대기"]||0),
+    shipped:row["납품여부"]||"", stockPreShip:Number(row["재고선출고"]||row["재고\n선출고"]||0), waitDeliver:Number(row["납품대기"]||0), waitMeasure:Number(row["측정실검사대기"]||0),
     waitClean:Number(row["크린룸검사대기"]||0), waitVision:Number(row["비젼검사대기"]||0),
-    defect:Number(row["부적합건수"]||0), report:row["성적서"]||""
   };
 }
 let mainApiUrl = "";
@@ -548,7 +563,7 @@ setupDropZone("main-dropZone","main-fileInput","main-dropLabel", rows=>{
   document.getElementById("main-syncPanel").classList.remove("open");
 });
 
-mainRenderAll(mainData);
+// 초기 렌더링은 invData 선언 이후 파일 하단에서 한 번에 수행합니다 (선출고 계산이 invData를 참조하기 때문)
 
 /* ============ INVENTORY LOGIC ============ */
 const INV_SAMPLE = [
@@ -592,27 +607,6 @@ function invRenderCheck(partNo){
     body.appendChild(tr);
   });
 }
-function invRenderOut(query){
-  const body = document.getElementById("inv-outBody");
-  const empty = document.getElementById("inv-outEmpty");
-  body.innerHTML = "";
-  if(!query){ empty.style.display="block"; return; }
-  const q = query.toLowerCase();
-  const rows = invData.filter(r=>(r.ctrlNo && r.ctrlNo.toLowerCase().includes(q)) || (r.partNo && r.partNo.toLowerCase().includes(q)));
-  if(rows.length===0){ empty.textContent="검색 결과가 없습니다."; empty.style.display="block"; return; }
-  empty.style.display="none";
-  rows.forEach(r=>{
-    const isShipped = r.outDate && r.outQty;
-    const tr = document.createElement("tr");
-    if(!isShipped) tr.classList.add("row-open");
-    tr.innerHTML = `<td>${r.partNo}</td><td>${r.sn||''}</td><td>${r.inDate||''}</td><td>${r.inQty||''}</td>
-      <td>${r.ctrlNo||'-'}</td>
-      <td>${isShipped ? '<span class="badge-out">출고완료</span>' : '<span style="color:var(--green);font-weight:700;">재고보유</span>'}</td>
-      <td>${isShipped ? '' : '<button class="btn-primary ship" data-idx="'+invData.indexOf(r)+'">출고 처리</button>'}</td>`;
-    body.appendChild(tr);
-  });
-  body.querySelectorAll(".btn-primary.ship").forEach(btn=>btn.addEventListener("click", ()=>invOpenShipModal(Number(btn.dataset.idx))));
-}
 function invRenderAll(filter){
   const body = document.getElementById("inv-allBody");
   body.innerHTML = "";
@@ -625,57 +619,6 @@ function invRenderAll(filter){
     body.appendChild(tr);
   });
 }
-function invOpenShipModal(idx){
-  const r = invData[idx];
-  const root = document.getElementById("shipModalRoot");
-  root.innerHTML = `
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:50;">
-      <div style="background:#fff;border-radius:12px;padding:20px;width:320px;max-width:90vw;">
-        <h3 style="margin:0 0 12px;font-size:16px;">출고 처리 - ${r.partNo} (S/N ${r.sn})</h3>
-        <div class="form-grid">
-          <div><label>출고일자</label><input type="date" id="ship-date" value="${new Date().toISOString().slice(0,10)}"></div>
-          <div><label>출고수량</label><input type="number" id="ship-qty" value="${r.inQty}"></div>
-          <div><label>관리번호</label><input type="text" id="ship-ctrl" placeholder="예: 26-234-1"></div>
-        </div>
-        <div class="form-actions">
-          <button class="btn-plain" onclick="document.getElementById('shipModalRoot').innerHTML=''">취소</button>
-          <button class="btn-primary ship" id="ship-confirm">출고 확정</button>
-        </div>
-      </div>
-    </div>`;
-  document.getElementById("ship-confirm").addEventListener("click", ()=>{
-    const outDate = document.getElementById("ship-date").value;
-    const outQty = Number(document.getElementById("ship-qty").value)||r.inQty;
-    const ctrlNo = document.getElementById("ship-ctrl").value || r.ctrlNo;
-    const confirmBtn = document.getElementById("ship-confirm");
-
-    function applyLocalAndClose(){
-      invData[idx].outDate = outDate;
-      invData[idx].outQty = outQty;
-      invData[idx].ctrlNo = ctrlNo;
-      root.innerHTML = "";
-      invRenderOut(document.getElementById("inv-outSearch").value.trim());
-    }
-
-    if(invApiUrl){
-      confirmBtn.textContent = "저장 중...";
-      confirmBtn.disabled = true;
-      fetch(invApiUrl, {
-        method:"POST",
-        body: JSON.stringify({ action:"ship", sheetName:"입출고", partNo:r.partNo, sn:r.sn, outDate, outQty, ctrlNo })
-      })
-      .then(res=>res.json())
-      .then(res=>{
-        if(res.success){ applyLocalAndClose(); }
-        else{ alert("시트 저장 실패: " + res.error); confirmBtn.textContent="출고 확정"; confirmBtn.disabled=false; }
-      })
-      .catch(()=>{ alert("시트 저장 중 오류가 발생했습니다. 네트워크를 확인해 주세요."); confirmBtn.textContent="출고 확정"; confirmBtn.disabled=false; });
-    } else {
-      applyLocalAndClose();
-    }
-  });
-}
-
 document.querySelectorAll(".tab-btn").forEach(btn=>{
   btn.addEventListener("click", ()=>{
     document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
@@ -687,12 +630,10 @@ document.querySelectorAll(".tab-btn").forEach(btn=>{
 });
 document.getElementById("inv-checkBtn").addEventListener("click", ()=>invRenderCheck(document.getElementById("inv-checkPartNo").value.trim()));
 document.getElementById("inv-checkPartNo").addEventListener("keydown", e=>{ if(e.key==="Enter") invRenderCheck(e.target.value.trim()); });
-document.getElementById("inv-outSearchBtn").addEventListener("click", ()=>invRenderOut(document.getElementById("inv-outSearch").value.trim()));
-document.getElementById("inv-outSearch").addEventListener("keydown", e=>{ if(e.key==="Enter") invRenderOut(e.target.value.trim()); });
 document.getElementById("inv-allSearchBtn").addEventListener("click", ()=>invRenderAll(document.getElementById("inv-allSearch").value.trim()));
 document.getElementById("inv-allResetBtn").addEventListener("click", ()=>{ document.getElementById("inv-allSearch").value=""; invRenderAll(""); });
 document.getElementById("inv-syncToggle").addEventListener("click", ()=>document.getElementById("inv-syncPanel").classList.toggle("open"));
-document.getElementById("inv-resetBtn").addEventListener("click", ()=>{ invData = INV_SAMPLE.slice(); invRenderCheck(""); invRenderOut(""); invRenderAll(""); });
+document.getElementById("inv-resetBtn").addEventListener("click", ()=>{ invData = INV_SAMPLE.slice(); invRenderCheck(""); invRenderAll(""); });
 function mapRowToInv(row){
   return {
     partNo:row["품 번"]||row["품번"]||"", inDate:row["입고 일자"]||row["입고일자"]||"", sn:row["S/N"]||"",
@@ -712,7 +653,7 @@ document.getElementById("inv-apiSyncBtn").addEventListener("click", ()=>{
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       invApiUrl = url;
       invData = res.rows.map(mapRowToInv);
-      invRenderCheck(""); invRenderOut(""); invRenderAll("");
+      invRenderCheck(""); invRenderAll("");
       statusEl.textContent = "연동 완료 (" + invData.length + "건 불러옴) · 출고 처리 시 시트에 자동 저장됩니다.";
     })
     .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
@@ -725,7 +666,7 @@ document.getElementById("inv-syncBtn").addEventListener("click", ()=>{
     complete:function(results){
       try{
         invData = results.data.map(mapRowToInv);
-        invRenderCheck(""); invRenderOut(""); invRenderAll("");
+        invRenderCheck(""); invRenderAll("");
         document.getElementById("inv-syncPanel").classList.remove("open");
       }catch(e){ alert("데이터 형식을 확인해 주세요."); }
     },
@@ -734,12 +675,12 @@ document.getElementById("inv-syncBtn").addEventListener("click", ()=>{
 });
 setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
   invData = rows.map(mapRowToInv);
-  invRenderCheck(""); invRenderOut(""); invRenderAll("");
+  invRenderCheck(""); invRenderAll("");
   document.getElementById("inv-syncPanel").classList.remove("open");
 });
 
 invRenderCheck("");
-invRenderOut("");
+mainRenderAll(mainData);
 </script>
 </body>
 </html>
