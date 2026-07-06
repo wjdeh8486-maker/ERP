@@ -87,6 +87,8 @@
   .search-box{flex:1;min-width:200px;display:flex;gap:8px;}
   .search-box input{flex:1;padding:9px 12px;border-radius:6px;border:none;font-size:14px;}
   .search-box button{padding:9px 16px;border-radius:6px;border:none;background:var(--yellow);color:#222;font-weight:700;cursor:pointer;white-space:nowrap;}
+  .search-box select{padding:9px 10px;border-radius:6px;border:none;font-size:14px;background:#fff;color:#222;}
+  .search-box button#main-printBtn{background:#fff;color:var(--navy);border:1px solid var(--navy);}
   .sync-toggle{font-size:12px;color:#cbd3e1;cursor:pointer;text-decoration:underline;white-space:nowrap;}
   .sync-panel{display:none;background:var(--navy-dark);color:#fff;padding:12px 20px;gap:8px;flex-wrap:wrap;align-items:center;}
   .sync-panel.open{display:flex;}
@@ -202,6 +204,15 @@
     .cards-view{display:flex;}
     .table-scroll table{min-width:640px;}
   }
+
+  @media print{
+    .side-nav, .topbar, .sync-panel, .summary-row{display:none !important;}
+    .view{padding:0 !important;}
+    .table-wrap{border:none !important;overflow:visible !important;}
+    thead th{position:static !important;}
+    table{font-size:11px;}
+    .cards-view{display:none !important;}
+  }
 </style>
 </head>
 <body>
@@ -220,7 +231,19 @@
       <h1>MAIN 대시보드</h1>
       <div class="search-box">
         <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO 검색">
+        <select id="main-statusFilter">
+          <option value="">전체 상태</option>
+          <option value="생산">생산</option>
+          <option value="재고">재고</option>
+          <option value="출고">출고</option>
+          <option value="완료">완료</option>
+          <option value="외관">외관</option>
+          <option value="측정">측정</option>
+          <option value="비젼">비젼</option>
+          <option value="OK">OK</option>
+        </select>
         <button id="main-searchBtn">검색</button>
+        <button id="main-printBtn">인쇄</button>
       </div>
       <span class="sync-toggle" id="main-syncToggle">구글시트 연동 ▾</span>
     </div>
@@ -375,26 +398,27 @@ function isOverdue(dateStr){
   const today = new Date(); today.setHours(0,0,0,0);
   return d < today;
 }
-// 재고 선출고와 마찬가지로, 측정실/크린룸 검사대기 수량도 품번 기준으로 대조해서 가져옵니다
+// 측정실/크린룸/비젼/납품대기 대조는 QC의 "품번"이 아니라 "기존도번" 기준입니다.
+// (입출고·검사대기 시트들의 품번 열이 실제로는 기존도번 체계로 작성되어 있음)
 function computeWaitMeasure(r){
-  const key = String(r.partNo||"").trim();
+  const key = String(r.oldDrawingNo||"").trim();
   if(key in measureWaitMap) return measureWaitMap[key];
   return Number(r.waitMeasure)||0;
 }
-// 납품대기 = 해당 품번의 현재 재고 보유 수량 (입출고 데이터 기준: 총입고 - 총출고)
+// 납품대기 = 해당 기존도번의 현재 재고 보유 수량 (입출고 데이터 기준: 총입고 - 총출고)
 function computeWaitDeliver(r){
   if(typeof invComputeStock !== "function") return Number(r.waitDeliver)||0;
-  const key = String(r.partNo||"").trim();
+  const key = String(r.oldDrawingNo||"").trim();
   if(!key) return Number(r.waitDeliver)||0;
   return invComputeStock(key).stock;
 }
 function computeWaitClean(r){
-  const key = String(r.partNo||"").trim();
+  const key = String(r.oldDrawingNo||"").trim();
   if(key in cleanWaitMap) return cleanWaitMap[key];
   return Number(r.waitClean)||0;
 }
 function computeWaitVision(r){
-  const key = String(r.partNo||"").trim();
+  const key = String(r.oldDrawingNo||"").trim();
   if(key in visionWaitMap) return visionWaitMap[key];
   return Number(r.waitVision)||0;
 }
@@ -495,10 +519,18 @@ function mainRenderCards(data){
 function mainRenderAll(data){ mainRenderStats(data); mainRenderTable(data); mainRenderCards(data); }
 function mainApplySearch(){
   const q = document.getElementById("main-searchInput").value.trim().toLowerCase();
-  if(!q){ mainRenderAll(mainData); return; }
-  const filtered = mainData.filter(r=>[r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.oldDrawingNo].join(" ").toLowerCase().includes(q));
+  const statusFilter = document.getElementById("main-statusFilter").value;
+  let filtered = mainData;
+  if(q){
+    filtered = filtered.filter(r=>[r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.oldDrawingNo].join(" ").toLowerCase().includes(q));
+  }
+  if(statusFilter){
+    filtered = filtered.filter(r=>computeProductStatus(r)===statusFilter);
+  }
   mainRenderAll(filtered);
 }
+document.getElementById("main-statusFilter").addEventListener("change", mainApplySearch);
+document.getElementById("main-printBtn").addEventListener("click", ()=>{ mainApplySearch(); window.print(); });
 document.getElementById("main-searchBtn").addEventListener("click", mainApplySearch);
 document.getElementById("main-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") mainApplySearch(); });
 document.getElementById("main-syncToggle").addEventListener("click", ()=>document.getElementById("main-syncPanel").classList.toggle("open"));
