@@ -226,7 +226,8 @@
     </div>
     <div class="sync-panel" id="main-syncPanel">
       <input id="main-appsScriptUrl" type="text" value="https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2Xur_FhnxfQReER1VnjFKNkwvEtezRo-93EVHlJ8uQdECpP/exec" placeholder="Apps Script 웹 앱 URL 붙여넣기 (실시간 읽기/쓰기)">
-      <button id="main-apiSyncBtn">API로 불러오기</button>
+      <button id="main-apiSyncBtn">API로 불러오기 (올해)</button>
+      <button id="main-apiSyncAllBtn" class="secondary">전체 연도 포함 (느림)</button>
       <span class="sync-or">|</span>
       <input id="main-sheetUrl" type="text" placeholder="또는 CSV 게시 링크">
       <button id="main-syncBtn">불러오기</button>
@@ -417,7 +418,6 @@ function mainRenderStats(data){
   document.getElementById("main-progressFill").style.width = pct+"%";
   document.getElementById("main-progressDetail").textContent = `완료 ${done} / 전체 ${total}건`;
 }
-  
 function mainRenderTable(data){
   const tbody = document.getElementById("main-tableBody");
   const empty = document.getElementById("main-emptyState");
@@ -488,22 +488,30 @@ function mapRowToMain(row){
   };
 }
 let mainApiUrl = "";
-document.getElementById("main-apiSyncBtn").addEventListener("click", ()=>{
+const CURRENT_YEAR = new Date().getFullYear();
+function fetchMainData(yearsParam){
   const url = document.getElementById("main-appsScriptUrl").value.trim();
   const statusEl = document.getElementById("main-apiStatus");
   if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return; }
   statusEl.textContent = "불러오는 중...";
-  fetch(url + "?dataset=" + encodeURIComponent("MAIN"))
+  const yearsQuery = yearsParam ? "&years=" + encodeURIComponent(yearsParam) : "";
+  fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery)
     .then(r=>r.json())
     .then(res=>{
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       mainApiUrl = url;
       mainData = res.rows.map(mapRowToMain);
       mainRenderAll(mainData);
-      statusEl.textContent = "연동 완료 (" + mainData.length + "건 불러옴) · 자동 새로고침하려면 다시 눌러주세요.";
+      const scopeLabel = yearsParam ? (yearsParam + "년만") : "전체 연도";
+      statusEl.textContent = "연동 완료 (" + scopeLabel + " · " + mainData.length + "건 불러옴) · 다시 눌러 새로고침하세요.";
+      if(res.warnings && res.warnings.length){
+        statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
+      }
     })
     .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
-});
+}
+document.getElementById("main-apiSyncBtn").addEventListener("click", ()=>fetchMainData(String(CURRENT_YEAR)));
+document.getElementById("main-apiSyncAllBtn").addEventListener("click", ()=>fetchMainData(null));
 
 document.getElementById("main-syncBtn").addEventListener("click", ()=>{
   const url = document.getElementById("main-sheetUrl").value.trim();
@@ -656,6 +664,9 @@ document.getElementById("inv-apiSyncBtn").addEventListener("click", ()=>{
       invData = res.rows.map(mapRowToInv);
       invRenderCheck(""); invRenderAll("");
       statusEl.textContent = "연동 완료 (" + invData.length + "건 불러옴) · 출고 처리 시 시트에 자동 저장됩니다.";
+      if(res.warnings && res.warnings.length){
+        statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
+      }
     })
     .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
 });
@@ -689,4 +700,3 @@ document.getElementById("inv-apiSyncBtn").click();
 </script>
 </body>
 </html>
-
