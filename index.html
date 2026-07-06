@@ -187,6 +187,13 @@
   .btn-primary.ship{background:var(--blue);}
   .btn-plain{padding:9px 16px;border-radius:6px;border:1px solid var(--border);background:#fff;cursor:pointer;}
 
+  /* ---------- Quality analysis ---------- */
+  .quality-selector-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+  .quality-btns{display:flex;flex-wrap:wrap;gap:6px;}
+  .quality-btn{padding:7px 14px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px;font-weight:700;cursor:pointer;}
+  .quality-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+  .quality-btn:hover:not(.active){background:var(--gray-bg);}
+
   @media (max-width: 860px){
     .side-nav{
       width:100%;
@@ -224,6 +231,7 @@
     <div class="brand">종합제품관리<small>ERP 웹 시스템</small></div>
     <div class="nav-item active" data-view="main"><span class="dot"></span>MAIN 대시보드</div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
+    <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
   </div>
 
   <div class="main-area">
@@ -363,8 +371,57 @@
       </div>
     </div>
 
+    <!-- ===================== QUALITY VIEW ===================== -->
+    <div id="topbar-quality" class="topbar" style="display:none;">
+      <h1>품질분석</h1>
+      <span class="sync-toggle" id="quality-syncToggle" style="margin-left:auto;">구글시트 연동 ▾</span>
+    </div>
+    <div class="sync-panel" id="quality-syncPanel">
+      <input id="quality-appsScriptUrl" type="text" value="https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2Xur_FhnxfQReER1VnjFKNkwvEtezRo-93EVHlJ8uQdECpP/exec" placeholder="Apps Script 웹 앱 URL 붙여넣기">
+      <button id="quality-apiSyncBtn">API로 불러오기</button>
+      <div class="sync-note">※ 공정검사(치수,BOLT,LED) · 공정검사(사내외관) · 수입검사(기능) · 수입검사(외관) · 출하검사 5개 탭을 불러옵니다.</div>
+      <div class="sync-note" id="quality-apiStatus"></div>
+    </div>
+
+    <div class="view" id="view-quality">
+      <div class="quality-selector-row">
+        <div class="quality-btns" id="quality-yearBtns"></div>
+      </div>
+      <div class="quality-selector-row">
+        <div class="quality-btns" id="quality-monthBtns"></div>
+      </div>
+      <div class="progress-label" id="quality-rangeLabel" style="margin:4px 0 12px;"></div>
+
+      <div class="tabs">
+        <button class="tab-btn active" data-qtab="process">공정검사</button>
+        <button class="tab-btn" data-qtab="incoming">수입검사</button>
+        <button class="tab-btn" data-qtab="shipping">출하검사</button>
+      </div>
+      <div class="tab-panel active" id="qpanel-process"></div>
+      <div class="tab-panel" id="qpanel-incoming"></div>
+      <div class="tab-panel" id="qpanel-shipping"></div>
+    </div>
+
   </div>
 </div>
+
+<template id="quality-category-template">
+  <div class="table-wrap" style="margin-bottom:18px;">
+    <table>
+      <thead><tr><th>구분</th><th>검사수</th><th>양품수</th><th>부적합수</th><th>부적합율(ppm)</th></tr></thead>
+      <tbody class="q-kpi-body"></tbody>
+    </table>
+  </div>
+  <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+    <div class="q-monthly-chart"></div>
+  </div>
+  <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+    <div class="q-weekly-section"></div>
+  </div>
+  <div class="table-wrap" style="padding:16px;">
+    <div class="q-type-section"></div>
+  </div>
+</template>
 
 <script>
 /* ============ NAVIGATION ============ */
@@ -377,8 +434,11 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("view-"+target).classList.add("active");
     document.getElementById("topbar-main").style.display = target==="main" ? "flex" : "none";
     document.getElementById("topbar-inventory").style.display = target==="inventory" ? "flex" : "none";
+    document.getElementById("topbar-quality").style.display = target==="quality" ? "flex" : "none";
     document.getElementById("main-syncPanel").classList.remove("open");
     document.getElementById("inv-syncPanel").classList.remove("open");
+    document.getElementById("quality-syncPanel").classList.remove("open");
+    if(target==="quality" && !window.__qualityInited){ window.__qualityInited = true; initQualityView(); }
   });
 });
 
@@ -756,10 +816,10 @@ function invRenderAll(filter){
   });
 }
 document.getElementById("inv-onlyInStock").addEventListener("change", ()=>invRenderAll(document.getElementById("inv-allSearch").value.trim()));
-document.querySelectorAll(".tab-btn").forEach(btn=>{
+document.querySelectorAll(".tab-btn[data-tab]").forEach(btn=>{
   btn.addEventListener("click", ()=>{
-    document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
-    document.querySelectorAll(".tab-panel").forEach(p=>p.classList.remove("active"));
+    document.querySelectorAll(".tab-btn[data-tab]").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll("#view-inventory > .tab-panel").forEach(p=>p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById("panel-"+btn.dataset.tab).classList.add("active");
     if(btn.dataset.tab==="all") invRenderAll("");
@@ -831,6 +891,262 @@ setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
 
 invRenderCheck("");
 mainRenderAll(mainData);
+
+/* ============ QUALITY ANALYSIS LOGIC ============ */
+// 시트별 메타 정보: 날짜/검사수/양품수/부적합수 열 이름 + 유형별(불량 유형) 열 목록
+const QUALITY_SHEETS = [
+  { key:"공정검사(치수,BOLT,LED)", label:"공정검사(치수,BOLT,LED)", dateField:"검사일", qtyField:"검사수", goodField:"양품수", defectField:"부적합수",
+    types:{"일반치수":"일반 치수","공차치수":"공차 치수","누락":"누락","기타":"기타"} },
+  { key:"공정검사(사내외관)", label:"공정검사(사내외관)", dateField:"검사일", qtyField:"검사수", goodField:"양품수", defectField:"부적합수",
+    types:{"기스":"기스","찍힘":"찍힘","얼룩":"얼룩","체결":"체결","누락":"누락","기타":"기타"} },
+  { key:"수입검사(기능)", label:"수입검사(기능)", dateField:"LEAK 검사일", qtyField:"검사수", goodField:"양품수", defectField:"LEAK",
+    types:{"LEAK":"LEAK"} },
+  { key:"수입검사(외관)", label:"수입검사(외관)", dateField:"검사일", qtyField:"검사수", goodField:"양품수", defectField:"부적합수",
+    types:{"기스":"기스","찍힘":"찍힘","얼룩":"얼룩","누락":"누락","기타":"기타"} },
+  { key:"출하검사", label:"출하검사", dateField:"검사일", qtyField:"검사수", goodField:"양품수", defectField:"부적합수",
+    types:{"기스":"기스","찍힘":"찍힘","얼룩":"얼룩","누락":"누락","기타":"기타"} }
+];
+// 화면에 보여줄 3개 탭과 각 탭에 속한 시트 목록
+const QUALITY_CATEGORIES = {
+  process:  { label:"공정검사", sheetKeys:["공정검사(치수,BOLT,LED)","공정검사(사내외관)"] },
+  incoming: { label:"수입검사", sheetKeys:["수입검사(기능)","수입검사(외관)"] },
+  shipping: { label:"출하검사", sheetKeys:["출하검사"] }
+};
+const QUALITY_YEARS = [2020,2021,2022,2023,2024,2025,2026];
+let qualityRawData = {};
+let qualityYear = 2026;
+let qualityMonth = 12;
+
+function parseQualityDate(v){
+  if(!v) return null;
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function getWeekOfMonth(date){
+  const day = date.getDate();
+  if(day<=7) return 1;
+  if(day<=14) return 2;
+  if(day<=21) return 3;
+  return 4;
+}
+
+function fetchQualityData(){
+  const url = document.getElementById("quality-appsScriptUrl").value.trim();
+  const statusEl = document.getElementById("quality-apiStatus");
+  if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return Promise.resolve(); }
+  statusEl.textContent = "불러오는 중...";
+  return Promise.all(QUALITY_SHEETS.map(s=>
+    fetch(url + "?dataset=" + encodeURIComponent(s.key)).then(r=>r.json())
+  )).then(results=>{
+    const warnings = [];
+    QUALITY_SHEETS.forEach((s, i)=>{
+      const res = results[i];
+      if(!res || !res.success){ warnings.push(s.label + " 오류: " + (res&&res.error||"알 수 없음")); qualityRawData[s.key] = []; return; }
+      qualityRawData[s.key] = res.rows.map(row=>{
+        const typeVals = {};
+        Object.keys(s.types).forEach(tk=>{ typeVals[tk] = Number(row[s.types[tk]])||0; });
+        return {
+          date: parseQualityDate(row[s.dateField]),
+          qty: Number(row[s.qtyField])||0,
+          good: Number(row[s.goodField])||0,
+          defect: Number(row[s.defectField])||0,
+          types: typeVals
+        };
+      }).filter(r=>r.date);
+      if(res.warnings && res.warnings.length) warnings.push(s.label+": "+res.warnings.join(" / "));
+    });
+    statusEl.textContent = "연동 완료" + (warnings.length ? " · 일부 오류: "+warnings.join(" / ") : "");
+    renderQualityAll();
+  }).catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
+}
+
+function renderQualityButtons(){
+  const yearWrap = document.getElementById("quality-yearBtns");
+  yearWrap.innerHTML = QUALITY_YEARS.map(y=>
+    `<button class="quality-btn ${y===qualityYear?'active':''}" data-year="${y}">${y}</button>`
+  ).join("");
+  yearWrap.querySelectorAll(".quality-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ qualityYear = Number(btn.dataset.year); renderQualityAll(); });
+  });
+  const monthWrap = document.getElementById("quality-monthBtns");
+  monthWrap.innerHTML = Array.from({length:12}, (_,i)=>i+1).map(m=>
+    `<button class="quality-btn ${m===qualityMonth?'active':''}" data-month="${m}">${m}월</button>`
+  ).join("");
+  monthWrap.querySelectorAll(".quality-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ qualityMonth = Number(btn.dataset.month); renderQualityAll(); });
+  });
+}
+
+function drawLineChart(container, labels, values, title){
+  const w = 860, h = 200, padL = 50, padR = 20, padT = 20, padB = 30;
+  const maxV = Math.max(...values, 10);
+  const stepX = labels.length>1 ? (w-padL-padR)/(labels.length-1) : 0;
+  const points = values.map((v,i)=>{
+    const x = padL + stepX*i;
+    const y = padT + (h-padT-padB)*(1 - v/maxV);
+    return [x,y];
+  });
+  const pathD = points.map((p,i)=>(i===0?"M":"L")+p[0]+","+p[1]).join(" ");
+  const circles = points.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="#E02424"></circle><text x="${p[0]}" y="${h-8}" font-size="11" text-anchor="middle" fill="#6B7280">${labels[i]}</text>`).join("");
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}</div>
+    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;">
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${h-padB}" stroke="#DDE1E8"></line>
+      <line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" stroke="#DDE1E8"></line>
+      <path d="${pathD}" fill="none" stroke="#E02424" stroke-width="2"></path>
+      ${circles}
+    </svg>
+  `;
+}
+
+function drawBarChart(container, labels, values, title){
+  const w = 860, barH = 26, gap = 10, padL = 130, padR = 60, padT = 30;
+  const maxV = Math.max(...values, 1);
+  const h = padT + labels.length*(barH+gap);
+  const bars = labels.map((lb,i)=>{
+    const y = padT + i*(barH+gap);
+    const bw = values[i]/maxV * (w-padL-padR);
+    return `<text x="${padL-8}" y="${y+barH/2+4}" font-size="12" text-anchor="end" fill="#1A1E27">${lb}</text>
+      <rect x="${padL}" y="${y}" width="${Math.max(bw,1)}" height="${barH}" fill="#0B5CAB" rx="3"></rect>
+      <text x="${padL+bw+8}" y="${y+barH/2+4}" font-size="12" fill="#1A1E27">${values[i].toLocaleString()}</text>`;
+  }).join("");
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}</div>
+    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;">${bars}</svg>
+  `;
+}
+
+function ensureCategoryPanel(catKey){
+  const panel = document.getElementById("qpanel-"+catKey);
+  if(panel.dataset.built) return panel;
+  const tpl = document.getElementById("quality-category-template");
+  panel.appendChild(tpl.content.cloneNode(true));
+  panel.dataset.built = "1";
+  return panel;
+}
+
+function renderCategoryKPI(panel, catKey){
+  const cat = QUALITY_CATEGORIES[catKey];
+  const body = panel.querySelector(".q-kpi-body");
+  body.innerHTML = "";
+  let totalQty=0, totalGood=0, totalDefect=0;
+  cat.sheetKeys.forEach(key=>{
+    const rows = (qualityRawData[key]||[]).filter(r=>
+      r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)<=qualityMonth
+    );
+    totalQty += rows.reduce((s,r)=>s+r.qty,0);
+    totalGood += rows.reduce((s,r)=>s+r.good,0);
+    totalDefect += rows.reduce((s,r)=>s+r.defect,0);
+  });
+  const totalPpm = totalQty>0 ? Math.round((totalDefect/totalQty)*1000000) : 0;
+  const tr = document.createElement("tr");
+  tr.style.fontWeight = "700";
+  tr.innerHTML = `<td style="text-align:left;">${cat.label}</td><td>${totalQty}</td><td>${totalGood}</td>
+    <td class="${totalDefect>0?'cell-defect':''}">${totalDefect}</td><td>${totalPpm.toLocaleString()}</td>`;
+  body.appendChild(tr);
+}
+
+function renderCategoryMonthlyChart(panel, catKey){
+  const cat = QUALITY_CATEGORIES[catKey];
+  const monthlyPpm = [];
+  for(let m=1;m<=12;m++){
+    let qty=0, defect=0;
+    cat.sheetKeys.forEach(key=>{
+      (qualityRawData[key]||[]).forEach(r=>{
+        if(r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)===m){ qty+=r.qty; defect+=r.defect; }
+      });
+    });
+    monthlyPpm.push(qty>0 ? Math.round((defect/qty)*1000000) : 0);
+  }
+  const labels = Array.from({length:12},(_,i)=>(i+1)+"월");
+  drawLineChart(panel.querySelector(".q-monthly-chart"), labels, monthlyPpm, qualityYear+"년 "+cat.label+" 월별 부적합율(ppm) 추이");
+}
+
+function renderCategoryWeekly(panel, catKey){
+  const cat = QUALITY_CATEGORIES[catKey];
+  const weekly = [1,2,3,4].map(w=>{
+    let qty=0, defect=0;
+    cat.sheetKeys.forEach(key=>{
+      (qualityRawData[key]||[]).forEach(r=>{
+        if(r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)===qualityMonth && getWeekOfMonth(r.date)===w){
+          qty+=r.qty; defect+=r.defect;
+        }
+      });
+    });
+    return { week:w, qty, defect, ppm: qty>0 ? Math.round((defect/qty)*1000000) : 0 };
+  });
+  const section = panel.querySelector(".q-weekly-section");
+  const tableRows = weekly.map(w=>`<tr><td>${w.week}주차</td><td>${w.qty}</td><td class="${w.defect>0?'cell-defect':''}">${w.defect}</td><td>${w.ppm.toLocaleString()}</td></tr>`).join("");
+  section.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 주차별 현황</div>
+    <table style="width:100%;margin-bottom:14px;">
+      <thead><tr><th>주차</th><th>검사수</th><th>부적합수</th><th>부적합율(ppm)</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    <div class="q-weekly-chart"></div>
+  `;
+  drawLineChart(section.querySelector(".q-weekly-chart"), weekly.map(w=>w.week+"주차"), weekly.map(w=>w.ppm), "주차별 부적합율(ppm)");
+}
+
+function renderCategoryTypeBreakdown(panel, catKey){
+  const cat = QUALITY_CATEGORIES[catKey];
+  const typeTotals = {};
+  let totalQty = 0;
+  cat.sheetKeys.forEach(key=>{
+    const meta = QUALITY_SHEETS.find(s=>s.key===key);
+    const rows = (qualityRawData[key]||[]).filter(r=>
+      r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)<=qualityMonth
+    );
+    rows.forEach(r=>{ totalQty += r.qty; });
+    Object.keys(meta.types).forEach(tk=>{
+      const label = meta.types[tk];
+      typeTotals[label] = (typeTotals[label]||0) + rows.reduce((s,r)=>s+(r.types[tk]||0),0);
+    });
+  });
+  const labels = Object.keys(typeTotals);
+  const values = labels.map(l=>typeTotals[l]);
+  const section = panel.querySelector(".q-type-section");
+  const rowsHtml = labels.map((l,i)=>{
+    const ppm = totalQty>0 ? Math.round((values[i]/totalQty)*1000000) : 0;
+    return `<tr><td style="text-align:left;">${l}</td><td>${values[i]}</td><td>${ppm.toLocaleString()}</td></tr>`;
+  }).join("");
+  section.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 1~${qualityMonth}월 누적 · ${cat.label} 불량 유형별 현황</div>
+    <table style="width:100%;margin-bottom:14px;">
+      <thead><tr><th>불량 유형</th><th>건수</th><th>PPM</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <div class="q-type-chart"></div>
+  `;
+  drawBarChart(section.querySelector(".q-type-chart"), labels, values, "불량 유형별 건수");
+}
+
+function renderQualityAll(){
+  document.getElementById("quality-rangeLabel").textContent =
+    qualityYear + "년 1월 ~ " + qualityMonth + "월 누적 기준";
+  Object.keys(QUALITY_CATEGORIES).forEach(catKey=>{
+    const panel = ensureCategoryPanel(catKey);
+    renderCategoryKPI(panel, catKey);
+    renderCategoryMonthlyChart(panel, catKey);
+    renderCategoryWeekly(panel, catKey);
+    renderCategoryTypeBreakdown(panel, catKey);
+  });
+}
+
+function initQualityView(){
+  renderQualityButtons();
+  fetchQualityData();
+}
+document.getElementById("quality-syncToggle").addEventListener("click", ()=>document.getElementById("quality-syncPanel").classList.toggle("open"));
+document.getElementById("quality-apiSyncBtn").addEventListener("click", fetchQualityData);
+document.querySelectorAll('[data-qtab]').forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll('[data-qtab]').forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll('#view-quality > .tab-panel').forEach(p=>p.classList.remove("active"));
+    document.getElementById("qpanel-"+btn.dataset.qtab).classList.add("active");
+  });
+});
 
 // 페이지가 열리면 자동으로 Apps Script에서 최신 데이터를 불러옵니다 (동시 요청 과부하 방지를 위해 순차 실행)
 fetchMainData(String(CURRENT_YEAR)).then(()=>fetchInvData());
