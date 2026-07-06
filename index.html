@@ -689,6 +689,11 @@ function fetchWaitMap(url, datasetName, keyField, valueField, targetMap){
     .catch(()=>{});
 }
 
+// 브라우저에 마지막으로 불러온 데이터를 저장해두어, 껐다 켜도 수동으로
+// "API로 불러오기"를 누르기 전까지는 그 데이터를 그대로 보여줍니다.
+function cacheSet(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+function cacheGet(key){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+
 function fetchMainData(yearsParam){
   const url = document.getElementById("main-appsScriptUrl").value.trim();
   const statusEl = document.getElementById("main-apiStatus");
@@ -706,8 +711,13 @@ function fetchMainData(yearsParam){
       mainApiUrl = url;
       mainData = res.rows.map(mapRowToMain);
       mainRenderAll(mainData);
+      cacheSet("cache_mainData", mainData);
+      cacheSet("cache_measureWaitMap", measureWaitMap);
+      cacheSet("cache_cleanWaitMap", cleanWaitMap);
+      cacheSet("cache_visionWaitMap", visionWaitMap);
       const scopeLabel = yearsParam ? (yearsParam + "년만") : "전체 연도";
-      statusEl.textContent = "연동 완료 (" + scopeLabel + " · " + mainData.length + "건 불러옴) · 다시 눌러 새로고침하세요.";
+      const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
+      statusEl.textContent = "연동 완료 (" + scopeLabel + " · " + mainData.length + "건 불러옴) · 마지막 업데이트 " + nowStr + " · 새로고침하려면 다시 눌러주세요.";
       if(res.warnings && res.warnings.length){
         statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
       }
@@ -894,7 +904,9 @@ function fetchInvData(){
       invApiUrl = url;
       invData = res.rows.map(mapRowToInv);
       invRenderCheck(""); invRenderAll("");
-      statusEl.textContent = "연동 완료 (" + invData.length + "건 불러옴) · 출고 처리 시 시트에 자동 저장됩니다.";
+      cacheSet("cache_invData", invData);
+      const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
+      statusEl.textContent = "연동 완료 (" + invData.length + "건 불러옴) · 마지막 업데이트 " + nowStr + " · 새로고침하려면 다시 눌러주세요.";
       if(res.warnings && res.warnings.length){
         statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
       }
@@ -1279,8 +1291,35 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
   });
 });
 
-// 페이지가 열리면 자동으로 Apps Script에서 최신 데이터를 불러옵니다 (동시 요청 과부하 방지를 위해 순차 실행)
-fetchMainData(String(CURRENT_YEAR)).then(()=>fetchInvData());
+// 브라우저에 저장된 마지막 데이터가 있으면 그대로 사용하고,
+// 없을 때(처음 여는 경우)만 자동으로 한 번 불러옵니다.
+// 그 이후로는 "API로 불러오기"를 직접 눌러야만 새로 갱신됩니다.
+(function initCachedOrFetch(){
+  const cachedMain = cacheGet("cache_mainData");
+  const cachedMeasure = cacheGet("cache_measureWaitMap");
+  const cachedClean = cacheGet("cache_cleanWaitMap");
+  const cachedVision = cacheGet("cache_visionWaitMap");
+  const cachedInv = cacheGet("cache_invData");
+
+  if(cachedMain){
+    mainData = cachedMain;
+    if(cachedMeasure) measureWaitMap = cachedMeasure;
+    if(cachedClean) cleanWaitMap = cachedClean;
+    if(cachedVision) visionWaitMap = cachedVision;
+  }
+  if(cachedInv){
+    invData = cachedInv;
+  }
+
+  if(cachedMain || cachedInv){
+    mainRenderAll(mainData);
+    invRenderCheck(""); invRenderAll("");
+    document.getElementById("main-apiStatus").textContent = "저장된 데이터를 표시 중입니다 (마지막 연동 데이터). 최신 내용을 반영하려면 'API로 불러오기'를 눌러주세요.";
+    document.getElementById("inv-apiStatus").textContent = "저장된 데이터를 표시 중입니다. 최신 내용을 반영하려면 'API로 불러오기'를 눌러주세요.";
+  } else {
+    fetchMainData(String(CURRENT_YEAR)).then(()=>fetchInvData());
+  }
+})();
 </script>
 </body>
 </html>
