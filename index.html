@@ -90,6 +90,19 @@
   .search-box select{padding:9px 10px;border-radius:6px;border:none;font-size:14px;background:#fff;color:#222;}
   .search-box button#main-printBtn{background:#fff;color:var(--navy);border:1px solid var(--navy);}
   .sync-toggle{font-size:12px;color:#cbd3e1;cursor:pointer;text-decoration:underline;white-space:nowrap;}
+  .quick-links{display:flex;gap:6px;flex-wrap:wrap;}
+  .quick-links a{
+    padding:7px 12px;
+    border-radius:6px;
+    border:1px solid #3A4A6B;
+    background:#232E4C;
+    color:#fff;
+    font-size:12.5px;
+    font-weight:700;
+    white-space:nowrap;
+    text-decoration:none;
+  }
+  .quick-links a:hover{background:#2C3A5E;}
   .sync-panel{display:none;background:var(--navy-dark);color:#fff;padding:12px 20px;gap:8px;flex-wrap:wrap;align-items:center;}
   .sync-panel.open{display:flex;}
   .sync-panel input{flex:1;min-width:240px;padding:8px 10px;border-radius:6px;border:none;font-size:13px;}
@@ -257,6 +270,11 @@
         </select>
         <button id="main-searchBtn">검색</button>
         <button id="main-printBtn">인쇄</button>
+      </div>
+      <div class="quick-links">
+        <a href="https://wjdeh8486-maker.github.io/daysheet/" target="_blank" rel="noopener">체크리스트</a>
+        <a href="https://wjdeh8486-maker.github.io/calendar/" target="_blank" rel="noopener">일정 달력</a>
+        <a href="https://wjdeh8486-maker.github.io/NTL/" target="_blank" rel="noopener">회사 홈페이지</a>
       </div>
       <span class="sync-toggle" id="main-syncToggle">구글시트 연동 ▾</span>
     </div>
@@ -430,6 +448,9 @@
   </div>
   <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
     <div class="q-weekly-section"></div>
+  </div>
+  <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+    <div class="q-detail-section"></div>
   </div>
   <div class="table-wrap" style="padding:16px;">
     <div class="q-type-section"></div>
@@ -961,6 +982,8 @@ function fetchQualityData(){
         Object.keys(s.types).forEach(tk=>{ typeVals[tk] = Number(row[s.types[tk]])||0; });
         return {
           date: parseQualityDate(row[s.dateField]),
+          partNo: row["도 번"]||row["도번"]||"",
+          sn: row["S/N"]||"",
           qty: Number(row[s.qtyField])||0,
           good: Number(row[s.goodField])||0,
           defect: Number(row[s.defectField])||0,
@@ -1080,11 +1103,11 @@ function computeCategoryMonthStats(catKey, year, month){
 function renderCategoryMonthlyChart(panel, catKey){
   const cat = QUALITY_CATEGORIES[catKey];
   const monthlyQty = [], monthlyDefect = [], monthlyPpm = [];
-  for(let m=1;m<=12;m++){
+  for(let m=1;m<=qualityMonth;m++){
     const {qty, defect, ppm} = computeCategoryMonthStats(catKey, qualityYear, m);
     monthlyQty.push(qty); monthlyDefect.push(defect); monthlyPpm.push(ppm);
   }
-  const labels = Array.from({length:12},(_,i)=>(i+1)+"월");
+  const labels = Array.from({length:qualityMonth},(_,i)=>(i+1)+"월");
 
   // 이번달 / 저번달 실적 카드
   const thisM = computeCategoryMonthStats(catKey, qualityYear, qualityMonth);
@@ -1109,7 +1132,7 @@ function renderCategoryMonthlyChart(panel, catKey){
     });
   }
 
-  drawLineChart(panel.querySelector(".q-monthly-chart"), labels, monthlyPpm, qualityYear+"년 "+cat.label+" 월별 부적합율(ppm) 추이", qualityTargets[catKey]);
+  drawLineChart(panel.querySelector(".q-monthly-chart"), labels, monthlyPpm, qualityYear+"년 1~"+qualityMonth+"월 "+cat.label+" 월별 부적합율(ppm) 추이", qualityTargets[catKey]);
 
   // 월별 검사수/부적합수/ppm 상세 표
   const totalQty = monthlyQty.reduce((a,b)=>a+b,0);
@@ -1154,6 +1177,47 @@ function renderCategoryWeekly(panel, catKey){
   drawLineChart(section.querySelector(".q-weekly-chart"), weekly.map(w=>w.week+"주차"), weekly.map(w=>w.ppm), "주차별 부적합율(ppm)");
 }
 
+function renderCategoryDetailList(panel, catKey){
+  const cat = QUALITY_CATEGORIES[catKey];
+  const rows = [];
+  cat.sheetKeys.forEach(key=>{
+    const meta = QUALITY_SHEETS.find(s=>s.key===key);
+    (qualityRawData[key]||[]).forEach(r=>{
+      if(r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)===qualityMonth && r.defect>0){
+        const typeLabels = Object.keys(meta.types)
+          .filter(tk=>r.types[tk]>0)
+          .map(tk=>meta.types[tk]+"("+r.types[tk]+")");
+        rows.push({
+          partNo: r.partNo, sn: r.sn,
+          date: r.date.toISOString().slice(0,10),
+          sheetLabel: meta.label,
+          defect: r.defect,
+          types: typeLabels.join(", ") || "-"
+        });
+      }
+    });
+  });
+  const section = panel.querySelector(".q-detail-section");
+  if(rows.length===0){
+    section.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역</div>
+      <div class="empty-state">이 달에 발생한 부적합이 없습니다.</div>`;
+    return;
+  }
+  const tableRows = rows.map(r=>`<tr>
+    <td>${r.partNo||'-'}</td><td>${r.sn||'-'}</td><td>${r.date}</td><td>${r.sheetLabel}</td>
+    <td class="cell-defect">${r.defect}</td><td style="text-align:left;">${r.types}</td>
+  </tr>`).join("");
+  section.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역 (${rows.length}건)</div>
+    <div style="overflow-x:auto;">
+    <table style="min-width:640px;">
+      <thead><tr><th>도번</th><th>S/N</th><th>검사일</th><th>구분</th><th>부적합수</th><th style="text-align:left;">불량 유형</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    </div>
+  `;
+}
+
 function renderCategoryTypeBreakdown(panel, catKey){
   const cat = QUALITY_CATEGORIES[catKey];
   const typeTotals = {};
@@ -1195,6 +1259,7 @@ function renderQualityAll(){
     renderCategoryKPI(panel, catKey);
     renderCategoryMonthlyChart(panel, catKey);
     renderCategoryWeekly(panel, catKey);
+    renderCategoryDetailList(panel, catKey);
     renderCategoryTypeBreakdown(panel, catKey);
   });
 }
