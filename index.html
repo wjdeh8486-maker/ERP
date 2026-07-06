@@ -206,6 +206,7 @@
   .quality-btn{padding:7px 14px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--text);font-size:13px;font-weight:700;cursor:pointer;}
   .quality-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}
   .quality-btn:hover:not(.active){background:var(--gray-bg);}
+
   @media (max-width: 860px){
     .side-nav{
       width:100%;
@@ -1037,9 +1038,9 @@ function fetchQualityData(){
         Object.keys(s.types).forEach(tk=>{ typeVals[tk] = Number(getFieldFlexible(row, s.types[tk]))||0; });
         return {
           date: parseQualityDate(getFieldFlexible(row, s.dateField)),
-          partNo: row["도 번"]||row["도번"]||"",
-          sn: row["S/N"]||"",
-          note: row["비 고"]||row["비고"]||"",
+          partNo: getFieldFlexible(row, "도번")||getFieldFlexible(row, "도 번")||"",
+          sn: getFieldFlexible(row, "S/N")||"",
+          note: getFieldFlexible(row, "비고")||getFieldFlexible(row, "비 고")||"",
           qty: Number(getFieldFlexible(row, s.qtyField))||0,
           good: Number(getFieldFlexible(row, s.goodField))||0,
           defect: Number(getFieldFlexible(row, s.defectField))||0,
@@ -1055,22 +1056,58 @@ function fetchQualityData(){
   }).catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
 }
 
-// 품질분석 데이터는 날짜(Date 객체)가 있어 JSON으로 그대로 저장이 안 되므로 문자열로 바꿔서 저장/복원합니다.
+// 품질분석 데이터는 5개 시트 합치면 용량이 커서 localStorage(용량 제한 5MB 안팎) 대신
+// 훨씬 큰 용량을 담을 수 있는 IndexedDB에 저장합니다.
+function idbSet(key, value){
+  return new Promise((resolve)=>{
+    try{
+      const req = indexedDB.open("erp_cache_db", 1);
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore("kv"); };
+      req.onsuccess = ()=>{
+        const db = req.result;
+        const tx = db.transaction("kv","readwrite");
+        tx.objectStore("kv").put(value, key);
+        tx.oncomplete = ()=>resolve(true);
+        tx.onerror = ()=>resolve(false);
+      };
+      req.onerror = ()=>resolve(false);
+    }catch(e){ resolve(false); }
+  });
+}
+function idbGet(key){
+  return new Promise((resolve)=>{
+    try{
+      const req = indexedDB.open("erp_cache_db", 1);
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore("kv"); };
+      req.onsuccess = ()=>{
+        const db = req.result;
+        const tx = db.transaction("kv","readonly");
+        const getReq = tx.objectStore("kv").get(key);
+        getReq.onsuccess = ()=>resolve(getReq.result || null);
+        getReq.onerror = ()=>resolve(null);
+      };
+      req.onerror = ()=>resolve(null);
+    }catch(e){ resolve(null); }
+  });
+}
+
+// 품질분석 데이터는 날짜(Date 객체)가 있어 그대로 저장이 안 되므로 문자열로 바꿔서 저장/복원합니다.
 function cacheSetQualityData(){
   const serializable = {};
   Object.keys(qualityRawData).forEach(k=>{
     serializable[k] = qualityRawData[k].map(r=>Object.assign({}, r, { date: r.date.toISOString() }));
   });
-  cacheSet("cache_qualityRawData", serializable);
+  return idbSet("cache_qualityRawData", serializable);
 }
 function cacheGetQualityData(){
-  const cached = cacheGet("cache_qualityRawData");
-  if(!cached) return null;
-  const result = {};
-  Object.keys(cached).forEach(k=>{
-    result[k] = cached[k].map(r=>Object.assign({}, r, { date: new Date(r.date) }));
+  return idbGet("cache_qualityRawData").then(cached=>{
+    if(!cached) return null;
+    const result = {};
+    Object.keys(cached).forEach(k=>{
+      result[k] = cached[k].map(r=>Object.assign({}, r, { date: new Date(r.date) }));
+    });
+    return result;
   });
-  return result;
 }
 
 function renderQualityButtons(){
@@ -1342,9 +1379,9 @@ function renderQualityAll(){
   });
 }
 
-function initQualityView(){
+async function initQualityView(){
   renderQualityButtons();
-  const cached = cacheGetQualityData();
+  const cached = await cacheGetQualityData();
   if(cached){
     qualityRawData = cached;
     renderQualityAll();
