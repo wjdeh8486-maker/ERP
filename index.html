@@ -44,7 +44,6 @@
     flex-direction:column;
     padding:16px 0;
   }
-  
   .side-nav .brand{
     font-size:15px;
     font-weight:700;
@@ -168,6 +167,7 @@
   .tab-panel.active{display:block;}
   .search-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
   .search-row input{flex:1;min-width:180px;padding:10px 12px;border-radius:6px;border:1px solid var(--border);font-size:14px;}
+  .search-row input[type="checkbox"]{flex:none;min-width:0;width:16px;height:16px;padding:0;border:none;}
   .search-row button{padding:10px 18px;border-radius:6px;border:none;background:var(--navy);color:#fff;font-weight:700;cursor:pointer;}
   .search-row button.secondary{background:#fff;color:var(--navy);border:1px solid var(--navy);}
   .stock-summary{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;}
@@ -175,6 +175,7 @@
   .stock-card .label{font-size:13px;color:var(--text-mute);font-weight:700;}
   .stock-card .value{font-size:28px;font-weight:700;color:var(--green);margin-top:4px;}
   .table-scroll{overflow:auto;max-height:420px;border:1px solid var(--border);border-radius:8px;}
+  #inv-allTableScroll{max-height:700px;}
   .badge-in{color:var(--blue);font-weight:700;}
   .badge-out{color:var(--red);font-weight:700;}
   .row-open td{background:#FFF9E5;}
@@ -324,7 +325,9 @@
 
       <div class="tab-panel active" id="panel-check">
         <div class="search-row">
-          <input id="inv-checkPartNo" type="text" placeholder="품번을 입력하세요 (예: M200-004-62A)">
+          <input id="inv-checkPartNo" type="text" placeholder="품번 (예: M200-004-62A)">
+          <input id="inv-checkSN" type="text" placeholder="S/N (예: 140)">
+          <input id="inv-checkCtrlNo" type="text" placeholder="관리번호 (예: 26-234-1)">
           <button id="inv-checkBtn">재고 검색</button>
         </div>
         <div class="stock-summary" id="inv-checkSummary" style="display:none;">
@@ -346,8 +349,12 @@
           <input id="inv-allSearch" type="text" placeholder="품번으로 필터">
           <button id="inv-allSearchBtn">필터</button>
           <button class="secondary" id="inv-allResetBtn">전체보기</button>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--text-mute);white-space:nowrap;flex:none;">
+            <input type="checkbox" id="inv-onlyInStock">
+            재고 보유 품목만 보기
+          </label>
         </div>
-        <div class="table-scroll">
+        <div class="table-scroll" id="inv-allTableScroll">
           <table>
             <thead><tr><th>품번</th><th>총 입고</th><th>총 출고</th><th>현재 재고</th></tr></thead>
             <tbody id="inv-allBody"></tbody>
@@ -370,6 +377,8 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("view-"+target).classList.add("active");
     document.getElementById("topbar-main").style.display = target==="main" ? "flex" : "none";
     document.getElementById("topbar-inventory").style.display = target==="inventory" ? "flex" : "none";
+    document.getElementById("main-syncPanel").classList.remove("open");
+    document.getElementById("inv-syncPanel").classList.remove("open");
   });
 });
 
@@ -399,29 +408,42 @@ function isOverdue(dateStr){
   const today = new Date(); today.setHours(0,0,0,0);
   return d < today;
 }
-// 측정실/크린룸/비젼/납품대기 대조는 QC의 "품번"이 아니라 "기존도번" 기준입니다.
-// (입출고·검사대기 시트들의 품번 열이 실제로는 기존도번 체계로 작성되어 있음)
-function computeWaitMeasure(r){
-  const key = String(r.oldDrawingNo||"").trim();
-  if(key in measureWaitMap) return measureWaitMap[key];
-  return Number(r.waitMeasure)||0;
+// 측정실/크린룸/비젼/납품대기 대조: 시트마다 "품번" 열에 기존도번 형식과 QC 품번 형식이
+// 섞여서 입력된 경우가 있어, 기존도번과 품번 둘 다 확인해서 일치하는 값을 합산합니다.
+function lookupWaitMap(map, r){
+  const keys = [String(r.oldDrawingNo||"").trim(), String(r.partNo||"").trim()].filter(Boolean);
+  let found = false, total = 0;
+  const seen = new Set();
+  keys.forEach(k=>{
+    if(!seen.has(k) && (k in map)){ total += map[k]; found = true; seen.add(k); }
+  });
+  return found ? total : null;
 }
-// 납품대기 = 해당 기존도번의 현재 재고 보유 수량 (입출고 데이터 기준: 총입고 - 총출고)
+function computeWaitMeasure(r){
+  const v = lookupWaitMap(measureWaitMap, r);
+  return v!==null ? v : (Number(r.waitMeasure)||0);
+}
+// 납품대기 = 해당 기존도번/품번의 현재 재고 보유 수량 (입출고 데이터 기준: 총입고 - 총출고)
 function computeWaitDeliver(r){
   if(typeof invComputeStock !== "function") return Number(r.waitDeliver)||0;
-  const key = String(r.oldDrawingNo||"").trim();
-  if(!key) return Number(r.waitDeliver)||0;
-  return invComputeStock(key).stock;
+  const keys = [String(r.oldDrawingNo||"").trim(), String(r.partNo||"").trim()].filter(Boolean);
+  let total = 0, found = false;
+  const seen = new Set();
+  keys.forEach(k=>{
+    if(seen.has(k)) return;
+    seen.add(k);
+    const rows = invData.filter(iv=>iv.partNo===k);
+    if(rows.length){ found = true; total += invComputeStock(k).stock; }
+  });
+  return found ? total : (Number(r.waitDeliver)||0);
 }
 function computeWaitClean(r){
-  const key = String(r.oldDrawingNo||"").trim();
-  if(key in cleanWaitMap) return cleanWaitMap[key];
-  return Number(r.waitClean)||0;
+  const v = lookupWaitMap(cleanWaitMap, r);
+  return v!==null ? v : (Number(r.waitClean)||0);
 }
 function computeWaitVision(r){
-  const key = String(r.oldDrawingNo||"").trim();
-  if(key in visionWaitMap) return visionWaitMap[key];
-  return Number(r.waitVision)||0;
+  const v = lookupWaitMap(visionWaitMap, r);
+  return v!==null ? v : (Number(r.waitVision)||0);
 }
 
 // 원본 MAIN 시트 수식(제품상태) 로직을 그대로 재현
@@ -564,7 +586,8 @@ function fetchWaitMap(url, datasetName, keyField, valueField, targetMap){
       res.rows.forEach(row=>{
         const key = row[keyField];
         if(key===undefined || key==="") return;
-        map[String(key).trim()] = Number(row[valueField])||0;
+        const k = String(key).trim();
+        map[k] = (map[k]||0) + (Number(row[valueField])||0);
       });
       Object.assign(targetMap, map);
       for(const k in targetMap){ if(!(k in map)) delete targetMap[k]; }
@@ -575,10 +598,10 @@ function fetchWaitMap(url, datasetName, keyField, valueField, targetMap){
 function fetchMainData(yearsParam){
   const url = document.getElementById("main-appsScriptUrl").value.trim();
   const statusEl = document.getElementById("main-apiStatus");
-  if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return; }
+  if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return Promise.resolve(); }
   statusEl.textContent = "불러오는 중...";
   const yearsQuery = yearsParam ? "&years=" + encodeURIComponent(yearsParam) : "";
-  Promise.all([
+  return Promise.all([
     fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery).then(r=>r.json()),
     fetchWaitMap(url, "측정실검사대기", "품 번", "측정실대기", measureWaitMap),
     fetchWaitMap(url, "크린룸검사대기", "품 번", "검사대기", cleanWaitMap),
@@ -683,16 +706,29 @@ function invComputeStock(partNo){
   const totalOut = rows.reduce((s,r)=>s+(Number(r.outQty)||0),0);
   return {rows, totalIn, totalOut, stock: totalIn-totalOut};
 }
-function invRenderCheck(partNo){
+function invRenderCheck(criteria){
   const empty = document.getElementById("inv-checkEmpty");
   const summary = document.getElementById("inv-checkSummary");
   const body = document.getElementById("inv-checkBody");
   body.innerHTML = "";
-  if(!partNo){ empty.style.display="block"; summary.style.display="none"; empty.textContent="품번을 검색하면 해당 재고 이력이 표시됩니다."; return; }
-  const {rows, totalIn, totalOut, stock} = invComputeStock(partNo);
-  if(rows.length===0){ empty.textContent = "'"+partNo+"' 품번의 이력이 없습니다."; empty.style.display="block"; summary.style.display="none"; return; }
+  const partNoQ = (criteria.partNo||"").trim().toLowerCase();
+  const snQ = (criteria.sn||"").trim().toLowerCase();
+  const ctrlNoQ = (criteria.ctrlNo||"").trim().toLowerCase();
+  if(!partNoQ && !snQ && !ctrlNoQ){
+    empty.style.display="block"; summary.style.display="none";
+    empty.textContent="품번, S/N, 관리번호 중 하나 이상 입력하고 검색하세요.";
+    return;
+  }
+  const rows = invData.filter(r=>
+    (!partNoQ || (r.partNo && String(r.partNo).toLowerCase().includes(partNoQ))) &&
+    (!snQ || (r.sn && String(r.sn).toLowerCase().includes(snQ))) &&
+    (!ctrlNoQ || (r.ctrlNo && String(r.ctrlNo).toLowerCase().includes(ctrlNoQ)))
+  );
+  if(rows.length===0){ empty.textContent = "해당 조건의 이력이 없습니다."; empty.style.display="block"; summary.style.display="none"; return; }
   empty.style.display="none"; summary.style.display="flex";
-  document.getElementById("inv-stockValue").textContent = stock;
+  const totalIn = rows.reduce((s,r)=>s+(Number(r.inQty)||0),0);
+  const totalOut = rows.reduce((s,r)=>s+(Number(r.outQty)||0),0);
+  document.getElementById("inv-stockValue").textContent = totalIn-totalOut;
   document.getElementById("inv-inCount").textContent = totalIn;
   document.getElementById("inv-outCount").textContent = totalOut;
   rows.forEach(r=>{
@@ -706,7 +742,11 @@ function invRenderCheck(partNo){
 function invRenderAll(filter){
   const body = document.getElementById("inv-allBody");
   body.innerHTML = "";
-  const parts = [...new Set(invData.map(r=>r.partNo))].filter(p=>!filter || p.toLowerCase().includes(filter.toLowerCase()));
+  const onlyInStock = document.getElementById("inv-onlyInStock").checked;
+  let parts = [...new Set(invData.map(r=>r.partNo))].filter(p=>!filter || p.toLowerCase().includes(filter.toLowerCase()));
+  if(onlyInStock){
+    parts = parts.filter(p=>invComputeStock(p).stock>0);
+  }
   parts.forEach(p=>{
     const {totalIn, totalOut, stock} = invComputeStock(p);
     const tr = document.createElement("tr");
@@ -715,6 +755,7 @@ function invRenderAll(filter){
     body.appendChild(tr);
   });
 }
+document.getElementById("inv-onlyInStock").addEventListener("change", ()=>invRenderAll(document.getElementById("inv-allSearch").value.trim()));
 document.querySelectorAll(".tab-btn").forEach(btn=>{
   btn.addEventListener("click", ()=>{
     document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
@@ -724,8 +765,17 @@ document.querySelectorAll(".tab-btn").forEach(btn=>{
     if(btn.dataset.tab==="all") invRenderAll("");
   });
 });
-document.getElementById("inv-checkBtn").addEventListener("click", ()=>invRenderCheck(document.getElementById("inv-checkPartNo").value.trim()));
-document.getElementById("inv-checkPartNo").addEventListener("keydown", e=>{ if(e.key==="Enter") invRenderCheck(e.target.value.trim()); });
+function getInvCheckCriteria(){
+  return {
+    partNo: document.getElementById("inv-checkPartNo").value,
+    sn: document.getElementById("inv-checkSN").value,
+    ctrlNo: document.getElementById("inv-checkCtrlNo").value
+  };
+}
+document.getElementById("inv-checkBtn").addEventListener("click", ()=>invRenderCheck(getInvCheckCriteria()));
+["inv-checkPartNo","inv-checkSN","inv-checkCtrlNo"].forEach(id=>{
+  document.getElementById(id).addEventListener("keydown", e=>{ if(e.key==="Enter") invRenderCheck(getInvCheckCriteria()); });
+});
 document.getElementById("inv-allSearchBtn").addEventListener("click", ()=>invRenderAll(document.getElementById("inv-allSearch").value.trim()));
 document.getElementById("inv-allResetBtn").addEventListener("click", ()=>{ document.getElementById("inv-allSearch").value=""; invRenderAll(""); });
 document.getElementById("inv-syncToggle").addEventListener("click", ()=>document.getElementById("inv-syncPanel").classList.toggle("open"));
@@ -738,12 +788,12 @@ function mapRowToInv(row){
   };
 }
 let invApiUrl = "";
-document.getElementById("inv-apiSyncBtn").addEventListener("click", ()=>{
+function fetchInvData(){
   const url = document.getElementById("inv-appsScriptUrl").value.trim();
   const statusEl = document.getElementById("inv-apiStatus");
-  if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return; }
+  if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return Promise.resolve(); }
   statusEl.textContent = "불러오는 중...";
-  fetch(url + "?dataset=" + encodeURIComponent("입출고"))
+  return fetch(url + "?dataset=" + encodeURIComponent("입출고"))
     .then(r=>r.json())
     .then(res=>{
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
@@ -756,7 +806,8 @@ document.getElementById("inv-apiSyncBtn").addEventListener("click", ()=>{
       }
     })
     .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
-});
+}
+document.getElementById("inv-apiSyncBtn").addEventListener("click", fetchInvData);
 
 document.getElementById("inv-syncBtn").addEventListener("click", ()=>{
   const url = document.getElementById("inv-sheetUrl").value.trim();
@@ -781,9 +832,8 @@ setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
 invRenderCheck("");
 mainRenderAll(mainData);
 
-// 페이지가 열리면 자동으로 Apps Script에서 최신 데이터를 불러옵니다
-document.getElementById("main-apiSyncBtn").click();
-document.getElementById("inv-apiSyncBtn").click();
+// 페이지가 열리면 자동으로 Apps Script에서 최신 데이터를 불러옵니다 (동시 요청 과부하 방지를 위해 순차 실행)
+fetchMainData(String(CURRENT_YEAR)).then(()=>fetchInvData());
 </script>
 </body>
 </html>
