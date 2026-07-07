@@ -128,6 +128,9 @@
   .view{display:none;padding:16px 20px 30px;}
   .view.active{display:block;}
 
+  .topbar-right{display:flex;align-items:center;gap:12px;margin-left:auto;}
+  #quality-printBtn{padding:9px 16px;border-radius:6px;border:1px solid #fff;background:#fff;color:var(--navy);font-weight:700;cursor:pointer;white-space:nowrap;}
+
   /* ---------- MAIN dashboard ---------- */
   .summary-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;}
   .stat-card{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px 18px;min-width:120px;flex:1;}
@@ -235,12 +238,32 @@
     .search-row label{width:100%;}
   }
 
+  /* 상단 바(검색창/퀵링크/구글시트 연동)가 좁은 화면에서 서로 겹치지 않도록
+     각 그룹을 줄바꿈해 세로로 쌓이게 합니다. 사이드 내비게이션 전환(860px)보다
+     조금 더 넓은 폭에서부터 미리 적용해 겹침을 방지합니다. */
+  @media (max-width: 960px){
+    .topbar{row-gap:10px;}
+    .search-box{flex:1 1 100%;min-width:0;flex-wrap:wrap;}
+    .search-box input{flex:1 1 100%;min-width:0;}
+    .search-box select{flex:1 1 auto;}
+    .search-box button{flex:1 1 auto;}
+    .quick-links{flex:1 1 100%;}
+    .sync-toggle{flex:1 1 100%;text-align:left;}
+    .topbar-right{flex:1 1 100%;flex-wrap:wrap;margin-left:0;}
+  }
+
   @media print{
     body > *:not(#print-area){display:none !important;}
     #print-area{display:block !important;}
     #print-area table{width:100%;border-collapse:collapse;font-size:11px;}
     #print-area th, #print-area td{border:1px solid #999;padding:5px;text-align:center;}
     #print-area h2{font-size:16px;margin:0 0 10px;}
+    #print-area h3{font-size:13px;margin:14px 0 6px;}
+    #print-area input, #print-area button{display:none !important;}
+    #print-area .q-report-page{page-break-after:always;padding-top:6px;}
+    #print-area .q-report-page:last-child{page-break-after:auto;}
+    #print-area .summary-row{display:flex;gap:10px;}
+    #print-area .stat-card{border:1px solid #999;flex:1;}
   }
 </style>
 </head>
@@ -399,7 +422,10 @@
     <!-- ===================== QUALITY VIEW ===================== -->
     <div id="topbar-quality" class="topbar" style="display:none;">
       <h1>품질분석</h1>
-      <span class="sync-toggle" id="quality-syncToggle" style="margin-left:auto;">구글시트 연동 ▾</span>
+      <div class="topbar-right">
+        <button id="quality-printBtn">보고서 인쇄</button>
+        <span class="sync-toggle" id="quality-syncToggle">구글시트 연동 ▾</span>
+      </div>
     </div>
     <div class="sync-panel" id="quality-syncPanel">
       <input id="quality-appsScriptUrl" type="text" value="https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2Xur_FhnxfQReER1VnjFKNkwvEtezRo-93EVHlJ8uQdECpP/exec" placeholder="Apps Script 웹 앱 URL 붙여넣기">
@@ -498,6 +524,8 @@ const MAIN_SAMPLE = [
   {status:"생산", orderNo:"26-234-17", customer:"유진테크", partNo:"110006296", partName:"SHOWERHEAD", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:12, waitClean:0, waitVision:16},
 ];
 let mainData = MAIN_SAMPLE.slice();
+// 검색 버튼을 누르기 전에는 목록(표/카드)을 렌더링하지 않아 초기 로딩 시 버벅임을 줄입니다.
+let mainListRevealed = false;
 
 function isOverdue(dateStr){
   if(!dateStr) return false;
@@ -591,6 +619,7 @@ function mainRenderTable(data){
   const tbody = document.getElementById("main-tableBody");
   const empty = document.getElementById("main-emptyState");
   tbody.innerHTML = "";
+  empty.textContent = "검색 결과가 없습니다.";
   empty.style.display = data.length===0 ? "block" : "none";
   data.forEach(r=>{
     const tr = document.createElement("tr");
@@ -637,7 +666,22 @@ function mainRenderCards(data){
     wrap.appendChild(div);
   });
 }
-function mainRenderAll(data){ mainRenderStats(data); mainRenderTable(data); mainRenderCards(data); }
+// 목록(표/카드)을 아직 열람하지 않은 상태로 되돌립니다. 통계 카드는 그대로 표시합니다.
+function mainShowSearchPrompt(){
+  mainListRevealed = false;
+  document.getElementById("main-tableBody").innerHTML = "";
+  document.getElementById("main-cardsView").innerHTML = "";
+  const empty = document.getElementById("main-emptyState");
+  empty.textContent = "검색 버튼을 클릭하면 제품 목록이 표시됩니다.";
+  empty.style.display = "block";
+}
+// 데이터가 새로 로드(연동/파일/샘플)되었을 때: 통계만 즉시 계산하고, 무거운 목록 렌더링은
+// 사용자가 검색을 누르기 전까지 건너뛰어 초기 로딩 버벅임을 방지합니다.
+function mainInitialRender(data){
+  mainRenderStats(data);
+  mainShowSearchPrompt();
+}
+function mainRenderAll(data){ mainRenderStats(data); mainRenderTable(data); mainRenderCards(data); mainListRevealed = true; }
 function mainApplySearch(){
   const q = document.getElementById("main-searchInput").value.trim().toLowerCase();
   const statusFilter = document.getElementById("main-statusFilter").value;
@@ -686,7 +730,7 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>{
 document.getElementById("main-searchBtn").addEventListener("click", mainApplySearch);
 document.getElementById("main-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") mainApplySearch(); });
 document.getElementById("main-syncToggle").addEventListener("click", ()=>document.getElementById("main-syncPanel").classList.toggle("open"));
-document.getElementById("main-resetBtn").addEventListener("click", ()=>{ mainData = MAIN_SAMPLE.slice(); mainRenderAll(mainData); });
+document.getElementById("main-resetBtn").addEventListener("click", ()=>{ mainData = MAIN_SAMPLE.slice(); mainInitialRender(mainData); });
 function mapRowToMain(row){
   const baseOrderNo = row["ORDER NO."] || "";
   const orderSeq = row["발주번호"];
@@ -745,7 +789,7 @@ function fetchMainData(yearsParam){
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       mainApiUrl = url;
       mainData = res.rows.map(mapRowToMain);
-      mainRenderAll(mainData);
+      mainInitialRender(mainData);
       cacheSet("cache_mainData", mainData);
       cacheSet("cache_measureWaitMap", measureWaitMap);
       cacheSet("cache_cleanWaitMap", cleanWaitMap);
@@ -769,7 +813,7 @@ document.getElementById("main-syncBtn").addEventListener("click", ()=>{
     complete:function(results){
       try{
         mainData = results.data.map(mapRowToMain);
-        mainRenderAll(mainData);
+        mainInitialRender(mainData);
         document.getElementById("main-syncPanel").classList.remove("open");
       }catch(e){ alert("데이터 형식을 확인해 주세요."); }
     },
@@ -817,7 +861,7 @@ function setupDropZone(zoneId, inputId, labelId, onRows){
 }
 setupDropZone("main-dropZone","main-fileInput","main-dropLabel", rows=>{
   mainData = rows.map(mapRowToMain);
-  mainRenderAll(mainData);
+  mainInitialRender(mainData);
   document.getElementById("main-syncPanel").classList.remove("open");
 });
 
@@ -971,7 +1015,6 @@ setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
 });
 
 invRenderCheck("");
-mainRenderAll(mainData);
 
 /* ============ QUALITY ANALYSIS LOGIC ============ */
 // 시트별 메타 정보: 날짜/검사수/양품수/부적합수 열 이름 + 유형별(불량 유형) 열 목록
@@ -1379,6 +1422,26 @@ function renderQualityAll(){
   });
 }
 
+// 품질분석 보고서 인쇄: 공정검사 / 수입검사 / 출하검사 순으로 각각 한 페이지씩 구성합니다.
+function printQualityReport(){
+  renderQualityAll();
+  const order = ["process","incoming","shipping"];
+  const nowStr = new Date().toLocaleString("ko-KR");
+  const html = order.map((key, idx)=>{
+    const cat = QUALITY_CATEGORIES[key];
+    const panel = document.getElementById("qpanel-"+key);
+    return `
+      <div class="q-report-page">
+        <h2>품질분석 보고서 · ${cat.label} (${qualityYear}년 1~${qualityMonth}월 누적, 출력 ${nowStr})</h2>
+        ${panel.innerHTML}
+      </div>
+    `;
+  }).join("");
+  document.getElementById("print-area").innerHTML = html;
+  window.print();
+}
+document.getElementById("quality-printBtn").addEventListener("click", printQualityReport);
+
 async function initQualityView(){
   renderQualityButtons();
   const cached = await cacheGetQualityData();
@@ -1422,7 +1485,7 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
   }
 
   if(cachedMain || cachedInv){
-    mainRenderAll(mainData);
+    mainInitialRender(mainData);
     invRenderCheck(""); invRenderAll("");
     document.getElementById("main-apiStatus").textContent = "저장된 데이터를 표시 중입니다 (마지막 연동 데이터). 최신 내용을 반영하려면 'API로 불러오기'를 눌러주세요.";
     document.getElementById("inv-apiStatus").textContent = "저장된 데이터를 표시 중입니다. 최신 내용을 반영하려면 'API로 불러오기'를 눌러주세요.";
