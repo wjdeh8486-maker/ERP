@@ -29,6 +29,7 @@
     color:var(--text);
   }
   a{color:inherit;}
+
   /* ---------- App shell ---------- */
   .app-shell{
     display:flex;
@@ -1580,8 +1581,9 @@ function renderQualityAll(){
 
 // 품질분석 보고서 인쇄: 공정검사 / 수입검사 / 출하검사 순으로 각각 세로 방향 1페이지씩
 // 꽉 차게 구성합니다. 각 카테고리 내용을 실제 페이지 크기(outer)에 담고, 내용의
-// 실제 렌더링 높이를 측정해 페이지 안에 완전히 들어가도록 transform:scale()로
-// 자동 축소합니다. 내용이 페이지보다 작을 때는 축소하지 않고 그대로 둡니다.
+// 실제 렌더링 폭/높이를 측정해 페이지 안에 완전히 들어가도록 transform:scale()로
+// 자동 축소합니다. 내용이 페이지보다 작을 때는 축소하지 않고 그대로 두되, 가운데로
+// 배치해 한쪽으로 치우치지 않게 합니다.
 function printQualityReport(){
   renderQualityAll();
   const order = ["process","incoming","shipping"];
@@ -1605,25 +1607,40 @@ function printQualityReport(){
   const prevCssText = printArea.style.cssText;
   printArea.style.cssText = "display:block; position:fixed; top:-100000px; left:-100000px; visibility:hidden; margin:0;";
 
-  // A4 세로, 여백 10mm 기준 인쇄 가능 영역(대략 96dpi 환산 px)
-  const PAGE_W_PX = 718;  // ≈190mm
-  const PAGE_H_PX = 1047; // ≈277mm
+  // A4 세로, 여백 10mm 기준 인쇄 가능 영역(대략 96dpi 환산 px). 브라우저의 인쇄
+  // 대화상자 여백 설정이나 반올림 오차로 실제 인쇄 가능 영역이 이보다 살짝 작아질 수
+  // 있으므로, 일부러 4% 정도 여유(SAFETY)를 두어 내용이 잘리지 않도록 합니다.
+  const SAFETY = 0.96;
+  const PAGE_W_PX = 718 * SAFETY;  // ≈190mm
+  const PAGE_H_PX = 1047 * SAFETY; // ≈277mm
 
   document.querySelectorAll("#print-area .q-report-page-outer").forEach(outer=>{
-    outer.style.width = PAGE_W_PX + "px";
-    outer.style.height = PAGE_H_PX + "px";
+    outer.style.width = (718) + "px";
+    outer.style.height = (1047) + "px";
     const inner = outer.querySelector(".q-report-page-inner");
-    // 폭을 강제로 고정하지 않고 내용에 맞춰 자연스럽게 늘어나도록 둔 뒤(넓은 표가 있으면
-    // 그만큼 넓어짐), 실제 필요한 폭/높이를 측정합니다. 이렇게 해야 가로로 넘치는 표까지
-    // 정확히 포함해서 축소 비율을 계산할 수 있어 오른쪽 데이터가 잘리는 것을 막습니다.
-    inner.style.width = "";
     inner.style.transform = "none";
-    const rect = inner.getBoundingClientRect();
-    const naturalWidth = Math.max(rect.width, 1);
-    const naturalHeight = Math.max(rect.height, inner.scrollHeight, 1);
+    inner.style.left = "0";
+
+    // position:absolute 상태에서는 폭이 'auto'여도 브라우저가 컨테이너 폭에 맞춰
+    // shrink-to-fit으로 계산해버려, 실제로는 더 넓은 표(예: 12개월 표)가 있어도
+    // getBoundingClientRect()가 그 초과분을 잡아내지 못합니다. 이를 정확히 측정하기
+    // 위해, 폭을 페이지 폭으로 고정한 뒤 overflow를 잠시 auto로 바꿔서 scrollWidth/
+    // scrollHeight가 실제 넘치는 내용까지 포함해 정확한 값을 갖도록 합니다.
+    inner.style.width = PAGE_W_PX + "px";
+    inner.style.overflow = "auto";
+    const naturalWidth = Math.max(inner.scrollWidth, PAGE_W_PX);
+    const naturalHeight = Math.max(inner.scrollHeight, 1);
+    inner.style.overflow = "";
+
     const scale = Math.min(PAGE_W_PX / naturalWidth, PAGE_H_PX / naturalHeight, 1);
     inner.style.width = naturalWidth + "px"; // 축소 후 레이아웃이 다시 흔들리지 않도록 폭을 고정
     inner.style.transform = `scale(${scale})`;
+
+    // 축소된 내용이 페이지 폭보다 작게 남으면(높이 기준으로 더 많이 줄인 경우)
+    // 왼쪽으로 몰리지 않도록 가운데로 배치합니다.
+    const scaledWidth = naturalWidth * scale;
+    const offsetX = Math.max((PAGE_W_PX - scaledWidth) / 2, 0);
+    inner.style.left = offsetX + "px";
   });
 
   // 측정을 위해 잠시 변경했던 표시 방식을 원래대로 되돌립니다.
