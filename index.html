@@ -67,6 +67,7 @@
   .nav-item.active{background:#232E4C;color:#fff;border-left-color:var(--yellow);}
   .nav-item.active .dot{background:var(--yellow);}
   .nav-item:hover{background:#1D2740;}
+
   .main-area{
     flex:1;
     min-width:0;
@@ -828,9 +829,19 @@ function pushSharedCache(url, section, payload){
     body: JSON.stringify({ mode:"writeCache", section:section, payload:payload, updatedAt:new Date().toISOString() })
   }).catch(()=>{});
 }
+// 공유 캐시 확인은 원래 "가벼운 조회"로 빠르게 끝나야 하지만, Apps Script 쪽에
+// mode=readCache 처리가 아직 없거나 응답이 느린 경우 일반 동기화만큼(또는 그 이상)
+// 시간이 걸릴 수 있습니다. 그런 경우에도 화면이 무한정 기다리지 않도록 5초
+// 타임아웃을 두고, 시간 안에 응답이 없으면 포기하고 기존(기기 캐시) 데이터를
+// 계속 보여줍니다.
 function fetchSharedCache(url){
   if(!url) return Promise.resolve(null);
-  return fetch(url + "?mode=readCache").then(r=>r.json()).catch(()=>null);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(()=>controller.abort(), 5000);
+  return fetch(url + "?mode=readCache", { signal: controller.signal })
+    .then(r=>r.json())
+    .catch(()=>null)
+    .finally(()=>clearTimeout(timeoutId));
 }
 function fmtCacheTime(iso){
   if(!iso) return "-";
@@ -1284,7 +1295,7 @@ function renderQualityButtons(){
 }
 
 function drawLineChart(container, labels, values, title, target){
-  const w = 860, h = 200, padL = 50, padR = 20, padT = 20, padB = 30;
+  const w = 860, h = 150, padL = 50, padR = 20, padT = 18, padB = 26;
   const maxV = Math.max(...values, target||0, 10);
   const stepX = labels.length>1 ? (w-padL-padR)/(labels.length-1) : 0;
   const points = values.map((v,i)=>{
@@ -1313,7 +1324,7 @@ function drawLineChart(container, labels, values, title, target){
 }
 
 function drawBarChart(container, labels, values, title){
-  const w = 860, barH = 26, gap = 10, padL = 130, padR = 60, padT = 30;
+  const w = 860, barH = 20, gap = 6, padL = 130, padR = 60, padT = 22;
   const maxV = Math.max(...values, 1);
   const h = padT + labels.length*(barH+gap);
   const bars = labels.map((lb,i)=>{
@@ -1606,33 +1617,37 @@ function printQualityReport(){
   const prevCssText = printArea.style.cssText;
   printArea.style.cssText = "display:block; position:fixed; top:-100000px; left:-100000px; visibility:hidden; margin:0;";
 
-  // A4 세로, 여백 10mm 기준 인쇄 가능 영역(대략 96dpi 환산 px). 브라우저의 인쇄
-  // 대화상자 여백 설정이나 반올림 오차로 실제 인쇄 가능 영역이 이보다 살짝 작아질 수
-  // 있으므로, 일부러 4% 정도 여유(SAFETY)를 두어 내용이 잘리지 않도록 합니다.
-  const SAFETY = 0.96;
-  const PAGE_W_PX = 718 * SAFETY;  // ≈190mm
-  const PAGE_H_PX = 1047 * SAFETY; // ≈277mm
-
   document.querySelectorAll("#print-area .q-report-page-outer").forEach(outer=>{
     outer.style.width = (718) + "px";
     outer.style.height = (1047) + "px";
     const inner = outer.querySelector(".q-report-page-inner");
+
+    // 1단계: 실제 필요한 폭/높이를 정확히 측정합니다.
+    // position:absolute + width:auto 상태에서는 브라우저가 부모(페이지) 폭에 맞춰
+    // 강제로 줄여버리는 shrink-to-fit 계산을 해버려서, 실제로는 더 넓은 표(예: 12개월치
+    // 표)가 있어도 측정값이 그 초과분을 잡아내지 못하는 문제가 있었습니다.
+    // display:inline-block + width:max-content 조합은 부모 폭과 무관하게 내용이
+    // 실제로 필요로 하는 만큼의 폭을 그대로 보여주므로, 이 상태에서 정확히 측정합니다.
+    inner.style.position = "static";
+    inner.style.display = "inline-block";
+    inner.style.width = "max-content";
     inner.style.transform = "none";
-    inner.style.left = "0";
+    const naturalWidth = inner.offsetWidth || 1;
+    const naturalHeight = inner.offsetHeight || 1;
 
-    // position:absolute 상태에서는 폭이 'auto'여도 브라우저가 컨테이너 폭에 맞춰
-    // shrink-to-fit으로 계산해버려, 실제로는 더 넓은 표(예: 12개월 표)가 있어도
-    // getBoundingClientRect()가 그 초과분을 잡아내지 못합니다. 이를 정확히 측정하기
-    // 위해, 폭을 페이지 폭으로 고정한 뒤 overflow를 잠시 auto로 바꿔서 scrollWidth/
-    // scrollHeight가 실제 넘치는 내용까지 포함해 정확한 값을 갖도록 합니다.
-    inner.style.width = PAGE_W_PX + "px";
-    inner.style.overflow = "auto";
-    const naturalWidth = Math.max(inner.scrollWidth, PAGE_W_PX);
-    const naturalHeight = Math.max(inner.scrollHeight, 1);
-    inner.style.overflow = "";
-
+    // 2단계: 측정값을 바탕으로 축소 비율을 계산합니다. 브라우저 인쇄 대화상자의
+    // 여백 설정이나 반올림 오차로 실제 인쇄 가능 영역이 계산값보다 살짝 작아질 수
+    // 있으므로, 일부러 4% 정도 여유(SAFETY)를 두어 내용이 잘리지 않게 합니다.
+    const SAFETY = 0.96;
+    const PAGE_W_PX = 718 * SAFETY;  // ≈190mm
+    const PAGE_H_PX = 1047 * SAFETY; // ≈277mm
     const scale = Math.min(PAGE_W_PX / naturalWidth, PAGE_H_PX / naturalHeight, 1);
-    inner.style.width = naturalWidth + "px"; // 축소 후 레이아웃이 다시 흔들리지 않도록 폭을 고정
+
+    // 3단계: 실제 인쇄용 배치(절대 위치 + 고정 폭 + transform scale)로 되돌립니다.
+    inner.style.position = "absolute";
+    inner.style.display = "block";
+    inner.style.top = "0";
+    inner.style.width = naturalWidth + "px";
     inner.style.transform = `scale(${scale})`;
 
     // 축소된 내용이 페이지 폭보다 작게 남으면(높이 기준으로 더 많이 줄인 경우)
@@ -1705,9 +1720,23 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
   const mainUrl = document.getElementById("main-appsScriptUrl").value.trim();
   fetchSharedCache(mainUrl).then(cache=>{
     const applied = applySharedCache(cache);
-    if(!applied && !hasAnyLocalCache){
-      // 공유 캐시도 기기 캐시도 없는 완전 최초 실행 → 이번 1회만 직접 동기화합니다.
-      fetchMainData(String(CURRENT_YEAR)).then(()=>fetchInvData());
+    if(!applied){
+      if(!hasAnyLocalCache){
+        // 공유 캐시도 기기 캐시도 없는 완전 최초 실행 → 이번 1회만 직접 동기화합니다.
+        fetchMainData(String(CURRENT_YEAR)).then(()=>fetchInvData());
+      } else {
+        // 공유 캐시 확인이 실패했거나(5초 타임아웃 포함) 아직 서버에 준비되지
+        // 않은 경우, "확인 중..." 문구가 그대로 남지 않도록 정리하고 기기 캐시를
+        // 계속 표시합니다. 최신 데이터가 필요하면 'API로 불러오기'를 눌러주세요.
+        const mainStatus = document.getElementById("main-apiStatus");
+        const invStatus = document.getElementById("inv-apiStatus");
+        if(mainStatus && mainStatus.textContent.includes("공유 캐시 확인 중")){
+          mainStatus.textContent = "저장된 데이터를 표시 중입니다 (기기 캐시). 최신 내용을 반영하려면 'API로 불러오기'를 눌러주세요.";
+        }
+        if(invStatus && invStatus.textContent.includes("공유 캐시 확인 중")){
+          invStatus.textContent = "저장된 데이터를 표시 중입니다 (기기 캐시). 최신 내용을 반영하려면 'API로 불러오기'를 눌러주세요.";
+        }
+      }
     }
   });
 })();
