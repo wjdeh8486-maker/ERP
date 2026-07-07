@@ -273,24 +273,15 @@
   #print-area [style*="overflow-x"]{overflow:visible !important;}
   #print-area .table-wrap, #print-area .table-scroll{overflow:visible !important; max-height:none !important;}
 
-  /* outer/inner 페이지 박스의 위치 지정도 항상 적용해둡니다. inner를 position:absolute로
-     두어야 내용의 실제 자연스러운 폭/높이(overflow 포함)를 JS에서 정확히 측정할 수 있고,
-     이 값이 실제 인쇄 시점과 동일해야 축소 비율이 맞습니다(@media print 안에서만
-     적용되면 인쇄 전 측정 시점엔 아직 적용되지 않아 계산이 틀어집니다).
-     overflow는 일부러 hidden이 아니라 visible로 둡니다 — JS가 계산한 축소 비율이
-     어떤 이유로든 완벽히 맞지 않는 경우에도, 데이터가 잘려서 사라지는 대신 다음
-     페이지로 자연스럽게 이어지도록 하기 위한 안전장치입니다. */
+  /* outer/inner 페이지 박스입니다. 이전에는 position:absolute + transform:scale로
+     정확히 한 페이지에 욱여넣으려 했지만, 절대 위치 요소는 인쇄 시 페이지가
+     넘어갈 때 자연스럽게 이어지지 않고 겹치거나 잘리는 문제가 있었습니다.
+     이제는 일반적인 블록 요소(정상 흐름)로 두고, 아래 JS에서 zoom으로 축소합니다.
+     zoom은 transform과 달리 실제 차지하는 레이아웃 공간도 함께 줄기 때문에,
+     내용이 아주 많아 축소해도 한 페이지에 안 들어가는 경우에도 겹치거나 잘리지
+     않고 자연스럽게 다음 페이지로 이어집니다(일반 인쇄 페이지 넘김과 동일). */
   #print-area .q-report-page-outer{
     width:190mm;
-    height:277mm;
-    overflow:visible;
-    position:relative;
-  }
-  #print-area .q-report-page-inner{
-    position:absolute;
-    top:0;
-    left:0;
-    transform-origin:top left;
   }
 
   @media print{
@@ -299,12 +290,13 @@
     @page{size:portrait;margin:10mm;}
     #print-area input, #print-area button{display:none !important;}
 
-    /* 페이지당 1개 카테고리(공정/수입/출하검사)를 세로 방향 1페이지에 꽉 차도록
-       배치합니다. 페이지 나누기는 실제 인쇄 시에만 의미가 있으므로 여기서만 지정합니다. */
+    /* 카테고리(공정/수입/출하검사)마다 새 페이지에서 시작하도록 합니다. */
     #print-area .q-report-page-outer{
-      page-break-after:always;
+      page-break-before:always;
     }
-    #print-area .q-report-page-outer:last-child{page-break-after:auto;}
+    #print-area .q-report-page-outer:first-child{
+      page-break-before:auto;
+    }
   }
 </style>
 </head>
@@ -795,9 +787,12 @@ let visionWaitMap = {};
 // 일반 fetch()는 서버가 응답을 안 주면 무한정 기다립니다. Apps Script가 느리거나
 // 응답이 없을 때 화면이 "불러오는 중..."에 영원히 멈춰있지 않도록, 지정한 시간
 // 안에 응답이 없으면 자동으로 요청을 취소하고 오류로 처리하는 fetch 헬퍼입니다.
+// Apps Script는 시트가 크거나 콜드 스타트일 때 정상적으로도 수십 초가 걸릴 수
+// 있어, 너무 짧은 시간제한은 오히려 "원래는 성공했을 요청"을 실패로 만들어버릴
+// 수 있습니다. 그래서 넉넉하게 60초로 설정합니다.
 function fetchWithTimeout(url, ms){
   const controller = new AbortController();
-  const timeoutId = setTimeout(()=>controller.abort(), ms || 25000);
+  const timeoutId = setTimeout(()=>controller.abort(), ms || 60000);
   return fetch(url, { signal: controller.signal }).finally(()=>clearTimeout(timeoutId));
 }
 
@@ -906,6 +901,9 @@ function fetchMainData(yearsParam){
   const statusEl = document.getElementById("main-apiStatus");
   if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return Promise.resolve(); }
   statusEl.textContent = "불러오는 중...";
+  const slowNoticeId = setTimeout(()=>{
+    statusEl.textContent = "불러오는 중입니다... 시트 크기에 따라 다소 시간이 걸릴 수 있습니다 (최대 1분).";
+  }, 8000);
   const yearsQuery = yearsParam ? "&years=" + encodeURIComponent(yearsParam) : "";
   return Promise.all([
     fetchWithTimeout(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery).then(r=>r.json()),
@@ -930,7 +928,8 @@ function fetchMainData(yearsParam){
         statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
       }
     })
-    .catch(()=>{ statusEl.textContent = "불러오기 실패(시간 초과 포함). URL과 배포 권한(모든 사용자)을 확인하거나 다시 시도해 주세요."; });
+    .catch(()=>{ statusEl.textContent = "불러오기 실패(시간 초과 포함). URL과 배포 권한(모든 사용자)을 확인하거나 다시 시도해 주세요."; })
+    .finally(()=>clearTimeout(slowNoticeId));
 }
 document.getElementById("main-apiSyncBtn").addEventListener("click", ()=>fetchMainData(String(CURRENT_YEAR)));
 document.getElementById("main-apiSyncAllBtn").addEventListener("click", ()=>fetchMainData(null));
@@ -1105,6 +1104,9 @@ function fetchInvData(){
   const statusEl = document.getElementById("inv-apiStatus");
   if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return Promise.resolve(); }
   statusEl.textContent = "불러오는 중...";
+  const slowNoticeId = setTimeout(()=>{
+    statusEl.textContent = "불러오는 중입니다... 시트 크기에 따라 다소 시간이 걸릴 수 있습니다 (최대 1분).";
+  }, 8000);
   return fetchWithTimeout(url + "?dataset=" + encodeURIComponent("입출고"))
     .then(r=>r.json())
     .then(res=>{
@@ -1120,7 +1122,8 @@ function fetchInvData(){
         statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
       }
     })
-    .catch(()=>{ statusEl.textContent = "불러오기 실패(시간 초과 포함). URL과 배포 권한(모든 사용자)을 확인하거나 다시 시도해 주세요."; });
+    .catch(()=>{ statusEl.textContent = "불러오기 실패(시간 초과 포함). URL과 배포 권한(모든 사용자)을 확인하거나 다시 시도해 주세요."; })
+    .finally(()=>clearTimeout(slowNoticeId));
 }
 document.getElementById("inv-apiSyncBtn").addEventListener("click", fetchInvData);
 
@@ -1600,11 +1603,10 @@ function renderQualityAll(){
   });
 }
 
-// 품질분석 보고서 인쇄: 공정검사 / 수입검사 / 출하검사 순으로 각각 세로 방향 1페이지씩
-// 꽉 차게 구성합니다. 각 카테고리 내용을 실제 페이지 크기(outer)에 담고, 내용의
-// 실제 렌더링 폭/높이를 측정해 페이지 안에 완전히 들어가도록 transform:scale()로
-// 자동 축소합니다. 내용이 페이지보다 작을 때는 축소하지 않고 그대로 두되, 가운데로
-// 배치해 한쪽으로 치우치지 않게 합니다.
+// 품질분석 보고서 인쇄: 공정검사 / 수입검사 / 출하검사 순으로 각각 세로 방향
+// 페이지에서 시작하도록 구성합니다. 내용이 한 페이지에 다 들어가면 zoom으로
+// 축소해 딱 맞추고, 축소해도 다 안 들어갈 만큼 내용이 많으면(극단적인 경우)
+// 잘리거나 겹치지 않고 자연스럽게 다음 페이지로 이어지도록 합니다.
 function printQualityReport(){
   renderQualityAll();
   const order = ["process","incoming","shipping"];
@@ -1627,44 +1629,38 @@ function printQualityReport(){
   const prevCssText = printArea.style.cssText;
   printArea.style.cssText = "display:block; position:fixed; top:-100000px; left:-100000px; visibility:hidden; margin:0;";
 
+  // A4 세로, 여백 10mm 기준 인쇄 가능 영역(대략 96dpi 환산 px). 브라우저 인쇄
+  // 대화상자 여백 설정 오차에 대비해 4% 여유(SAFETY)를 둡니다.
+  const SAFETY = 0.96;
+  const PAGE_W_PX = 718 * SAFETY;  // ≈190mm
+  const PAGE_H_PX = 1047 * SAFETY; // ≈277mm
+
   document.querySelectorAll("#print-area .q-report-page-outer").forEach(outer=>{
-    outer.style.width = (718) + "px";
-    outer.style.height = (1047) + "px";
+    outer.style.width = "718px";
     const inner = outer.querySelector(".q-report-page-inner");
 
-    // 1단계: 실제 필요한 폭/높이를 정확히 측정합니다.
-    // position:absolute + width:auto 상태에서는 브라우저가 부모(페이지) 폭에 맞춰
-    // 강제로 줄여버리는 shrink-to-fit 계산을 해버려서, 실제로는 더 넓은 표(예: 12개월치
-    // 표)가 있어도 측정값이 그 초과분을 잡아내지 못하는 문제가 있었습니다.
-    // display:inline-block + width:max-content 조합은 부모 폭과 무관하게 내용이
-    // 실제로 필요로 하는 만큼의 폭을 그대로 보여주므로, 이 상태에서 정확히 측정합니다.
-    inner.style.position = "static";
+    // 1단계: 실제 필요한 폭/높이를 정확히 측정합니다. display:inline-block +
+    // width:max-content 조합은 부모 폭과 무관하게 내용이 실제로 필요로 하는
+    // 만큼의 폭을 그대로 보여주므로, 이 상태에서 정확히 측정합니다.
     inner.style.display = "inline-block";
     inner.style.width = "max-content";
-    inner.style.transform = "none";
+    inner.style.zoom = "1";
     const naturalWidth = inner.offsetWidth || 1;
     const naturalHeight = inner.offsetHeight || 1;
 
-    // 2단계: 측정값을 바탕으로 축소 비율을 계산합니다. 브라우저 인쇄 대화상자의
-    // 여백 설정이나 반올림 오차로 실제 인쇄 가능 영역이 계산값보다 살짝 작아질 수
-    // 있으므로, 일부러 4% 정도 여유(SAFETY)를 두어 내용이 잘리지 않게 합니다.
-    const SAFETY = 0.96;
-    const PAGE_W_PX = 718 * SAFETY;  // ≈190mm
-    const PAGE_H_PX = 1047 * SAFETY; // ≈277mm
+    // 2단계: 측정값을 바탕으로 축소 비율을 계산합니다.
     const scale = Math.min(PAGE_W_PX / naturalWidth, PAGE_H_PX / naturalHeight, 1);
 
-    // 3단계: 실제 인쇄용 배치(절대 위치 + 고정 폭 + transform scale)로 되돌립니다.
-    inner.style.position = "absolute";
+    // 3단계: 실제 인쇄용 배치로 되돌립니다. 여기서 transform이 아니라 zoom을
+    // 쓰는 것이 핵심입니다 — zoom은 화면에 그려지는 크기뿐 아니라 실제 레이아웃이
+    // 차지하는 공간까지 함께 줄여주기 때문에, 일반 문서 흐름(normal flow) 안에서
+    // 정상적으로 동작합니다. 그래서 만약 축소해도 내용이 페이지 하나에 다 안
+    // 들어갈 만큼 많다면(예: 부적합이 아주 많은 달), 잘리거나 다음 카테고리와
+    // 겹치는 대신 일반적인 인쇄물처럼 자연스럽게 다음 페이지로 이어집니다.
     inner.style.display = "block";
-    inner.style.top = "0";
     inner.style.width = naturalWidth + "px";
-    inner.style.transform = `scale(${scale})`;
-
-    // 축소된 내용이 페이지 폭보다 작게 남으면(높이 기준으로 더 많이 줄인 경우)
-    // 왼쪽으로 몰리지 않도록 가운데로 배치합니다.
-    const scaledWidth = naturalWidth * scale;
-    const offsetX = Math.max((PAGE_W_PX - scaledWidth) / 2, 0);
-    inner.style.left = offsetX + "px";
+    inner.style.margin = "0 auto"; // 축소 후 남는 폭은 가운데 정렬
+    inner.style.zoom = String(scale);
   });
 
   // 측정을 위해 잠시 변경했던 표시 방식을 원래대로 되돌립니다.
