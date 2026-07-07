@@ -276,11 +276,14 @@
   /* outer/inner 페이지 박스의 위치 지정도 항상 적용해둡니다. inner를 position:absolute로
      두어야 내용의 실제 자연스러운 폭/높이(overflow 포함)를 JS에서 정확히 측정할 수 있고,
      이 값이 실제 인쇄 시점과 동일해야 축소 비율이 맞습니다(@media print 안에서만
-     적용되면 인쇄 전 측정 시점엔 아직 적용되지 않아 계산이 틀어집니다). */
+     적용되면 인쇄 전 측정 시점엔 아직 적용되지 않아 계산이 틀어집니다).
+     overflow는 일부러 hidden이 아니라 visible로 둡니다 — JS가 계산한 축소 비율이
+     어떤 이유로든 완벽히 맞지 않는 경우에도, 데이터가 잘려서 사라지는 대신 다음
+     페이지로 자연스럽게 이어지도록 하기 위한 안전장치입니다. */
   #print-area .q-report-page-outer{
     width:190mm;
     height:277mm;
-    overflow:hidden;
+    overflow:visible;
     position:relative;
   }
   #print-area .q-report-page-inner{
@@ -300,7 +303,6 @@
        배치합니다. 페이지 나누기는 실제 인쇄 시에만 의미가 있으므로 여기서만 지정합니다. */
     #print-area .q-report-page-outer{
       page-break-after:always;
-      page-break-inside:avoid;
     }
     #print-area .q-report-page-outer:last-child{page-break-after:auto;}
   }
@@ -790,8 +792,17 @@ let measureWaitMap = {};
 let cleanWaitMap = {};
 let visionWaitMap = {};
 
+// 일반 fetch()는 서버가 응답을 안 주면 무한정 기다립니다. Apps Script가 느리거나
+// 응답이 없을 때 화면이 "불러오는 중..."에 영원히 멈춰있지 않도록, 지정한 시간
+// 안에 응답이 없으면 자동으로 요청을 취소하고 오류로 처리하는 fetch 헬퍼입니다.
+function fetchWithTimeout(url, ms){
+  const controller = new AbortController();
+  const timeoutId = setTimeout(()=>controller.abort(), ms || 25000);
+  return fetch(url, { signal: controller.signal }).finally(()=>clearTimeout(timeoutId));
+}
+
 function fetchWaitMap(url, datasetName, keyField, valueField, targetMap){
-  return fetch(url + "?dataset=" + encodeURIComponent(datasetName))
+  return fetchWithTimeout(url + "?dataset=" + encodeURIComponent(datasetName))
     .then(r=>r.json())
     .then(res=>{
       if(!res.success) return;
@@ -850,8 +861,8 @@ function fmtCacheTime(iso){
 // 서버 공유 캐시 응답을 화면에 반영합니다. main/inv/quality 중 있는 구간만 반영하고,
 // 하나라도 반영했으면 true를 반환합니다.
 function applySharedCache(cache){
-  if(!cache || !cache.success) return false;
-  let applied = false;
+  const result = { main:false, inv:false, quality:false };
+  if(!cache || !cache.success) return result;
   if(cache.main && cache.main.data){
     const d = cache.main.data;
     if(d.mainData) mainData = d.mainData;
@@ -864,14 +875,14 @@ function applySharedCache(cache){
     cacheSet("cache_cleanWaitMap", cleanWaitMap);
     cacheSet("cache_visionWaitMap", visionWaitMap);
     document.getElementById("main-apiStatus").textContent = "공유 캐시에서 최신 데이터를 불러왔습니다 (다른 사용자의 동기화 결과) · 마지막 동기화 " + fmtCacheTime(cache.main.updatedAt);
-    applied = true;
+    result.main = true;
   }
   if(cache.inv && cache.inv.data){
     if(cache.inv.data.invData) invData = cache.inv.data.invData;
     invRenderCheck(""); invRenderAll("");
     cacheSet("cache_invData", invData);
     document.getElementById("inv-apiStatus").textContent = "공유 캐시에서 최신 데이터를 불러왔습니다 · 마지막 동기화 " + fmtCacheTime(cache.inv.updatedAt);
-    applied = true;
+    result.inv = true;
   }
   if(cache.quality && cache.quality.data){
     try{
@@ -884,10 +895,10 @@ function applySharedCache(cache){
       if(window.__qualityInited) renderQualityAll();
       const qs = document.getElementById("quality-apiStatus");
       if(qs) qs.textContent = "공유 캐시에서 최신 데이터를 불러왔습니다 · 마지막 동기화 " + fmtCacheTime(cache.quality.updatedAt);
-      applied = true;
+      result.quality = true;
     }catch(e){}
   }
-  return applied;
+  return result;
 }
 
 function fetchMainData(yearsParam){
@@ -897,7 +908,7 @@ function fetchMainData(yearsParam){
   statusEl.textContent = "불러오는 중...";
   const yearsQuery = yearsParam ? "&years=" + encodeURIComponent(yearsParam) : "";
   return Promise.all([
-    fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery).then(r=>r.json()),
+    fetchWithTimeout(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery).then(r=>r.json()),
     fetchWaitMap(url, "측정실검사대기", "품 번", "측정실대기", measureWaitMap),
     fetchWaitMap(url, "크린룸검사대기", "품 번", "검사대기", cleanWaitMap),
     fetchWaitMap(url, "비젼검사대기", "구 분", "검사대기", visionWaitMap)
@@ -919,7 +930,7 @@ function fetchMainData(yearsParam){
         statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
       }
     })
-    .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
+    .catch(()=>{ statusEl.textContent = "불러오기 실패(시간 초과 포함). URL과 배포 권한(모든 사용자)을 확인하거나 다시 시도해 주세요."; });
 }
 document.getElementById("main-apiSyncBtn").addEventListener("click", ()=>fetchMainData(String(CURRENT_YEAR)));
 document.getElementById("main-apiSyncAllBtn").addEventListener("click", ()=>fetchMainData(null));
@@ -1094,7 +1105,7 @@ function fetchInvData(){
   const statusEl = document.getElementById("inv-apiStatus");
   if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return Promise.resolve(); }
   statusEl.textContent = "불러오는 중...";
-  return fetch(url + "?dataset=" + encodeURIComponent("입출고"))
+  return fetchWithTimeout(url + "?dataset=" + encodeURIComponent("입출고"))
     .then(r=>r.json())
     .then(res=>{
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
@@ -1109,7 +1120,7 @@ function fetchInvData(){
         statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
       }
     })
-    .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
+    .catch(()=>{ statusEl.textContent = "불러오기 실패(시간 초과 포함). URL과 배포 권한(모든 사용자)을 확인하거나 다시 시도해 주세요."; });
 }
 document.getElementById("inv-apiSyncBtn").addEventListener("click", fetchInvData);
 
@@ -1597,7 +1608,6 @@ function renderQualityAll(){
 function printQualityReport(){
   renderQualityAll();
   const order = ["process","incoming","shipping"];
-  const nowStr = new Date().toLocaleString("ko-KR");
   const printArea = document.getElementById("print-area");
 
   printArea.innerHTML = order.map(key=>{
@@ -1606,7 +1616,7 @@ function printQualityReport(){
     return `
       <div class="q-report-page-outer">
         <div class="q-report-page-inner">
-          <h2>품질분석 보고서 · ${cat.label} (${qualityYear}년 1~${qualityMonth}월 누적, 출력 ${nowStr})</h2>
+          <h2>품질분석 보고서 · ${cat.label} (${qualityYear}년 1~${qualityMonth}월 누적)</h2>
           ${panel.innerHTML}
         </div>
       </div>
@@ -1709,7 +1719,9 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
     invData = cachedInv;
   }
 
-  const hasAnyLocalCache = !!(cachedMain || cachedInv);
+  const hasLocalMainCache = !!cachedMain;
+  const hasLocalInvCache = !!cachedInv;
+  const hasAnyLocalCache = hasLocalMainCache || hasLocalInvCache;
   if(hasAnyLocalCache){
     mainInitialRender(mainData);
     invRenderCheck(""); invRenderAll("");
@@ -1719,24 +1731,34 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
 
   const mainUrl = document.getElementById("main-appsScriptUrl").value.trim();
   fetchSharedCache(mainUrl).then(cache=>{
-    const applied = applySharedCache(cache);
-    if(!applied){
-      if(!hasAnyLocalCache){
-        // 공유 캐시도 기기 캐시도 없는 완전 최초 실행 → 이번 1회만 직접 동기화합니다.
-        fetchMainData(String(CURRENT_YEAR)).then(()=>fetchInvData());
-      } else {
-        // 공유 캐시 확인이 실패했거나(5초 타임아웃 포함) 아직 서버에 준비되지
-        // 않은 경우, "확인 중..." 문구가 그대로 남지 않도록 정리하고 기기 캐시를
-        // 계속 표시합니다. 최신 데이터가 필요하면 'API로 불러오기'를 눌러주세요.
-        const mainStatus = document.getElementById("main-apiStatus");
-        const invStatus = document.getElementById("inv-apiStatus");
-        if(mainStatus && mainStatus.textContent.includes("공유 캐시 확인 중")){
-          mainStatus.textContent = "저장된 데이터를 표시 중입니다 (기기 캐시). 최신 내용을 반영하려면 'API로 불러오기'를 눌러주세요.";
-        }
-        if(invStatus && invStatus.textContent.includes("공유 캐시 확인 중")){
-          invStatus.textContent = "저장된 데이터를 표시 중입니다 (기기 캐시). 최신 내용을 반영하려면 'API로 불러오기'를 눌러주세요.";
-        }
-      }
+    const result = applySharedCache(cache);
+
+    // main/inv는 서로 다른 섹션이라 공유 캐시에 한쪽만 기록되어 있을 수 있습니다
+    // (예: 누군가 MAIN만 동기화하고 입출고는 아직 아무도 동기화하지 않은 경우).
+    // 예전에는 "하나라도 공유 캐시로 채워지면" 나머지도 그냥 넘어가버려서, 실제로는
+    // 채워지지 않은 섹션(예: 입출고)이 계속 샘플 데이터에 머무는 문제가 있었습니다.
+    // 이제 각 섹션을 독립적으로 판단해서, 공유 캐시로도 기기 캐시로도 채워지지
+    // 않은 섹션만 그 섹션에 한해 실제 동기화를 수행합니다.
+    const needMainFetch = !result.main && !hasLocalMainCache;
+    const needInvFetch = !result.inv && !hasLocalInvCache;
+    if(needMainFetch && needInvFetch){
+      fetchMainData(String(CURRENT_YEAR)).then(()=>fetchInvData());
+    } else if(needMainFetch){
+      fetchMainData(String(CURRENT_YEAR));
+    } else if(needInvFetch){
+      fetchInvData();
+    }
+
+    // 공유 캐시 확인이 실패했거나(5초 타임아웃 포함) 아직 서버에 준비되지 않았고,
+    // 기기 캐시가 있어 자동 재동기화도 하지 않는 경우, "확인 중..." 문구가 그대로
+    // 남지 않도록 정리합니다. 최신 데이터가 필요하면 'API로 불러오기'를 눌러주세요.
+    const mainStatus = document.getElementById("main-apiStatus");
+    const invStatus = document.getElementById("inv-apiStatus");
+    if(!result.main && hasLocalMainCache && mainStatus && mainStatus.textContent.includes("공유 캐시 확인 중")){
+      mainStatus.textContent = "저장된 데이터를 표시 중입니다 (기기 캐시). 최신 내용을 반영하려면 'API로 불러오기'를 눌러주세요.";
+    }
+    if(!result.inv && hasLocalInvCache && invStatus && invStatus.textContent.includes("공유 캐시 확인 중")){
+      invStatus.textContent = "저장된 데이터를 표시 중입니다 (기기 캐시). 최신 내용을 반영하려면 'API로 불러오기'를 눌러주세요.";
     }
   });
 })();
