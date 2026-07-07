@@ -1429,43 +1429,86 @@ function renderCategoryWeekly(panel, catKey){
   drawLineChart(section.querySelector(".q-weekly-chart"), weekly.map(w=>w.week+"주차"), weekly.map(w=>w.ppm), "주차별 부적합율(ppm)");
 }
 
+// 도번(부품번호)이 같은 부적합 건들을 한 행으로 합쳐서 보여줍니다.
+// - 부적합수: 합산
+// - S/N, 검사일: 목록(3개 이하면 나열, 그 이상이면 "첫날 ~ 마지막날 (n건)")
+// - 구분(시트): 중복 없이 나열
+// - 불량 유형: 유형별 건수를 합산해서 "유형명(합계)" 형식으로 표시
 function renderCategoryDetailList(panel, catKey){
   const cat = QUALITY_CATEGORIES[catKey];
-  const rows = [];
+  const rawRows = [];
   cat.sheetKeys.forEach(key=>{
     const meta = QUALITY_SHEETS.find(s=>s.key===key);
     (qualityRawData[key]||[]).forEach(r=>{
       if(r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)===qualityMonth && r.defect>0){
-        const typeLabels = Object.keys(meta.types)
-          .filter(tk=>r.types[tk]>0)
-          .map(tk=>meta.types[tk]+"("+r.types[tk]+")");
-        let typeDisplay = typeLabels.join(", ");
-        if(!typeDisplay){ typeDisplay = r.note ? ("비고: "+r.note) : "-"; }
-        rows.push({
-          partNo: r.partNo, sn: r.sn,
+        rawRows.push({
+          partNo: r.partNo || "미상", sn: r.sn,
           date: r.date.toISOString().slice(0,10),
           sheetLabel: meta.label,
           defect: r.defect,
-          types: typeDisplay
+          types: r.types,
+          typeLabelMap: meta.types,
+          note: r.note
         });
       }
     });
   });
   const section = panel.querySelector(".q-detail-section");
-  if(rows.length===0){
+  if(rawRows.length===0){
     section.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역</div>
       <div class="empty-state">이 달에 발생한 부적합이 없습니다.</div>`;
     return;
   }
-  const tableRows = rows.map(r=>`<tr>
-    <td>${r.partNo||'-'}</td><td>${r.sn||'-'}</td><td>${r.date}</td><td>${r.sheetLabel}</td>
+
+  const grouped = {};
+  const order = [];
+  rawRows.forEach(r=>{
+    const key = r.partNo;
+    if(!grouped[key]){
+      grouped[key] = { partNo:r.partNo, sns:new Set(), dates:[], sheetLabels:new Set(), defect:0, typeTotals:{}, notes:new Set() };
+      order.push(key);
+    }
+    const g = grouped[key];
+    if(r.sn) g.sns.add(String(r.sn));
+    g.dates.push(r.date);
+    g.sheetLabels.add(r.sheetLabel);
+    g.defect += r.defect;
+    Object.keys(r.typeLabelMap).forEach(tk=>{
+      const val = Number(r.types[tk])||0;
+      if(val>0){
+        const label = r.typeLabelMap[tk];
+        g.typeTotals[label] = (g.typeTotals[label]||0) + val;
+      }
+    });
+    if(r.note) g.notes.add(r.note);
+  });
+
+  let mergedRows = order.map(key=>{
+    const g = grouped[key];
+    const sortedDates = g.dates.slice().sort();
+    let dateDisplay = sortedDates.length<=3
+      ? sortedDates.join(", ")
+      : (sortedDates[0] + " ~ " + sortedDates[sortedDates.length-1] + " (" + sortedDates.length + "건)");
+    let typeDisplay = Object.keys(g.typeTotals).map(l=>l+"("+g.typeTotals[l]+")").join(", ");
+    if(!typeDisplay){ typeDisplay = g.notes.size ? ("비고: "+[...g.notes].join(" / ")) : "-"; }
+    return {
+      partNo: g.partNo,
+      snDisplay: [...g.sns].join(", ") || "-",
+      dateDisplay, sheetLabel: [...g.sheetLabels].join(", "),
+      defect: g.defect, types: typeDisplay
+    };
+  });
+  mergedRows.sort((a,b)=>b.defect-a.defect);
+
+  const tableRows = mergedRows.map(r=>`<tr>
+    <td>${r.partNo}</td><td style="text-align:left;">${r.snDisplay}</td><td>${r.dateDisplay}</td><td>${r.sheetLabel}</td>
     <td class="cell-defect">${r.defect}</td><td style="text-align:left;">${r.types}</td>
   </tr>`).join("");
   section.innerHTML = `
-    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역 (${rows.length}건)</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역 (도번 ${mergedRows.length}종 · 총 ${rawRows.length}건)</div>
     <div style="overflow-x:auto;">
     <table style="min-width:640px;">
-      <thead><tr><th>도번</th><th>S/N</th><th>검사일</th><th>구분</th><th>부적합수</th><th style="text-align:left;">불량 유형</th></tr></thead>
+      <thead><tr><th>도번</th><th style="text-align:left;">S/N</th><th>발생일</th><th>구분</th><th>부적합수</th><th style="text-align:left;">불량 유형</th></tr></thead>
       <tbody>${tableRows}</tbody>
     </table>
     </div>
