@@ -772,6 +772,13 @@ function fetchWaitMap(url, datasetName, keyField, valueField, targetMap){
 // "API로 불러오기"를 누르기 전까지는 그 데이터를 그대로 보여줍니다.
 function cacheSet(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 function cacheGet(key){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+  function getLocalCacheVersion(){
+  return cacheGet("sharedCacheVersion") || {};
+}
+
+function setLocalCacheVersion(v){
+  cacheSet("sharedCacheVersion",v);
+}
 
 /* ============ 공유 캐시: 한 사람이 "API로 불러오기"를 하면 그 결과를
    Apps Script 서버에도 저장해두고, 다른 사람은 접속하자마자(무거운 시트 조회 없이)
@@ -792,6 +799,14 @@ function pushSharedCache(url, section, payload){
 function fetchSharedCache(url){
   if(!url) return Promise.resolve(null);
   return fetch(url + "?mode=readCache").then(r=>r.json()).catch(()=>null);
+}
+  function fetchCacheVersion(url){
+
+  if(!url) return Promise.resolve(null);
+
+  return fetch(url + "?mode=cacheVersion")
+    .then(r=>r.json())
+    .catch(()=>null);
 }
 function fmtCacheTime(iso){
   if(!iso) return "-";
@@ -862,6 +877,11 @@ function fetchMainData(yearsParam){
       cacheSet("cache_cleanWaitMap", cleanWaitMap);
       cacheSet("cache_visionWaitMap", visionWaitMap);
       pushSharedCache(url, "main", { mainData:mainData, measureWaitMap:measureWaitMap, cleanWaitMap:cleanWaitMap, visionWaitMap:visionWaitMap });
+      setLocalCacheVersion({
+  main:new Date().toISOString(),
+  inv:getLocalCacheVersion().inv,
+  quality:getLocalCacheVersion().quality
+});
       const scopeLabel = yearsParam ? (yearsParam + "년만") : "전체 연도";
       const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
       statusEl.textContent = "연동 완료 (" + scopeLabel + " · " + mainData.length + "건 불러옴) · 마지막 업데이트 " + nowStr + " · 새로고침하려면 다시 눌러주세요.";
@@ -1053,6 +1073,11 @@ function fetchInvData(){
       invRenderCheck(""); invRenderAll("");
       cacheSet("cache_invData", invData);
       pushSharedCache(url, "inv", { invData:invData });
+      setLocalCacheVersion({
+  main:getLocalCacheVersion().main,
+  inv:new Date().toISOString(),
+  quality:getLocalCacheVersion().quality
+});
       const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
       statusEl.textContent = "연동 완료 (" + invData.length + "건 불러옴) · 마지막 업데이트 " + nowStr + " · 새로고침하려면 다시 눌러주세요.";
       if(res.warnings && res.warnings.length){
@@ -1167,6 +1192,11 @@ function fetchQualityData(){
       serializableQ[k] = qualityRawData[k].map(r=>Object.assign({}, r, { date:r.date.toISOString() }));
     });
     pushSharedCache(url, "quality", serializableQ);
+    setLocalCacheVersion({
+  main:getLocalCacheVersion().main,
+  inv:getLocalCacheVersion().inv,
+  quality:new Date().toISOString()
+});
     const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
     statusEl.textContent = "연동 완료 · 마지막 업데이트 " + nowStr + (warnings.length ? " · 일부 오류: "+warnings.join(" / ") : "");
     renderQualityAll();
@@ -1544,6 +1574,7 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
 // [3] 공유 캐시도 기기 캐시도 전혀 없는 완전 최초 실행일 때만, 1회에 한해 무거운 실시간 동기화를 수행합니다.
 // 이렇게 하면 모바일 등 느린 환경에서도 대부분의 경우 매번 무거운 시트 조회를 하지 않고 바로 볼 수 있습니다.
 (function initCachedOrFetch(){
+
   const cachedMain = cacheGet("cache_mainData");
   const cachedMeasure = cacheGet("cache_measureWaitMap");
   const cachedClean = cacheGet("cache_cleanWaitMap");
@@ -1551,33 +1582,60 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
   const cachedInv = cacheGet("cache_invData");
 
   if(cachedMain){
+
     mainData = cachedMain;
+
     if(cachedMeasure) measureWaitMap = cachedMeasure;
     if(cachedClean) cleanWaitMap = cachedClean;
     if(cachedVision) visionWaitMap = cachedVision;
   }
+
   if(cachedInv){
     invData = cachedInv;
   }
 
   const hasAnyLocalCache = !!(cachedMain || cachedInv);
+
+  // 즉시 화면 표시
   if(hasAnyLocalCache){
+
     mainInitialRender(mainData);
-    invRenderCheck(""); invRenderAll("");
-    document.getElementById("main-apiStatus").textContent = "저장된 데이터를 표시 중입니다 (기기 캐시). 공유 캐시 확인 중...";
-    document.getElementById("inv-apiStatus").textContent = "저장된 데이터를 표시 중입니다 (기기 캐시). 공유 캐시 확인 중...";
+
+    invRenderCheck("");
+    invRenderAll("");
+
+    document.getElementById("main-apiStatus").textContent =
+      "저장된 데이터 사용 중";
+
+    document.getElementById("inv-apiStatus").textContent =
+      "저장된 데이터 사용 중";
   }
 
-  const mainUrl = document.getElementById("main-appsScriptUrl").value.trim();
-  fetchSharedCache(mainUrl).then(cache=>{
-    const applied = applySharedCache(cache);
-    if(!applied && !hasAnyLocalCache){
-      // 공유 캐시도 기기 캐시도 없는 완전 최초 실행 → 이번 1회만 직접 동기화합니다.
-      fetchMainData(String(CURRENT_YEAR)).then(()=>fetchInvData());
-    }
-  });
-})();
+  // 캐시가 전혀 없는 최초 실행
+  if(!hasAnyLocalCache){
 
+    fetchMainData(String(CURRENT_YEAR))
+      .then(()=>fetchInvData());
+
+    return;
+  }
+
+  // 10초 뒤 공유캐시 확인
+  setTimeout(()=>{
+
+    const mainUrl =
+      document.getElementById("main-appsScriptUrl").value.trim();
+
+    fetchSharedCache(mainUrl)
+      .then(cache=>{
+
+        applySharedCache(cache);
+
+      });
+
+  },10000);
+
+})();
 // =========================
 // 자동 갱신 설정 (기존과 동일하게 3시간 주기 유지)
 // =========================
