@@ -255,15 +255,37 @@
   @media print{
     body > *:not(#print-area){display:none !important;}
     #print-area{display:block !important;}
-    #print-area table{width:100%;border-collapse:collapse;font-size:11px;}
-    #print-area th, #print-area td{border:1px solid #999;padding:5px;text-align:center;}
-    #print-area h2{font-size:16px;margin:0 0 10px;}
-    #print-area h3{font-size:13px;margin:14px 0 6px;}
+    @page{size:portrait;margin:10mm;}
+    #print-area table{width:100%;border-collapse:collapse;font-size:9.5px;}
+    #print-area th, #print-area td{border:1px solid #999;padding:3px 4px;text-align:center;}
+    #print-area h2{font-size:14px;margin:0 0 6px;}
+    #print-area h3{font-size:11px;margin:8px 0 4px;}
     #print-area input, #print-area button{display:none !important;}
-    #print-area .q-report-page{page-break-after:always;padding-top:6px;}
-    #print-area .q-report-page:last-child{page-break-after:auto;}
-    #print-area .summary-row{display:flex;gap:10px;}
-    #print-area .stat-card{border:1px solid #999;flex:1;}
+    #print-area .summary-row{display:flex;gap:6px;}
+    #print-area .stat-card{border:1px solid #999;flex:1;padding:6px 8px;}
+    #print-area .stat-card .label{font-size:10px;}
+    #print-area .stat-card .value,#print-area .stat-card div[style*="font-size:22px"]{font-size:15px !important;}
+
+    /* 페이지당 1개 카테고리(공정/수입/출하검사)를 세로 방향 1페이지에 꽉 차도록
+       배치합니다. outer는 실제 인쇄 페이지 한 장 크기(A4 세로, 여백 10mm 제외)를
+       그대로 갖고 overflow:hidden으로 페이지를 벗어나는 내용을 자르며,
+       inner는 JS에서 계산한 transform:scale() 값으로 축소되어 outer 안에
+       내용 전체가 들어가도록(글자 잘림 없이) 맞춰집니다. */
+    #print-area .q-report-page-outer{
+      width:190mm;
+      height:277mm;
+      overflow:hidden;
+      position:relative;
+      page-break-after:always;
+      page-break-inside:avoid;
+    }
+    #print-area .q-report-page-outer:last-child{page-break-after:auto;}
+    #print-area .q-report-page-inner{
+      position:absolute;
+      top:0;
+      left:0;
+      transform-origin:top left;
+    }
   }
 </style>
 </head>
@@ -1496,22 +1518,52 @@ function renderQualityAll(){
   });
 }
 
-// 품질분석 보고서 인쇄: 공정검사 / 수입검사 / 출하검사 순으로 각각 한 페이지씩 구성합니다.
+// 품질분석 보고서 인쇄: 공정검사 / 수입검사 / 출하검사 순으로 각각 세로 방향 1페이지씩
+// 꽉 차게 구성합니다. 각 카테고리 내용을 실제 페이지 크기(outer)에 담고, 내용의
+// 실제 렌더링 높이를 측정해 페이지 안에 완전히 들어가도록 transform:scale()로
+// 자동 축소합니다. 내용이 페이지보다 작을 때는 축소하지 않고 그대로 둡니다.
 function printQualityReport(){
   renderQualityAll();
   const order = ["process","incoming","shipping"];
   const nowStr = new Date().toLocaleString("ko-KR");
-  const html = order.map((key, idx)=>{
+  const printArea = document.getElementById("print-area");
+
+  printArea.innerHTML = order.map(key=>{
     const cat = QUALITY_CATEGORIES[key];
     const panel = document.getElementById("qpanel-"+key);
     return `
-      <div class="q-report-page">
-        <h2>품질분석 보고서 · ${cat.label} (${qualityYear}년 1~${qualityMonth}월 누적, 출력 ${nowStr})</h2>
-        ${panel.innerHTML}
+      <div class="q-report-page-outer">
+        <div class="q-report-page-inner">
+          <h2>품질분석 보고서 · ${cat.label} (${qualityYear}년 1~${qualityMonth}월 누적, 출력 ${nowStr})</h2>
+          ${panel.innerHTML}
+        </div>
       </div>
     `;
   }).join("");
-  document.getElementById("print-area").innerHTML = html;
+
+  // 측정을 위해 화면 밖에서 잠시 표시합니다 (실제 화면에는 보이지 않음).
+  const prevCssText = printArea.style.cssText;
+  printArea.style.cssText = "display:block; position:fixed; top:-100000px; left:-100000px; visibility:hidden; margin:0;";
+
+  // A4 세로, 여백 10mm 기준 인쇄 가능 영역(대략 96dpi 환산 px)
+  const PAGE_W_PX = 718;  // ≈190mm
+  const PAGE_H_PX = 1047; // ≈277mm
+
+  document.querySelectorAll("#print-area .q-report-page-outer").forEach(outer=>{
+    outer.style.width = PAGE_W_PX + "px";
+    outer.style.height = PAGE_H_PX + "px";
+    const inner = outer.querySelector(".q-report-page-inner");
+    inner.style.width = PAGE_W_PX + "px";
+    inner.style.transform = "none";
+    const naturalHeight = inner.scrollHeight || 1;
+    const scale = Math.min(PAGE_H_PX / naturalHeight, 1);
+    inner.style.transform = `scale(${scale})`;
+  });
+
+  // 측정을 위해 잠시 변경했던 표시 방식을 원래대로 되돌립니다.
+  // (인쇄 시 표시 여부는 @media print 규칙이 별도로 제어합니다)
+  printArea.style.cssText = prevCssText;
+
   window.print();
 }
 document.getElementById("quality-printBtn").addEventListener("click", printQualityReport);
