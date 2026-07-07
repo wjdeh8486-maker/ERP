@@ -252,40 +252,57 @@
     .topbar-right{flex:1 1 100%;flex-wrap:wrap;margin-left:0;}
   }
 
+  /* 인쇄 영역(#print-area) 전용 스타일입니다. #print-area는 평소 화면에서
+     display:none 상태라 화면에는 보이지 않으므로, @media print 안에 가두지 않고
+     항상 적용해도 안전합니다. 이렇게 해야 "인쇄 페이지에 맞춰 축소 비율을 계산"하는
+     JS 측정 시점(아직 실제 인쇄 컨텍스트가 아님)에도 실제 인쇄될 때와 동일한
+     글자 크기/여백으로 렌더링되어, 측정값과 실제 인쇄 결과가 어긋나 필요 이상으로
+     축소(빈 공간 과다)되거나 반대로 덜 축소되어 내용이 잘리는 문제를 막습니다. */
+  #print-area table{width:100%;border-collapse:collapse;font-size:9.5px;}
+  #print-area th, #print-area td{border:1px solid #999;padding:3px 4px;text-align:center;}
+  #print-area h2{font-size:14px;margin:0 0 6px;}
+  #print-area h3{font-size:11px;margin:8px 0 4px;}
+  #print-area .summary-row{display:flex;gap:6px;}
+  #print-area .stat-card{border:1px solid #999;flex:1;padding:6px 8px;}
+  #print-area .stat-card .label{font-size:10px;}
+  #print-area .stat-card .value,#print-area .stat-card div[style*="font-size:22px"]{font-size:15px !important;}
+  /* 가로 스크롤 래퍼(overflow-x:auto 등)는 화면에서는 스크롤로 볼 수 있지만
+     인쇄에서는 스크롤바가 동작하지 않아 화면 밖 데이터가 그대로 잘려버립니다.
+     인쇄 영역 안에서는 이를 모두 visible로 풀어, 실제 폭을 측정해 페이지 폭에
+     맞게 축소하는 방식으로 데이터 잘림을 방지합니다. */
+  #print-area [style*="overflow-x"]{overflow:visible !important;}
+  #print-area .table-wrap, #print-area .table-scroll{overflow:visible !important; max-height:none !important;}
+
+  /* outer/inner 페이지 박스의 위치 지정도 항상 적용해둡니다. inner를 position:absolute로
+     두어야 내용의 실제 자연스러운 폭/높이(overflow 포함)를 JS에서 정확히 측정할 수 있고,
+     이 값이 실제 인쇄 시점과 동일해야 축소 비율이 맞습니다(@media print 안에서만
+     적용되면 인쇄 전 측정 시점엔 아직 적용되지 않아 계산이 틀어집니다). */
+  #print-area .q-report-page-outer{
+    width:190mm;
+    height:277mm;
+    overflow:hidden;
+    position:relative;
+  }
+  #print-area .q-report-page-inner{
+    position:absolute;
+    top:0;
+    left:0;
+    transform-origin:top left;
+  }
+
   @media print{
     body > *:not(#print-area){display:none !important;}
     #print-area{display:block !important;}
     @page{size:portrait;margin:10mm;}
-    #print-area table{width:100%;border-collapse:collapse;font-size:9.5px;}
-    #print-area th, #print-area td{border:1px solid #999;padding:3px 4px;text-align:center;}
-    #print-area h2{font-size:14px;margin:0 0 6px;}
-    #print-area h3{font-size:11px;margin:8px 0 4px;}
     #print-area input, #print-area button{display:none !important;}
-    #print-area .summary-row{display:flex;gap:6px;}
-    #print-area .stat-card{border:1px solid #999;flex:1;padding:6px 8px;}
-    #print-area .stat-card .label{font-size:10px;}
-    #print-area .stat-card .value,#print-area .stat-card div[style*="font-size:22px"]{font-size:15px !important;}
 
     /* 페이지당 1개 카테고리(공정/수입/출하검사)를 세로 방향 1페이지에 꽉 차도록
-       배치합니다. outer는 실제 인쇄 페이지 한 장 크기(A4 세로, 여백 10mm 제외)를
-       그대로 갖고 overflow:hidden으로 페이지를 벗어나는 내용을 자르며,
-       inner는 JS에서 계산한 transform:scale() 값으로 축소되어 outer 안에
-       내용 전체가 들어가도록(글자 잘림 없이) 맞춰집니다. */
+       배치합니다. 페이지 나누기는 실제 인쇄 시에만 의미가 있으므로 여기서만 지정합니다. */
     #print-area .q-report-page-outer{
-      width:190mm;
-      height:277mm;
-      overflow:hidden;
-      position:relative;
       page-break-after:always;
       page-break-inside:avoid;
     }
     #print-area .q-report-page-outer:last-child{page-break-after:auto;}
-    #print-area .q-report-page-inner{
-      position:absolute;
-      top:0;
-      left:0;
-      transform-origin:top left;
-    }
   }
 </style>
 </head>
@@ -294,6 +311,7 @@
 <div class="app-shell">
   <div class="side-nav">
     <div class="brand">종합제품관리<small>ERP 웹 시스템</small></div>
+
     <div class="nav-item active" data-view="main"><span class="dot"></span>MAIN 대시보드</div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
@@ -1596,10 +1614,16 @@ function printQualityReport(){
     outer.style.width = PAGE_W_PX + "px";
     outer.style.height = PAGE_H_PX + "px";
     const inner = outer.querySelector(".q-report-page-inner");
-    inner.style.width = PAGE_W_PX + "px";
+    // 폭을 강제로 고정하지 않고 내용에 맞춰 자연스럽게 늘어나도록 둔 뒤(넓은 표가 있으면
+    // 그만큼 넓어짐), 실제 필요한 폭/높이를 측정합니다. 이렇게 해야 가로로 넘치는 표까지
+    // 정확히 포함해서 축소 비율을 계산할 수 있어 오른쪽 데이터가 잘리는 것을 막습니다.
+    inner.style.width = "";
     inner.style.transform = "none";
-    const naturalHeight = inner.scrollHeight || 1;
-    const scale = Math.min(PAGE_H_PX / naturalHeight, 1);
+    const rect = inner.getBoundingClientRect();
+    const naturalWidth = Math.max(rect.width, 1);
+    const naturalHeight = Math.max(rect.height, inner.scrollHeight, 1);
+    const scale = Math.min(PAGE_W_PX / naturalWidth, PAGE_H_PX / naturalHeight, 1);
+    inner.style.width = naturalWidth + "px"; // 축소 후 레이아웃이 다시 흔들리지 않도록 폭을 고정
     inner.style.transform = `scale(${scale})`;
   });
 
