@@ -905,7 +905,7 @@ async function fetchMainData(yearsParam){
      mainData = res.rows.map(mapRowToMain);
 
 await saveMainData();
-
+cacheSet("mainLastSync", Date.now());
 mainInitialRender(mainData);
       cacheSet("cache_measureWaitMap", measureWaitMap);
       cacheSet("cache_cleanWaitMap", cleanWaitMap);
@@ -1104,8 +1104,12 @@ function fetchInvData(){
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       invApiUrl = url;
       invData = res.rows.map(mapRowToInv);
-      invRenderCheck(""); invRenderAll("");
-      cacheSet("cache_invData", invData);
+
+invRenderCheck("");
+invRenderAll("");
+
+cacheSet("cache_invData", invData);
+cacheSet("invLastSync", Date.now());
       pushSharedCache(url, "inv", { invData:invData });
       setLocalCacheVersion({
   main:getLocalCacheVersion().main,
@@ -1221,6 +1225,7 @@ function fetchQualityData(){
       if(res.warnings && res.warnings.length) warnings.push(s.label+": "+res.warnings.join(" / "));
     });
     cacheSetQualityData();
+    cacheSet("qualityLastSync", Date.now());
     const serializableQ = {};
     Object.keys(qualityRawData).forEach(k=>{
       serializableQ[k] = qualityRawData[k].map(r=>Object.assign({}, r, { date:r.date.toISOString() }));
@@ -1610,22 +1615,32 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
 (async function initCachedOrFetch(){
 
   const cachedMain = await loadMainData();
+  const lastSync = cacheGet("mainLastSync");
 
   if(cachedMain){
 
     mainData = cachedMain;
-
     mainInitialRender(mainData);
 
     document.getElementById("main-apiStatus").textContent =
-      "저장된 최신 데이터 사용 중";
+      "저장된 데이터 사용 중";
 
   }else{
 
     mainInitialRender([]);
+  }
+
+  // 5분 초과 시 자동 갱신
+  const needRefresh =
+    !lastSync ||
+    (Date.now() - lastSync > 5 * 60 * 1000);
+
+  if(needRefresh){
 
     document.getElementById("main-apiStatus").textContent =
-      "저장된 데이터 없음. API로 불러오기를 눌러주세요.";
+      "최신 데이터 자동 확인 중...";
+
+    fetchMainData(String(CURRENT_YEAR));
   }
 
 })();
