@@ -544,12 +544,12 @@ function lookupWaitMap(map, r){
   });
   return found ? total : null;
 }
-function computeWaitMeasure(r){
+function computeWaitMeasureRaw(r){
   const v = lookupWaitMap(measureWaitMap, r);
   return v!==null ? v : (Number(r.waitMeasure)||0);
 }
 // 납품대기 = 해당 기존도번/품번의 현재 재고 보유 수량 (입출고 데이터 기준: 총입고 - 총출고)
-function computeWaitDeliver(r){
+function computeWaitDeliverRaw(r){
   if(typeof invComputeStock !== "function") return Number(r.waitDeliver)||0;
   const keys = [String(r.oldDrawingNo||"").trim(), String(r.partNo||"").trim()].filter(Boolean);
   let total = 0, found = false;
@@ -562,26 +562,26 @@ function computeWaitDeliver(r){
   });
   return found ? total : (Number(r.waitDeliver)||0);
 }
-function computeWaitClean(r){
+function computeWaitCleanRaw(r){
   const v = lookupWaitMap(cleanWaitMap, r);
   return v!==null ? v : (Number(r.waitClean)||0);
 }
-function computeWaitVision(r){
+function computeWaitVisionRaw(r){
   const v = lookupWaitMap(visionWaitMap, r);
   return v!==null ? v : (Number(r.waitVision)||0);
 }
 
-// 원본 MAIN 시트 수식(제품상태) 로직을 그대로 재현
+// 원본 MAIN 시트 수식(제품상태) 로직 (풀 전체 총량 기준 - 그룹 총량 계산에만 사용)
 // I=수량, N=납품여부, V=재고선출고, Q=납품대기, S=크린룸검사대기, R=측정실검사대기, T=비젼검사대기
-function computeProductStatus(r){
+function computeProductStatusRaw(r){
   const I = Number(r.qty)||0;
   if(I === 0) return "";
   if(r.shipped === "납품완료") return "완료";
   const V = computeStockPreShip(r);
-  const Q = computeWaitDeliver(r);
-  const S = computeWaitClean(r);
-  const R = computeWaitMeasure(r);
-  const T = computeWaitVision(r);
+  const Q = computeWaitDeliverRaw(r);
+  const S = computeWaitCleanRaw(r);
+  const R = computeWaitMeasureRaw(r);
+  const T = computeWaitVisionRaw(r);
   if(V - I >= 0) return "출고";
   if(Q - I >= 0) return "재고";
   if(S - I >= 0) return "외관";
@@ -590,6 +590,102 @@ function computeProductStatus(r){
   const sum = Q + R + S + T + V;
   if(sum >= I) return "OK";
   return "생산";
+}
+
+// 같은 품번(기존도번/품번)을 쓰는 여러 ORDER NO.가 "납품대기/크린룸/비젼/측정실검사대기"라는
+// 공용(공유) 재고 풀을 나눠 쓰는 구조라서, 목록 순서대로 앞선 주문이 먼저 그 수량을 "가져가면"
+// 뒤에 나오는 주문에게는 그만큼 줄어든 나머지만 남습니다. 이 함수는 전체 데이터를 원래 순서대로
+// 훑으면서 그룹별로 재고 풀을 순서대로 소진시켜, 각 ORDER NO.가 실제로 확보 가능한 만큼만
+// 인정하도록 상태/잔여수량을 계산합니다.
+// 우선순위: 납품대기(재고) > 크린룸검사대기(외관) > 비젼검사대기(비젼) > 측정실검사대기(측정)
+let mainStatusMap = {};
+function computeAllStatuses(data){
+  const result = {};
+  const groups = {};
+  const order = [];
+  (data||[]).forEach((r, idx)=>{
+    const key = String(r.oldDrawingNo||"").trim() || String(r.partNo||"").trim() || ("__row__"+idx);
+    if(!groups[key]){ groups[key] = []; order.push(key); }
+    groups[key].push(r);
+  });
+
+  order.forEach(key=>{
+    const rows = groups[key];
+    const rep = rows[0];
+    let qRemain = computeWaitDeliverRaw(rep);
+    let sRemain = computeWaitCleanRaw(rep);
+    let tRemain = computeWaitVisionRaw(rep);
+    let rRemain = computeWaitMeasureRaw(rep);
+
+    rows.forEach(r=>{
+      const I = Number(r.qty)||0;
+      if(I === 0){ result[r.orderNo] = {status:"", q:qRemain, s:sRemain, t:tRemain, r:rRemain}; return; }
+      if(r.shipped === "납품완료"){ result[r.orderNo] = {status:"완료", q:qRemain, s:sRemain, t:tRemain, r:rRemain}; return; }
+
+      const V = computeStockPreShip(r); // 개별 주문 전용(선출고), 공용 풀과 무관
+      const snapshot = {q:qRemain, s:sRemain, t:tRemain, r:rRemain};
+      if(V - I >= 0){
+        result[r.orderNo] = Object.assign({status:"출고"}, snapshot);
+        return;
+      }
+      if(qRemain - I >= 0){
+        result[r.orderNo] = Object.assign({status:"재고"}, snapshot);
+        qRemain -= I;
+        return;
+      }
+      if(sRemain - I >= 0){
+        result[r.orderNo] = Object.assign({status:"외관"}, snapshot);
+        sRemain -= I;
+        return;
+      }
+      if(tRemain - I >= 0){
+        result[r.orderNo] = Object.assign({status:"비젼"}, snapshot);
+        tRemain -= I;
+        return;
+      }
+      if(rRemain - I >= 0){
+        result[r.orderNo] = Object.assign({status:"측정"}, snapshot);
+        rRemain -= I;
+        return;
+      }
+      const totalAvail = qRemain + sRemain + tRemain + rRemain + V;
+      if(totalAvail >= I){
+        result[r.orderNo] = Object.assign({status:"OK"}, snapshot);
+        let need = Math.max(I - V, 0);
+        const takeQ = Math.min(qRemain, need); qRemain -= takeQ; need -= takeQ;
+        const takeS = Math.min(sRemain, need); sRemain -= takeS; need -= takeS;
+        const takeT = Math.min(tRemain, need); tRemain -= takeT; need -= takeT;
+        const takeR = Math.min(rRemain, need); rRemain -= takeR; need -= takeR;
+        return;
+      }
+      result[r.orderNo] = Object.assign({status:"생산"}, snapshot);
+    });
+  });
+
+  return result;
+}
+
+// 화면에서 실제로 사용하는 진입점들: 소진 계산 결과(mainStatusMap)가 있으면 그걸 쓰고,
+// 아직 계산 전이라면(안전장치) 예전 방식(총량 기준)으로 대체합니다.
+function computeProductStatus(r){
+  const cached = mainStatusMap[r.orderNo];
+  return cached ? cached.status : computeProductStatusRaw(r);
+}
+function computeWaitDeliver(r){
+  const cached = mainStatusMap[r.orderNo];
+  return cached ? cached.q : computeWaitDeliverRaw(r);
+}
+function computeWaitClean(r){
+  const cached = mainStatusMap[r.orderNo];
+  return cached ? cached.s : computeWaitCleanRaw(r);
+}
+function computeWaitVision(r){
+  const cached = mainStatusMap[r.orderNo];
+  return cached ? cached.t : computeWaitVisionRaw(r);
+}
+function computeWaitMeasure(r){
+  const cached = mainStatusMap[r.orderNo];
+  return cached ? cached.r : computeWaitMeasureRaw(r);
 }
 function statusBadge(status){ return `<span class="badge status-${status}">${status}</span>`; }
 
@@ -602,6 +698,7 @@ function computeStockPreShip(r){
 }
 
 function mainRenderStats(data){
+  mainStatusMap = computeAllStatuses(mainData);
 
   const prod = data.filter(
     r => computeProductStatus(r) === "생산"
