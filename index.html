@@ -253,18 +253,75 @@
   }
 
   @media print{
-    body > *:not(#print-area){display:none !important;}
-    #print-area{display:block !important;}
-    #print-area table{width:100%;border-collapse:collapse;font-size:11px;}
-    #print-area th, #print-area td{border:1px solid #999;padding:5px;text-align:center;}
-    #print-area h2{font-size:16px;margin:0 0 10px;}
-    #print-area h3{font-size:13px;margin:14px 0 6px;}
-    #print-area input, #print-area button{display:none !important;}
-    #print-area .q-report-page{page-break-after:always;padding-top:6px;}
-    #print-area .q-report-page:last-child{page-break-after:auto;}
-    #print-area .summary-row{display:flex;gap:10px;}
-    #print-area .stat-card{border:1px solid #999;flex:1;}
-  }
+
+    @page{
+        size:A4 landscape;
+        margin:8mm;
+    }
+
+    body > *:not(#print-area){
+        display:none !important;
+    }
+
+    #print-area{
+        display:block !important;
+        width:100%;
+    }
+
+    #print-area table{
+        width:100%;
+        border-collapse:collapse;
+        font-size:13px;
+    }
+
+    #print-area th,
+    #print-area td{
+        border:1px solid #999;
+        padding:6px;
+        text-align:center;
+    }
+
+    #print-area h2{
+        font-size:18px;
+        margin:0 0 10px;
+    }
+
+    #print-area h3{
+        font-size:14px;
+        margin:10px 0 6px;
+    }
+
+    #print-area input,
+    #print-area button{
+        display:none !important;
+    }
+
+    #print-area .q-report-page{
+        width:100%;
+        height:190mm;
+        overflow:hidden;
+        page-break-after:always;
+    }
+
+    #print-area .q-report-page:last-child{
+        page-break-after:auto;
+    }
+
+    #print-area .summary-row{
+        display:flex;
+        gap:10px;
+    }
+
+    #print-area .stat-card{
+        border:1px solid #999;
+        flex:1;
+    }
+
+    #print-area svg{
+        width:100%;
+        height:230px;
+    }
+}
 </style>
 </head>
 <body>
@@ -1478,36 +1535,56 @@ function renderCategoryWeekly(panel, catKey){
 
 function renderCategoryDetailList(panel, catKey){
   const cat = QUALITY_CATEGORIES[catKey];
-  const rows = [];
-  cat.sheetKeys.forEach(key=>{
-    const meta = QUALITY_SHEETS.find(s=>s.key===key);
-    (qualityRawData[key]||[]).forEach(r=>{
-      if(r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)===qualityMonth && r.defect>0){
-        const typeLabels = Object.keys(meta.types)
-          .filter(tk=>r.types[tk]>0)
-          .map(tk=>meta.types[tk]+"("+r.types[tk]+")");
-        let typeDisplay = typeLabels.join(", ");
-        if(!typeDisplay){ typeDisplay = r.note ? ("비고: "+r.note) : "-"; }
-        rows.push({
-          partNo: r.partNo, sn: r.sn,
-          date: r.date.toISOString().slice(0,10),
-          sheetLabel: meta.label,
-          defect: r.defect,
-          types: typeDisplay
-        });
+  const grouped = {};
+
+cat.sheetKeys.forEach(key=>{
+
+  const meta =
+    QUALITY_SHEETS.find(s=>s.key===key);
+
+  (qualityRawData[key]||[]).forEach(r=>{
+
+    if(
+      r.date.getFullYear()===qualityYear &&
+      (r.date.getMonth()+1)===qualityMonth &&
+      r.defect > 0
+    ){
+
+      const pn = r.partNo || "-";
+
+      if(!grouped[pn]){
+
+        grouped[pn]={
+          partNo:pn,
+          count:0,
+          defect:0
+        };
       }
-    });
+
+      grouped[pn].count++;
+      grouped[pn].defect += r.defect;
+    }
+
   });
+
+});
+
+const rows = Object.values(grouped);
   const section = panel.querySelector(".q-detail-section");
   if(rows.length===0){
     section.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역</div>
       <div class="empty-state">이 달에 발생한 부적합이 없습니다.</div>`;
     return;
   }
-  const tableRows = rows.map(r=>`<tr>
-    <td>${r.partNo||'-'}</td><td>${r.sn||'-'}</td><td>${r.date}</td><td>${r.sheetLabel}</td>
-    <td class="cell-defect">${r.defect}</td><td style="text-align:left;">${r.types}</td>
-  </tr>`).join("");
+  const tableRows = rows.map(r=>`
+
+<tr>
+  <td>${r.partNo}</td>
+  <td>${r.count}</td>
+  <td class="cell-defect">${r.defect}</td>
+</tr>
+
+`).join("");
   section.innerHTML = `
     <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역 (${rows.length}건)</div>
     <div style="overflow-x:auto;">
@@ -1567,20 +1644,57 @@ function renderQualityAll(){
 
 // 품질분석 보고서 인쇄: 공정검사 / 수입검사 / 출하검사 순으로 각각 한 페이지씩 구성합니다.
 function printQualityReport(){
+
   renderQualityAll();
+
   const order = ["process","incoming","shipping"];
   const nowStr = new Date().toLocaleString("ko-KR");
-  const html = order.map((key, idx)=>{
+
+  const html = order.map(key=>{
+
     const cat = QUALITY_CATEGORIES[key];
     const panel = document.getElementById("qpanel-"+key);
+
+    const kpi =
+      panel.querySelector(".q-kpi-body")
+      ?.closest(".table-wrap")?.outerHTML || "";
+
+    const monthly =
+      panel.querySelector(".q-monthly-chart")
+      ?.closest(".table-wrap")?.outerHTML || "";
+
+    const weekly =
+      panel.querySelector(".q-weekly-section")
+      ?.closest(".table-wrap")?.outerHTML || "";
+
+    const detail =
+      panel.querySelector(".q-detail-section")
+      ?.closest(".table-wrap")?.outerHTML || "";
+
     return `
       <div class="q-report-page">
-        <h2>품질분석 보고서 · ${cat.label} (${qualityYear}년 1~${qualityMonth}월 누적, 출력 ${nowStr})</h2>
-        ${panel.innerHTML}
+
+        <h2>
+          품질분석 보고서 · ${cat.label}
+          <br>
+          ${qualityYear}년 ${qualityMonth}월
+        </h2>
+
+        ${kpi}
+
+        ${monthly}
+
+        ${weekly}
+
+        ${detail}
+
       </div>
     `;
+
   }).join("");
+
   document.getElementById("print-area").innerHTML = html;
+
   window.print();
 }
 document.getElementById("quality-printBtn").addEventListener("click", printQualityReport);
