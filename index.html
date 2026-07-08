@@ -210,12 +210,18 @@
   .quality-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}
   .quality-btn:hover:not(.active){background:var(--gray-bg);}
 
+  /* 품질분석 색상 포인트 (참고 문서 스타일: 목표=녹색, 초과=빨강, 이내=초록, 변동=파란 배지) */
+  th.th-target, td.td-target{background:var(--green) !important;color:#fff !important;font-weight:700;}
+  .ppm-over{color:var(--red);font-weight:700;}
+  .ppm-under{color:var(--green);font-weight:700;}
+  .q-change-badge{display:inline-block;padding:2px 10px;border-radius:4px;background:var(--blue);color:#fff;font-weight:700;font-size:12px;}
+
   @media print{
     @page{ size: A4 portrait; margin: 8mm 8mm; }
     html, body{ width:100%; font-size:8px; }
     body > *:not(#print-area){display:none !important;}
     #print-area{display:block !important; width:100%;}
-    #print-area *{box-sizing:border-box;}
+    #print-area *{box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
     #print-area table{width:100%;border-collapse:collapse;font-size:7.8px;table-layout:auto;}
     #print-area th, #print-area td{border:1px solid #999;padding:1.5px 3px;text-align:center;line-height:1.25;}
     #print-area thead th{position:static;}
@@ -468,7 +474,7 @@
 <template id="quality-category-template">
   <div class="table-wrap" style="margin-bottom:18px;">
     <table>
-      <thead><tr><th>구분</th><th>검사수</th><th>양품수</th><th>부적합수</th><th>부적합율(ppm)</th></tr></thead>
+      <thead><tr><th>구분</th><th>검사수</th><th>양품수</th><th>부적합수</th><th>부적합율(ppm)</th><th class="th-target">목표(ppm)</th></tr></thead>
       <tbody class="q-kpi-body"></tbody>
     </table>
   </div>
@@ -1514,10 +1520,13 @@ function renderCategoryKPI(panel, catKey){
     totalDefect += rows.reduce((s,r)=>s+r.defect,0);
   });
   const totalPpm = totalQty>0 ? Math.round((totalDefect/totalQty)*1000000) : 0;
+  const target = qualityTargets[catKey] || 0;
+  const ppmClass = target ? (totalPpm > target ? 'ppm-over' : 'ppm-under') : '';
   const tr = document.createElement("tr");
   tr.style.fontWeight = "700";
   tr.innerHTML = `<td style="text-align:left;">${cat.label}</td><td>${totalQty}</td><td>${totalGood}</td>
-    <td class="${totalDefect>0?'cell-defect':''}">${totalDefect}</td><td>${totalPpm.toLocaleString()}</td>`;
+    <td class="${totalDefect>0?'cell-defect':''}">${totalDefect}</td><td class="${ppmClass}">${totalPpm.toLocaleString()}</td>
+    <td class="td-target">${target ? target.toLocaleString() : '-'}</td>`;
   body.appendChild(tr);
 }
 
@@ -1545,11 +1554,16 @@ function renderCategoryMonthlyChart(panel, catKey){
   let prevYear = qualityYear, prevMonth = qualityMonth-1;
   if(prevMonth<1){ prevMonth = 12; prevYear = qualityYear-1; }
   const prevM = computeCategoryMonthStats(catKey, prevYear, prevMonth);
+  const target = qualityTargets[catKey] || 0;
+  const thisClass = target ? (thisM.ppm > target ? 'ppm-over' : 'ppm-under') : '';
+  const prevClass = target ? (prevM.ppm > target ? 'ppm-over' : 'ppm-under') : '';
+  const changePct = prevM.ppm>0 ? Math.round(((thisM.ppm - prevM.ppm)/prevM.ppm)*100) : (thisM.ppm>0 ? 100 : 0);
+  const changeSign = changePct>0 ? '+' : '';
   panel.querySelector(".q-this-month").innerHTML =
-    `<div style="font-size:22px;font-weight:700;">${thisM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span></div>
+    `<div class="${thisClass}" style="font-size:22px;font-weight:700;">${thisM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span> <span class="q-change-badge">변동 ${changeSign}${changePct}%</span></div>
      <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${qualityYear}년 ${qualityMonth}월 · 검사수 ${thisM.qty.toLocaleString()} · 부적합수 ${thisM.defect.toLocaleString()}</div>`;
   panel.querySelector(".q-last-month").innerHTML =
-    `<div style="font-size:22px;font-weight:700;">${prevM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span></div>
+    `<div class="${prevClass}" style="font-size:22px;font-weight:700;">${prevM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span></div>
      <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevYear}년 ${prevMonth}월 · 검사수 ${prevM.qty.toLocaleString()} · 부적합수 ${prevM.defect.toLocaleString()}</div>`;
 
   // 목표(ppm) 입력 연결
@@ -1559,6 +1573,7 @@ function renderCategoryMonthlyChart(panel, catKey){
     targetInput.dataset.wired = "1";
     panel.querySelector(".q-target-apply").addEventListener("click", ()=>{
       qualityTargets[catKey] = Number(targetInput.value)||0;
+      renderCategoryKPI(panel, catKey);
       renderCategoryMonthlyChart(panel, catKey);
     });
   }
@@ -1575,7 +1590,7 @@ function renderCategoryMonthlyChart(panel, catKey){
       <tbody>
         <tr><td style="text-align:left;">검사수</td>${monthlyQty.map(v=>`<td>${v.toLocaleString()}</td>`).join("")}<td>${totalQty.toLocaleString()}</td></tr>
         <tr><td style="text-align:left;">부적합수</td>${monthlyDefect.map(v=>`<td class="${v>0?'cell-defect':''}">${v.toLocaleString()}</td>`).join("")}<td>${totalDefect.toLocaleString()}</td></tr>
-        <tr><td style="text-align:left;">부적합율(ppm)</td>${monthlyPpm.map(v=>`<td>${v.toLocaleString()}</td>`).join("")}<td>${totalPpm.toLocaleString()}</td></tr>
+        <tr><td style="text-align:left;">부적합율(ppm)</td>${monthlyPpm.map(v=>`<td class="${target ? (v>target?'ppm-over':'ppm-under') : ''}">${v.toLocaleString()}</td>`).join("")}<td>${totalPpm.toLocaleString()}</td></tr>
       </tbody>
     </table>
   `;
