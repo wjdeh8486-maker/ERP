@@ -211,16 +211,16 @@
   .quality-btn:hover:not(.active){background:var(--gray-bg);}
 
   @media print{
-    @page{ size: A4 portrait; margin: 10mm 9mm; }
-    html, body{ width:100%; }
+    @page{ size: A4 portrait; margin: 8mm 8mm; }
+    html, body{ width:100%; font-size:8px; }
     body > *:not(#print-area){display:none !important;}
     #print-area{display:block !important; width:100%;}
     #print-area *{box-sizing:border-box;}
-    #print-area table{width:100%;border-collapse:collapse;font-size:9.5px;table-layout:auto;}
-    #print-area th, #print-area td{border:1px solid #999;padding:3px 4px;text-align:center;}
+    #print-area table{width:100%;border-collapse:collapse;font-size:7.8px;table-layout:auto;}
+    #print-area th, #print-area td{border:1px solid #999;padding:1.5px 3px;text-align:center;line-height:1.25;}
     #print-area thead th{position:static;}
-    #print-area h2{font-size:14px;margin:0 0 6px;}
-    #print-area h3{font-size:12px;margin:6px 0 4px;}
+    #print-area h2{font-size:12px;margin:0 0 3px;}
+    #print-area h3{font-size:10px;margin:3px 0 2px;}
     #print-area input, #print-area button{display:none !important;}
 
     /* 카테고리별 1페이지: 일반 블록 흐름을 유지해야 인쇄 시 내용이 잘리지 않습니다.
@@ -232,30 +232,37 @@
       overflow:visible;
     }
     #print-area .q-report-page:last-child{page-break-after:auto;}
-    #print-area .q-report-page > *{ margin-bottom:4mm; }
+    #print-area .q-report-page > *{ margin-bottom:1.5mm; }
 
-    #print-area .summary-row{display:flex;gap:6px;margin-bottom:4mm;}
-    #print-area .stat-card{border:1px solid #999;flex:1;padding:6px 8px !important;}
-    #print-area .stat-card .label{font-size:10px;}
-    #print-area .stat-card .value{font-size:16px;}
-    #print-area .table-wrap{margin-bottom:4mm !important;border:none;padding:0 !important;background:none;overflow:visible;}
-    #print-area .progress-label{font-size:9px;}
+    #print-area .summary-row{display:flex;gap:4px;margin-bottom:1.5mm;}
+    #print-area .stat-card{border:1px solid #999;flex:1;padding:3px 5px !important;}
+    #print-area .stat-card .label{font-size:8px;}
+    #print-area .stat-card .value{font-size:12px;}
+    #print-area .table-wrap{margin-bottom:1.5mm !important;border:none;padding:0 !important;background:none;overflow:visible;}
+    #print-area .progress-label{font-size:7.5px;}
 
     /* 표에 걸려있던 min-width를 해제해 A4 폭에 맞춰 표가 줄어들도록(가로 스크롤 없이) 합니다. */
     #print-area .q-monthly-table table,
-    #print-area .q-detail-section table{ min-width:0 !important; font-size:9px; }
+    #print-area .q-detail-section table{ min-width:0 !important; font-size:7.5px; }
     #print-area .q-monthly-table, #print-area .q-detail-section > div{ overflow:visible !important; }
+    #print-area .q-monthly-table{ margin-top:2px !important; }
 
     /* 그래프(SVG)는 폭을 A4 페이지 폭에 맞추고, 세로 길이는 자체 종횡비를 유지한 채
        최대 높이만 제한해 표와 함께 한 페이지 안에 들어오도록 압축합니다. */
     #print-area svg{ width:100%; height:auto; display:block; }
-    #print-area .q-monthly-chart svg{ max-height:100px; }
-    #print-area .q-weekly-chart svg{ max-height:85px; }
-    #print-area .q-type-chart svg{ max-height:130px; }
+    #print-area .q-monthly-chart svg{ max-height:55px; }
+    #print-area .q-weekly-chart svg{ max-height:42px; }
+    #print-area .q-type-chart svg{ max-height:65px; }
+    #print-area .q-monthly-chart > div:first-child,
+    #print-area .q-weekly-section > div:first-child,
+    #print-area .q-detail-section > div:first-child,
+    #print-area .q-type-section > div:first-child,
+    #print-area .q-monthly-chart + div,
+    #print-area .q-type-chart > div:first-child{ font-size:8px !important; margin-bottom:2px !important; }
 
     #print-area .q-target-row{ display:none !important; }
-    #print-area .q-this-month, #print-area .q-last-month{ font-size:11px; }
-    #print-area .q-this-month div:first-child, #print-area .q-last-month div:first-child{ font-size:15px !important; }
+    #print-area .q-this-month, #print-area .q-last-month{ font-size:8px; }
+    #print-area .q-this-month div:first-child, #print-area .q-last-month div:first-child{ font-size:11px !important; }
   }
 </style>
 </head>
@@ -451,7 +458,7 @@
 <template id="quality-category-template">
   <div class="table-wrap" style="margin-bottom:18px;">
     <table>
-      <thead><tr><th>구분</th><th>수량</th><th>양품수</th><th>건수</th><th>부적합율(ppm)</th></tr></thead>
+      <thead><tr><th>구분</th><th>검사수</th><th>양품수</th><th>부적합수</th><th>부적합율(ppm)</th></tr></thead>
       <tbody class="q-kpi-body"></tbody>
     </table>
   </div>
@@ -1433,10 +1440,10 @@ function renderCategoryMonthlyChart(panel, catKey){
   const prevM = computeCategoryMonthStats(catKey, prevYear, prevMonth);
   panel.querySelector(".q-this-month").innerHTML =
     `<div style="font-size:22px;font-weight:700;">${thisM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span></div>
-     <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${qualityYear}년 ${qualityMonth}월 · 수량 ${thisM.qty.toLocaleString()} · 건수 ${thisM.defect.toLocaleString()}</div>`;
+     <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${qualityYear}년 ${qualityMonth}월 · 검사수 ${thisM.qty.toLocaleString()} · 부적합수 ${thisM.defect.toLocaleString()}</div>`;
   panel.querySelector(".q-last-month").innerHTML =
     `<div style="font-size:22px;font-weight:700;">${prevM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span></div>
-     <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevYear}년 ${prevMonth}월 · 수량 ${prevM.qty.toLocaleString()} · 건수 ${prevM.defect.toLocaleString()}</div>`;
+     <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevYear}년 ${prevMonth}월 · 검사수 ${prevM.qty.toLocaleString()} · 부적합수 ${prevM.defect.toLocaleString()}</div>`;
 
   // 목표(ppm) 입력 연결
   const targetInput = panel.querySelector(".q-target-input");
@@ -1459,8 +1466,8 @@ function renderCategoryMonthlyChart(panel, catKey){
     <table style="min-width:820px;">
       <thead><tr><th style="text-align:left;">항목</th>${labels.map(l=>`<th>${l}</th>`).join("")}<th>합계</th></tr></thead>
       <tbody>
-        <tr><td style="text-align:left;">수량</td>${monthlyQty.map(v=>`<td>${v.toLocaleString()}</td>`).join("")}<td>${totalQty.toLocaleString()}</td></tr>
-        <tr><td style="text-align:left;">건수</td>${monthlyDefect.map(v=>`<td class="${v>0?'cell-defect':''}">${v.toLocaleString()}</td>`).join("")}<td>${totalDefect.toLocaleString()}</td></tr>
+        <tr><td style="text-align:left;">검사수</td>${monthlyQty.map(v=>`<td>${v.toLocaleString()}</td>`).join("")}<td>${totalQty.toLocaleString()}</td></tr>
+        <tr><td style="text-align:left;">부적합수</td>${monthlyDefect.map(v=>`<td class="${v>0?'cell-defect':''}">${v.toLocaleString()}</td>`).join("")}<td>${totalDefect.toLocaleString()}</td></tr>
         <tr><td style="text-align:left;">부적합율(ppm)</td>${monthlyPpm.map(v=>`<td>${v.toLocaleString()}</td>`).join("")}<td>${totalPpm.toLocaleString()}</td></tr>
       </tbody>
     </table>
@@ -1486,7 +1493,7 @@ function renderCategoryWeekly(panel, catKey){
   section.innerHTML = `
     <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 주차별 현황</div>
     <table style="width:100%;margin-bottom:14px;">
-      <thead><tr><th>주차</th><th>수량</th><th>건수</th><th>부적합율(ppm)</th></tr></thead>
+      <thead><tr><th>주차</th><th>검사수</th><th>부적합수</th><th>부적합율(ppm)</th></tr></thead>
       <tbody>${tableRows}</tbody>
     </table>
     <div class="q-weekly-chart"></div>
@@ -1554,7 +1561,7 @@ function renderCategoryDetailList(panel, catKey){
     <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역 (도번 ${rows.length}건, 부적합 합계 ${totalDefect}건)</div>
     <div style="overflow-x:auto;">
     <table style="min-width:560px;">
-      <thead><tr><th>도번</th><th>S/N</th><th>검사일</th><th>건수</th><th style="text-align:left;">불량 유형</th></tr></thead>
+      <thead><tr><th>도번</th><th>S/N</th><th>검사일</th><th>부적합수</th><th style="text-align:left;">불량 유형</th></tr></thead>
       <tbody>${tableRows}</tbody>
     </table>
     </div>
