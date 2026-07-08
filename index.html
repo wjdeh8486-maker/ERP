@@ -603,17 +603,38 @@ function computeStockPreShip(r){
 }
 
 function mainRenderStats(data){
-  const prod = data.filter(r=>computeProductStatus(r)==="생산").length;
-  const qc = data.filter(r=>(computeWaitMeasure(r)>0||computeWaitClean(r)>0||computeWaitVision(r)>0)).length;
-  const done = data.filter(r=>r.shipped==="납품완료").length;
+
+  const prod = data.filter(
+    r => computeProductStatus(r) === "생산"
+  ).length;
+
+  const done = data.filter(
+    r => computeProductStatus(r) === "완료"
+  ).length;
+
+  const qc = data.filter(r => {
+    const status = computeProductStatus(r);
+
+    return [
+      "재고",
+      "출고",
+      "측정",
+      "외관",
+      "비젼",
+      "OK"
+    ].includes(status);
+  }).length;
+
   const total = data.length || 1;
-  const pct = Math.round((done/total)*100);
+  const pct = Math.round((done / total) * 100);
+
   document.getElementById("main-statProd").textContent = prod;
   document.getElementById("main-statQc").textContent = qc;
   document.getElementById("main-statDone").textContent = done;
-  document.getElementById("main-statProgress").textContent = pct+"%";
-  document.getElementById("main-progressFill").style.width = pct+"%";
-  document.getElementById("main-progressDetail").textContent = `완료 ${done} / 전체 ${total}건`;
+  document.getElementById("main-statProgress").textContent = pct + "%";
+  document.getElementById("main-progressFill").style.width = pct + "%";
+  document.getElementById("main-progressDetail").textContent =
+    `완료 ${done} / 전체 ${total}건`;
 }
 function mainRenderTable(data){
   const tbody = document.getElementById("main-tableBody");
