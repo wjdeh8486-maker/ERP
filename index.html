@@ -276,7 +276,7 @@
     #print-area #sales-monthlyChart svg,
     #print-area #sales-expectedChart svg{ max-height:110px; }
     #print-area #sales-yoyChart svg{ max-height:150px; }
-    #print-area #sales-customerYearChart svg{ max-height:150px; max-width:180px; }
+    #print-area #sales-customerYearChart svg{ max-height:150px; }
     #print-area #sales-customerMonthChart svg{ max-height:140px; }
   }
 
@@ -605,7 +605,7 @@
 
         <!-- 최종납기 기준 예상매출 -->
         <div class="table-wrap" style="padding:16px;">
-          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">예상매출 현황 (최종납기 기준)</div>
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">예상매출 현황</div>
           <div id="sales-expectedKPI" style="margin-bottom:14px;overflow-x:auto;"></div>
           <div id="sales-expectedChart"></div>
           <div id="sales-expectedTable" style="margin-top:14px;overflow-x:auto;"></div>
@@ -2125,6 +2125,23 @@ function computeCustomerMonthlyStats(year){
   }
   return result;
 }
+// 고객사별 매출 비중을 한눈에 비교하기 쉽도록 가로 막대그래프로 표시 (폭 100% 채움)
+function drawCustomerBarChart(container, items, title){
+  const w = 860, barH = 34, gap = 16, padL = 110, padR = 90, padT = 10;
+  const maxV = Math.max(...items.map(it=>it.value), 1);
+  const h = padT + items.length*(barH+gap);
+  const bars = items.map((it,i)=>{
+    const y = padT + i*(barH+gap);
+    const bw = (it.value/maxV) * (w-padL-padR);
+    return `<text x="${padL-10}" y="${y+barH/2+5}" font-size="14" font-weight="700" text-anchor="end" fill="#1A1E27">${it.name}</text>
+      <rect x="${padL}" y="${y}" width="${Math.max(bw,2)}" height="${barH}" fill="${it.color}" rx="5"></rect>
+      <text x="${padL+bw+10}" y="${y+barH/2+5}" font-size="13" fill="#1A1E27">${it.value.toLocaleString()} (${it.share}%)</text>`;
+  }).join("");
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}</div>
+    <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="width:100%;height:auto;">${bars}</svg>
+  `;
+}
 function renderSalesCustomer(){
   const order = ["유진테크","알파플러스","엘티케이","기타"];
   const yearStats = computeCustomerYearStats(salesYear);
@@ -2142,10 +2159,12 @@ function renderSalesCustomer(){
     </table>
   `;
 
-  const pieItems = order
-    .filter(cust=>yearStats[cust].revenue>0)
-    .map(cust=>({ name:cust, value:yearStats[cust].revenue, color:SALES_CUSTOMER_COLORS[cust], valueLabel:fmtWon(yearStats[cust].revenue) }));
-  drawPieChart(document.getElementById("sales-customerYearChart"), pieItems, salesYear+"년 고객사별 매출 비중 (금액 단위: 만원)");
+  const barItems = order.map(cust=>{
+    const revenue = Math.round(yearStats[cust].revenue/10000);
+    const share = Math.round((yearStats[cust].revenue/totalRevenue)*1000)/10;
+    return { name:cust, value:revenue, share, color:SALES_CUSTOMER_COLORS[cust] };
+  });
+  drawCustomerBarChart(document.getElementById("sales-customerYearChart"), barItems, salesYear+"년 고객사별 매출 비중 (만원)");
 
   const monthly = computeCustomerMonthlyStats(salesYear);
   const series = order.map(cust=>({
@@ -2155,10 +2174,14 @@ function renderSalesCustomer(){
   }));
   drawMultiLineChart(document.getElementById("sales-customerMonthChart"), Array.from({length:12},(_,i)=>(i+1)+"월"), series, salesYear+"년 월별 고객사별 매출 추이(만원)");
 }
-// 최종납기 기준 예상매출 (아직 납품되지 않은 건도 최종납기 월에 포함되는 예측치)
+// 예상매출 = 이미 납품완료된 건은 실제 납품일자 기준 확정 매출을 그대로 쓰고,
+// 아직 납품되지 않은 건만 최종납기 월을 기준으로 예상치를 더합니다.
+// (완료건까지 최종납기로 잡으면 이미 확정된 매출이 실제 납품월이 아닌 예정월로 들어가
+//  실적과 어긋나므로, 완료/미완료를 구분해서 기준일을 다르게 적용합니다.)
 function getExpectedRowsForMonth(year, month){
   return (mainData||[]).filter(r=>{
-    const d = parseSalesDate(r.dueDate);
+    const isShipped = r.shipped === "납품완료";
+    const d = parseSalesDate(isShipped ? r.shipDate : r.dueDate);
     if(!d) return false;
     return d.getFullYear()===year && (month ? (d.getMonth()+1)===month : true);
   });
@@ -2187,7 +2210,7 @@ function renderSalesExpected(){
       <thead><tr><th style="text-align:left;">구분</th><th>예상매출(만원)</th><th>예상원가(만원)</th></tr></thead>
       <tbody>
         <tr style="font-weight:700;">
-          <td style="text-align:left;">${salesYear}년 전체 (최종납기 기준)</td>
+          <td style="text-align:left;">${salesYear}년 전체</td>
           <td>${fmtWon(stats.revenue)}</td>
           <td>${fmtWon(stats.cost)}</td>
         </tr>
@@ -2238,7 +2261,7 @@ function printSalesReport(){
     #print-area #sales-monthlyChart svg,
     #print-area #sales-expectedChart svg{ max-height:95px !important; }
     #print-area #sales-yoyChart svg{ max-height:125px !important; }
-    #print-area #sales-customerYearChart svg{ max-height:125px !important; max-width:150px !important; }
+    #print-area #sales-customerYearChart svg{ max-height:125px !important; }
     #print-area #sales-customerMonthChart svg{ max-height:115px !important; }
   `;
   document.head.appendChild(orientationStyle);
