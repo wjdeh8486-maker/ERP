@@ -2228,6 +2228,26 @@ function printSalesReport(){
       ${page2.innerHTML}
     </div>
   `;
+  // 매출현황 보고서만 가로(landscape)로 인쇄합니다. 인쇄가 끝나면 원래(세로) 설정으로 되돌립니다
+  // (품질분석/MAIN 인쇄는 그대로 세로를 사용).
+  const orientationStyle = document.createElement("style");
+  orientationStyle.id = "sales-print-orientation";
+  orientationStyle.textContent = `
+    @page{ size: A4 landscape; margin: 6mm; }
+    #print-area table{ font-size:8.5px; }
+    #print-area #sales-monthlyChart svg,
+    #print-area #sales-expectedChart svg{ max-height:95px !important; }
+    #print-area #sales-yoyChart svg{ max-height:125px !important; }
+    #print-area #sales-customerYearChart svg{ max-height:125px !important; max-width:150px !important; }
+    #print-area #sales-customerMonthChart svg{ max-height:115px !important; }
+  `;
+  document.head.appendChild(orientationStyle);
+  function restoreOrientation(){
+    const el = document.getElementById("sales-print-orientation");
+    if(el) el.remove();
+    window.removeEventListener("afterprint", restoreOrientation);
+  }
+  window.addEventListener("afterprint", restoreOrientation);
   window.print();
 }
 document.getElementById("sales-printBtn").addEventListener("click", printSalesReport);
