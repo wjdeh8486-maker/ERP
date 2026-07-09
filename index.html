@@ -269,6 +269,15 @@
     #print-area .q-target-row{ display:none !important; }
     #print-area .q-this-month, #print-area .q-last-month{ font-size:8px; }
     #print-area .q-this-month div:first-child, #print-area .q-last-month div:first-child{ font-size:11px !important; }
+    /* 매출현황 인쇄: 표의 min-width를 해제하고 차트 높이를 제한해 세로(portrait) 2페이지에 맞춥니다. */
+    #print-area #sales-monthlyTable table,
+    #print-area #sales-expectedTable table{ min-width:0 !important; font-size:7.2px; }
+    #print-area #sales-monthlyTable, #print-area #sales-expectedTable{ overflow:visible !important; }
+    #print-area #sales-monthlyChart svg,
+    #print-area #sales-expectedChart svg{ max-height:110px; }
+    #print-area #sales-yoyChart svg{ max-height:150px; }
+    #print-area #sales-customerYearChart svg{ max-height:150px; max-width:180px; }
+    #print-area #sales-customerMonthChart svg{ max-height:140px; }
   }
 
   /* =========================================================
@@ -553,46 +562,54 @@
       </div>
       <div class="progress-label" id="sales-rangeLabel" style="margin:4px 0 12px;"></div>
 
-      <div class="table-wrap" style="margin-bottom:18px;">
-        <table>
-          <thead><tr><th>구분</th><th>매출(만원)</th><th>원가(만원)</th></tr></thead>
-          <tbody id="sales-kpiBody"></tbody>
-        </table>
+      <div id="sales-print-page1">
+        <div class="table-wrap" style="margin-bottom:18px;">
+          <table>
+            <thead><tr><th>구분</th><th>매출(만원)</th><th>원가(만원)</th></tr></thead>
+            <tbody id="sales-kpiBody"></tbody>
+          </table>
+        </div>
+
+        <div class="summary-row" style="margin-bottom:18px;">
+          <div class="stat-card"><div class="label" style="color:var(--text-mute);">이번달 실적(만원)</div><div id="sales-thisMonth" style="margin-top:6px;"></div></div>
+          <div class="stat-card"><div class="label" style="color:var(--text-mute);">저번달 실적(만원)</div><div id="sales-lastMonth" style="margin-top:6px;"></div></div>
+        </div>
+
+        <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+          <div id="sales-monthlyChart"></div>
+          <div id="sales-monthlyTable" style="margin-top:14px;overflow-x:auto;"></div>
+        </div>
+
+        <!-- 고객사별 매출 비중/금액 -->
+        <div class="table-wrap" style="padding:16px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">고객사별 매출 현황 (유진테크 / 알파플러스 / 엘티케이 / 기타)</div>
+          <div id="sales-customerTable" style="margin-bottom:14px;overflow-x:auto;"></div>
+          <div id="sales-customerYearChart"></div>
+        </div>
       </div>
 
-      <div class="summary-row" style="margin-bottom:18px;">
-        <div class="stat-card"><div class="label" style="color:var(--text-mute);">이번달 실적(만원)</div><div id="sales-thisMonth" style="margin-top:6px;"></div></div>
-        <div class="stat-card"><div class="label" style="color:var(--text-mute);">저번달 실적(만원)</div><div id="sales-lastMonth" style="margin-top:6px;"></div></div>
-      </div>
+      <div id="sales-print-page2">
+        <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">고객사별 월별 매출 추이</div>
+          <div id="sales-customerMonthChart" style="overflow-x:auto;"></div>
+        </div>
 
-      <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
-        <div id="sales-monthlyChart"></div>
-        <div id="sales-monthlyTable" style="margin-top:14px;overflow-x:auto;"></div>
-      </div>
+        <!-- 연도별 매출 변화 -->
+        <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+          <div id="sales-yoyChart" style="overflow-x:auto;"></div>
+        </div>
+        <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">연도별 비교 요약 (2023년~)</div>
+          <div id="sales-yoySummary" style="overflow-x:auto;"></div>
+        </div>
 
-      <!-- 고객사별 매출 비중/금액 -->
-      <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
-        <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">고객사별 매출 현황 (유진테크 / 알파플러스 / 엘티케이 / 기타)</div>
-        <div id="sales-customerTable" style="margin-bottom:14px;overflow-x:auto;"></div>
-        <div id="sales-customerYearChart" style="margin-bottom:14px;"></div>
-        <div id="sales-customerMonthChart" style="overflow-x:auto;"></div>
-      </div>
-
-      <!-- 연도별 매출 변화 -->
-      <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
-        <div id="sales-yoyChart" style="overflow-x:auto;"></div>
-      </div>
-      <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
-        <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">연도별 비교 요약 (2023년~)</div>
-        <div id="sales-yoySummary" style="overflow-x:auto;"></div>
-      </div>
-
-      <!-- 최종납기 기준 예상매출 -->
-      <div class="table-wrap" style="padding:16px;">
-        <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">예상매출 현황 (최종납기 기준)</div>
-        <div id="sales-expectedKPI" style="margin-bottom:14px;overflow-x:auto;"></div>
-        <div id="sales-expectedChart"></div>
-        <div id="sales-expectedTable" style="margin-top:14px;overflow-x:auto;"></div>
+        <!-- 최종납기 기준 예상매출 -->
+        <div class="table-wrap" style="padding:16px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">예상매출 현황 (최종납기 기준)</div>
+          <div id="sales-expectedKPI" style="margin-bottom:14px;overflow-x:auto;"></div>
+          <div id="sales-expectedChart"></div>
+          <div id="sales-expectedTable" style="margin-top:14px;overflow-x:auto;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -611,7 +628,7 @@
   <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
     <div class="q-target-row" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
       <span style="font-size:13px;color:var(--text-mute);">목표(ppm):</span>
-      <input type="number" class="q-target-input" style="width:110px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;" placeholder="예: 1000">
+      <input type="number" class="q-target-input" style="width:110px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;" placeholder="예: 10000">
       <button class="btn-plain q-target-apply">적용</button>
     </div>
     <div class="q-monthly-chart"></div>
@@ -1400,7 +1417,7 @@ const QUALITY_CATEGORIES = {
 };
 const QUALITY_YEARS = [2023,2024,2025,2026];
 let qualityRawData = {};
-let qualityTargets = { process:1000, incoming:1000, shipping:1000 };
+let qualityTargets = { process:10000, incoming:10000, shipping:10000 };
 let qualityYear = 2026;
 let qualityMonth = 12;
 function parseQualityDate(v){
@@ -2199,11 +2216,16 @@ function renderSalesAll(){
 }
 function printSalesReport(){
   renderSalesAll();
-  const panel = document.getElementById("view-sales");
+  const page1 = document.getElementById("sales-print-page1");
+  const page2 = document.getElementById("sales-print-page2");
   document.getElementById("print-area").innerHTML = `
     <div class="q-report-page">
-      <h2>매출현황 보고서 · ${salesYear}년</h2>
-      ${panel.innerHTML}
+      <h2>매출현황 보고서 · ${salesYear}년 (1/2)</h2>
+      ${page1.innerHTML}
+    </div>
+    <div class="q-report-page">
+      <h2>매출현황 보고서 · ${salesYear}년 (2/2)</h2>
+      ${page2.innerHTML}
     </div>
   `;
   window.print();
