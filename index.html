@@ -565,7 +565,7 @@
       <div id="sales-print-page1">
         <div class="table-wrap" style="margin-bottom:18px;">
           <table>
-            <thead><tr><th>구분</th><th>매출(만원)</th><th>소재및외주(만원)</th></tr></thead>
+            <thead><tr><th>구분</th><th>매출(만원)</th><th>소재및외주(만원)</th><th>순이익(만원)</th><th>이익률(%)</th></tr></thead>
             <tbody id="sales-kpiBody"></tbody>
           </table>
         </div>
@@ -1891,8 +1891,9 @@ function parseSalesDate(v){
 function computeRowSales(r){
   const qty = Number(r.qty)||0;
   const unitPrice = Number(r.unitPrice)||0;
-  const cost = (Number(r.materialCost)||0) + (Number(r.vendorCost)||0) + (Number(r.deburrCost)||0) + (Number(r.processCost)||0);
+  const unitCost = (Number(r.materialCost)||0) + (Number(r.vendorCost)||0) + (Number(r.deburrCost)||0) + (Number(r.processCost)||0);
   const revenue = unitPrice * qty;
+  const cost = unitCost * qty;
   return { revenue, cost, profit: revenue - cost };
 }
 function getSalesRowsForMonth(year, month){
@@ -1968,43 +1969,64 @@ function drawMultiLineChart(container, labels, series, title){
     </svg>
   `;
 }
-// 연도별 매출(만원) 변화: 막대(금액) + 꺾은선(추세)을 함께 그려 변화를 한눈에 보여줍니다.
-function drawYearRevenueBarChart(container, years, revenues, title){
-  const barW = 46, groupGap = 40;
+// 연도별 매출/순이익(만원) 변화: 매출·순이익을 각각 막대로 나란히 그리고, 두 막대 위로
+// 꺾은선(추세)을 얹어서 변화 흐름까지 한눈에 보여줍니다.
+function drawYearRevenueBarChart(container, years, revenues, profits, title){
+  const barW = 34, barGap = 8, groupGap = 40;
   const padL = 60, padR = 20, padT = 36, padB = 34;
-  const groupW = barW;
+  const groupW = barW*2 + barGap;
   const w = Math.max(700, padL + padR + years.length*groupW + (years.length-1)*groupGap);
   const h = 240;
-  const maxV = Math.max(...revenues, 10);
-  function yFor(v){ return padT + (h-padT-padB) * (1 - v/maxV); }
-  const baseY = padT + (h-padT-padB);
+  const maxV = Math.max(...revenues, ...profits.map(v=>Math.abs(v)), 10);
+  const minV = Math.min(0, ...profits);
+  const range = (maxV - minV) || 1;
+  function yFor(v){ return padT + (h-padT-padB) * (1 - (v-minV)/range); }
+  const baseY = yFor(0);
   let bars = "";
-  const points = [];
+  const revPoints = [], profPoints = [];
   years.forEach((y,i)=>{
     const groupX = padL + i*(groupW+groupGap);
-    const rev = revenues[i];
+    const rev = revenues[i], prof = profits[i];
+    const profColor = prof>=0 ? "#2E7D46" : "#B23A3A";
+
     const revY = yFor(rev), revH = Math.max(baseY-revY,1);
-    bars += `<rect x="${groupX}" y="${revY}" width="${barW}" height="${revH}" fill="#0B5CAB" rx="3" opacity="0.85"></rect>`;
-    bars += `<text x="${groupX+barW/2}" y="${h-10}" font-size="13" font-weight="700" text-anchor="middle" fill="#1A1E27">${y}년</text>`;
-    points.push([groupX+barW/2, revY]);
+    bars += `<rect x="${groupX}" y="${revY}" width="${barW}" height="${revH}" fill="#0B5CAB" rx="3" opacity="0.9"></rect>`;
+
+    const profX = groupX + barW + barGap;
+    const profY = yFor(prof), profH = Math.max(Math.abs(baseY-profY),1);
+    bars += `<rect x="${profX}" y="${Math.min(profY,baseY)}" width="${barW}" height="${profH}" fill="${profColor}" rx="3" opacity="0.9"></rect>`;
+
+    bars += `<text x="${groupX+groupW/2}" y="${h-10}" font-size="13" font-weight="700" text-anchor="middle" fill="#1A1E27">${y}년</text>`;
+    revPoints.push([groupX+barW/2, revY]);
+    profPoints.push([profX+barW/2, profY]);
   });
-  // 막대 위쪽 값(매출)을 그대로 이어서 그리는 추세선 - 증감 흐름이 한눈에 보입니다.
-  const linePath = points.map((p,i)=>(i===0?"M":"L")+p[0]+","+p[1]).join(" ");
-  let lineMarkers = "";
-  points.forEach((p,i)=>{
-    lineMarkers += `<circle cx="${p[0]}" cy="${p[1]}" r="4.5" fill="#fff" stroke="#E02424" stroke-width="2.5"></circle>`;
-    lineMarkers += `<text x="${p[0]}" y="${p[1]-11}" font-size="12" font-weight="700" text-anchor="middle" fill="#E02424">${Math.round(revenues[i]).toLocaleString()}</text>`;
+  // 막대 위쪽 값을 그대로 이어서 그리는 추세선 (매출=빨강, 순이익=초록)
+  const revLinePath = revPoints.map((p,i)=>(i===0?"M":"L")+p[0]+","+p[1]).join(" ");
+  const profLinePath = profPoints.map((p,i)=>(i===0?"M":"L")+p[0]+","+p[1]).join(" ");
+  let revMarkers = "", profMarkers = "";
+  revPoints.forEach((p,i)=>{
+    revMarkers += `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="#fff" stroke="#E02424" stroke-width="2.5"></circle>`;
+    revMarkers += `<text x="${p[0]}" y="${p[1]-10}" font-size="11.5" font-weight="700" text-anchor="middle" fill="#E02424">${Math.round(revenues[i]).toLocaleString()}</text>`;
+  });
+  profPoints.forEach((p,i)=>{
+    const profColor = profits[i]>=0 ? "#2E7D46" : "#B23A3A";
+    profMarkers += `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="#fff" stroke="${profColor}" stroke-width="2.5"></circle>`;
+    profMarkers += `<text x="${p[0]}" y="${profits[i]>=0?p[1]-10:p[1]+16}" font-size="11.5" font-weight="700" text-anchor="middle" fill="${profColor}">${Math.round(profits[i]).toLocaleString()}</text>`;
   });
   container.innerHTML = `
     <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}
       <span style="margin-left:10px;color:#0B5CAB;">■ 매출(막대)</span>
-      <span style="margin-left:8px;color:#E02424;">● 추세(꺾은선)</span>
+      <span style="margin-left:8px;color:#2E7D46;">■ 순이익(막대)</span>
+      <span style="margin-left:8px;color:#E02424;">● 매출 추세</span>
+      <span style="margin-left:8px;color:#2E7D46;">● 순이익 추세</span>
     </div>
     <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="width:100%;height:auto;">
       <line x1="${padL-10}" y1="${baseY}" x2="${w-padR+10}" y2="${baseY}" stroke="#DDE1E8"></line>
       ${bars}
-      <path d="${linePath}" fill="none" stroke="#E02424" stroke-width="2.5"></path>
-      ${lineMarkers}
+      <path d="${revLinePath}" fill="none" stroke="#E02424" stroke-width="2.5"></path>
+      ${revMarkers}
+      <path d="${profLinePath}" fill="none" stroke="#2E7D46" stroke-width="2.5" stroke-dasharray="5,4"></path>
+      ${profMarkers}
     </svg>
   `;
 }
@@ -2049,6 +2071,8 @@ function renderSalesKPI(){
       <td style="text-align:left;">${salesYear}년 전체</td>
       <td>${fmtWon(stats.revenue)}</td>
       <td>${fmtWon(stats.cost)}</td>
+      <td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td>
+      <td class="${stats.profit>=0?'rev-good':'rev-bad'}">${stats.margin}%</td>
     </tr>
   `;
 }
@@ -2063,6 +2087,8 @@ function renderSalesMonthly(){
       <tbody>
         <tr><td style="text-align:left;">매출(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.revenue)}</td>`).join("")}<td>${fmtWon(stats.revenue)}</td></tr>
         <tr><td style="text-align:left;">소재및외주(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
+        <tr><td style="text-align:left;">순이익(만원)</td>${stats.monthly.map(m=>`<td class="${m.profit>=0?'rev-good':'rev-bad'}">${fmtWon(m.profit)}</td>`).join("")}<td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td></tr>
+        <tr><td style="text-align:left;">이익률(%)</td>${stats.monthly.map(m=>`<td class="${m.profit>=0?'rev-good':'rev-bad'}">${m.margin}%</td>`).join("")}<td class="${stats.profit>=0?'rev-good':'rev-bad'}">${stats.margin}%</td></tr>
       </tbody>
     </table>
   `;
@@ -2084,11 +2110,11 @@ function renderSalesMonthly(){
   const changeSign = changePct>0 ? "+" : "";
   document.getElementById("sales-thisMonth").innerHTML = `
     <div style="font-size:22px;font-weight:700;">${fmtWon(thisM.revenue)} <span class="q-change-badge">변동 ${changeSign}${changePct}%</span></div>
-    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${salesYear}년 ${curMonth}월 · 소재및외주 ${fmtWon(thisM.cost)}</div>
+    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${salesYear}년 ${curMonth}월 · 소재및외주 ${fmtWon(thisM.cost)} · 순이익 <span class="${thisM.profit>=0?'rev-good':'rev-bad'}">${fmtWon(thisM.profit)}</span> (${thisM.margin}%)</div>
   `;
   document.getElementById("sales-lastMonth").innerHTML = `
     <div style="font-size:22px;font-weight:700;">${fmtWon(prevM.revenue)}</div>
-    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevLabel} · 소재및외주 ${fmtWon(prevM.cost)}</div>
+    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevLabel} · 소재및외주 ${fmtWon(prevM.cost)} · 순이익 <span class="${prevM.profit>=0?'rev-good':'rev-bad'}">${fmtWon(prevM.profit)}</span> (${prevM.margin}%)</div>
   `;
 }
 // 2023년~2026년(고정) 연도별 매출 막대그래프 + 비교 요약표
@@ -2099,22 +2125,27 @@ function renderSalesYoY(){
     document.getElementById("sales-yoyChart"),
     years,
     statsByYear.map(s=>Math.round(s.revenue/10000)),
-    "연도별 매출 변화(만원)"
+    statsByYear.map(s=>Math.round(s.profit/10000)),
+    "연도별 매출/순이익 변화(만원)"
   );
   let rowsHtml = "";
   years.forEach((y,i)=>{
     const cur = statsByYear[i];
     const prev = i>0 ? statsByYear[i-1] : null;
     const revChange = prev && prev.revenue>0 ? Math.round(((cur.revenue-prev.revenue)/prev.revenue)*1000)/10 : null;
+    const profChange = prev && prev.profit>0 ? Math.round(((cur.profit-prev.profit)/prev.profit)*1000)/10 : null;
     rowsHtml += `<tr>
       <td style="text-align:left;">${y}년</td>
       <td>${fmtWon(cur.revenue)}</td>
+      <td class="${cur.profit>=0?'rev-good':'rev-bad'}">${fmtWon(cur.profit)}</td>
+      <td class="${cur.profit>=0?'rev-good':'rev-bad'}">${cur.margin}%</td>
       <td class="${revChange===null?'':(revChange>=0?'rev-good':'rev-bad')}">${revChange===null?'-':(revChange>=0?'+':'')+revChange+'%'}</td>
+      <td class="${profChange===null?'':(profChange>=0?'rev-good':'rev-bad')}">${profChange===null?'-':(profChange>=0?'+':'')+profChange+'%'}</td>
     </tr>`;
   });
   document.getElementById("sales-yoySummary").innerHTML = `
-    <table style="width:100%;min-width:420px;">
-      <thead><tr><th style="text-align:left;">연도</th><th>매출(만원)</th><th>매출 증감률</th></tr></thead>
+    <table style="width:100%;min-width:640px;">
+      <thead><tr><th style="text-align:left;">연도</th><th>매출(만원)</th><th>순이익(만원)</th><th>이익률(%)</th><th>매출 증감률</th><th>순이익 증감률</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
   `;
@@ -2208,7 +2239,9 @@ function computeMonthExpectedStats(year, month){
   const rows = getExpectedRowsForMonth(year, month);
   let revenue=0, cost=0;
   rows.forEach(r=>{ const s = computeRowSales(r); revenue += s.revenue; cost += s.cost; });
-  return { revenue, cost, profit: revenue-cost, count: rows.length };
+  const profit = revenue - cost;
+  const margin = revenue>0 ? Math.round((profit/revenue)*1000)/10 : 0;
+  return { revenue, cost, profit, margin, count: rows.length };
 }
 function computeYearExpectedStats(year){
   let revenue=0, cost=0, count=0;
@@ -2218,19 +2251,23 @@ function computeYearExpectedStats(year){
     monthly.push(s);
     revenue += s.revenue; cost += s.cost; count += s.count;
   }
-  return { revenue, cost, profit: revenue-cost, monthly, count };
+  const profit = revenue - cost;
+  const margin = revenue>0 ? Math.round((profit/revenue)*1000)/10 : 0;
+  return { revenue, cost, profit, margin, monthly, count };
 }
 function renderSalesExpected(){
   const stats = computeYearExpectedStats(salesYear);
   const labels = Array.from({length:12},(_,i)=>(i+1)+"월");
   document.getElementById("sales-expectedKPI").innerHTML = `
     <table style="width:100%;min-width:420px;">
-      <thead><tr><th style="text-align:left;">구분</th><th>예상매출(만원)</th><th>예상 소재및외주(만원)</th></tr></thead>
+      <thead><tr><th style="text-align:left;">구분</th><th>예상매출(만원)</th><th>예상 소재및외주(만원)</th><th>예상순이익(만원)</th><th>예상이익률(%)</th></tr></thead>
       <tbody>
         <tr style="font-weight:700;">
           <td style="text-align:left;">${salesYear}년 전체</td>
           <td>${fmtWon(stats.revenue)}</td>
           <td>${fmtWon(stats.cost)}</td>
+          <td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td>
+          <td class="${stats.profit>=0?'rev-good':'rev-bad'}">${stats.margin}%</td>
         </tr>
       </tbody>
     </table>
@@ -2242,6 +2279,8 @@ function renderSalesExpected(){
       <tbody>
         <tr><td style="text-align:left;">예상매출(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.revenue)}</td>`).join("")}<td>${fmtWon(stats.revenue)}</td></tr>
         <tr><td style="text-align:left;">예상 소재및외주(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
+        <tr><td style="text-align:left;">예상순이익(만원)</td>${stats.monthly.map(m=>`<td class="${m.profit>=0?'rev-good':'rev-bad'}">${fmtWon(m.profit)}</td>`).join("")}<td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td></tr>
+        <tr><td style="text-align:left;">예상이익률(%)</td>${stats.monthly.map(m=>`<td class="${m.profit>=0?'rev-good':'rev-bad'}">${m.margin}%</td>`).join("")}<td class="${stats.profit>=0?'rev-good':'rev-bad'}">${stats.margin}%</td></tr>
       </tbody>
     </table>
   `;
