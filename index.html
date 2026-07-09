@@ -122,7 +122,9 @@
   .cal-cell .cal-date{font-weight:700;font-size:12px;margin-bottom:3px;color:var(--text);}
   .cal-cell.sun .cal-date{color:var(--red);}
   .cal-cell.sat .cal-date{color:var(--blue);}
-  .cal-cell .cal-item{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 4px;margin-bottom:3px;}
+  .cal-cell .cal-item{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 18px 2px 4px;margin-bottom:3px;position:relative;}
+  .cal-item-remove{position:absolute;right:3px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-mute);font-weight:700;font-size:13px;line-height:1;padding:2px 4px;border-radius:3px;}
+  .cal-item-remove:hover{color:#fff;background:var(--red);}
   .cal-cell .cal-item b{color:var(--red);}
   .sync-toggle{font-size:12px;color:#cbd3e1;cursor:pointer;text-decoration:underline;white-space:nowrap;}
   .quick-links{display:flex;gap:6px;flex-wrap:wrap;}
@@ -292,6 +294,7 @@
     #print-area .cal-cell.has-items{ min-height:60px; }
     #print-area .cal-cell .cal-date{ font-size:9px; }
     #print-area .cal-cell .cal-item{ font-size:7.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #print-area .cal-item-remove{ display:none !important; }
     /* 표에 걸려있던 min-width를 해제해 A4 폭에 맞춰 표가 줄어들도록(가로 스크롤 없이) 합니다. */
     #print-area .q-monthly-table table,
     #print-area .q-detail-section table{ min-width:0 !important; font-size:7.5px; }
@@ -513,7 +516,8 @@
           <button type="button" id="main-calPrev">◀</button>
           <span id="main-calMonthLabel"></span>
           <button type="button" id="main-calNext">▶</button>
-          <span style="font-size:12px;color:var(--text-mute);margin-left:8px;">※ 완료 건은 제외하고, 최종납기일 기준으로 표시합니다.</span>
+          <span style="font-size:12px;color:var(--text-mute);margin-left:8px;">※ 완료·출고 건은 제외하고, 최종납기일 기준으로 표시합니다.</span>
+          <button type="button" id="main-calRestoreBtn" class="btn-plain" title="지우기(×)로 숨긴 항목을 다시 표시합니다">숨긴 항목 복원</button>
           <button type="button" id="main-calPrintBtn" class="btn-plain" style="margin-left:auto;">인쇄</button>
           <button type="button" id="main-calClose" class="btn-plain">닫기</button>
         </div>
@@ -1112,13 +1116,17 @@ document.getElementById("main-searchBtn").addEventListener("click", mainApplySea
 document.getElementById("main-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") mainApplySearch(); });
 
 /* ============ MAIN 최종납기 달력보기 ============
-   검색어(있으면)와 일치하고, 완료 건은 제외한 항목들을 최종납기일 기준으로
-   달력에 뿌려줍니다. 각 날짜 칸에는 PROJECT NO / ORDER NO / 수량을 표시합니다. */
+   검색어(있으면)와 일치하고, 완료·출고 건은 제외한 항목들을 최종납기일 기준으로
+   달력에 뿌려줍니다. 각 날짜 칸에는 기존도번 / ORDER NO / 수량을 표시합니다. */
 let mainCalendarOpen = false;
 let mainCalendarDate = new Date();
+let mainCalendarDismissed = new Set(); // 달력에서 "지우기"로 숨긴 항목의 ORDER NO (화면 표시만 숨기며, 원본 데이터는 바뀌지 않습니다)
 function mainGetCalendarRows(){
   let rows = mainGetFilteredBase();
-  rows = rows.filter(r=>computeProductStatus(r) !== "완료");
+  rows = rows.filter(r=>{
+    const s = computeProductStatus(r);
+    return s !== "완료" && s !== "출고" && !mainCalendarDismissed.has(r.orderNo);
+  });
   return rows;
 }
 function renderMainCalendar(){
@@ -1154,7 +1162,7 @@ function renderMainCalendar(){
     const dow = (firstDow + (day-1)) % 7;
     const dowClass = dow===0 ? 'sun' : (dow===6 ? 'sat' : '');
     const itemsHtml = items.map(r=>
-      `<div class="cal-item"><b>${r.oldDrawingNo||'-'}</b> · ${r.orderNo} · 수량 ${r.qty}</div>`
+      `<div class="cal-item"><b>${r.oldDrawingNo||'-'}</b> · ${r.orderNo} · 수량 ${r.qty}<span class="cal-item-remove" data-order="${r.orderNo}" title="이 항목을 달력에서 숨기기">×</span></div>`
     ).join("");
     html += `<div class="cal-cell ${items.length?'has-items':''} ${isToday?'today':''} ${dowClass?'weekend '+dowClass:''}">
       <div class="cal-date">${day}</div>
@@ -1164,6 +1172,16 @@ function renderMainCalendar(){
 
   document.getElementById("main-calendarGrid").innerHTML = html;
 }
+document.getElementById("main-calRestoreBtn").addEventListener("click", ()=>{
+  mainCalendarDismissed.clear();
+  renderMainCalendar();
+});
+document.getElementById("main-calendarGrid").addEventListener("click", (e)=>{
+  const btn = e.target.closest(".cal-item-remove");
+  if(!btn) return;
+  const orderNo = btn.dataset.order;
+  if(orderNo){ mainCalendarDismissed.add(orderNo); renderMainCalendar(); }
+});
 document.getElementById("main-calendarBtn").addEventListener("click", ()=>{
   mainCalendarOpen = !mainCalendarOpen;
   document.getElementById("main-calendarPanel").style.display = mainCalendarOpen ? "block" : "none";
@@ -1195,21 +1213,26 @@ document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
   orientationStyle.id = "main-cal-print-orientation";
   orientationStyle.textContent = `
     @page{ size: A4 landscape; margin: 8mm; }
-    #print-area{ height:auto; }
-    #print-area h2{ font-size:18px !important; margin:0 0 8px !important; }
+    #print-area{
+      display:flex !important; flex-direction:column !important;
+      height:100vh !important;
+    }
+    #print-area h2{ flex:none; font-size:18px !important; margin:0 0 8px !important; }
     #print-area .calendar-grid{
-      display:grid !important; grid-template-columns:repeat(7,1fr) !important;
-      grid-auto-rows:min-content !important; gap:5px !important;
+      display:grid !important; flex:1 !important; min-height:0 !important;
+      grid-template-columns:repeat(7,1fr) !important;
+      grid-auto-rows:minmax(min-content,1fr) !important; gap:6px !important;
       width:100%;
     }
     #print-area .cal-dow{ font-size:13px !important; padding:6px 0 !important; }
     #print-area .cal-cell{
       min-height:34px !important; max-height:none !important; overflow:visible !important;
-      font-size:10.5px !important; padding:4px 6px !important;
+      font-size:11px !important; padding:5px 7px !important;
     }
-    #print-area .cal-cell.has-items{ min-height:95px !important; padding:6px 7px !important; }
-    #print-area .cal-cell .cal-date{ font-size:12px !important; }
-    #print-area .cal-cell .cal-item{ font-size:9.5px !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; }
+    #print-area .cal-cell.has-items{ min-height:95px !important; }
+    #print-area .cal-cell .cal-date{ font-size:12.5px !important; }
+    #print-area .cal-cell .cal-item{ font-size:10px !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; }
+    #print-area .cal-item-remove{ display:none !important; }
   `;
   document.head.appendChild(orientationStyle);
   function restoreOrientation(){
