@@ -555,14 +555,14 @@
 
       <div class="table-wrap" style="margin-bottom:18px;">
         <table>
-          <thead><tr><th>구분</th><th>매출</th><th>원가</th><th>순이익</th><th>이익률(%)</th></tr></thead>
+          <thead><tr><th>구분</th><th>매출(만원)</th><th>원가(만원)</th></tr></thead>
           <tbody id="sales-kpiBody"></tbody>
         </table>
       </div>
 
       <div class="summary-row" style="margin-bottom:18px;">
-        <div class="stat-card"><div class="label" style="color:var(--text-mute);">이번달 실적</div><div id="sales-thisMonth" style="margin-top:6px;"></div></div>
-        <div class="stat-card"><div class="label" style="color:var(--text-mute);">저번달 실적</div><div id="sales-lastMonth" style="margin-top:6px;"></div></div>
+        <div class="stat-card"><div class="label" style="color:var(--text-mute);">이번달 실적(만원)</div><div id="sales-thisMonth" style="margin-top:6px;"></div></div>
+        <div class="stat-card"><div class="label" style="color:var(--text-mute);">저번달 실적(만원)</div><div id="sales-lastMonth" style="margin-top:6px;"></div></div>
       </div>
 
       <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
@@ -572,13 +572,13 @@
 
       <!-- 고객사별 매출 비중/금액 -->
       <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
-        <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">고객사별 매출 현황 (F열 고객사 기준)</div>
+        <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">고객사별 매출 현황 (유진테크 / 알파플러스 / 엘티케이 / 기타)</div>
         <div id="sales-customerTable" style="margin-bottom:14px;overflow-x:auto;"></div>
         <div id="sales-customerYearChart" style="margin-bottom:14px;"></div>
         <div id="sales-customerMonthChart" style="overflow-x:auto;"></div>
       </div>
 
-      <!-- 연도별 매출/순이익 변화 -->
+      <!-- 연도별 매출 변화 -->
       <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
         <div id="sales-yoyChart" style="overflow-x:auto;"></div>
       </div>
@@ -1891,7 +1891,7 @@ function computeYearSalesStats(year){
   return { revenue, cost, profit, margin, count, monthly };
 }
 function fmtWon(n){
-  return Math.round(n||0).toLocaleString() + "원";
+  return Math.round((n||0)/10000).toLocaleString();
 }
 function renderSalesYearButtons(){
   const wrap = document.getElementById("sales-yearBtns");
@@ -1933,40 +1933,77 @@ function drawMultiLineChart(container, labels, series, title){
     </svg>
   `;
 }
-// 연도별 매출/순이익을 나란히 비교하는 막대그래프 (파랑=매출, 초록/빨강=순이익)
-function drawYearBarChart(container, years, revenues, profits, title){
-  const barW = 34, barGap = 10, groupGap = 46;
-  const padL = 60, padR = 20, padT = 30, padB = 34;
-  const groupW = barW*2 + barGap;
+// 연도별 매출(만원) 변화: 막대(금액) + 꺾은선(추세)을 함께 그려 변화를 한눈에 보여줍니다.
+function drawYearRevenueBarChart(container, years, revenues, title){
+  const barW = 46, groupGap = 40;
+  const padL = 60, padR = 20, padT = 36, padB = 34;
+  const groupW = barW;
   const w = Math.max(700, padL + padR + years.length*groupW + (years.length-1)*groupGap);
   const h = 240;
-  const minV = Math.min(0, ...profits);
-  const maxV = Math.max(...revenues, ...profits, 10);
-  const range = (maxV - minV) || 1;
-  const zeroY = padT + (h-padT-padB) * (1 - (0-minV)/range);
-  function yFor(v){ return padT + (h-padT-padB) * (1 - (v-minV)/range); }
+  const maxV = Math.max(...revenues, 10);
+  function yFor(v){ return padT + (h-padT-padB) * (1 - v/maxV); }
+  const baseY = padT + (h-padT-padB);
   let bars = "";
+  const points = [];
   years.forEach((y,i)=>{
     const groupX = padL + i*(groupW+groupGap);
-    const rev = revenues[i], prof = profits[i];
-    const revY = yFor(rev), revH = Math.max(Math.abs(zeroY-revY),1);
-    const profY = yFor(prof), profH = Math.max(Math.abs(zeroY-profY),1);
-    const profColor = prof>=0 ? "#2E7D46" : "#E02424";
-    bars += `<rect x="${groupX}" y="${Math.min(revY,zeroY)}" width="${barW}" height="${revH}" fill="#0B5CAB" rx="3"></rect>`;
-    bars += `<text x="${groupX+barW/2}" y="${revY-6}" font-size="10.5" text-anchor="middle" fill="#0B5CAB">${Math.round(rev).toLocaleString()}</text>`;
-    bars += `<rect x="${groupX+barW+barGap}" y="${Math.min(profY,zeroY)}" width="${barW}" height="${profH}" fill="${profColor}" rx="3"></rect>`;
-    bars += `<text x="${groupX+barW+barGap+barW/2}" y="${prof>=0?profY-6:profY+14}" font-size="10.5" text-anchor="middle" fill="${profColor}">${Math.round(prof).toLocaleString()}</text>`;
-    bars += `<text x="${groupX+groupW/2}" y="${h-10}" font-size="13" font-weight="700" text-anchor="middle" fill="#1A1E27">${y}년</text>`;
+    const rev = revenues[i];
+    const revY = yFor(rev), revH = Math.max(baseY-revY,1);
+    bars += `<rect x="${groupX}" y="${revY}" width="${barW}" height="${revH}" fill="#0B5CAB" rx="3" opacity="0.85"></rect>`;
+    bars += `<text x="${groupX+barW/2}" y="${h-10}" font-size="13" font-weight="700" text-anchor="middle" fill="#1A1E27">${y}년</text>`;
+    points.push([groupX+barW/2, revY]);
+  });
+  // 막대 위쪽 값(매출)을 그대로 이어서 그리는 추세선 - 증감 흐름이 한눈에 보입니다.
+  const linePath = points.map((p,i)=>(i===0?"M":"L")+p[0]+","+p[1]).join(" ");
+  let lineMarkers = "";
+  points.forEach((p,i)=>{
+    lineMarkers += `<circle cx="${p[0]}" cy="${p[1]}" r="4.5" fill="#fff" stroke="#E02424" stroke-width="2.5"></circle>`;
+    lineMarkers += `<text x="${p[0]}" y="${p[1]-11}" font-size="12" font-weight="700" text-anchor="middle" fill="#E02424">${Math.round(revenues[i]).toLocaleString()}</text>`;
   });
   container.innerHTML = `
     <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}
-      <span style="margin-left:10px;color:#0B5CAB;">■ 매출</span>
-      <span style="margin-left:8px;color:#2E7D46;">■ 순이익</span>
+      <span style="margin-left:10px;color:#0B5CAB;">■ 매출(막대)</span>
+      <span style="margin-left:8px;color:#E02424;">● 추세(꺾은선)</span>
     </div>
     <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="width:100%;height:auto;">
-      <line x1="${padL-10}" y1="${zeroY}" x2="${w-padR+10}" y2="${zeroY}" stroke="#DDE1E8"></line>
+      <line x1="${padL-10}" y1="${baseY}" x2="${w-padR+10}" y2="${baseY}" stroke="#DDE1E8"></line>
       ${bars}
+      <path d="${linePath}" fill="none" stroke="#E02424" stroke-width="2.5"></path>
+      ${lineMarkers}
     </svg>
+  `;
+}
+// 고객사별 매출 비중을 보여주는 원형 그래프
+function drawPieChart(container, items, title){
+  const total = items.reduce((s,it)=>s+it.value,0);
+  if(!total){
+    container.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}</div><div class="empty-state">데이터 없음</div>`;
+    return;
+  }
+  const w = 260, h = 240, cx = 120, cy = 120, r = 95;
+  let angle = -Math.PI/2;
+  let paths = "";
+  let legend = "";
+  items.forEach(it=>{
+    const frac = it.value/total;
+    const endAngle = angle + frac*Math.PI*2;
+    const x1 = cx + r*Math.cos(angle), y1 = cy + r*Math.sin(angle);
+    const x2 = cx + r*Math.cos(endAngle), y2 = cy + r*Math.sin(endAngle);
+    const largeArc = (endAngle-angle) > Math.PI ? 1 : 0;
+    paths += `<path d="M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z" fill="${it.color}"></path>`;
+    const pct = Math.round(frac*1000)/10;
+    legend += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+      <span style="width:11px;height:11px;border-radius:3px;background:${it.color};display:inline-block;flex-shrink:0;"></span>
+      <span style="font-size:12.5px;">${it.name} · ${pct}% · ${it.valueLabel}</span>
+    </div>`;
+    angle = endAngle;
+  });
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center;">
+      <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="max-width:240px;width:100%;height:auto;flex-shrink:0;">${paths}</svg>
+      <div>${legend}</div>
+    </div>
   `;
 }
 function renderSalesKPI(){
@@ -1977,24 +2014,20 @@ function renderSalesKPI(){
       <td style="text-align:left;">${salesYear}년 전체</td>
       <td>${fmtWon(stats.revenue)}</td>
       <td>${fmtWon(stats.cost)}</td>
-      <td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td>
-      <td class="${stats.profit>=0?'rev-good':'rev-bad'}">${stats.margin}%</td>
     </tr>
   `;
 }
 function renderSalesMonthly(){
   const stats = computeYearSalesStats(salesYear);
   const labels = Array.from({length:12},(_,i)=>(i+1)+"월");
-  drawLineChart(document.getElementById("sales-monthlyChart"), labels, stats.monthly.map(m=>m.revenue), salesYear+"년 월별 매출액 추이(원)");
+  drawLineChart(document.getElementById("sales-monthlyChart"), labels, stats.monthly.map(m=>Math.round(m.revenue/10000)), salesYear+"년 월별 매출액 추이(만원)");
 
   const tableHtml = `
     <table style="min-width:900px;">
       <thead><tr><th style="text-align:left;">항목</th>${labels.map(l=>`<th>${l}</th>`).join("")}<th>합계</th></tr></thead>
       <tbody>
-        <tr><td style="text-align:left;">매출</td>${stats.monthly.map(m=>`<td>${fmtWon(m.revenue)}</td>`).join("")}<td>${fmtWon(stats.revenue)}</td></tr>
-        <tr><td style="text-align:left;">원가</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
-        <tr><td style="text-align:left;">순이익</td>${stats.monthly.map(m=>`<td class="${m.profit>=0?'rev-good':'rev-bad'}">${fmtWon(m.profit)}</td>`).join("")}<td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td></tr>
-        <tr><td style="text-align:left;">이익률(%)</td>${stats.monthly.map(m=>`<td class="${m.profit>=0?'rev-good':'rev-bad'}">${m.margin}%</td>`).join("")}<td class="${stats.profit>=0?'rev-good':'rev-bad'}">${stats.margin}%</td></tr>
+        <tr><td style="text-align:left;">매출(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.revenue)}</td>`).join("")}<td>${fmtWon(stats.revenue)}</td></tr>
+        <tr><td style="text-align:left;">원가(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
       </tbody>
     </table>
   `;
@@ -2016,112 +2049,94 @@ function renderSalesMonthly(){
   const changeSign = changePct>0 ? "+" : "";
   document.getElementById("sales-thisMonth").innerHTML = `
     <div style="font-size:22px;font-weight:700;">${fmtWon(thisM.revenue)} <span class="q-change-badge">변동 ${changeSign}${changePct}%</span></div>
-    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${salesYear}년 ${curMonth}월 · 원가 ${fmtWon(thisM.cost)} · 순이익 <span class="${thisM.profit>=0?'rev-good':'rev-bad'}">${fmtWon(thisM.profit)}</span> (${thisM.margin}%)</div>
+    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${salesYear}년 ${curMonth}월 · 원가 ${fmtWon(thisM.cost)}</div>
   `;
   document.getElementById("sales-lastMonth").innerHTML = `
     <div style="font-size:22px;font-weight:700;">${fmtWon(prevM.revenue)}</div>
-    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevLabel} · 원가 ${fmtWon(prevM.cost)} · 순이익 <span class="${prevM.profit>=0?'rev-good':'rev-bad'}">${fmtWon(prevM.profit)}</span> (${prevM.margin}%)</div>
+    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevLabel} · 원가 ${fmtWon(prevM.cost)}</div>
   `;
 }
-// 2023년~2026년(고정) 연도별 매출/순이익 막대그래프 + 비교 요약표
+// 2023년~2026년(고정) 연도별 매출 막대그래프 + 비교 요약표
 function renderSalesYoY(){
   const years = SALES_COMPARE_YEARS;
   const statsByYear = years.map(y=>computeYearSalesStats(y));
-  drawYearBarChart(
+  drawYearRevenueBarChart(
     document.getElementById("sales-yoyChart"),
     years,
-    statsByYear.map(s=>s.revenue),
-    statsByYear.map(s=>s.profit),
-    "연도별 매출/순이익 변화"
+    statsByYear.map(s=>Math.round(s.revenue/10000)),
+    "연도별 매출 변화(만원)"
   );
   let rowsHtml = "";
   years.forEach((y,i)=>{
     const cur = statsByYear[i];
     const prev = i>0 ? statsByYear[i-1] : null;
     const revChange = prev && prev.revenue>0 ? Math.round(((cur.revenue-prev.revenue)/prev.revenue)*1000)/10 : null;
-    const profChange = prev && prev.profit>0 ? Math.round(((cur.profit-prev.profit)/prev.profit)*1000)/10 : null;
     rowsHtml += `<tr>
       <td style="text-align:left;">${y}년</td>
       <td>${fmtWon(cur.revenue)}</td>
-      <td class="${cur.profit>=0?'rev-good':'rev-bad'}">${fmtWon(cur.profit)}</td>
-      <td>${cur.margin}%</td>
       <td class="${revChange===null?'':(revChange>=0?'rev-good':'rev-bad')}">${revChange===null?'-':(revChange>=0?'+':'')+revChange+'%'}</td>
-      <td class="${profChange===null?'':(profChange>=0?'rev-good':'rev-bad')}">${profChange===null?'-':(profChange>=0?'+':'')+profChange+'%'}</td>
     </tr>`;
   });
   document.getElementById("sales-yoySummary").innerHTML = `
-    <table style="width:100%;min-width:640px;">
-      <thead><tr><th style="text-align:left;">연도</th><th>매출</th><th>순이익</th><th>이익률</th><th>매출 증감률</th><th>순이익 증감률</th></tr></thead>
+    <table style="width:100%;min-width:420px;">
+      <thead><tr><th style="text-align:left;">연도</th><th>매출(만원)</th><th>매출 증감률</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
   `;
 }
-// 고객사(F열)별 매출 비중/금액: 연간 표+막대그래프, 월별 다중 라인차트(상위 6개사+기타)
+// 고객사(유진테크/알파플러스/엘티케이/기타)별 매출 비중/금액: 연간 원형그래프+표, 월별 다중 라인차트
+const SALES_CUSTOMER_GROUPS = ["유진테크","알파플러스","엘티케이"];
+const SALES_CUSTOMER_COLORS = { "유진테크":"#0B5CAB", "알파플러스":"#2E7D46", "엘티케이":"#7030A0", "기타":"#6B7280" };
+function groupCustomerName(name){
+  return SALES_CUSTOMER_GROUPS.includes(name) ? name : "기타";
+}
 function computeCustomerYearStats(year){
-  const byCustomer = {};
+  const byCustomer = { "유진테크":{revenue:0}, "알파플러스":{revenue:0}, "엘티케이":{revenue:0}, "기타":{revenue:0} };
   getSalesRowsForMonth(year, null).forEach(r=>{
-    const cust = r.customer || "(미기재)";
-    const s = computeRowSales(r);
-    if(!byCustomer[cust]) byCustomer[cust] = { revenue:0, cost:0, profit:0 };
-    byCustomer[cust].revenue += s.revenue;
-    byCustomer[cust].cost += s.cost;
-    byCustomer[cust].profit += s.profit;
+    const cust = groupCustomerName(r.customer||"");
+    byCustomer[cust].revenue += computeRowSales(r).revenue;
   });
   return byCustomer;
 }
 function computeCustomerMonthlyStats(year){
-  const result = {};
+  const result = { "유진테크":Array(12).fill(0), "알파플러스":Array(12).fill(0), "엘티케이":Array(12).fill(0), "기타":Array(12).fill(0) };
   for(let m=1;m<=12;m++){
     getSalesRowsForMonth(year, m).forEach(r=>{
-      const cust = r.customer || "(미기재)";
-      if(!result[cust]) result[cust] = Array(12).fill(0);
+      const cust = groupCustomerName(r.customer||"");
       result[cust][m-1] += computeRowSales(r).revenue;
     });
   }
   return result;
 }
 function renderSalesCustomer(){
+  const order = ["유진테크","알파플러스","엘티케이","기타"];
   const yearStats = computeCustomerYearStats(salesYear);
-  const totalRevenue = Object.values(yearStats).reduce((s,v)=>s+v.revenue,0) || 1;
-  const sorted = Object.entries(yearStats).sort((a,b)=>b[1].revenue-a[1].revenue);
+  const totalRevenue = order.reduce((s,c)=>s+yearStats[c].revenue,0) || 1;
 
-  const rowsHtml = sorted.map(([cust,v])=>{
+  const rowsHtml = order.map(cust=>{
+    const v = yearStats[cust];
     const share = Math.round((v.revenue/totalRevenue)*1000)/10;
-    return `<tr><td style="text-align:left;">${cust}</td><td>${fmtWon(v.revenue)}</td><td>${share}%</td><td class="${v.profit>=0?'rev-good':'rev-bad'}">${fmtWon(v.profit)}</td></tr>`;
+    return `<tr><td style="text-align:left;">${cust}</td><td>${fmtWon(v.revenue)}</td><td>${share}%</td></tr>`;
   }).join("");
   document.getElementById("sales-customerTable").innerHTML = `
-    <table style="width:100%;min-width:480px;">
-      <thead><tr><th style="text-align:left;">고객사</th><th>매출액</th><th>비중(%)</th><th>순이익</th></tr></thead>
-      <tbody>${rowsHtml || '<tr><td colspan="4" style="color:var(--text-mute);">해당 연도 매출 데이터가 없습니다.</td></tr>'}</tbody>
+    <table style="width:100%;min-width:420px;">
+      <thead><tr><th style="text-align:left;">고객사</th><th>매출액(만원)</th><th>비중(%)</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
     </table>
   `;
 
-  const custYearChartEl = document.getElementById("sales-customerYearChart");
-  if(sorted.length){
-    drawBarChart(custYearChartEl, sorted.map(([c])=>c), sorted.map(([,v])=>Math.round(v.revenue)), salesYear+"년 고객사별 매출액");
-  } else {
-    custYearChartEl.innerHTML = '<div class="empty-state">데이터 없음</div>';
-  }
+  const pieItems = order
+    .filter(cust=>yearStats[cust].revenue>0)
+    .map(cust=>({ name:cust, value:yearStats[cust].revenue, color:SALES_CUSTOMER_COLORS[cust], valueLabel:fmtWon(yearStats[cust].revenue) }));
+  drawPieChart(document.getElementById("sales-customerYearChart"), pieItems, salesYear+"년 고객사별 매출 비중 (금액 단위: 만원)");
 
   const monthly = computeCustomerMonthlyStats(salesYear);
-  const custEntries = Object.entries(monthly).sort((a,b)=>{
-    const totalA = a[1].reduce((s,v)=>s+v,0), totalB = b[1].reduce((s,v)=>s+v,0);
-    return totalB-totalA;
-  });
-  const top = custEntries.slice(0,6);
-  const rest = custEntries.slice(6);
-  const series = top.map(([cust,vals],i)=>({ name:cust, values:vals, color: CHART_COLORS[i % CHART_COLORS.length] }));
-  if(rest.length){
-    const etcVals = Array(12).fill(0);
-    rest.forEach(([,vals])=>vals.forEach((v,i)=>etcVals[i]+=v));
-    series.push({ name:"기타", values:etcVals, color:"#6B7280" });
-  }
-  const monthEl = document.getElementById("sales-customerMonthChart");
-  if(series.length){
-    drawMultiLineChart(monthEl, Array.from({length:12},(_,i)=>(i+1)+"월"), series, salesYear+"년 월별 고객사별 매출 추이(원)");
-  } else {
-    monthEl.innerHTML = '<div class="empty-state">데이터 없음</div>';
-  }
+  const series = order.map(cust=>({
+    name: cust,
+    values: monthly[cust].map(v=>Math.round(v/10000)),
+    color: SALES_CUSTOMER_COLORS[cust]
+  }));
+  drawMultiLineChart(document.getElementById("sales-customerMonthChart"), Array.from({length:12},(_,i)=>(i+1)+"월"), series, salesYear+"년 월별 고객사별 매출 추이(만원)");
 }
 // 최종납기 기준 예상매출 (아직 납품되지 않은 건도 최종납기 월에 포함되는 예측치)
 function getExpectedRowsForMonth(year, month){
@@ -2151,33 +2166,31 @@ function renderSalesExpected(){
   const stats = computeYearExpectedStats(salesYear);
   const labels = Array.from({length:12},(_,i)=>(i+1)+"월");
   document.getElementById("sales-expectedKPI").innerHTML = `
-    <table style="width:100%;min-width:480px;">
-      <thead><tr><th style="text-align:left;">구분</th><th>예상매출</th><th>예상원가</th><th>예상순이익</th></tr></thead>
+    <table style="width:100%;min-width:420px;">
+      <thead><tr><th style="text-align:left;">구분</th><th>예상매출(만원)</th><th>예상원가(만원)</th></tr></thead>
       <tbody>
         <tr style="font-weight:700;">
           <td style="text-align:left;">${salesYear}년 전체 (최종납기 기준)</td>
           <td>${fmtWon(stats.revenue)}</td>
           <td>${fmtWon(stats.cost)}</td>
-          <td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td>
         </tr>
       </tbody>
     </table>
   `;
-  drawLineChart(document.getElementById("sales-expectedChart"), labels, stats.monthly.map(m=>m.revenue), salesYear+"년 월별 예상매출 추이 (최종납기 기준, 원)");
+  drawLineChart(document.getElementById("sales-expectedChart"), labels, stats.monthly.map(m=>Math.round(m.revenue/10000)), salesYear+"년 월별 예상매출 추이 (만원)");
   document.getElementById("sales-expectedTable").innerHTML = `
     <table style="min-width:900px;">
       <thead><tr><th style="text-align:left;">항목</th>${labels.map(l=>`<th>${l}</th>`).join("")}<th>합계</th></tr></thead>
       <tbody>
-        <tr><td style="text-align:left;">예상매출</td>${stats.monthly.map(m=>`<td>${fmtWon(m.revenue)}</td>`).join("")}<td>${fmtWon(stats.revenue)}</td></tr>
-        <tr><td style="text-align:left;">예상원가</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
-        <tr><td style="text-align:left;">예상순이익</td>${stats.monthly.map(m=>`<td class="${m.profit>=0?'rev-good':'rev-bad'}">${fmtWon(m.profit)}</td>`).join("")}<td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td></tr>
+        <tr><td style="text-align:left;">예상매출(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.revenue)}</td>`).join("")}<td>${fmtWon(stats.revenue)}</td></tr>
+        <tr><td style="text-align:left;">예상원가(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
       </tbody>
     </table>
   `;
 }
 function renderSalesAll(){
   renderSalesYearButtons();
-  document.getElementById("sales-rangeLabel").textContent = salesYear + "년 매출현황 (납품일자 기준)";
+  document.getElementById("sales-rangeLabel").textContent = salesYear + "년 매출현황";
   renderSalesKPI();
   renderSalesMonthly();
   renderSalesCustomer();
@@ -2189,7 +2202,7 @@ function printSalesReport(){
   const panel = document.getElementById("view-sales");
   document.getElementById("print-area").innerHTML = `
     <div class="q-report-page">
-      <h2>매출현황 보고서 · ${salesYear}년 (납품일자 기준)</h2>
+      <h2>매출현황 보고서 · ${salesYear}년</h2>
       ${panel.innerHTML}
     </div>
   `;
