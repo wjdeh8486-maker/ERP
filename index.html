@@ -565,7 +565,7 @@
       <div id="sales-print-page1">
         <div class="table-wrap" style="margin-bottom:18px;">
           <table>
-            <thead><tr><th>구분</th><th>매출(만원)</th><th>원가(만원)</th></tr></thead>
+            <thead><tr><th>구분</th><th>매출(만원)</th><th>소재및외주(만원)</th></tr></thead>
             <tbody id="sales-kpiBody"></tbody>
           </table>
         </div>
@@ -660,8 +660,17 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("main-syncPanel").classList.remove("open");
     document.getElementById("inv-syncPanel").classList.remove("open");
     document.getElementById("quality-syncPanel").classList.remove("open");
-    if(target==="quality" && !window.__qualityInited){ window.__qualityInited = true; initQualityView(); }
-    if(target==="sales"){ renderSalesAll(); }
+    // 무거운 차트 렌더링(품질분석/매출현황)은 화면 전환(활성 탭 표시)이 먼저 그려진 다음에
+    // 실행되도록 한 틱 늦춰서, 모바일에서 메뉴를 눌렀을 때 바로 반응하는 것처럼 느껴지게 합니다.
+    if(target==="quality" && !window.__qualityInited){
+      window.__qualityInited = true;
+      setTimeout(initQualityView, 0);
+    }
+    if(target==="sales"){
+      const rangeLabelEl = document.getElementById("sales-rangeLabel");
+      if(rangeLabelEl) rangeLabelEl.textContent = "불러오는 중...";
+      setTimeout(renderSalesAll, 0);
+    }
   });
 });
 /* ============ MAIN DASHBOARD LOGIC ============ */
@@ -1440,6 +1449,15 @@ function getFieldFlexible(row, label){
   const foundKey = Object.keys(row).find(k=>normalizeHeaderKey(k)===target);
   return foundKey ? row[foundKey] : undefined;
 }
+// 정확히 일치하는 열이 없으면, 열 이름에 해당 단어가 포함된 열을 찾아 대신 사용합니다.
+// (예: "도번" 대신 "도번(사급)", "품번/도번" 처럼 변형된 헤더가 쓰인 시트도 인식하기 위함)
+function getFieldFuzzy(row, label){
+  const exact = getFieldFlexible(row, label);
+  if(exact !== undefined && exact !== "") return exact;
+  const target = normalizeHeaderKey(label);
+  const foundKey = Object.keys(row).find(k=>normalizeHeaderKey(k).includes(target));
+  return foundKey ? row[foundKey] : undefined;
+}
 function fetchQualityData(){
   const url = document.getElementById("quality-appsScriptUrl").value.trim();
   const statusEl = document.getElementById("quality-apiStatus");
@@ -1457,7 +1475,7 @@ function fetchQualityData(){
         Object.keys(s.types).forEach(tk=>{ typeVals[tk] = Number(getFieldFlexible(row, s.types[tk]))||0; });
         return {
           date: parseQualityDate(getFieldFlexible(row, s.dateField)),
-          partNo: getFieldFlexible(row, "도번")||getFieldFlexible(row, "도 번")||"",
+          partNo: getFieldFuzzy(row, "도번") || "",
           sn: getFieldFlexible(row, "S/N")||"",
           note: getFieldFlexible(row, "비고")||getFieldFlexible(row, "비 고")||"",
           qty: Number(getFieldFlexible(row, s.qtyField))||0,
@@ -2044,7 +2062,7 @@ function renderSalesMonthly(){
       <thead><tr><th style="text-align:left;">항목</th>${labels.map(l=>`<th>${l}</th>`).join("")}<th>합계</th></tr></thead>
       <tbody>
         <tr><td style="text-align:left;">매출(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.revenue)}</td>`).join("")}<td>${fmtWon(stats.revenue)}</td></tr>
-        <tr><td style="text-align:left;">원가(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
+        <tr><td style="text-align:left;">소재및외주(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
       </tbody>
     </table>
   `;
@@ -2066,11 +2084,11 @@ function renderSalesMonthly(){
   const changeSign = changePct>0 ? "+" : "";
   document.getElementById("sales-thisMonth").innerHTML = `
     <div style="font-size:22px;font-weight:700;">${fmtWon(thisM.revenue)} <span class="q-change-badge">변동 ${changeSign}${changePct}%</span></div>
-    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${salesYear}년 ${curMonth}월 · 원가 ${fmtWon(thisM.cost)}</div>
+    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${salesYear}년 ${curMonth}월 · 소재및외주 ${fmtWon(thisM.cost)}</div>
   `;
   document.getElementById("sales-lastMonth").innerHTML = `
     <div style="font-size:22px;font-weight:700;">${fmtWon(prevM.revenue)}</div>
-    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevLabel} · 원가 ${fmtWon(prevM.cost)}</div>
+    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevLabel} · 소재및외주 ${fmtWon(prevM.cost)}</div>
   `;
 }
 // 2023년~2026년(고정) 연도별 매출 막대그래프 + 비교 요약표
@@ -2207,7 +2225,7 @@ function renderSalesExpected(){
   const labels = Array.from({length:12},(_,i)=>(i+1)+"월");
   document.getElementById("sales-expectedKPI").innerHTML = `
     <table style="width:100%;min-width:420px;">
-      <thead><tr><th style="text-align:left;">구분</th><th>예상매출(만원)</th><th>예상원가(만원)</th></tr></thead>
+      <thead><tr><th style="text-align:left;">구분</th><th>예상매출(만원)</th><th>예상 소재및외주(만원)</th></tr></thead>
       <tbody>
         <tr style="font-weight:700;">
           <td style="text-align:left;">${salesYear}년 전체</td>
@@ -2223,7 +2241,7 @@ function renderSalesExpected(){
       <thead><tr><th style="text-align:left;">항목</th>${labels.map(l=>`<th>${l}</th>`).join("")}<th>합계</th></tr></thead>
       <tbody>
         <tr><td style="text-align:left;">예상매출(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.revenue)}</td>`).join("")}<td>${fmtWon(stats.revenue)}</td></tr>
-        <tr><td style="text-align:left;">예상원가(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
+        <tr><td style="text-align:left;">예상 소재및외주(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
       </tbody>
     </table>
   `;
