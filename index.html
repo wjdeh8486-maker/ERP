@@ -1073,12 +1073,7 @@ function renderMainCalendar(){
       weekCells = [];
     }
   }
-  // 빈 칸(내용 없음)은 좁게, 항목이 있는 칸은 넓게 - 요일과 무관하게 그 주(週)에
-  // 실제로 내용이 있는 칸만 폭을 넓혀서, 화/수/목이 비어 있으면 그만큼 월/금처럼
-  // 내용이 있는 칸이 넓어져 줄바꿈 없이 한 줄로 보이도록 합니다.
-  const EMPTY_FLEX = "flex:0.55 1 0;";
-  const BUSY_FLEX = "flex:1.8 1 0;";
-  for(let i=0;i<firstDow;i++){ weekCells.push(`<div class="cal-cell empty" style="${EMPTY_FLEX}"></div>`); }
+  for(let i=0;i<firstDow;i++){ weekCells.push(`<div class="cal-cell empty"></div>`); }
   for(let day=1; day<=daysInMonth; day++){
     const items = byDay[day] || [];
     const isToday = new Date(year, month, day).toDateString() === todayStr;
@@ -1110,14 +1105,13 @@ function renderMainCalendar(){
       }
       return gItems.map(itemRowHtml).join("");
     }).join("");
-    const cellFlex = items.length ? BUSY_FLEX : EMPTY_FLEX;
-    weekCells.push(`<div class="cal-cell ${items.length?'has-items':''} ${isToday?'today':''} ${dowClass?'weekend '+dowClass:''}" style="${cellFlex}" data-date="${cellDateStr}">
+    weekCells.push(`<div class="cal-cell ${items.length?'has-items':''} ${isToday?'today':''} ${dowClass?'weekend '+dowClass:''}" data-date="${cellDateStr}">
       <div class="cal-date">${day}</div>
       ${itemsHtml}
     </div>`);
     if(weekCells.length===7) flushWeek();
   }
-  while(weekCells.length && weekCells.length<7){ weekCells.push(`<div class="cal-cell empty" style="${EMPTY_FLEX}"></div>`); }
+  while(weekCells.length && weekCells.length<7){ weekCells.push(`<div class="cal-cell empty"></div>`); }
   flushWeek();
   document.getElementById("main-calendarGrid").innerHTML = html;
 }
@@ -1234,8 +1228,10 @@ document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
       display:flex !important; gap:6px !important; align-items:flex-start !important;
       flex:1 1 0 !important; min-height:0 !important;
     }
-    #print-area .cal-week-row .cal-cell{ min-width:0 !important; }
+    #print-area .cal-week-row .cal-cell,
     #print-area .cal-dow-print-row .cal-dow{ flex:1.15 1 0 !important; min-width:0 !important; }
+    #print-area .cal-week-row .cal-cell:nth-child(1),
+    #print-area .cal-week-row .cal-cell:nth-child(7),
     #print-area .cal-dow-print-row .cal-dow:nth-child(1),
     #print-area .cal-dow-print-row .cal-dow:nth-child(7){ flex:0.7 1 0 !important; }
     #print-area .cal-dow{ font-size:13px !important; padding:6px 0 !important; }
