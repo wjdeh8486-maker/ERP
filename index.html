@@ -162,6 +162,8 @@
   .cell-overdue{color:var(--red);font-weight:700;}
   .cell-defect{color:var(--red);font-weight:700;}
   .cell-wait-hi{background:#FFF6D6;font-weight:700;}
+  .cell-price-up{color:#E02424;font-weight:700;}
+  .cell-price-down{background:#FFF6D6;color:#8a6d00;font-weight:700;}
   .row-shipped{color:#9AA0AA;text-decoration:line-through;}
   .row-shipout{color:#9AA0AA;}
   .empty-state{padding:40px;text-align:center;color:var(--text-mute);}
@@ -384,6 +386,7 @@
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
+    <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
   </div>
   <div class="main-area">
     <!-- ===================== MAIN VIEW ===================== -->
@@ -656,6 +659,28 @@
         </div>
       </div>
     </div>
+    <!-- ===================== VENDOR(거래처 관리) VIEW ===================== -->
+    <div id="topbar-vendor" class="topbar" style="display:none;">
+      <h1>거래처 관리</h1>
+      <div class="search-box">
+        <input id="vendor-searchInput" type="text" placeholder="기존도번, 품번, 품명, 고객사, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
+        <button id="vendor-searchBtn">🔍 검색</button>
+      </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 같은 <b style="color:#FFD400;">기존도번</b> 안에서 이전 이력보다 <b style="color:#FF6B6B;">오르면 빨강</b>, <b style="color:#E0C34A;">내리면 노랑</b>으로 표시됩니다.</div>
+    </div>
+    <div class="view" id="view-vendor">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>기존도번</th><th>자재비</th><th>외주업체비</th><th>처리비(세정)</th>
+            </tr>
+          </thead>
+          <tbody id="vendor-tableBody"></tbody>
+        </table>
+        <div class="empty-state" id="vendor-emptyState">검색 버튼을 클릭하면 기존도번별 단가 이력이 표시됩니다.</div>
+      </div>
+    </div>
   </div>
 </div>
 <template id="quality-category-template">
@@ -701,6 +726,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("topbar-inventory").style.display = target==="inventory" ? "flex" : "none";
     document.getElementById("topbar-quality").style.display = target==="quality" ? "flex" : "none";
     document.getElementById("topbar-sales").style.display = target==="sales" ? "flex" : "none";
+    document.getElementById("topbar-vendor").style.display = target==="vendor" ? "flex" : "none";
     document.getElementById("main-syncPanel").classList.remove("open");
     document.getElementById("inv-syncPanel").classList.remove("open");
     document.getElementById("quality-syncPanel").classList.remove("open");
@@ -2762,6 +2788,69 @@ function printSalesReport(){
   window.print();
 }
 document.getElementById("sales-printBtn").addEventListener("click", printSalesReport);
+/* ============ VENDOR(거래처 관리) LOGIC ============ */
+// 단가 이력: mainData에 이미 있는 발주단가/자재비/외주업체비/집연마버/처리비(세정)를
+// 기존도번 기준으로 정리해서 보여줍니다. 검색 전에는 빈 상태로 두어(다른 화면과 동일한 UX)
+// 초기 로딩 부담을 줄입니다.
+function vendorGetRows(){
+  return (mainData||[]).filter(r=>(Number(r.qty)||0) > 0);
+}
+function vendorApplySearch(){
+  const raw = document.getElementById("vendor-searchInput").value.trim().toLowerCase();
+  let rows = vendorGetRows();
+  if(raw){
+    // 다른 검색창과 동일한 규칙: 쉼표(,)=OR, 슬래시(/)=AND(좁혀서 검색)
+    const orGroups = raw.split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim()).filter(Boolean));
+    if(orGroups.length){
+      rows = rows.filter(r=>{
+        const haystack = [r.oldDrawingNo,r.partNo,r.partName,r.customer,r.vendor,r.orderNo].join(" ").toLowerCase();
+        return orGroups.some(andTerms => andTerms.every(t=>haystack.includes(t)));
+      });
+    }
+  }
+  // 기존도번별로 묶어서 보기 쉽도록, 기존도번 → 최종납기(과거→최신) 순으로 정렬합니다.
+  rows = rows.slice().sort((a,b)=>{
+    const ka = String(a.oldDrawingNo||""), kb = String(b.oldDrawingNo||"");
+    if(ka !== kb) return ka.localeCompare(kb, "ko");
+    return String(a.dueDate||"").localeCompare(String(b.dueDate||""));
+  });
+  vendorRenderTable(rows);
+}
+function vendorRenderTable(rows){
+  const tbody = document.getElementById("vendor-tableBody");
+  const empty = document.getElementById("vendor-emptyState");
+  tbody.innerHTML = "";
+  empty.textContent = rows.length===0 ? "검색 결과가 없습니다." : "";
+  empty.style.display = rows.length===0 ? "block" : "none";
+  // 값이 오르면 빨강(cell-price-up), 내리면 노랑(cell-price-down)으로 표시하는 헬퍼
+  function changeClass(key, prevKey, prev, cur){
+    if(!key || key!==prevKey || prev===null) return "";
+    if(cur > prev) return "cell-price-up";
+    if(cur < prev) return "cell-price-down";
+    return "";
+  }
+  let prevKey = null, prevMaterial = null, prevVendorCost = null, prevProcess = null;
+  rows.forEach(r=>{
+    const key = r.oldDrawingNo || "";
+    const materialCost = Number(r.materialCost)||0;
+    const vendorCost = Number(r.vendorCost)||0;
+    const processCost = Number(r.processCost)||0;
+    const materialClass = changeClass(key, prevKey, prevMaterial, materialCost);
+    const vendorCostClass = changeClass(key, prevKey, prevVendorCost, vendorCost);
+    const processClass = changeClass(key, prevKey, prevProcess, processCost);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${r.oldDrawingNo||''}</td>
+      <td class="${materialClass}">${materialCost.toLocaleString()}</td>
+      <td class="${vendorCostClass}">${vendorCost.toLocaleString()}</td>
+      <td class="${processClass}">${processCost.toLocaleString()}</td>
+    `;
+    tbody.appendChild(tr);
+    prevKey = key; prevMaterial = materialCost; prevVendorCost = vendorCost; prevProcess = processCost;
+  });
+}
+document.getElementById("vendor-searchBtn").addEventListener("click", vendorApplySearch);
+document.getElementById("vendor-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") vendorApplySearch(); });
 async function initQualityView(){
   renderQualityButtons();
   const cached = await cacheGetQualityData();
