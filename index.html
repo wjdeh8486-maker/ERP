@@ -69,17 +69,20 @@
   .calendar-header button{padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:#fff;cursor:pointer;font-weight:700;color:var(--navy);}
   .calendar-header button:hover{background:var(--gray-bg);}
   .calendar-header span#main-calMonthLabel{font-weight:700;font-size:16px;color:var(--navy);}
-  .cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;}
+  .cal-dow-row{display:grid;grid-template-columns:0.7fr repeat(5,1.15fr) 0.7fr;gap:6px;margin-bottom:6px;}
   /* 달력 주(週) 단위 레이아웃: 하나의 그리드 대신 주별 flex 행으로 나눠, 같은 주 안에서도
      내용이 있는 칸만 늘어나고 빈 칸은 작게 유지되도록 합니다 (그리드는 한 행의 모든 칸
-     높이가 강제로 같아져서, 내용이 많은 칸에 맞춰 빈 칸까지 커지는 문제가 있었습니다). */
-  .calendar-grid{display:flex;flex-direction:column;gap:6px;}
+     높이가 강제로 같아져서, 내용이 많은 칸에 맞춰 빈 칸까지 커지는 문제가 있었습니다).
+     또한 전체 달력 높이는 고정하고 내부 스크롤(슬라이드)로 넘기도록 합니다. */
+  .calendar-grid{display:flex;flex-direction:column;gap:6px;max-height:62vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
   .cal-week-row{display:flex;align-items:flex-start;gap:6px;}
-  .cal-week-row .cal-cell{flex:1 1 0;min-width:0;}
+  .cal-week-row .cal-cell{flex:1.15 1 0;min-width:0;}
+  .cal-week-row .cal-cell:nth-child(1),
+  .cal-week-row .cal-cell:nth-child(7){flex:0.7 1 0;}
   .cal-dow{text-align:center;font-weight:700;font-size:12px;color:var(--text-mute);padding:6px 0;background:var(--gray-bg);border-radius:6px;}
   .cal-dow.cal-sun{color:var(--red);}
   .cal-dow.cal-sat{color:var(--blue);}
-  .cal-cell{min-height:44px;border:1px solid var(--border);border-radius:8px;padding:4px 5px;font-size:11px;background:#fff;transition:box-shadow .15s;}
+  .cal-cell{min-height:44px;border:1px solid var(--border);border-radius:8px;padding:4px 5px;font-size:11px;background:#fff;transition:box-shadow .15s;overflow-x:auto;}
   .cal-cell.empty{background:transparent;border:none;}
   .cal-cell.weekend:not(.has-items){background:#F7F9FD;}
   .cal-cell.today{border-color:var(--yellow);border-width:2px;}
@@ -87,11 +90,11 @@
   .cal-cell .cal-date{font-weight:700;font-size:12px;margin-bottom:3px;color:var(--text);}
   .cal-cell.sun .cal-date{color:var(--red);}
   .cal-cell.sat .cal-date{color:var(--blue);}
-  .cal-cell .cal-item{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 18px 2px 4px;margin-bottom:3px;position:relative;}
+  .cal-cell .cal-item{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 18px 2px 4px;margin-bottom:3px;position:relative;white-space:nowrap;}
   .cal-item-remove{position:absolute;right:3px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-mute);font-weight:700;font-size:13px;line-height:1;padding:2px 4px;border-radius:3px;}
   .cal-item-remove:hover{color:#fff;background:var(--red);}
   .cal-cell .cal-item b{color:var(--red);}
-  .cal-item-summary{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 6px;margin-bottom:3px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:4px;}
+  .cal-item-summary{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 6px;margin-bottom:3px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:4px;white-space:nowrap;}
   .cal-item-summary:hover{background:#DCEAFB;}
   .cal-item-summary b{color:var(--red);}
   .cal-summary-arrow{color:var(--text-mute);font-size:9px;flex-shrink:0;}
@@ -1023,6 +1026,9 @@ let mainCalendarOpen = false;
 let mainCalendarDate = new Date();
 let mainCalendarDismissed = new Set();
 function mainGetCalendarRows(){
+  // 검색어를 입력하지 않았으면 달력도 빈칸으로 둡니다 (검색한 내용에 대해서만 표시).
+  const raw = document.getElementById("main-searchInput").value.trim();
+  if(!raw) return [];
   let rows = mainGetFilteredBase();
   rows = rows.filter(r=>{
     const s = computeProductStatus(r);
@@ -1173,10 +1179,14 @@ document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
       flex:1 1 0 !important; min-height:0 !important;
     }
     #print-area .cal-week-row .cal-cell,
-    #print-area .cal-dow-print-row .cal-dow{ flex:1 1 0 !important; min-width:0 !important; }
+    #print-area .cal-dow-print-row .cal-dow{ flex:1.15 1 0 !important; min-width:0 !important; }
+    #print-area .cal-week-row .cal-cell:nth-child(1),
+    #print-area .cal-week-row .cal-cell:nth-child(7),
+    #print-area .cal-dow-print-row .cal-dow:nth-child(1),
+    #print-area .cal-dow-print-row .cal-dow:nth-child(7){ flex:0.7 1 0 !important; }
     #print-area .cal-dow{ font-size:13px !important; padding:6px 0 !important; }
     #print-area .cal-cell{
-      min-height:30px !important; font-size:11px !important; padding:5px 7px !important;
+      min-height:30px !important; font-size:11px !important; padding:5px 7px !important; overflow-x:visible !important;
     }
     #print-area .cal-cell.has-items{ min-height:50px !important; }
     #print-area .cal-cell .cal-date{ font-size:12.5px !important; }
