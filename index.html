@@ -364,14 +364,14 @@
         <div class="status-multiselect" id="main-statusMultiselect">
           <button type="button" id="main-statusToggle" class="status-toggle-btn">전체 상태 ▾</button>
           <div class="status-dropdown" id="main-statusDropdown">
-            <label><input type="checkbox" value="생산"> 생산</label>
-            <label><input type="checkbox" value="재고"> 재고</label>
-            <label><input type="checkbox" value="출고"> 출고</label>
-            <label><input type="checkbox" value="완료"> 완료</label>
-            <label><input type="checkbox" value="외관"> 외관</label>
-            <label><input type="checkbox" value="측정"> 측정</label>
-            <label><input type="checkbox" value="비젼"> 비젼</label>
-            <label><input type="checkbox" value="OK"> OK</label>
+            <label><input type="checkbox" value="생산" checked> 생산</label>
+            <label><input type="checkbox" value="재고" checked> 재고</label>
+            <label><input type="checkbox" value="출고" checked> 출고</label>
+            <label><input type="checkbox" value="완료" checked> 완료</label>
+            <label><input type="checkbox" value="외관" checked> 외관</label>
+            <label><input type="checkbox" value="측정" checked> 측정</label>
+            <label><input type="checkbox" value="비젼" checked> 비젼</label>
+            <label><input type="checkbox" value="OK" checked> OK</label>
           </div>
         </div>
         <select id="main-sortOrder">
@@ -382,7 +382,16 @@
         <button id="main-searchBtn">검색</button>
         <button id="main-printBtn">인쇄</button>
       </div>
+      <div class="search-box" style="margin-top:8px;">
+        <span style="color:#B9C2D6;font-size:13px;white-space:nowrap;align-self:center;">최종납기</span>
+        <input type="date" id="main-dueDateFrom" style="flex:none;width:150px;">
+        <span style="color:#B9C2D6;align-self:center;">~</span>
+        <input type="date" id="main-dueDateTo" style="flex:none;width:150px;">
+        <input id="main-hideOrderInput" type="text" placeholder="ORDER NO 숨기기 (예: 26-175, 쉼표로 여러 개)" style="flex:1;min-width:220px;">
+        <button id="main-hideOrderClearBtn" type="button" style="background:#fff;color:var(--navy);border:1px solid var(--navy);">숨기기 해제</button>
+      </div>
       <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ <span style="color:#FFD400;font-weight:700;">쉼표(,)</span>로 구분하면 여러 개 중 하나라도 맞으면 검색되고, <span style="color:#FF6B81;font-weight:700;">슬래시(/)</span>로 구분하면 그 단어를 모두 포함하는 항목만 좁혀서 검색합니다. (예: "26-171<span style="color:#FF6B81;font-weight:700;">/</span>SHOWERHEAD<span style="color:#FFD400;font-weight:700;">,</span> BLOCK PLATE" → 26-171이면서 SHOWERHEAD이거나, BLOCK PLATE)</div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;">※ ORDER NO 숨기기에 <b style="color:#FFD400;">26-175</b>처럼 프로젝트 번호만 입력하면 26-175-1부터 26-175-70까지 전부 한 번에 숨겨집니다 (세부 번호를 하나씩 입력할 필요 없음).</div>
       <div class="quick-links">
         <a href="https://wjdeh8486-maker.github.io/daysheet/" target="_blank" rel="noopener">체크리스트</a>
         <a href="https://wjdeh8486-maker.github.io/calendar/" target="_blank" rel="noopener">일정 달력</a>
@@ -923,7 +932,8 @@ function mainInitialRender(data){
   mainShowSearchPrompt();
 }
 function mainRenderAll(data){ mainRenderStats(data); mainRenderTable(data); mainRenderCards(data); mainListRevealed = true; }
-let mainSelectedStatuses = [];
+const ALL_MAIN_STATUSES = ["생산","재고","출고","완료","외관","측정","비젼","OK"];
+let mainSelectedStatuses = ALL_MAIN_STATUSES.slice();
 let mainHideCompleted = false;
 function mainGetFilteredBase(){
   const raw = document.getElementById("main-searchInput").value.trim().toLowerCase();
@@ -942,6 +952,23 @@ function mainGetFilteredBase(){
       });
     }
   }
+  // 최종납기일 날짜 범위 검색 (YYYY-MM-DD 형식이라 문자열 비교로도 날짜 순서가 그대로 유지됩니다)
+  const dueFrom = document.getElementById("main-dueDateFrom").value;
+  const dueTo = document.getElementById("main-dueDateTo").value;
+  if(dueFrom){ filtered = filtered.filter(r=> r.dueDate && r.dueDate >= dueFrom); }
+  if(dueTo){ filtered = filtered.filter(r=> r.dueDate && r.dueDate <= dueTo); }
+  // ORDER NO 숨기기: "26-175"처럼 프로젝트 번호만 입력하면 "26-175-1" ~ "26-175-70"
+  // 전부(세부 번호와 무관하게) 한 번에 숨깁니다.
+  const hideRaw = document.getElementById("main-hideOrderInput").value.trim().toLowerCase();
+  if(hideRaw){
+    const hideTerms = hideRaw.split(",").map(t=>t.trim()).filter(Boolean);
+    if(hideTerms.length){
+      filtered = filtered.filter(r=>{
+        const orderNoLower = String(r.orderNo||"").toLowerCase();
+        return !hideTerms.some(t=> orderNoLower === t || orderNoLower.startsWith(t + "-"));
+      });
+    }
+  }
   return filtered;
 }
 function mainApplySort(list){
@@ -956,9 +983,7 @@ function mainApplySort(list){
 }
 function mainApplySearch(){
   let filtered = mainGetFilteredBase();
-  if(mainSelectedStatuses.length){
-    filtered = filtered.filter(r=>mainSelectedStatuses.includes(computeProductStatus(r)));
-  }
+  filtered = filtered.filter(r=>mainSelectedStatuses.includes(computeProductStatus(r)));
   if(mainHideCompleted){
     filtered = filtered.filter(r=>computeProductStatus(r) !== "완료");
   }
@@ -968,7 +993,12 @@ function mainApplySearch(){
 }
 function mainUpdateStatusToggleLabel(){
   const btn = document.getElementById("main-statusToggle");
-  btn.textContent = mainSelectedStatuses.length ? `상태 선택 (${mainSelectedStatuses.length}) ▾` : "전체 상태 ▾";
+  if(mainSelectedStatuses.length === ALL_MAIN_STATUSES.length){
+    btn.textContent = "전체 상태 ▾";
+  } else {
+    const excluded = ALL_MAIN_STATUSES.length - mainSelectedStatuses.length;
+    btn.textContent = `${excluded}개 제외 ▾`;
+  }
 }
 document.getElementById("main-statusToggle").addEventListener("click", (e)=>{
   e.stopPropagation();
@@ -998,7 +1028,7 @@ document.getElementById("main-sortOrder").addEventListener("change", mainApplySe
 document.getElementById("main-printBtn").addEventListener("click", ()=>{
   mainApplySearch();
   let filtered = mainGetFilteredBase();
-  if(mainSelectedStatuses.length){ filtered = filtered.filter(r=>mainSelectedStatuses.includes(computeProductStatus(r))); }
+  filtered = filtered.filter(r=>mainSelectedStatuses.includes(computeProductStatus(r)));
   if(mainHideCompleted){ filtered = filtered.filter(r=>computeProductStatus(r) !== "완료"); }
   filtered = mainApplySort(filtered);
   const rowsHtml = filtered.map(r=>{
@@ -1025,6 +1055,13 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>{
 });
 document.getElementById("main-searchBtn").addEventListener("click", mainApplySearch);
 document.getElementById("main-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") mainApplySearch(); });
+document.getElementById("main-dueDateFrom").addEventListener("change", mainApplySearch);
+document.getElementById("main-dueDateTo").addEventListener("change", mainApplySearch);
+document.getElementById("main-hideOrderInput").addEventListener("keydown", e=>{ if(e.key==="Enter") mainApplySearch(); });
+document.getElementById("main-hideOrderClearBtn").addEventListener("click", ()=>{
+  document.getElementById("main-hideOrderInput").value = "";
+  mainApplySearch();
+});
 let mainCalendarOpen = false;
 let mainCalendarDate = new Date();
 let mainCalendarDismissed = new Set();
