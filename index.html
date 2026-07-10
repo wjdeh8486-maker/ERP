@@ -518,7 +518,8 @@
       <div class="search-box">
         <input id="overdue-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
         <button id="overdue-searchBtn">🔍 검색</button>
-        <button id="overdue-printBtn">🖨️ 인쇄</button>
+        <button id="overdue-printBtn" style="background:#fff;color:var(--navy);border:1px solid var(--navy);">🖨️ 인쇄</button>
+        <button id="overdue-excelBtn" type="button" style="background:#E3F0E7;color:#2E7D46;border:1px solid #B8D9C2;">📊 엑셀 다운로드</button>
       </div>
       <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 최종납기가 지났는데 아직 납품 완료되지 않은 건만 모아서 보여줍니다. 지연일수가 많은 순으로 정렬됩니다.</div>
     </div>
@@ -2833,7 +2834,9 @@ function overdueDaysLate(dueDate){
 function overdueGetRows(){
   return (mainData||[]).filter(r=>(Number(r.qty)||0) > 0 && isOverdue(r.dueDate) && r.shipped !== "납품완료");
 }
-function overdueApplySearch(){
+// 검색창 필터까지 적용한 결과를 돌려줍니다. 화면 표시/인쇄/엑셀 다운로드가 전부 이 함수 하나를
+// 공유해서, "검색 결과만 인쇄"·"검색 결과만 다운로드"가 실제로 검색 결과와 항상 일치합니다.
+function overdueGetFilteredRows(){
   const raw = document.getElementById("overdue-searchInput").value.trim().toLowerCase();
   let rows = overdueGetRows();
   if(raw){
@@ -2847,8 +2850,10 @@ function overdueApplySearch(){
     }
   }
   // 지연일수가 많은 순으로 정렬 (가장 급한 건이 맨 위)
-  rows = rows.slice().sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
-  overdueRenderTable(rows);
+  return rows.slice().sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
+}
+function overdueApplySearch(){
+  overdueRenderTable(overdueGetFilteredRows());
 }
 function overdueRenderTable(rows){
   const tbody = document.getElementById("overdue-tableBody");
@@ -2876,13 +2881,13 @@ function overdueRenderTable(rows){
 document.getElementById("overdue-searchBtn").addEventListener("click", overdueApplySearch);
 document.getElementById("overdue-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") overdueApplySearch(); });
 document.getElementById("overdue-printBtn").addEventListener("click", ()=>{
-  overdueApplySearch();
-  const rows = overdueGetRows().slice().sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
+  const rows = overdueGetFilteredRows();
+  overdueRenderTable(rows);
   const rowsHtml = rows.map(r=>{
     const days = overdueDaysLate(r.dueDate);
     const status = computeProductStatus(r);
     return `<tr>
-      <td>${days}일</td><td>${status}</td><td>${r.orderNo}</td><td>${r.customer}</td>
+      <td>${days}일</td><td style="color:${mainStatusTextColor(status)};font-weight:700;">${status}</td><td>${r.orderNo}</td><td>${r.customer}</td>
       <td style="text-align:left;">${r.vendor||''}</td>
       <td>${r.oldDrawingNo||''}</td>
       <td style="text-align:left;">${r.partName}</td><td>${r.qty}</td>
@@ -2900,6 +2905,23 @@ document.getElementById("overdue-printBtn").addEventListener("click", ()=>{
     </table>
   `;
   window.print();
+});
+document.getElementById("overdue-excelBtn").addEventListener("click", ()=>{
+  const rows = overdueGetFilteredRows();
+  const aoa = [["지연일수","제품상태","ORDER NO.","고객사","PROJECT NO.","기존도번","품명","수량","최종납기"]];
+  rows.forEach(r=>{
+    aoa.push([
+      overdueDaysLate(r.dueDate) + "일",
+      computeProductStatus(r),
+      r.orderNo||'', r.customer||'', r.vendor||'',
+      r.oldDrawingNo||'', r.partName||'', r.qty||0, r.dueDate||''
+    ]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "지연 LIST");
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `지연LIST_${dateStr}.xlsx`);
 });
 /* ============ VENDOR(거래처 관리) LOGIC ============ */
 // 단가 이력: mainData에 이미 있는 발주단가/자재비/외주업체비/집연마버/처리비(세정)를
