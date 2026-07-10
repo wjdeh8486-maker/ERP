@@ -69,6 +69,7 @@
   .calendar-header button{padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:#fff;cursor:pointer;font-weight:700;color:var(--navy);}
   .calendar-header button:hover{background:var(--gray-bg);}
   .calendar-header span#main-calMonthLabel{font-weight:700;font-size:16px;color:var(--navy);}
+  .cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;}
   .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:minmax(110px,auto);gap:6px;}
   .cal-dow{text-align:center;font-weight:700;font-size:12px;color:var(--text-mute);padding:6px 0;background:var(--gray-bg);border-radius:6px;}
   .cal-dow.cal-sun{color:var(--red);}
@@ -85,6 +86,12 @@
   .cal-item-remove{position:absolute;right:3px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-mute);font-weight:700;font-size:13px;line-height:1;padding:2px 4px;border-radius:3px;}
   .cal-item-remove:hover{color:#fff;background:var(--red);}
   .cal-cell .cal-item b{color:var(--red);}
+  .cal-item-summary{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 6px;margin-bottom:3px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:4px;}
+  .cal-item-summary:hover{background:#DCEAFB;}
+  .cal-item-summary b{color:var(--red);}
+  .cal-summary-arrow{color:var(--text-mute);font-size:9px;flex-shrink:0;}
+  .cal-item-full{display:none;}
+  .cal-item-full.open{display:block;}
   .sync-toggle{font-size:12px;color:#cbd3e1;cursor:pointer;text-decoration:underline;white-space:nowrap;}
   .quick-links{display:flex;gap:6px;flex-wrap:wrap;}
   .quick-links a{ padding:7px 12px; border-radius:6px; border:1px solid #3A4A6B; background:#232E4C; color:#fff; font-size:12.5px; font-weight:700; white-space:nowrap; text-decoration:none; }
@@ -220,6 +227,8 @@
     #print-area .cal-cell .cal-date{ font-size:9px; }
     #print-area .cal-cell .cal-item{ font-size:7.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     #print-area .cal-item-remove{ display:none !important; }
+    #print-area .cal-item-full{ display:none !important; }
+    #print-area .cal-summary-arrow{ display:none !important; }
     #print-area .q-monthly-table table,
     #print-area .q-detail-section table{ min-width:0 !important; font-size:7.5px; }
     #print-area .q-monthly-table, #print-area .q-detail-section > div{ overflow:visible !important; }
@@ -278,6 +287,7 @@
     .calendar-header span#main-calMonthLabel{ width:100%; text-align:center; order:-1; }
     .calendar-header > span:not(#main-calMonthLabel){ width:100%; text-align:center; }
     #main-calClose{ margin-left:0 !important; }
+    .cal-dow-row{ gap:3px; margin-bottom:3px; }
     .calendar-grid{ gap:3px; grid-auto-rows:minmax(54px,auto); }
     .cal-dow{ font-size:10px; padding:2px 0; }
     .cal-cell{ max-height:90px; padding:2px 3px; font-size:9.5px; }
@@ -408,6 +418,15 @@
           <button type="button" id="main-calRestoreBtn" class="btn-plain" title="지우기(×)로 숨긴 항목을 다시 표시합니다">숨긴 항목 복원</button>
           <button type="button" id="main-calPrintBtn" class="btn-plain" style="margin-left:auto;">인쇄</button>
           <button type="button" id="main-calClose" class="btn-plain">닫기</button>
+        </div>
+        <div class="cal-dow-row" id="main-calDowRow">
+          <div class="cal-dow cal-sun">일</div>
+          <div class="cal-dow">월</div>
+          <div class="cal-dow">화</div>
+          <div class="cal-dow">수</div>
+          <div class="cal-dow">목</div>
+          <div class="cal-dow">금</div>
+          <div class="cal-dow cal-sat">토</div>
         </div>
         <div class="calendar-grid" id="main-calendarGrid"></div>
       </div>
@@ -1011,17 +1030,33 @@ function renderMainCalendar(){
   const firstDow = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const todayStr = new Date().toDateString();
-  const dowLabels = ["일","월","화","수","목","금","토"];
-  let html = dowLabels.map((d,i)=>`<div class="cal-dow ${i===0?'cal-sun':''}${i===6?'cal-sat':''}">${d}</div>`).join("");
+  // 요일 헤더(일~토)는 매달 바뀌지 않으므로 최초 한 번만 채워두고, 이후에는 다시 그리지 않습니다.
+  const dowRow = document.getElementById("main-calDowRow");
+  if(dowRow && !dowRow.dataset.built){
+    const dowLabels = ["일","월","화","수","목","금","토"];
+    dowRow.innerHTML = dowLabels.map((d,i)=>`<div class="cal-dow ${i===0?'cal-sun':''}${i===6?'cal-sat':''}">${d}</div>`).join("");
+    dowRow.dataset.built = "1";
+  }
+  let html = "";
   for(let i=0;i<firstDow;i++){ html += `<div class="cal-cell empty"></div>`; }
   for(let day=1; day<=daysInMonth; day++){
     const items = byDay[day] || [];
     const isToday = new Date(year, month, day).toDateString() === todayStr;
     const dow = (firstDow + (day-1)) % 7;
     const dowClass = dow===0 ? 'sun' : (dow===6 ? 'sat' : '');
-    const itemsHtml = items.map(r=>
-      `<div class="cal-item"><b>${r.oldDrawingNo||'-'}</b> · ${r.orderNo} · 수량 ${r.qty}<span class="cal-item-remove" data-order="${r.orderNo}" title="이 항목을 달력에서 숨기기">×</span></div>`
-    ).join("");
+    const itemRowHtml = r=>
+      `<div class="cal-item"><b>${r.oldDrawingNo||'-'}</b> · ${r.orderNo} · 수량 ${r.qty}<span class="cal-item-remove" data-order="${r.orderNo}" title="이 항목을 달력에서 숨기기">×</span></div>`;
+    // 항목이 3개 이상이면 한 줄 요약("134-1 외 N품목")으로 접어두고, 클릭하면 전체 목록이 펼쳐집니다.
+    let itemsHtml;
+    if(items.length >= 3){
+      const first = items[0];
+      itemsHtml = `
+        <div class="cal-item-summary"><b>${first.oldDrawingNo||first.partNo||'-'}</b> 외 ${items.length-1}품목<span class="cal-summary-arrow">▾</span></div>
+        <div class="cal-item-full">${items.map(itemRowHtml).join("")}</div>
+      `;
+    } else {
+      itemsHtml = items.map(itemRowHtml).join("");
+    }
     html += `<div class="cal-cell ${items.length?'has-items':''} ${isToday?'today':''} ${dowClass?'weekend '+dowClass:''}">
       <div class="cal-date">${day}</div>
       ${itemsHtml}
@@ -1034,6 +1069,16 @@ document.getElementById("main-calRestoreBtn").addEventListener("click", ()=>{
   renderMainCalendar();
 });
 document.getElementById("main-calendarGrid").addEventListener("click", (e)=>{
+  const summary = e.target.closest(".cal-item-summary");
+  if(summary){
+    const full = summary.nextElementSibling;
+    if(full && full.classList.contains("cal-item-full")){
+      const nowOpen = full.classList.toggle("open");
+      const arrow = summary.querySelector(".cal-summary-arrow");
+      if(arrow) arrow.textContent = nowOpen ? "▴" : "▾";
+    }
+    return;
+  }
   const btn = e.target.closest(".cal-item-remove");
   if(!btn) return;
   const orderNo = btn.dataset.order;
@@ -1059,10 +1104,11 @@ document.getElementById("main-calNext").addEventListener("click", ()=>{
 document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
   renderMainCalendar();
   const monthLabel = document.getElementById("main-calMonthLabel").textContent;
+  const dowHtml = document.getElementById("main-calDowRow").innerHTML;
   const gridHtml = document.getElementById("main-calendarGrid").innerHTML;
   document.getElementById("print-area").innerHTML = `
     <h2>MAIN 대시보드 · 최종납기 달력 (${monthLabel})</h2>
-    <div class="calendar-grid">${gridHtml}</div>
+    <div class="calendar-grid">${dowHtml}${gridHtml}</div>
   `;
   const orientationStyle = document.createElement("style");
   orientationStyle.id = "main-cal-print-orientation";
@@ -1088,6 +1134,8 @@ document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
     #print-area .cal-cell .cal-date{ font-size:12.5px !important; }
     #print-area .cal-cell .cal-item{ font-size:10px !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; }
     #print-area .cal-item-remove{ display:none !important; }
+    #print-area .cal-item-full{ display:none !important; }
+    #print-area .cal-summary-arrow{ display:none !important; }
   `;
   document.head.appendChild(orientationStyle);
   function restoreOrientation(){
