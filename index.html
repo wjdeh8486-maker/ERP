@@ -110,6 +110,7 @@
   .cal-item-full{display:none;}
   .cal-item-full.open{display:block;}
   .sync-toggle{font-size:12px;color:#cbd3e1;cursor:pointer;text-decoration:underline;white-space:nowrap;}
+  .sync-banner{font-size:12.5px;font-weight:700;white-space:nowrap;padding:4px 10px;border-radius:14px;background:#1D2740;color:#B9C2D6;}
   .quick-links{display:flex;gap:6px;flex-wrap:wrap;}
   .quick-links a{ padding:7px 12px; border-radius:6px; border:1px solid #3A4A6B; background:#232E4C; color:#fff; font-size:12.5px; font-weight:700; white-space:nowrap; text-decoration:none; }
   .quick-links a:hover{background:#2C3A5E;}
@@ -134,7 +135,8 @@
   .stat-card.prod .label,.stat-card.prod .value{color:var(--red);}
   .stat-card.qc .label,.stat-card.qc .value{color:var(--blue);}
   .stat-card.done .label,.stat-card.done .value{color:var(--purple);}
-  .stat-card.prod,.stat-card.qc,.stat-card.done{text-align:center;}
+  .stat-card.overdue .label,.stat-card.overdue .value{color:#D9534F;}
+  .stat-card.prod,.stat-card.qc,.stat-card.done,.stat-card.overdue{text-align:center;}
   .stat-card.progress{flex:2;min-width:220px;}
   .stat-card.progress .label{color:var(--red);}
   .progress-bar-track{margin-top:10px;background:#EEE;border-radius:20px;height:14px;overflow:hidden;}
@@ -335,6 +337,7 @@
     .quick-links a{ flex:1 1 auto; text-align:center; }
     .topbar-right{ width:100%; margin-left:0; justify-content:space-between; flex-wrap:wrap; }
     .sync-toggle{ text-align:center; width:100%; }
+    .sync-banner{ text-align:center; width:100%; }
     .sync-panel{ padding:10px 12px; }
     .sync-panel input,
     .sync-panel button,
@@ -386,6 +389,7 @@
     <!-- ===================== MAIN VIEW ===================== -->
     <div id="topbar-main" class="topbar">
       <h1>MAIN 대시보드</h1>
+      <span id="main-syncBanner" class="sync-banner">⚪ 동기화 확인 중...</span>
       <div class="search-box">
         <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
         <button id="main-searchBtn">🔍 검색</button>
@@ -451,6 +455,7 @@
         </div>
         <div class="stat-card qc"><div class="label">품질</div><div class="value" id="main-statQc">0</div></div>
         <div class="stat-card done"><div class="label">완료</div><div class="value" id="main-statDone">0</div></div>
+        <div class="stat-card overdue"><div class="label">지연</div><div class="value" id="main-statOverdue">0</div></div>
         <div class="stat-card progress" id="main-progressCard">
           <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;">
             <div class="label">생산 진행률(%)</div>
@@ -906,11 +911,13 @@ function mainRenderStats(data){
     const status = computeProductStatus(r);
     return ["재고","출고","측정","외관","비젼","OK"].includes(status);
   }).length;
+  const overdue = data.filter(r => isOverdue(r.dueDate) && r.shipped !== "납품완료").length;
   const total = data.length || 1;
   const pct = Math.round(((qc + done) / total) * 100);
   document.getElementById("main-statProd").textContent = prod;
   document.getElementById("main-statQc").textContent = qc;
   document.getElementById("main-statDone").textContent = done;
+  document.getElementById("main-statOverdue").textContent = overdue;
   document.getElementById("main-statProgress").textContent = pct + "%";
   document.getElementById("main-progressFill").style.width = pct + "%";
   document.getElementById("main-progressDetail").textContent = `품질+완료 ${qc + done} / 전체 ${total}건`;
@@ -1401,6 +1408,32 @@ function fetchWaitMap(url, datasetName, keyField, valueField, targetMap){
 }
 function cacheSet(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 function cacheGet(key){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+// 상단에 항상 보이는 "마지막 동기화 OO분 전" 배너. 색으로 신선도를 표시합니다
+// (초록 10분 이내 / 노랑 1시간 이내 / 빨강 그 이상 또는 기록 없음).
+function formatRelativeMinutes(ts){
+  const mins = Math.floor((Date.now()-ts)/60000);
+  if(mins < 1) return "방금 전";
+  if(mins < 60) return mins + "분 전";
+  const hours = Math.floor(mins/60);
+  if(hours < 24) return hours + "시간 전";
+  return Math.floor(hours/24) + "일 전";
+}
+function updateSyncBanner(){
+  const el = document.getElementById("main-syncBanner");
+  if(!el) return;
+  const ts = cacheGet("mainLastSync");
+  if(!ts){
+    el.textContent = "⚪ 동기화 기록 없음";
+    el.style.background = "#1D2740"; el.style.color = "#B9C2D6";
+    return;
+  }
+  const mins = Math.floor((Date.now()-ts)/60000);
+  const text = "마지막 동기화: " + formatRelativeMinutes(ts);
+  if(mins < 10){ el.textContent = "🟢 " + text; el.style.background = "#1E3A2A"; el.style.color = "#7FDDA0"; }
+  else if(mins < 60){ el.textContent = "🟡 " + text; el.style.background = "#3A3320"; el.style.color = "#FFD400"; }
+  else { el.textContent = "🔴 " + text; el.style.background = "#3A2222"; el.style.color = "#FF9494"; }
+}
+setInterval(updateSyncBanner, 30000);
   async function saveMainData(){
   await idbSet("cache_mainData", mainData);
 }
@@ -1497,6 +1530,7 @@ markMainStatusDirty();
 await saveMainData();
 cacheSet("mainLastSync", Date.now());
 mainInitialRender(mainData);
+updateSyncBanner();
       cacheSet("cache_measureWaitMap", measureWaitMap);
       cacheSet("cache_cleanWaitMap", cleanWaitMap);
       cacheSet("cache_visionWaitMap", visionWaitMap);
@@ -2759,6 +2793,7 @@ initQualityView();
 (async function initCachedOrFetch(){
   const cachedMain = await loadMainData();
   const lastSync = cacheGet("mainLastSync");
+  updateSyncBanner();
   if(cachedMain){
     mainData = cachedMain;
     markMainStatusDirty();
