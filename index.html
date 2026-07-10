@@ -383,6 +383,7 @@
   <div class="side-nav">
     <div class="brand">종합제품관리<small>ERP 웹 시스템</small></div>
     <div class="nav-item active" data-view="main"><span class="dot"></span>MAIN 대시보드</div>
+    <div class="nav-item" data-view="overdue"><span class="dot"></span>지연 LIST</div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
@@ -510,6 +511,33 @@
         <div class="empty-state" id="main-emptyState" style="display:none;">검색 결과가 없습니다.</div>
       </div>
       <div class="cards-view" id="main-cardsView"></div>
+    </div>
+    <!-- ===================== OVERDUE(지연 LIST) VIEW ===================== -->
+    <div id="topbar-overdue" class="topbar" style="display:none;">
+      <h1>지연 LIST</h1>
+      <div class="search-box">
+        <input id="overdue-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
+        <button id="overdue-searchBtn">🔍 검색</button>
+        <button id="overdue-printBtn">🖨️ 인쇄</button>
+      </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 최종납기가 지났는데 아직 납품 완료되지 않은 건만 모아서 보여줍니다. 지연일수가 많은 순으로 정렬됩니다.</div>
+    </div>
+    <div class="view" id="view-overdue">
+      <div class="summary-row">
+        <div class="stat-card overdue"><div class="label">지연 건수</div><div class="value" id="overdue-statCount">0</div></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>지연일수</th><th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th>
+              <th>품번</th><th>기존도번</th><th>품명</th><th>수량</th><th>최종납기</th><th>납품여부</th>
+            </tr>
+          </thead>
+          <tbody id="overdue-tableBody"></tbody>
+        </table>
+        <div class="empty-state" id="overdue-emptyState">검색 버튼을 클릭하면 지연 목록이 표시됩니다.</div>
+      </div>
     </div>
     <!-- ===================== INVENTORY VIEW ===================== -->
     <div id="topbar-inventory" class="topbar" style="display:none;">
@@ -724,6 +752,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("view-"+target).classList.add("active");
     document.getElementById("topbar-main").style.display = target==="main" ? "flex" : "none";
     document.getElementById("topbar-inventory").style.display = target==="inventory" ? "flex" : "none";
+    document.getElementById("topbar-overdue").style.display = target==="overdue" ? "flex" : "none";
     document.getElementById("topbar-quality").style.display = target==="quality" ? "flex" : "none";
     document.getElementById("topbar-sales").style.display = target==="sales" ? "flex" : "none";
     document.getElementById("topbar-vendor").style.display = target==="vendor" ? "flex" : "none";
@@ -733,6 +762,9 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="quality" && !window.__qualityInited){
       window.__qualityInited = true;
       setTimeout(initQualityView, 0);
+    }
+    if(target==="overdue"){
+      setTimeout(overdueApplySearch, 0);
     }
     if(target==="sales"){
       const rangeLabelEl = document.getElementById("sales-rangeLabel");
@@ -2788,6 +2820,86 @@ function printSalesReport(){
   window.print();
 }
 document.getElementById("sales-printBtn").addEventListener("click", printSalesReport);
+/* ============ OVERDUE(지연 LIST) LOGIC ============ */
+function overdueDaysLate(dueDate){
+  const d = new Date(dueDate);
+  if(isNaN(d)) return 0;
+  const today = new Date(); today.setHours(0,0,0,0);
+  d.setHours(0,0,0,0);
+  return Math.round((today - d) / (1000*60*60*24));
+}
+function overdueGetRows(){
+  return (mainData||[]).filter(r=>(Number(r.qty)||0) > 0 && isOverdue(r.dueDate) && r.shipped !== "납품완료");
+}
+function overdueApplySearch(){
+  const raw = document.getElementById("overdue-searchInput").value.trim().toLowerCase();
+  let rows = overdueGetRows();
+  if(raw){
+    // 다른 검색창과 동일한 규칙: 쉼표(,)=OR, 슬래시(/)=AND(좁혀서 검색)
+    const orGroups = raw.split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim()).filter(Boolean));
+    if(orGroups.length){
+      rows = rows.filter(r=>{
+        const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.oldDrawingNo].join(" ").toLowerCase();
+        return orGroups.some(andTerms => andTerms.every(t=>haystack.includes(t)));
+      });
+    }
+  }
+  // 지연일수가 많은 순으로 정렬 (가장 급한 건이 맨 위)
+  rows = rows.slice().sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
+  overdueRenderTable(rows);
+}
+function overdueRenderTable(rows){
+  const tbody = document.getElementById("overdue-tableBody");
+  const empty = document.getElementById("overdue-emptyState");
+  tbody.innerHTML = "";
+  empty.textContent = rows.length===0 ? "지연된 건이 없습니다." : "";
+  empty.style.display = rows.length===0 ? "block" : "none";
+  document.getElementById("overdue-statCount").textContent = rows.length;
+  rows.forEach(r=>{
+    const days = overdueDaysLate(r.dueDate);
+    const status = computeProductStatus(r);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="cell-overdue">${days}일</td>
+      <td>${statusBadge(status)}</td>
+      <td>${r.orderNo}</td><td>${r.customer}</td>
+      <td style="text-align:left;">${r.vendor||''}</td>
+      <td>${r.partNo}</td><td>${r.oldDrawingNo||''}</td>
+      <td style="text-align:left;">${r.partName}</td><td>${r.qty}</td>
+      <td class="cell-overdue">${r.dueDate||''}</td>
+      <td>${r.shipped||''}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+document.getElementById("overdue-searchBtn").addEventListener("click", overdueApplySearch);
+document.getElementById("overdue-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") overdueApplySearch(); });
+document.getElementById("overdue-printBtn").addEventListener("click", ()=>{
+  overdueApplySearch();
+  const rows = overdueGetRows().slice().sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
+  const rowsHtml = rows.map(r=>{
+    const days = overdueDaysLate(r.dueDate);
+    const status = computeProductStatus(r);
+    return `<tr>
+      <td>${days}일</td><td>${status}</td><td>${r.orderNo}</td><td>${r.customer}</td>
+      <td style="text-align:left;">${r.vendor||''}</td>
+      <td>${r.partNo}</td><td>${r.oldDrawingNo||''}</td>
+      <td style="text-align:left;">${r.partName}</td><td>${r.qty}</td>
+      <td>${r.dueDate||''}</td><td>${r.shipped||''}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("print-area").innerHTML = `
+    <h2>지연 LIST (${new Date().toLocaleString("ko-KR")}) · 총 ${rows.length}건</h2>
+    <table>
+      <thead><tr>
+        <th>지연일수</th><th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th>
+        <th>품번</th><th>기존도번</th><th>품명</th><th>수량</th><th>최종납기</th><th>납품여부</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
+  window.print();
+});
 /* ============ VENDOR(거래처 관리) LOGIC ============ */
 // 단가 이력: mainData에 이미 있는 발주단가/자재비/외주업체비/집연마버/처리비(세정)를
 // 기존도번 기준으로 정리해서 보여줍니다. 검색 전에는 빈 상태로 두어(다른 화면과 동일한 UX)
