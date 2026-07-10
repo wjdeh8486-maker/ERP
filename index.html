@@ -531,7 +531,7 @@
           <thead>
             <tr>
               <th>지연일수</th><th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th>
-              <th>품번</th><th>기존도번</th><th>품명</th><th>수량</th><th>최종납기</th><th>납품여부</th>
+              <th>기존도번</th><th>품명</th><th>수량</th><th>최종납기</th>
             </tr>
           </thead>
           <tbody id="overdue-tableBody"></tbody>
@@ -1583,6 +1583,8 @@ async function fetchMainData(yearsParam){
     .then(async ([res])=>{
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       mainApiUrl = url;
+     // 디버그: 개발자도구(F12) > Console 탭에서 실제 MAIN 시트 열 이름을 확인할 수 있습니다.
+     if(res.rows && res.rows[0]) console.log("MAIN 시트 열 이름 목록:", Object.keys(res.rows[0]));
      mainData = res.rows.map(mapRowToMain);
 markMainStatusDirty();
 await saveMainData();
@@ -2864,10 +2866,9 @@ function overdueRenderTable(rows){
       <td>${statusBadge(status)}</td>
       <td>${r.orderNo}</td><td>${r.customer}</td>
       <td style="text-align:left;">${r.vendor||''}</td>
-      <td>${r.partNo}</td><td>${r.oldDrawingNo||''}</td>
+      <td>${r.oldDrawingNo||''}</td>
       <td style="text-align:left;">${r.partName}</td><td>${r.qty}</td>
       <td class="cell-overdue">${r.dueDate||''}</td>
-      <td>${r.shipped||''}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -2883,9 +2884,9 @@ document.getElementById("overdue-printBtn").addEventListener("click", ()=>{
     return `<tr>
       <td>${days}일</td><td>${status}</td><td>${r.orderNo}</td><td>${r.customer}</td>
       <td style="text-align:left;">${r.vendor||''}</td>
-      <td>${r.partNo}</td><td>${r.oldDrawingNo||''}</td>
+      <td>${r.oldDrawingNo||''}</td>
       <td style="text-align:left;">${r.partName}</td><td>${r.qty}</td>
-      <td>${r.dueDate||''}</td><td>${r.shipped||''}</td>
+      <td>${r.dueDate||''}</td>
     </tr>`;
   }).join("");
   document.getElementById("print-area").innerHTML = `
@@ -2893,7 +2894,7 @@ document.getElementById("overdue-printBtn").addEventListener("click", ()=>{
     <table>
       <thead><tr>
         <th>지연일수</th><th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th>
-        <th>품번</th><th>기존도번</th><th>품명</th><th>수량</th><th>최종납기</th><th>납품여부</th>
+        <th>기존도번</th><th>품명</th><th>수량</th><th>최종납기</th>
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
