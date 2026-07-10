@@ -90,7 +90,9 @@
   .cal-cell .cal-date{font-weight:700;font-size:12px;margin-bottom:3px;color:var(--text);}
   .cal-cell.sun .cal-date{color:var(--red);}
   .cal-cell.sat .cal-date{color:var(--blue);}
-  .cal-cell .cal-item{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 18px 2px 4px;margin-bottom:3px;position:relative;white-space:nowrap;}
+  .cal-cell .cal-item{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 18px 2px 4px;margin-bottom:3px;position:relative;white-space:nowrap;cursor:grab;}
+  .cal-cell .cal-item.dragging{opacity:0.4;}
+  .cal-cell.cal-drop-target{outline:2px dashed var(--blue);outline-offset:-2px;background:#EAF1FB;}
   .cal-item-remove{position:absolute;right:3px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-mute);font-weight:700;font-size:13px;line-height:1;padding:2px 4px;border-radius:3px;}
   .cal-item-remove:hover{color:#fff;background:var(--red);}
   .cal-cell .cal-item b{color:var(--red);}
@@ -1071,14 +1073,20 @@ function renderMainCalendar(){
       weekCells = [];
     }
   }
-  for(let i=0;i<firstDow;i++){ weekCells.push(`<div class="cal-cell empty"></div>`); }
+  // 빈 칸(내용 없음)은 좁게, 항목이 있는 칸은 넓게 - 요일과 무관하게 그 주(週)에
+  // 실제로 내용이 있는 칸만 폭을 넓혀서, 화/수/목이 비어 있으면 그만큼 월/금처럼
+  // 내용이 있는 칸이 넓어져 줄바꿈 없이 한 줄로 보이도록 합니다.
+  const EMPTY_FLEX = "flex:0.55 1 0;";
+  const BUSY_FLEX = "flex:1.8 1 0;";
+  for(let i=0;i<firstDow;i++){ weekCells.push(`<div class="cal-cell empty" style="${EMPTY_FLEX}"></div>`); }
   for(let day=1; day<=daysInMonth; day++){
     const items = byDay[day] || [];
     const isToday = new Date(year, month, day).toDateString() === todayStr;
     const dow = (firstDow + (day-1)) % 7;
     const dowClass = dow===0 ? 'sun' : (dow===6 ? 'sat' : '');
+    const cellDateStr = year + "-" + String(month+1).padStart(2,"0") + "-" + String(day).padStart(2,"0");
     const itemRowHtml = r=>
-      `<div class="cal-item"><b>${r.oldDrawingNo||'-'}</b> · ${r.orderNo} · 수량 ${r.qty}<span class="cal-item-remove" data-order="${r.orderNo}" title="이 항목을 달력에서 숨기기">×</span></div>`;
+      `<div class="cal-item" draggable="true" data-order="${r.orderNo}" title="드래그해서 다른 날짜로 옮길 수 있습니다"><b>${r.oldDrawingNo||'-'}</b> · ${r.orderNo} · 수량 ${r.qty}<span class="cal-item-remove" data-order="${r.orderNo}" title="이 항목을 달력에서 숨기기">×</span></div>`;
     // ORDER NO의 마지막 "-순번"을 뗀 접두부(예: "26-174-53" → "26-174")로 그룹핑합니다.
     // 같은 그룹(같은 프로젝트 번호)에 항목이 3개 이상이면 그 그룹만 "OO 외 N품목"으로 접고,
     // 항목이 적은 다른 그룹은 그대로 각 줄에 표시해서 한 날짜에 여러 그룹이 섞여 있어도
@@ -1102,13 +1110,14 @@ function renderMainCalendar(){
       }
       return gItems.map(itemRowHtml).join("");
     }).join("");
-    weekCells.push(`<div class="cal-cell ${items.length?'has-items':''} ${isToday?'today':''} ${dowClass?'weekend '+dowClass:''}">
+    const cellFlex = items.length ? BUSY_FLEX : EMPTY_FLEX;
+    weekCells.push(`<div class="cal-cell ${items.length?'has-items':''} ${isToday?'today':''} ${dowClass?'weekend '+dowClass:''}" style="${cellFlex}" data-date="${cellDateStr}">
       <div class="cal-date">${day}</div>
       ${itemsHtml}
     </div>`);
     if(weekCells.length===7) flushWeek();
   }
-  while(weekCells.length && weekCells.length<7){ weekCells.push(`<div class="cal-cell empty"></div>`); }
+  while(weekCells.length && weekCells.length<7){ weekCells.push(`<div class="cal-cell empty" style="${EMPTY_FLEX}"></div>`); }
   flushWeek();
   document.getElementById("main-calendarGrid").innerHTML = html;
 }
@@ -1131,6 +1140,51 @@ document.getElementById("main-calendarGrid").addEventListener("click", (e)=>{
   if(!btn) return;
   const orderNo = btn.dataset.order;
   if(orderNo){ mainCalendarDismissed.add(orderNo); renderMainCalendar(); }
+});
+// 항목을 드래그해서 다른 날짜 칸에 놓으면 그 항목의 최종납기일을 놓은 날짜로 바꿉니다.
+let mainDragOrderNo = null;
+document.getElementById("main-calendarGrid").addEventListener("dragstart", (e)=>{
+  const item = e.target.closest(".cal-item");
+  if(!item){ e.preventDefault(); return; }
+  mainDragOrderNo = item.dataset.order;
+  item.classList.add("dragging");
+  if(e.dataTransfer){
+    e.dataTransfer.effectAllowed = "move";
+    try{ e.dataTransfer.setData("text/plain", mainDragOrderNo || ""); }catch(err){}
+  }
+});
+document.getElementById("main-calendarGrid").addEventListener("dragend", (e)=>{
+  const item = e.target.closest(".cal-item");
+  if(item) item.classList.remove("dragging");
+  document.querySelectorAll("#main-calendarGrid .cal-drop-target").forEach(el=>el.classList.remove("cal-drop-target"));
+});
+document.getElementById("main-calendarGrid").addEventListener("dragover", (e)=>{
+  const cell = e.target.closest(".cal-cell[data-date]");
+  if(!cell) return;
+  e.preventDefault();
+  if(e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  cell.classList.add("cal-drop-target");
+});
+document.getElementById("main-calendarGrid").addEventListener("dragleave", (e)=>{
+  const cell = e.target.closest(".cal-cell[data-date]");
+  if(cell) cell.classList.remove("cal-drop-target");
+});
+document.getElementById("main-calendarGrid").addEventListener("drop", (e)=>{
+  const cell = e.target.closest(".cal-cell[data-date]");
+  if(!cell) return;
+  e.preventDefault();
+  cell.classList.remove("cal-drop-target");
+  const orderNo = mainDragOrderNo || (e.dataTransfer && e.dataTransfer.getData("text/plain"));
+  const newDate = cell.dataset.date;
+  mainDragOrderNo = null;
+  if(!orderNo || !newDate) return;
+  const row = mainData.find(r=>r.orderNo===orderNo);
+  if(row && row.dueDate !== newDate){
+    row.dueDate = newDate;
+    saveMainData();
+    mainApplySearch();
+    renderMainCalendar();
+  }
 });
 document.getElementById("main-calendarBtn").addEventListener("click", ()=>{
   mainCalendarOpen = !mainCalendarOpen;
@@ -1180,10 +1234,8 @@ document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
       display:flex !important; gap:6px !important; align-items:flex-start !important;
       flex:1 1 0 !important; min-height:0 !important;
     }
-    #print-area .cal-week-row .cal-cell,
+    #print-area .cal-week-row .cal-cell{ min-width:0 !important; }
     #print-area .cal-dow-print-row .cal-dow{ flex:1.15 1 0 !important; min-width:0 !important; }
-    #print-area .cal-week-row .cal-cell:nth-child(1),
-    #print-area .cal-week-row .cal-cell:nth-child(7),
     #print-area .cal-dow-print-row .cal-dow:nth-child(1),
     #print-area .cal-dow-print-row .cal-dow:nth-child(7){ flex:0.7 1 0 !important; }
     #print-area .cal-dow{ font-size:13px !important; padding:6px 0 !important; }
