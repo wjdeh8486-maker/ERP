@@ -354,7 +354,7 @@
     <div id="topbar-main" class="topbar">
       <h1>MAIN 대시보드</h1>
       <div class="search-box">
-        <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO 검색 (쉼표로 여러 개 검색 가능)">
+        <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
         <div class="status-multiselect" id="main-statusMultiselect">
           <button type="button" id="main-statusToggle" class="status-toggle-btn">전체 상태 ▾</button>
           <div class="status-dropdown" id="main-statusDropdown">
@@ -376,6 +376,7 @@
         <button id="main-searchBtn">검색</button>
         <button id="main-printBtn">인쇄</button>
       </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ <span style="color:#FFD400;font-weight:700;">쉼표(,)</span>로 구분하면 여러 개 중 하나라도 맞으면 검색되고, <span style="color:#FF6B81;font-weight:700;">슬래시(/)</span>로 구분하면 그 단어를 모두 포함하는 항목만 좁혀서 검색합니다. (예: "26-171<span style="color:#FF6B81;font-weight:700;">/</span>SHOWERHEAD<span style="color:#FFD400;font-weight:700;">,</span> BLOCK PLATE" → 26-171이면서 SHOWERHEAD이거나, BLOCK PLATE)</div>
       <div class="quick-links">
         <a href="https://wjdeh8486-maker.github.io/daysheet/" target="_blank" rel="noopener">체크리스트</a>
         <a href="https://wjdeh8486-maker.github.io/calendar/" target="_blank" rel="noopener">일정 달력</a>
@@ -922,13 +923,16 @@ function mainGetFilteredBase(){
   const raw = document.getElementById("main-searchInput").value.trim().toLowerCase();
   let filtered = mainData.filter(r=>(Number(r.qty)||0) > 0);
   if(raw){
-    // 쉼표(,)로 구분해 여러 검색어를 입력하면, 그 중 하나라도 일치하는 항목을 모두 보여줍니다.
-    // 예: "SHOWERHEAD, BLOCK PLATE" → 두 품명 중 하나라도 해당하는 행을 함께 검색합니다.
-    const terms = raw.split(",").map(t=>t.trim()).filter(Boolean);
-    if(terms.length){
+    // 쉼표(,)로 구분한 각 덩어리는 서로 OR(그 중 하나라도 맞으면 검색)로 묶이고,
+    // 쉼표 하나의 덩어리 안에서 슬래시(/)로 여러 단어를 구분하면 그 단어들을 전부
+    // 포함해야 하는 AND(좁혀서 검색)로 동작합니다.
+    // 예: "26-171/SHOWERHEAD, BLOCK PLATE"
+    //   → ("26-171"과 "SHOWERHEAD"를 모두 포함) 이거나, "BLOCK PLATE"를 포함
+    const orGroups = raw.split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim()).filter(Boolean));
+    if(orGroups.length){
       filtered = filtered.filter(r=>{
         const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.oldDrawingNo].join(" ").toLowerCase();
-        return terms.some(t=>haystack.includes(t));
+        return orGroups.some(andTerms => andTerms.every(t=>haystack.includes(t)));
       });
     }
   }
@@ -1068,17 +1072,29 @@ function renderMainCalendar(){
     const dowClass = dow===0 ? 'sun' : (dow===6 ? 'sat' : '');
     const itemRowHtml = r=>
       `<div class="cal-item"><b>${r.oldDrawingNo||'-'}</b> · ${r.orderNo} · 수량 ${r.qty}<span class="cal-item-remove" data-order="${r.orderNo}" title="이 항목을 달력에서 숨기기">×</span></div>`;
-    // 항목이 3개 이상이면 한 줄 요약("134-1 외 N품목")으로 접어두고, 클릭하면 전체 목록이 펼쳐집니다.
-    let itemsHtml;
-    if(items.length >= 3){
-      const first = items[0];
-      itemsHtml = `
-        <div class="cal-item-summary"><b>${first.oldDrawingNo||first.partNo||'-'}</b> 외 ${items.length-1}품목<span class="cal-summary-arrow">▾</span></div>
-        <div class="cal-item-full">${items.map(itemRowHtml).join("")}</div>
-      `;
-    } else {
-      itemsHtml = items.map(itemRowHtml).join("");
-    }
+    // ORDER NO의 마지막 "-순번"을 뗀 접두부(예: "26-174-53" → "26-174")로 그룹핑합니다.
+    // 같은 그룹(같은 프로젝트 번호)에 항목이 3개 이상이면 그 그룹만 "OO 외 N품목"으로 접고,
+    // 항목이 적은 다른 그룹은 그대로 각 줄에 표시해서 한 날짜에 여러 그룹이 섞여 있어도
+    // 서로 구분되도록 합니다.
+    const groups = {};
+    const groupOrder = [];
+    items.forEach(r=>{
+      const m = String(r.orderNo||"").match(/^(.*)-\d+$/);
+      const key = m ? m[1] : String(r.orderNo||"(미지정)");
+      if(!groups[key]){ groups[key] = []; groupOrder.push(key); }
+      groups[key].push(r);
+    });
+    const itemsHtml = groupOrder.map(key=>{
+      const gItems = groups[key];
+      if(gItems.length >= 3){
+        const first = gItems[0];
+        return `
+          <div class="cal-item-summary"><b>${first.oldDrawingNo||first.partNo||'-'}</b> · ${first.orderNo} 외 ${gItems.length-1}품목<span class="cal-summary-arrow">▾</span></div>
+          <div class="cal-item-full">${gItems.map(itemRowHtml).join("")}</div>
+        `;
+      }
+      return gItems.map(itemRowHtml).join("");
+    }).join("");
     weekCells.push(`<div class="cal-cell ${items.length?'has-items':''} ${isToday?'today':''} ${dowClass?'weekend '+dowClass:''}">
       <div class="cal-date">${day}</div>
       ${itemsHtml}
