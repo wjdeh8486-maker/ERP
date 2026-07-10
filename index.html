@@ -64,17 +64,16 @@
   .status-dropdown label{display:flex;align-items:center;gap:6px;padding:5px 6px;font-size:13px;color:var(--text);cursor:pointer;white-space:nowrap;border-radius:4px;}
   .status-dropdown label:hover{background:var(--gray-bg);}
   .status-dropdown input[type="checkbox"]{width:18px;height:18px;flex:none;}
-  .calendar-panel{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:12px;box-shadow:0 2px 8px rgba(31,42,68,.06);display:flex;flex-direction:column;height:calc(100vh - 260px);min-height:460px;}
-  .calendar-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px solid var(--border);flex:none;}
+  .calendar-panel{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:12px;box-shadow:0 2px 8px rgba(31,42,68,.06);}
+  .calendar-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px solid var(--border);}
   .calendar-header button{padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:#fff;cursor:pointer;font-weight:700;color:var(--navy);}
   .calendar-header button:hover{background:var(--gray-bg);}
   .calendar-header span#main-calMonthLabel{font-weight:700;font-size:16px;color:var(--navy);}
-  /* 달력 그리드: 인쇄물과 동일하게 패널 안에서 남는 세로 공간을 균등한 칸으로 꽉 채웁니다 */
-  .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;flex:1;min-height:0;grid-auto-rows:minmax(80px,1fr);}
+  .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:minmax(110px,auto);gap:6px;}
   .cal-dow{text-align:center;font-weight:700;font-size:12px;color:var(--text-mute);padding:6px 0;background:var(--gray-bg);border-radius:6px;}
   .cal-dow.cal-sun{color:var(--red);}
   .cal-dow.cal-sat{color:var(--blue);}
-  .cal-cell{border:1px solid var(--border);border-radius:8px;padding:6px 7px;font-size:11px;background:#fff;overflow-y:auto;transition:box-shadow .15s;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+  .cal-cell{border:1px solid var(--border);border-radius:8px;padding:4px 5px;font-size:11px;background:#fff;overflow-y:auto;max-height:220px;transition:box-shadow .15s;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
   .cal-cell.empty{background:transparent;border:none;}
   .cal-cell.weekend:not(.has-items){background:#F7F9FD;}
   .cal-cell.today{border-color:var(--yellow);border-width:2px;}
@@ -274,13 +273,12 @@
     .status-multiselect{ flex:1 1 100%; }
     .status-toggle-btn{ width:100%; min-height:44px; }
     .status-dropdown{ left:0; right:0; min-width:0; }
-    .calendar-panel{ height:auto; min-height:0; }
     .calendar-header{ justify-content:center; }
     .calendar-header button{ flex:none; min-height:40px; min-width:40px; }
     .calendar-header span#main-calMonthLabel{ width:100%; text-align:center; order:-1; }
     .calendar-header > span:not(#main-calMonthLabel){ width:100%; text-align:center; }
     #main-calClose{ margin-left:0 !important; }
-    .calendar-grid{ gap:3px; grid-auto-rows:minmax(54px,1fr); }
+    .calendar-grid{ gap:3px; grid-auto-rows:minmax(54px,auto); }
     .cal-dow{ font-size:10px; padding:2px 0; }
     .cal-cell{ max-height:90px; padding:2px 3px; font-size:9.5px; }
     .cal-cell .cal-date{ font-size:10px; }
@@ -715,6 +713,8 @@ function computeProductStatusRaw(r){
   return "생산";
 }
 let mainStatusMap = {};
+let mainStatusMapDirty = true;
+function markMainStatusDirty(){ mainStatusMapDirty = true; }
 function computeAllStatuses(data){
   const result = {};
   const groups = {};
@@ -803,7 +803,13 @@ function computeStockPreShip(r){
   return matches.reduce((s,m)=>s+(Number(m.outQty)||0),0);
 }
 function mainRenderStats(data){
-  mainStatusMap = computeAllStatuses(mainData);
+  // 상태(생산/재고/출고/...) 계산은 mainData 전체 x invData 전체를 훑는 무거운 연산이라,
+  // 데이터가 실제로 바뀌었을 때(mainStatusMapDirty=true)만 다시 계산하고,
+  // 상태 필터 체크박스처럼 목록만 다시 그리는 경우엔 이미 계산된 결과를 재사용합니다.
+  if(mainStatusMapDirty){
+    mainStatusMap = computeAllStatuses(mainData);
+    mainStatusMapDirty = false;
+  }
   const prod = data.filter(r => computeProductStatus(r) === "생산").length;
   const done = data.filter(r => computeProductStatus(r) === "완료").length;
   const qc = data.filter(r => {
@@ -1095,6 +1101,7 @@ document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
 document.getElementById("main-syncToggle").addEventListener("click", ()=>document.getElementById("main-syncPanel").classList.toggle("open"));
 document.getElementById("main-resetBtn").addEventListener("click", async ()=>{
   mainData = MAIN_SAMPLE.slice();
+  markMainStatusDirty();
   await saveMainData();
   mainInitialRender(mainData);
 });
@@ -1185,6 +1192,7 @@ function applySharedCache(cache){
     if(d.measureWaitMap) measureWaitMap = d.measureWaitMap;
     if(d.cleanWaitMap) cleanWaitMap = d.cleanWaitMap;
     if(d.visionWaitMap) visionWaitMap = d.visionWaitMap;
+    markMainStatusDirty();
     mainInitialRender(mainData);
    saveMainData();
     cacheSet("cache_measureWaitMap", measureWaitMap);
@@ -1195,6 +1203,7 @@ function applySharedCache(cache){
   }
   if(cache.inv && cache.inv.data){
     if(cache.inv.data.invData) invData = cache.inv.data.invData;
+    markMainStatusDirty();
     invRenderCheck(""); invRenderAll();
     cacheSet("cache_invData", invData);
     document.getElementById("inv-apiStatus").textContent = "공유 캐시에서 최신 데이터를 불러왔습니다 · 마지막 동기화 " + fmtCacheTime(cache.inv.updatedAt);
@@ -1232,6 +1241,7 @@ async function fetchMainData(yearsParam){
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       mainApiUrl = url;
      mainData = res.rows.map(mapRowToMain);
+markMainStatusDirty();
 await saveMainData();
 cacheSet("mainLastSync", Date.now());
 mainInitialRender(mainData);
@@ -1262,6 +1272,7 @@ document.getElementById("main-syncBtn").addEventListener("click", ()=>{
     complete:function(results){
       try{
         mainData = results.data.map(mapRowToMain);
+        markMainStatusDirty();
         mainInitialRender(mainData);
         document.getElementById("main-syncPanel").classList.remove("open");
       }catch(e){ alert("데이터 형식을 확인해 주세요."); }
@@ -1309,6 +1320,7 @@ function setupDropZone(zoneId, inputId, labelId, onRows){
 }
 setupDropZone("main-dropZone","main-fileInput","main-dropLabel", rows=>{
   mainData = rows.map(mapRowToMain);
+  markMainStatusDirty();
   mainInitialRender(mainData);
   document.getElementById("main-syncPanel").classList.remove("open");
 });
@@ -1493,7 +1505,7 @@ document.getElementById("inv-checkBtn").addEventListener("click", ()=>invRenderC
   document.getElementById(id).addEventListener("keydown", e=>{ if(e.key==="Enter") invRenderCheck(getInvCheckCriteria()); });
 });
 document.getElementById("inv-syncToggle").addEventListener("click", ()=>document.getElementById("inv-syncPanel").classList.toggle("open"));
-document.getElementById("inv-resetBtn").addEventListener("click", ()=>{ invData = INV_SAMPLE.slice(); invRenderCheck(""); invRenderAll(); });
+document.getElementById("inv-resetBtn").addEventListener("click", ()=>{ invData = INV_SAMPLE.slice(); markMainStatusDirty(); invRenderCheck(""); invRenderAll(); });
 function mapRowToInv(row){
   return {
     partNo:row["품 번"]||row["품번"]||"", inDate:row["입고 일자"]||row["입고일자"]||"", sn:row["S/N"]||"",
@@ -1513,6 +1525,7 @@ function fetchInvData(){
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       invApiUrl = url;
       invData = res.rows.map(mapRowToInv);
+markMainStatusDirty();
 invRenderCheck("");
 invRenderAll();
 cacheSet("cache_invData", invData);
@@ -1539,6 +1552,7 @@ document.getElementById("inv-syncBtn").addEventListener("click", ()=>{
     complete:function(results){
       try{
         invData = results.data.map(mapRowToInv);
+        markMainStatusDirty();
         invRenderCheck(""); invRenderAll();
         document.getElementById("inv-syncPanel").classList.remove("open");
       }catch(e){ alert("데이터 형식을 확인해 주세요."); }
@@ -1548,6 +1562,7 @@ document.getElementById("inv-syncBtn").addEventListener("click", ()=>{
 });
 setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
   invData = rows.map(mapRowToInv);
+  markMainStatusDirty();
   invRenderCheck(""); invRenderAll();
   document.getElementById("inv-syncPanel").classList.remove("open");
 });
@@ -1557,6 +1572,7 @@ setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
   const statusEl = document.getElementById("inv-apiStatus");
   if(cachedInv){
     invData = cachedInv;
+    markMainStatusDirty();
     invRenderCheck("");
     invRenderAll();
     if(statusEl) statusEl.textContent = "저장된 데이터 사용 중";
@@ -2493,6 +2509,7 @@ initQualityView();
   const lastSync = cacheGet("mainLastSync");
   if(cachedMain){
     mainData = cachedMain;
+    markMainStatusDirty();
     mainInitialRender(mainData);
     document.getElementById("main-apiStatus").textContent =
       "저장된 데이터 사용 중";
