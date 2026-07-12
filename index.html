@@ -398,7 +398,8 @@
 <div class="app-shell">
   <div class="side-nav">
     <div class="brand">종합제품관리<small>ERP 웹 시스템</small></div>
-    <div class="nav-item active" data-view="main"><span class="dot"></span>MAIN 대시보드</div>
+    <div class="nav-item active" data-view="summary"><span class="dot"></span>📊 월별 현황</div>
+    <div class="nav-item" data-view="main"><span class="dot"></span>MAIN 대시보드</div>
     <div class="nav-item" data-view="overdue"><span class="dot"></span>지연 LIST</div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
@@ -407,7 +408,10 @@
   </div>
   <div class="main-area">
     <!-- ===================== MAIN VIEW ===================== -->
-    <div id="topbar-main" class="topbar">
+    <div id="topbar-summary" class="topbar">
+      <h1>📊 월별 현황</h1>
+    </div>
+    <div id="topbar-main" class="topbar" style="display:none;">
       <h1>MAIN 대시보드</h1>
       <div class="quick-links">
         <a href="https://wjdeh8486-maker.github.io/daysheet/" target="_blank" rel="noopener" class="ql-checklist">📋 체크리스트</a>
@@ -467,7 +471,27 @@
       <div class="sync-note">※ Apps Script 연동 시 시트의 최신 데이터를 실시간으로 읽어옵니다. 열 이름은 원본(제품상태, ORDER NO. 등)과 같아야 자동 매핑됩니다.</div>
       <div class="sync-note" id="main-apiStatus"></div>
     </div>
-    <div class="view active" id="view-main">
+    <div class="view active" id="view-summary">
+      <div class="progress-label" id="summary-rangeLabel" style="margin:4px 0 12px;"></div>
+      <div class="summary-row">
+        <div class="stat-card overdue"><div class="label">지연 건수</div><div class="value" id="summary-statOverdue">0</div></div>
+        <div class="stat-card qc">
+          <div class="label">이번달 매출(만원, 현재까지) <span id="summary-revenueChange" class="q-change-badge" style="font-size:11px;"></span></div>
+          <div class="value" id="summary-statRevenue" style="font-size:20px;">0</div>
+          <div class="progress-label" id="summary-revenueDetail"></div>
+        </div>
+        <div class="stat-card done"><div class="label">장기재고(150일+)</div><div class="value" id="summary-statAging">0</div></div>
+      </div>
+      <div class="table-wrap" style="padding:16px;margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">🔴 지연 심한 순 TOP 5</div>
+        <div id="summary-overdueList"></div>
+      </div>
+      <div class="table-wrap" style="padding:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">📦 장기 재고 TOP 5 (오래된 순)</div>
+        <div id="summary-agingList"></div>
+      </div>
+    </div>
+    <div class="view" id="view-main">
       <div class="summary-row">
         <div class="stat-card prod">
           <div class="label">생산</div>
@@ -581,6 +605,7 @@
       <div class="tabs">
         <button class="tab-btn active" data-tab="check">재고확인</button>
         <button class="tab-btn" data-tab="all">전체 재고 현황</button>
+        <button class="tab-btn" data-tab="aging">⏰ 장기 재고</button>
       </div>
       <div class="tab-panel active" id="panel-check">
         <div class="search-row">
@@ -619,6 +644,23 @@
             <tbody id="inv-allBody"></tbody>
           </table>
         </div>
+      </div>
+      <div class="tab-panel" id="panel-aging">
+        <div class="search-row">
+          <input id="inv-agingThreshold" type="number" value="150" style="max-width:120px;" placeholder="기준일수">
+          <span style="align-self:center;color:var(--text-mute);font-size:13px;">일 이상 입고 후 미출고된 재고</span>
+          <button id="inv-agingBtn">🔍 조회</button>
+        </div>
+        <div class="stock-summary" id="inv-agingSummary" style="display:none;">
+          <div class="stock-card"><div class="label">장기 재고 건수</div><div class="value" id="inv-agingCount" style="color:var(--red);">0</div></div>
+        </div>
+        <div class="table-scroll" id="inv-agingTableScroll">
+          <table>
+            <thead><tr><th>경과일수</th><th>품번</th><th>입고일자</th><th>S/N</th><th>입고수량</th><th>관리번호</th><th>비고</th></tr></thead>
+            <tbody id="inv-agingBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="inv-agingEmpty">조회 버튼을 클릭하면 기준일수 이상 오래된 재고가 표시됩니다.</div>
       </div>
     </div>
     <!-- ===================== QUALITY VIEW ===================== -->
@@ -687,6 +729,19 @@
         <div class="table-wrap" style="padding:16px;">
           <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">고객사별 월별 매출 추이</div>
           <div id="sales-customerMonthChart" style="overflow-x:auto;"></div>
+        </div>
+        <div class="table-wrap" style="padding:16px;margin-top:18px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">판매 증가/감소 랭킹 (TOP 5, 전년 대비)</div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:260px;">
+              <div style="font-size:12.5px;font-weight:700;color:var(--green);margin-bottom:6px;">▲ 증가 TOP 5</div>
+              <div id="sales-growthUpTable" style="overflow-x:auto;"></div>
+            </div>
+            <div style="flex:1;min-width:260px;">
+              <div style="font-size:12.5px;font-weight:700;color:var(--red);margin-bottom:6px;">▼ 감소 TOP 5</div>
+              <div id="sales-growthDownTable" style="overflow-x:auto;"></div>
+            </div>
+          </div>
         </div>
       </div>
       <div id="sales-print-page2">
@@ -774,9 +829,13 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("topbar-quality").style.display = target==="quality" ? "flex" : "none";
     document.getElementById("topbar-sales").style.display = target==="sales" ? "flex" : "none";
     document.getElementById("topbar-vendor").style.display = target==="vendor" ? "flex" : "none";
+    document.getElementById("topbar-summary").style.display = target==="summary" ? "flex" : "none";
     document.getElementById("main-syncPanel").classList.remove("open");
     document.getElementById("inv-syncPanel").classList.remove("open");
     document.getElementById("quality-syncPanel").classList.remove("open");
+    if(target==="summary"){
+      setTimeout(renderSummaryView, 0);
+    }
     if(target==="quality" && !window.__qualityInited){
       window.__qualityInited = true;
       setTimeout(initQualityView, 0);
@@ -1067,6 +1126,7 @@ function mainShowSearchPrompt(){
 function mainInitialRender(data){
   mainRenderStats(data);
   mainShowSearchPrompt();
+  if(typeof renderSummaryView==="function") renderSummaryView();
 }
 function mainRenderAll(data){ mainRenderStats(data); mainRenderTable(data); mainRenderCards(data); mainListRevealed = true; }
 const ALL_MAIN_STATUSES = ["생산","재고","출고","완료","외관","측정","비젼","OK"];
@@ -1866,6 +1926,48 @@ function invPrintAll(){
 }
 document.getElementById("inv-allPrintBtn").addEventListener("click", invPrintAll);
 renderInvAllSelectors();
+/* ============ 장기 재고(AGING STOCK) LOGIC ============ */
+// 입고는 됐는데 그 수량만큼 아직 출고되지 않은 S/N을, 입고일 기준 경과일수가
+// 기준일수(기본 150일) 이상인 것만 모아서 보여줍니다.
+function invAgingDaysSince(inDate){
+  const d = new Date(inDate);
+  if(isNaN(d)) return 0;
+  const today = new Date(); today.setHours(0,0,0,0);
+  d.setHours(0,0,0,0);
+  return Math.round((today - d) / (1000*60*60*24));
+}
+function invGetAgingRows(thresholdDays){
+  return invData
+    .filter(r=>{
+      if(!r.inDate) return false;
+      const inQty = Number(r.inQty)||0;
+      const outQty = Number(r.outQty)||0;
+      if(inQty<=0 || outQty>=inQty) return false; // 이미 전량 출고된 건 제외
+      const days = invAgingDaysSince(r.inDate);
+      return days >= thresholdDays;
+    })
+    .map(r=>({ ...r, daysSince: invAgingDaysSince(r.inDate) }))
+    .sort((a,b)=> b.daysSince - a.daysSince);
+}
+function invRenderAging(){
+  const threshold = Number(document.getElementById("inv-agingThreshold").value) || 150;
+  const rows = invGetAgingRows(threshold);
+  const tbody = document.getElementById("inv-agingBody");
+  const empty = document.getElementById("inv-agingEmpty");
+  const summary = document.getElementById("inv-agingSummary");
+  tbody.innerHTML = rows.map(r=>`<tr>
+    <td class="cell-overdue">${r.daysSince}일</td>
+    <td>${r.partNo||''}</td><td>${r.inDate||''}</td><td>${r.sn||''}</td>
+    <td class="badge-in">${(Number(r.inQty)||0) - (Number(r.outQty)||0)}</td>
+    <td>${r.ctrlNo||''}</td><td>${r.note||''}</td>
+  </tr>`).join("");
+  document.getElementById("inv-agingCount").textContent = rows.length;
+  summary.style.display = "flex";
+  empty.style.display = rows.length===0 ? "block" : "none";
+  empty.textContent = `${threshold}일 이상 된 장기 재고가 없습니다.`;
+}
+document.getElementById("inv-agingBtn").addEventListener("click", invRenderAging);
+document.getElementById("inv-agingThreshold").addEventListener("keydown", e=>{ if(e.key==="Enter") invRenderAging(); });
 document.querySelectorAll(".tab-btn[data-tab]").forEach(btn=>{
   btn.addEventListener("click", ()=>{
     document.querySelectorAll(".tab-btn[data-tab]").forEach(b=>b.classList.remove("active"));
@@ -2748,6 +2850,60 @@ function renderSalesCustomer(){
   }));
   drawMultiLineChart(document.getElementById("sales-customerMonthChart"), Array.from({length:12},(_,i)=>(i+1)+"월"), series, salesYear+"년 월별 고객사별 매출 추이(만원)");
 }
+// 판매 증가/감소 랭킹: 전년 대비 판매수량(EA)이 얼마나 늘고 줄었는지 기존도번 기준으로 비교합니다.
+// 수익성(단가/원가)과는 무관하게 순수 수량 증감만 봅니다.
+function computeSalesQtyByPart(year){
+  const byPart = {};
+  getSalesRowsForMonth(year, null).forEach(r=>{
+    const key = (r.oldDrawingNo || r.partNo || "(품번 미기재)");
+    byPart[key] = (byPart[key]||0) + (Number(r.qty)||0);
+  });
+  return byPart;
+}
+function computeSalesGrowthRanking(year){
+  const thisYearQty = computeSalesQtyByPart(year);
+  const prevYearQty = computeSalesQtyByPart(year-1);
+  const keys = new Set([...Object.keys(thisYearQty), ...Object.keys(prevYearQty)]);
+  const rows = [];
+  keys.forEach(key=>{
+    const prev = prevYearQty[key] || 0;
+    const cur = thisYearQty[key] || 0;
+    if(prev===0 && cur===0) return;
+    let growth;
+    if(prev===0) growth = null; // 작년엔 없던 신규 품목 (증가율 계산 불가 → "신규"로 표시)
+    else growth = Math.round(((cur-prev)/prev)*1000)/10;
+    rows.push({ key, prev, cur, growth });
+  });
+  const withGrowth = rows.filter(r=>r.growth!==null);
+  const newItems = rows.filter(r=>r.growth===null && r.cur>0);
+  // 신규 품목은 증가 랭킹 맨 앞쪽에 우선 반영(전년 0 → 올해 있음 = 가장 큰 증가로 취급)
+  const increasing = [...newItems.sort((a,b)=>b.cur-a.cur), ...withGrowth.filter(r=>r.growth>0).sort((a,b)=>b.growth-a.growth)].slice(0,5);
+  const decreasing = withGrowth.filter(r=>r.growth<0).sort((a,b)=>a.growth-b.growth).slice(0,5);
+  return { increasing, decreasing, prevYear: year-1, year };
+}
+function renderSalesGrowthTable(containerId, rows, prevYear, year){
+  const el = document.getElementById(containerId);
+  if(rows.length===0){ el.innerHTML = `<div class="empty-state" style="padding:12px;">비교할 데이터가 없습니다.</div>`; return; }
+  const rowsHtml = rows.map(r=>{
+    const growthLabel = r.growth===null ? "신규" : (r.growth>=0?"+":"")+r.growth+"%";
+    const growthClass = r.growth===null || r.growth>=0 ? "rev-good" : "rev-bad";
+    return `<tr>
+      <td style="text-align:left;">${r.key}</td><td>${r.prev.toLocaleString()}</td><td>${r.cur.toLocaleString()}</td>
+      <td class="${growthClass}">${growthLabel}</td>
+    </tr>`;
+  }).join("");
+  el.innerHTML = `
+    <table style="width:100%;min-width:280px;">
+      <thead><tr><th style="text-align:left;">기존도번</th><th>${prevYear}년(EA)</th><th>${year}년(EA)</th><th>증가율(%)</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
+}
+function renderSalesQtyRanking(){
+  const { increasing, decreasing, prevYear, year } = computeSalesGrowthRanking(salesYear);
+  renderSalesGrowthTable("sales-growthUpTable", increasing, prevYear, year);
+  renderSalesGrowthTable("sales-growthDownTable", decreasing, prevYear, year);
+}
 function getExpectedRowsForMonth(year, month){
   return (mainData||[]).filter(r=>{
     const isShipped = r.shipped === "납품완료";
@@ -2812,6 +2968,7 @@ function renderSalesAll(){
   renderSalesKPI();
   renderSalesMonthly();
   renderSalesCustomer();
+  renderSalesQtyRanking();
   renderSalesYoY();
   renderSalesExpected();
 }
@@ -3049,6 +3206,43 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
 });
 window.__qualityInited = true;
 initQualityView();
+/* ============ 전체 현황(SUMMARY) LOGIC ============ */
+function renderSummaryView(){
+  const now = new Date();
+  const year = now.getFullYear(), month = now.getMonth()+1;
+  document.getElementById("summary-rangeLabel").textContent = year + "년 " + month + "월 (현재)";
+
+  // 지연 건수 + TOP5 (전체 지연 건 기준)
+  const overdueRows = overdueGetRows().slice().sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
+  document.getElementById("summary-statOverdue").textContent = overdueRows.length;
+  const overdueTop5 = overdueRows.slice(0,5);
+  document.getElementById("summary-overdueList").innerHTML = overdueTop5.length ? overdueTop5.map(r=>
+    `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
+      <span>${r.orderNo} · ${r.partName}</span><span class="cell-overdue">${overdueDaysLate(r.dueDate)}일 지연</span>
+    </div>`
+  ).join("") : `<div class="empty-state" style="padding:12px;">지연 건이 없습니다.</div>`;
+
+  // 이번달 매출(현재까지) vs 저번달 매출 비교
+  const thisMonthStats = computeMonthSalesStats(year, month);
+  let prevYear = year, prevMonth = month-1;
+  if(prevMonth<1){ prevMonth = 12; prevYear = year-1; }
+  const prevMonthStats = computeMonthSalesStats(prevYear, prevMonth);
+  document.getElementById("summary-statRevenue").textContent = fmtWon(thisMonthStats.revenue);
+  const changePct = prevMonthStats.revenue>0 ? Math.round(((thisMonthStats.revenue-prevMonthStats.revenue)/prevMonthStats.revenue)*100) : (thisMonthStats.revenue>0?100:0);
+  const changeSign = changePct>0 ? "+" : "";
+  document.getElementById("summary-revenueChange").textContent = `전월대비 ${changeSign}${changePct}%`;
+  document.getElementById("summary-revenueDetail").textContent = `저번달(${prevYear}.${prevMonth}) ${fmtWon(prevMonthStats.revenue)}만원`;
+
+  // 장기 재고 (150일 기준, 현재 시점 스냅샷) + TOP5
+  const agingRows = invGetAgingRows(150);
+  document.getElementById("summary-statAging").textContent = agingRows.length;
+  const agingTop5 = agingRows.slice(0,5);
+  document.getElementById("summary-agingList").innerHTML = agingTop5.length ? agingTop5.map(r=>
+    `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
+      <span>${r.partNo} (S/N ${r.sn||'-'})</span><span class="cell-overdue">${r.daysSince}일 경과</span>
+    </div>`
+  ).join("") : `<div class="empty-state" style="padding:12px;">150일 이상 된 장기 재고가 없습니다.</div>`;
+}
 (async function initCachedOrFetch(){
   const cachedMain = await loadMainData();
   const lastSync = cacheGet("mainLastSync");
@@ -3070,6 +3264,7 @@ initQualityView();
       "최신 데이터 자동 확인 중...";
     fetchMainData(String(CURRENT_YEAR));
   }
+  renderSummaryView();
 })();
 setInterval(() => {
   console.log("자동 데이터 갱신");
