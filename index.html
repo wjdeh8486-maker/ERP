@@ -124,7 +124,7 @@
   .drop-zone.dragover{background:#26315470;border-color:var(--yellow);color:#fff;}
   .drop-zone input{display:none;}
   .file-name-tag{font-size:11.5px;color:var(--yellow);}
-  .view{display:none;padding:16px 20px 30px;}
+  .view{display:none;padding:16px 20px 30px;max-width:100%;overflow-x:hidden;}
   .view.active{display:block;}
   .topbar-right{display:flex;align-items:center;gap:12px;margin-left:auto;}
   #quality-printBtn{padding:9px 16px;border-radius:6px;border:1px solid #fff;background:#fff;color:var(--navy);font-weight:700;cursor:pointer;white-space:nowrap;}
@@ -142,7 +142,7 @@
   .progress-bar-track{margin-top:10px;background:#EEE;border-radius:20px;height:14px;overflow:hidden;}
   .progress-bar-fill{height:100%;background:linear-gradient(90deg,#4CAF67,#2E7D46);border-radius:20px;transition:width .3s ease;}
   .progress-label{font-size:12px;color:var(--text-mute);margin-top:4px;}
-  .table-wrap{background:var(--card-bg);border-radius:10px;border:1px solid var(--border);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+  .table-wrap{background:var(--card-bg);border-radius:10px;border:1px solid var(--border);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;max-width:100%;}
   #view-main > .table-wrap{ max-height: calc(100vh - 300px); min-height: 240px; }
   table{border-collapse:collapse;width:100%;font-size:13px;}
   thead th{background:var(--navy);color:#fff;font-weight:700;padding:10px 8px;position:sticky;top:0;white-space:nowrap;text-align:center;border-right:1px solid #33406099;}
@@ -854,7 +854,7 @@ function computeProductStatusRaw(r){
 }
 let mainStatusMap = {};
 let mainStatusMapDirty = true;
-function markMainStatusDirty(){ mainStatusMapDirty = true; }
+function markMainStatusDirty(){ mainStatusMapDirty = true; stockPreShipMap = null; }
 function computeAllStatuses(data){
   const result = {};
   const groups = {};
@@ -951,10 +951,20 @@ function mainStatusTextColor(status){
   };
   return map[status] || "#1A1E27";
 }
+let stockPreShipMap = null; // ctrlNo -> 합산 출고수량 캐시 (invData가 바뀔 때만 다시 계산)
+function rebuildStockPreShipMapIfNeeded(){
+  if(stockPreShipMap) return;
+  stockPreShipMap = {};
+  if(typeof invData === "undefined") return;
+  invData.forEach(iv=>{
+    if(!iv.ctrlNo) return;
+    stockPreShipMap[iv.ctrlNo] = (stockPreShipMap[iv.ctrlNo]||0) + (Number(iv.outQty)||0);
+  });
+}
 function computeStockPreShip(r){
   if(typeof invData === "undefined") return 0;
-  const matches = invData.filter(iv => iv.ctrlNo === r.orderNo);
-  return matches.reduce((s,m)=>s+(Number(m.outQty)||0),0);
+  rebuildStockPreShipMapIfNeeded();
+  return stockPreShipMap[r.orderNo] || 0;
 }
 function mainRenderStats(data){
   // 상태(생산/재고/출고/...) 계산은 mainData 전체 x invData 전체를 훑는 무거운 연산이라,
@@ -984,16 +994,15 @@ function mainRenderStats(data){
 function mainRenderTable(data){
   const tbody = document.getElementById("main-tableBody");
   const empty = document.getElementById("main-emptyState");
-  tbody.innerHTML = "";
   empty.textContent = "검색 결과가 없습니다.";
   empty.style.display = data.length===0 ? "block" : "none";
-  data.forEach(r=>{
-    const tr = document.createElement("tr");
-    if(r.shipped==="납품완료") tr.classList.add("row-shipped");
+  // 행마다 appendChild 하면 매번 리플로우가 발생해 모바일에서 느려지므로,
+  // 문자열로 한 번에 모아서 innerHTML을 딱 한 번만 설정합니다.
+  const rowsHtml = data.map(r=>{
     const _status = computeProductStatus(r);
-    if(_status==="출고") tr.classList.add("row-shipout");
     const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
-    tr.innerHTML = `
+    const rowClass = r.shipped==="납품완료" ? "row-shipped" : (_status==="출고" ? "row-shipout" : "");
+    return `<tr class="${rowClass}">
       <td>${statusBadge(_status)}</td><td>${r.orderNo}</td><td>${r.customer}</td>
       <td style="text-align:left;">${r.vendor||''}</td>
       <td>${r.partNo}</td>
@@ -1006,18 +1015,15 @@ function mainRenderTable(data){
       <td class="${computeWaitClean(r)>0?'cell-wait-hi':''}">${computeWaitClean(r)}</td>
       <td class="${computeWaitVision(r)>0?'cell-wait-hi':''}">${computeWaitVision(r)}</td>
       <td style="color:var(--text);font-style:normal;font-weight:700;">${computeStockPreShip(r)}</td>
-    `;
-    tbody.appendChild(tr);
-  });
+    </tr>`;
+  }).join("");
+  tbody.innerHTML = rowsHtml;
 }
 function mainRenderCards(data){
   const wrap = document.getElementById("main-cardsView");
-  wrap.innerHTML = "";
-  data.forEach(r=>{
+  const cardsHtml = data.map(r=>{
     const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
-    const div = document.createElement("div");
-    div.className = "p-card";
-    div.innerHTML = `
+    return `<div class="p-card">
       <div class="p-card-top"><span class="p-card-title">${r.orderNo} · ${r.partName}</span>${statusBadge(computeProductStatus(r))}</div>
       <div class="p-card-sub">${r.customer}${r.vendor ? ' · PROJECT NO. '+r.vendor : ''} · 품번 ${r.partNo}${r.oldDrawingNo ? ' · 기존도번 '+r.oldDrawingNo : ''}</div>
       <div class="p-card-grid">
@@ -1029,9 +1035,9 @@ function mainRenderCards(data){
         <div><span>비젼대기 </span>${computeWaitVision(r)}</div>
         <div><span>선출고 </span><span style="color:var(--text);font-style:normal;font-weight:700;">${computeStockPreShip(r)}</span></div>
       </div>
-    `;
-    wrap.appendChild(div);
-  });
+    </div>`;
+  }).join("");
+  wrap.innerHTML = cardsHtml;
 }
 function mainShowSearchPrompt(){
   mainListRevealed = false;
@@ -1145,6 +1151,8 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>{
   // 대시보드의 "전체 상태" 체크박스 설정을 그대로 인쇄물에도 적용합니다.
   filtered = filtered.filter(r=>mainSelectedStatuses.includes(computeProductStatus(r)));
   if(mainHideCompleted){ filtered = filtered.filter(r=>computeProductStatus(r) !== "완료"); }
+  // 분출 LIST 인쇄물에는 체크박스 설정과 상관없이 "출고" 건은 항상 제외합니다.
+  filtered = filtered.filter(r=>computeProductStatus(r) !== "출고");
   filtered = mainApplySort(filtered);
   const rowsHtml = filtered.map(r=>{
     const status = computeProductStatus(r);
