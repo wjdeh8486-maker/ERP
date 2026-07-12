@@ -154,7 +154,7 @@
   .progress-bar-track{margin-top:10px;background:#EEE;border-radius:20px;height:14px;overflow:hidden;}
   .progress-bar-fill{height:100%;background:linear-gradient(90deg,#4CAF67,#2E7D46);border-radius:20px;transition:width .3s ease;}
   .progress-label{font-size:12px;color:var(--text-mute);margin-top:4px;}
-  .table-wrap{background:var(--card-bg);border-radius:10px;border:1px solid var(--border);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;max-width:100%;max-height:calc(100vh - 260px);min-height:200px;}
+  .table-wrap{background:var(--card-bg);border-radius:10px;border:1px solid var(--border);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;max-width:100%;max-height:calc(100vh - 260px);}
   #view-main > .table-wrap{ max-height: calc(100vh - 300px); min-height: 240px; }
   table{border-collapse:collapse;width:100%;font-size:13px;}
   thead th{background:var(--navy);color:#fff;font-weight:700;padding:10px 8px;position:sticky;top:0;white-space:nowrap;text-align:center;border-right:1px solid #33406099;}
@@ -392,6 +392,11 @@
     .stock-card{ min-width:100%; }
     .p-card-grid{ grid-template-columns:1fr; }
   }
+  /* PC 전용: 체크리스트~회사홈페이지 박스를 "구글시트 연동" 옆으로 이동 (모바일 레이아웃은 그대로 둡니다) */
+  @media (min-width: 861px){
+    #topbar-main .quick-links{ order:5; margin-left:auto; width:auto; flex:none; }
+    #main-syncToggle{ order:6; }
+  }
 </style>
 </head>
 <body>
@@ -474,13 +479,14 @@
     <div class="view active" id="view-summary">
       <div class="progress-label" id="summary-rangeLabel" style="margin:4px 0 12px;"></div>
       <div class="summary-row">
-        <div class="stat-card overdue"><div class="label">지연 건수</div><div class="value" id="summary-statOverdue">0</div></div>
-        <div class="stat-card qc">
+        <div class="stat-card overdue" style="flex:1 1 calc(50% - 6px);min-width:140px;"><div class="label">지연 건수</div><div class="value" id="summary-statOverdue">0</div></div>
+        <div class="stat-card qc" style="flex:1 1 calc(50% - 6px);min-width:140px;">
           <div class="label">이번달 매출(만원, 현재까지) <span id="summary-revenueChange" class="q-change-badge" style="font-size:11px;"></span></div>
           <div class="value" id="summary-statRevenue" style="font-size:20px;">0</div>
           <div class="progress-label" id="summary-revenueDetail"></div>
         </div>
-        <div class="stat-card done"><div class="label">장기재고(150일+)</div><div class="value" id="summary-statAging">0</div></div>
+        <div class="stat-card done" style="flex:1 1 calc(50% - 6px);min-width:140px;"><div class="label">장기재고(150일+)</div><div class="value" id="summary-statAging">0</div></div>
+        <div class="stat-card prod" style="flex:1 1 calc(50% - 6px);min-width:140px;"><div class="label" id="summary-ytdLabel">올해 누적 매출(만원)</div><div class="value" id="summary-statYtdRevenue" style="font-size:20px;">0</div></div>
       </div>
       <div class="table-wrap" style="padding:16px;margin-bottom:16px;">
         <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">🔴 지연 심한 순 TOP 5</div>
@@ -704,6 +710,9 @@
     <div class="view" id="view-sales">
       <div class="quality-selector-row">
         <div class="quality-btns" id="sales-yearBtns"></div>
+      </div>
+      <div class="quality-selector-row">
+        <div class="quality-btns" id="sales-monthBtns"></div>
       </div>
       <div class="progress-label" id="sales-rangeLabel" style="margin:4px 0 12px;"></div>
       <div id="sales-print-page1">
@@ -2573,6 +2582,7 @@ function computeYearSalesStats(year){
 function fmtWon(n){
   return Math.round((n||0)/10000).toLocaleString();
 }
+let salesMonth = new Date().getMonth()+1;
 function renderSalesYearButtons(){
   const wrap = document.getElementById("sales-yearBtns");
   wrap.innerHTML = SALES_YEARS.map(y=>
@@ -2581,7 +2591,15 @@ function renderSalesYearButtons(){
   wrap.querySelectorAll(".quality-btn").forEach(btn=>{
     btn.addEventListener("click", ()=>{ salesYear = Number(btn.dataset.year); renderSalesAll(); });
   });
+  const monthWrap = document.getElementById("sales-monthBtns");
+  monthWrap.innerHTML = Array.from({length:12}, (_,i)=>i+1).map(m=>
+    `<button class="quality-btn ${m===salesMonth?'active':''}" data-month="${m}">${m}월</button>`
+  ).join("");
+  monthWrap.querySelectorAll(".quality-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ salesMonth = Number(btn.dataset.month); renderSalesAll(); });
+  });
 }
+
 function drawMultiLineChart(container, labels, series, title){
   const w = 860, h = 170, padL = 55, padR = 15, padT = 30, padB = 22;
   const allValues = series.flatMap(s=>s.values);
@@ -3232,6 +3250,11 @@ function renderSummaryView(){
   const changeSign = changePct>0 ? "+" : "";
   document.getElementById("summary-revenueChange").textContent = `전월대비 ${changeSign}${changePct}%`;
   document.getElementById("summary-revenueDetail").textContent = `저번달(${prevYear}.${prevMonth}) ${fmtWon(prevMonthStats.revenue)}만원`;
+
+  // 올해 누적 매출 (1월~이번달까지 합계)
+  const yearStats = computeYearSalesStats(year);
+  document.getElementById("summary-ytdLabel").textContent = year + "년 누적 매출(만원)";
+  document.getElementById("summary-statYtdRevenue").textContent = fmtWon(yearStats.revenue);
 
   // 장기 재고 (150일 기준, 현재 시점 스냅샷) + TOP5
   const agingRows = invGetAgingRows(150);
