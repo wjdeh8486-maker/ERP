@@ -607,6 +607,20 @@
     <div class="view" id="view-overdue">
       <div class="summary-row">
         <div class="stat-card overdue" style="flex:none;min-width:150px;"><div class="label">지연 건수</div><div class="value" id="overdue-statCount">0</div></div>
+        <div class="stat-card" style="flex:none;min-width:150px;">
+          <div class="label" style="color:var(--text-mute);">전체 상태</div>
+          <div class="status-multiselect" id="overdue-statusMultiselect" style="margin-top:8px;">
+            <button type="button" class="status-toggle-btn" id="overdue-statusToggle">전체 상태 ▾</button>
+            <div class="status-dropdown" id="overdue-statusDropdown">
+              <label><input type="checkbox" value="생산" checked> 생산</label>
+              <label><input type="checkbox" value="재고" checked> 재고</label>
+              <label><input type="checkbox" value="측정" checked> 측정</label>
+              <label><input type="checkbox" value="외관" checked> 외관</label>
+              <label><input type="checkbox" value="비젼" checked> 비젼</label>
+              <label><input type="checkbox" value="OK" checked> OK</label>
+            </div>
+          </div>
+        </div>
         <div class="stat-card" style="flex:1;min-width:260px;">
           <div class="label" style="color:var(--text-mute);">최종납기일 범위 검색</div>
           <div class="due-date-group" style="margin-top:8px;">
@@ -1344,7 +1358,21 @@ document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>{
   const dateStr = new Date().toISOString().slice(0,10);
   XLSX.writeFile(wb, `분출LIST_${dateStr}.xlsx`);
 });
-document.getElementById("main-searchBtn").addEventListener("click", mainApplySearch);
+// 검색 버튼을 누르면 잠시 "검색 중..." 표시를 보여주고, 실제 검색(무거울 수 있는 필터링/렌더링)은
+// 화면이 그 표시를 그릴 시간을 준 다음 실행합니다.
+function withSearchIndicator(btn, fn){
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.dataset.originalText = original;
+  btn.innerHTML = "🔄 검색 중...";
+  setTimeout(()=>{
+    try{ fn(); } finally {
+      btn.innerHTML = btn.dataset.originalText;
+      btn.disabled = false;
+    }
+  }, 10);
+}
+document.getElementById("main-searchBtn").addEventListener("click", (e)=> withSearchIndicator(e.currentTarget, mainApplySearch));
 document.getElementById("main-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") mainApplySearch(); });
 // 최종납기 시작일/종료일은 입력하자마자 바로 반응하지 않고, "검색" 버튼을 눌러야 적용됩니다.
 document.getElementById("main-hideOrderInput").addEventListener("keydown", e=>{ if(e.key==="Enter") mainApplySearch(); });
@@ -1668,19 +1696,27 @@ function formatRelativeMinutes(ts){
 function updateSyncBanner(){
   const els = [document.getElementById("main-syncBanner"), document.getElementById("summary-syncBanner")].filter(Boolean);
   if(!els.length) return;
-  const ts = cacheGet("mainLastSync");
+  const mainTs = cacheGet("mainLastSync");
+  const invTs = cacheGet("invLastSync");
+  const qualityTs = cacheGet("qualityLastSync");
   const setBanner = (emoji, text, bg, color)=>{
     els.forEach(el=>{
       el.innerHTML = `<span class="sync-banner-emoji">${emoji}</span> <span class="sync-banner-text">${text}</span>`;
       el.style.background = bg; el.style.color = color;
     });
   };
-  if(!ts){
+  if(!mainTs){
     setBanner("⚪", "동기화 기록 없음", "#1D2740", "#B9C2D6");
     return;
   }
+  if(!invTs || !qualityTs){
+    setBanner("⚪", "MAIN 동기화 완료 · 재고/품질 자료 대기 중", "#1D2740", "#B9C2D6");
+    return;
+  }
+  // MAIN·재고관리·품질분석 자료가 전부 동기화된 시점(가장 늦게 끝난 시각) 기준으로 표시합니다.
+  const ts = Math.max(mainTs, invTs, qualityTs);
   const mins = Math.floor((Date.now()-ts)/60000);
-  const text = "마지막 동기화: " + formatRelativeMinutes(ts);
+  const text = "전체 동기화 완료: " + formatRelativeMinutes(ts);
   if(mins < 10){ setBanner("🟢", text, "#1E3A2A", "#7FDDA0"); }
   else if(mins < 60){ setBanner("🟡", text, "#3A3320", "#FFD400"); }
   else { setBanner("🔴", text, "#3A2222", "#FF9494"); }
@@ -2104,7 +2140,7 @@ function getInvCheckCriteria(){
     ctrlNo: document.getElementById("inv-checkCtrlNo").value
   };
 }
-document.getElementById("inv-checkBtn").addEventListener("click", ()=>invRenderCheck(getInvCheckCriteria()));
+document.getElementById("inv-checkBtn").addEventListener("click", (e)=> withSearchIndicator(e.currentTarget, ()=>invRenderCheck(getInvCheckCriteria())));
 ["inv-checkPartNo","inv-checkSN","inv-checkCtrlNo"].forEach(id=>{
   document.getElementById(id).addEventListener("keydown", e=>{ if(e.key==="Enter") invRenderCheck(getInvCheckCriteria()); });
 });
@@ -2134,6 +2170,7 @@ invRenderCheck("");
 invRenderAll();
 cacheSet("cache_invData", invData);
 cacheSet("invLastSync", Date.now());
+updateSyncBanner();
       pushSharedCache(url, "inv", { invData:invData });
       setLocalCacheVersion({
   main:getLocalCacheVersion().main,
@@ -2267,6 +2304,7 @@ function fetchQualityData(){
     });
     cacheSetQualityData();
     cacheSet("qualityLastSync", Date.now());
+    updateSyncBanner();
     const serializableQ = {};
     Object.keys(qualityRawData).forEach(k=>{
       serializableQ[k] = qualityRawData[k].map(r=>Object.assign({}, r, { date:r.date.toISOString() }));
@@ -3207,13 +3245,22 @@ function overdueDaysLate(dueDate){
   return Math.round((today - d) / (1000*60*60*24));
 }
 function overdueGetRows(){
-  return (mainData||[]).filter(r=>(Number(r.qty)||0) > 0 && isOverdue(r.dueDate) && r.shipped !== "납품완료");
+  return (mainData||[]).filter(r=>{
+    if((Number(r.qty)||0) <= 0) return false;
+    if(!isOverdue(r.dueDate)) return false;
+    if(r.shipped === "납품완료") return false;
+    // 이미 "출고" 상태로 넘어간 건은 지연으로 보지 않습니다 (실제로는 배송 중인 건이라서).
+    if(computeProductStatus(r) === "출고") return false;
+    return true;
+  });
 }
 // 검색창 필터까지 적용한 결과를 돌려줍니다. 화면 표시/인쇄/엑셀 다운로드가 전부 이 함수 하나를
 // 공유해서, "검색 결과만 인쇄"·"검색 결과만 다운로드"가 실제로 검색 결과와 항상 일치합니다.
+let overdueSelectedStatuses = ["생산","재고","측정","외관","비젼","OK"];
 function overdueGetFilteredRows(){
   const raw = document.getElementById("overdue-searchInput").value.trim().toLowerCase();
   let rows = overdueGetRows();
+  rows = rows.filter(r=>overdueSelectedStatuses.includes(computeProductStatus(r)));
   if(raw){
     // 다른 검색창과 동일한 규칙: 쉼표(,)=OR, 슬래시(/)=AND(좁혀서 검색)
     const orGroups = raw.split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim()).filter(Boolean));
@@ -3232,6 +3279,24 @@ function overdueGetFilteredRows(){
   // 지연일수가 많은 순으로 정렬 (가장 급한 건이 맨 위)
   return rows.slice().sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
 }
+document.getElementById("overdue-statusToggle").addEventListener("click", (e)=>{
+  e.stopPropagation();
+  document.getElementById("overdue-statusDropdown").classList.toggle("open");
+});
+document.addEventListener("click", (e)=>{
+  const wrap = document.getElementById("overdue-statusMultiselect");
+  const dropdown = document.getElementById("overdue-statusDropdown");
+  if(wrap && dropdown && !wrap.contains(e.target)) dropdown.classList.remove("open");
+});
+document.querySelectorAll("#overdue-statusDropdown input[type=checkbox]").forEach(cb=>{
+  cb.addEventListener("change", ()=>{
+    overdueSelectedStatuses = Array.from(document.querySelectorAll("#overdue-statusDropdown input[type=checkbox]:checked")).map(el=>el.value);
+    const btn = document.getElementById("overdue-statusToggle");
+    const ALL = ["생산","재고","측정","외관","비젼","OK"];
+    btn.textContent = overdueSelectedStatuses.length===ALL.length ? "전체 상태 ▾" : `${ALL.length-overdueSelectedStatuses.length}개 제외 ▾`;
+    overdueApplySearch();
+  });
+});
 function overdueApplySearch(){
   overdueRenderTable(overdueGetFilteredRows());
 }
@@ -3258,7 +3323,7 @@ function overdueRenderTable(rows){
     tbody.appendChild(tr);
   });
 }
-document.getElementById("overdue-searchBtn").addEventListener("click", overdueApplySearch);
+document.getElementById("overdue-searchBtn").addEventListener("click", (e)=> withSearchIndicator(e.currentTarget, overdueApplySearch));
 document.getElementById("overdue-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") overdueApplySearch(); });
 document.getElementById("overdue-dueDateBtn").addEventListener("click", overdueApplySearch);
 document.getElementById("overdue-printBtn").addEventListener("click", ()=>{
@@ -3365,7 +3430,7 @@ function vendorRenderTable(rows){
     prevKey = key; prevMaterial = materialCost; prevVendorCost = vendorCost; prevProcess = processCost;
   });
 }
-document.getElementById("vendor-searchBtn").addEventListener("click", vendorApplySearch);
+document.getElementById("vendor-searchBtn").addEventListener("click", (e)=> withSearchIndicator(e.currentTarget, vendorApplySearch));
 document.getElementById("vendor-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") vendorApplySearch(); });
 async function initQualityView(){
   renderQualityButtons();
