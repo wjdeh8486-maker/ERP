@@ -121,6 +121,8 @@
   .cal-item-full.open{display:block;}
   .sync-toggle{font-size:12px;color:#cbd3e1;cursor:pointer;text-decoration:underline;white-space:nowrap;}
   .sync-banner{font-size:12.5px;font-weight:700;white-space:nowrap;padding:4px 10px;border-radius:14px;background:#1D2740;color:#B9C2D6;}
+  .sync-banner-emoji{font-size:12.5px;}
+  .sync-banner-text{font-size:10px;}
   .quick-links{display:flex;gap:6px;flex-wrap:wrap;}
   .quick-links a{ padding:7px 12px; border-radius:6px; border:1px solid #3A4A6B; background:#232E4C; color:#fff; font-size:12.5px; font-weight:700; white-space:nowrap; text-decoration:none; }
   .quick-links a:hover{background:#2C3A5E;}
@@ -323,13 +325,14 @@
     .topbar h1{ font-size:15px; text-align:center; }
     .search-box{ min-width:0; width:100%; flex-wrap:wrap; }
     .search-box input{ min-width:0; flex:1 1 100%; }
-    .search-box select{ flex:1 1 auto; }
+    .search-box select{ flex:1 1 0; min-width:0; }
     .search-box button{ flex:1 1 auto; min-height:44px; }
+    #main-searchBtn{ flex:1 1 100%; }
     .due-date-group{ flex:1 1 100%; min-width:0; }
     .main-date-input{ flex:1 1 0; width:auto; min-width:0; min-height:44px; }
     .main-hide-order-input{ flex:1 1 100%; min-width:0; }
     .main-hide-clear-btn{ flex:1 1 auto; min-height:44px; }
-    .status-multiselect{ flex:1 1 100%; }
+    .status-multiselect{ flex:1 1 0; min-width:0; }
     .status-toggle-btn{ width:100%; min-height:44px; }
     .status-dropdown{ left:0; right:0; min-width:0; }
     .calendar-panel{ width:98vw; height:94vh; max-height:none; padding:10px; }
@@ -348,8 +351,8 @@
     .cal-cell{ padding:2px 3px; font-size:9.5px; }
     .cal-cell .cal-date{ font-size:10px; }
     .cal-cell .cal-item{ font-size:9px; }
-    .quick-links{ width:100%; justify-content:stretch; }
-    .quick-links a{ flex:1 1 auto; text-align:center; }
+    .quick-links{ width:100%; justify-content:stretch; flex-wrap:nowrap; }
+    .quick-links a{ flex:1 1 0; min-width:0; text-align:center; font-size:11.5px; padding:7px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .topbar-right{ width:100%; margin-left:0; justify-content:space-between; flex-wrap:wrap; }
     .sync-toggle{ text-align:center; width:100%; }
     .sync-banner{ text-align:center; width:100%; }
@@ -362,8 +365,10 @@
     .summary-row{ gap:8px; }
     .calendar-toolbar-row{ gap:8px; }
     .calendar-toolbar-row button{ flex:1 1 auto; min-height:44px; }
-    .stat-card{ min-width:calc(50% - 4px); padding:10px 12px; }
-    .stat-card.progress{ flex:1 1 100%; min-width:100%; }
+    .stat-card.prod, .stat-card.qc, .stat-card.done{ flex:1 1 calc(33.333% - 6px); min-width:0; padding:10px 6px; }
+    .stat-card.overdue{ flex:0 1 calc(34% - 4px); min-width:0; }
+    .stat-card.progress{ flex:1 1 calc(66% - 4px); min-width:0; }
+    .summary-row{ align-items:stretch; }
     .stat-card .value{ font-size:21px; }
     #view-main > .table-wrap{ display:none; }
     .cards-view{ display:flex; }
@@ -385,7 +390,6 @@
     #print-area{ }
   }
   @media (max-width: 420px){
-    .stat-card{ min-width:100%; }
     .stock-card{ min-width:100%; }
     .p-card-grid{ grid-template-columns:1fr; }
   }
@@ -406,8 +410,8 @@
     <!-- ===================== MAIN VIEW ===================== -->
     <div id="topbar-main" class="topbar">
       <h1>MAIN 대시보드</h1>
-      <span id="main-syncBanner" class="sync-banner">⚪ 동기화 확인 중...</span>
       <div class="search-box">
+        <span id="main-syncBanner" class="sync-banner">⚪ 동기화 확인 중...</span>
         <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
         <button id="main-searchBtn">🔍 검색</button>
         <div class="status-multiselect" id="main-statusMultiselect">
@@ -474,10 +478,7 @@
         <div class="stat-card done"><div class="label">완료</div><div class="value" id="main-statDone">0</div></div>
         <div class="stat-card overdue"><div class="label">지연</div><div class="value" id="main-statOverdue">0</div></div>
         <div class="stat-card progress" id="main-progressCard">
-          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-            <div class="label">생산 진행률(%)</div>
-            <div class="progress-label" id="main-progressDetail" style="margin-top:0;"></div>
-          </div>
+          <div class="label">생산 진행률(%) <span id="main-progressDetail" style="font-size:11px;color:var(--text-mute);font-weight:400;"></span></div>
           <div class="value" id="main-statProgress">0%</div>
           <div class="progress-bar-track"><div class="progress-bar-fill" id="main-progressFill" style="width:0%"></div></div>
         </div>
@@ -1004,7 +1005,7 @@ function mainRenderStats(data){
   document.getElementById("main-statOverdue").textContent = overdue;
   document.getElementById("main-statProgress").textContent = pct + "%";
   document.getElementById("main-progressFill").style.width = pct + "%";
-  document.getElementById("main-progressDetail").textContent = `품질+완료 ${qc + done} / 전체 ${total}건`;
+  document.getElementById("main-progressDetail").textContent = `(${qc + done}/전체 ${total}건)`;
 }
 function mainRenderTable(data){
   const tbody = document.getElementById("main-tableBody");
@@ -1511,16 +1512,19 @@ function updateSyncBanner(){
   const el = document.getElementById("main-syncBanner");
   if(!el) return;
   const ts = cacheGet("mainLastSync");
+  const setBanner = (emoji, text, bg, color)=>{
+    el.innerHTML = `<span class="sync-banner-emoji">${emoji}</span> <span class="sync-banner-text">${text}</span>`;
+    el.style.background = bg; el.style.color = color;
+  };
   if(!ts){
-    el.textContent = "⚪ 동기화 기록 없음";
-    el.style.background = "#1D2740"; el.style.color = "#B9C2D6";
+    setBanner("⚪", "동기화 기록 없음", "#1D2740", "#B9C2D6");
     return;
   }
   const mins = Math.floor((Date.now()-ts)/60000);
   const text = "마지막 동기화: " + formatRelativeMinutes(ts);
-  if(mins < 10){ el.textContent = "🟢 " + text; el.style.background = "#1E3A2A"; el.style.color = "#7FDDA0"; }
-  else if(mins < 60){ el.textContent = "🟡 " + text; el.style.background = "#3A3320"; el.style.color = "#FFD400"; }
-  else { el.textContent = "🔴 " + text; el.style.background = "#3A2222"; el.style.color = "#FF9494"; }
+  if(mins < 10){ setBanner("🟢", text, "#1E3A2A", "#7FDDA0"); }
+  else if(mins < 60){ setBanner("🟡", text, "#3A3320", "#FFD400"); }
+  else { setBanner("🔴", text, "#3A2222", "#FF9494"); }
 }
 setInterval(updateSyncBanner, 30000);
   async function saveMainData(){
