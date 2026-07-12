@@ -87,6 +87,10 @@
   .calendar-header button:hover{background:var(--gray-bg);}
   .calendar-header span#main-calMonthLabel{font-weight:700;font-size:16px;color:var(--navy);}
   .cal-dow-row{display:grid;grid-template-columns:0.7fr repeat(5,1.15fr) 0.7fr;gap:6px;margin-bottom:6px;}
+  /* 달력 주(週) 단위 레이아웃: 하나의 그리드 대신 주별 flex 행으로 나눠, 같은 주 안에서도
+     내용이 있는 칸만 늘어나고 빈 칸은 작게 유지되도록 합니다 (그리드는 한 행의 모든 칸
+     높이가 강제로 같아져서, 내용이 많은 칸에 맞춰 빈 칸까지 커지는 문제가 있었습니다).
+     또한 전체 달력 높이는 고정하고 내부 스크롤(슬라이드)로 넘기도록 합니다. */
   .calendar-grid{display:flex;flex-direction:column;gap:6px;max-height:62vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
   .cal-week-row{display:flex;align-items:flex-start;gap:6px;}
   .cal-week-row .cal-cell{flex:1.15 1 0;min-width:0;}
@@ -297,6 +301,8 @@
     #print-area #sales-yoyChart svg{ max-height:150px; }
     #print-area #sales-customerYearChart svg{ max-height:150px; }
     #print-area #sales-customerMonthChart svg{ max-height:140px; }
+    /* 전체 재고 현황 인쇄: A4 세로, 페이지를 꽉 채우는 큰 글씨의 순번/품번/총입고/총출고/현재재고 표.
+       <thead>는 표 안에 있으므로 페이지가 넘어가도 브라우저가 각 페이지 상단에 자동으로 반복합니다. */
     #print-area table.inv-print-table{ font-size:12px !important; }
     #print-area table.inv-print-table th,
     #print-area table.inv-print-table td{ padding:5px 6px !important; font-size:12px !important; }
@@ -380,11 +386,13 @@
     .quality-btn{ padding:6px 10px; font-size:12px; }
     .form-actions{ flex-wrap:wrap; }
     .form-actions button{ flex:1 1 auto; }
+    #print-area{ }
   }
   @media (max-width: 420px){
     .stock-card{ min-width:100%; }
     .p-card-grid{ grid-template-columns:1fr; }
   }
+  /* PC 전용: 체크리스트~회사홈페이지 박스를 "구글시트 연동" 옆으로 이동 (모바일 레이아웃은 그대로 둡니다) */
   @media (min-width: 861px){
     #topbar-main .quick-links{ order:5; margin-left:auto; width:auto; flex:none; }
     #main-syncToggle{ order:6; }
@@ -404,6 +412,7 @@
     <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
   </div>
   <div class="main-area">
+    <!-- ===================== MAIN VIEW ===================== -->
     <div id="topbar-summary" class="topbar">
       <h1>📊 월별 현황</h1>
     </div>
@@ -464,41 +473,2765 @@
         <input type="file" id="main-fileInput" accept=".csv,.xlsx,.xls">
       </label>
       <button id="main-resetBtn">샘플 데이터로</button>
-      <div class="sync-note">※ Apps Script 연동 시 시트의 최신 데이터를 실시간으로 읽어옵니다.</div>
+      <div class="sync-note">※ Apps Script 연동 시 시트의 최신 데이터를 실시간으로 읽어옵니다. 열 이름은 원본(제품상태, ORDER NO. 등)과 같아야 자동 매핑됩니다.</div>
+      <div class="sync-note" id="main-apiStatus"></div>
     </div>
-
-    <div id="view-summary" class="view active">
+    <div class="view active" id="view-summary">
+      <div class="progress-label" id="summary-rangeLabel" style="margin:4px 0 12px;"></div>
       <div class="summary-row">
-        <div class="stat-card overdue">
-          <div class="label">이번 달 지연 건수</div>
-          <div class="value" id="summary-statAging">0</div>
+        <div class="stat-card overdue" style="flex:1 1 calc(50% - 6px);min-width:140px;"><div class="label">지연 건수</div><div class="value" id="summary-statOverdue">0</div></div>
+        <div class="stat-card qc" style="flex:1 1 calc(50% - 6px);min-width:140px;">
+          <div class="label">이번달 매출(만원, 현재까지) <span id="summary-revenueChange" class="q-change-badge" style="font-size:11px;"></span></div>
+          <div class="value" id="summary-statRevenue" style="font-size:20px;">0</div>
+          <div class="progress-label" id="summary-revenueDetail"></div>
+        </div>
+        <div class="stat-card done" style="flex:1 1 calc(50% - 6px);min-width:140px;"><div class="label">장기재고(150일+)</div><div class="value" id="summary-statAging">0</div></div>
+        <div class="stat-card prod" style="flex:1 1 calc(50% - 6px);min-width:140px;"><div class="label" id="summary-ytdLabel">올해 누적 매출(만원)</div><div class="value" id="summary-statYtdRevenue" style="font-size:20px;">0</div></div>
+      </div>
+      <div class="table-wrap" style="padding:16px;margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">🔴 지연 심한 순 TOP 5</div>
+        <div id="summary-overdueList"></div>
+      </div>
+      <div class="table-wrap" style="padding:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">📦 장기 재고 TOP 5 (오래된 순)</div>
+        <div id="summary-agingList"></div>
+      </div>
+    </div>
+    <div class="view" id="view-main">
+      <div class="summary-row">
+        <div class="stat-card prod">
+          <div class="label">생산</div>
+          <div class="value" id="main-statProd">0</div>
+        </div>
+        <div class="stat-card qc"><div class="label">품질</div><div class="value" id="main-statQc">0</div></div>
+        <div class="stat-card done"><div class="label">완료</div><div class="value" id="main-statDone">0</div></div>
+        <div class="stat-card overdue"><div class="label">지연</div><div class="value" id="main-statOverdue">0</div></div>
+        <div class="stat-card progress" id="main-progressCard">
+          <div class="label">생산 진행률(%) <span id="main-progressDetail" style="font-size:11px;color:var(--text-mute);font-weight:400;"></span></div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="value" id="main-statProgress" style="flex:none;">0%</div>
+            <div class="progress-bar-track" style="flex:1;margin-top:0;"><div class="progress-bar-fill" id="main-progressFill" style="width:0%"></div></div>
+          </div>
         </div>
       </div>
-      <div class="stat-card" style="margin-top:15px;">
-        <div class="label" style="font-weight:bold; margin-bottom:10px;">이번 달 지연 심한순 TOP 5</div>
-        <div id="summary-agingList"></div>
+      <div class="calendar-toolbar-row" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <button type="button" id="main-hideDoneBtn" class="btn-plain tb-hide-done">🙈 완료 숨기기</button>
+        <button type="button" id="main-calendarBtn" class="btn-plain tb-cal-apply">📅 검색 달력적용</button>
+        <button id="main-printBtn" class="tb-print-btn">🖨️ 분출 LIST 인쇄</button>
+      </div>
+      <div class="calendar-backdrop" id="main-calendarBackdrop"></div>
+      <div class="calendar-panel" id="main-calendarPanel" style="display:none;">
+        <div class="calendar-header">
+          <button type="button" id="main-calPrev">◀</button>
+          <span id="main-calMonthLabel"></span>
+          <button type="button" id="main-calNext">▶</button>
+          <span class="cal-hint-desktop" style="font-size:12px;color:var(--text-mute);margin-left:8px;">※ 완료·출고 건은 제외하고, 최종납기일 기준으로 표시합니다.</span>
+          <button type="button" id="main-calRestoreBtn" class="btn-plain" title="지우기(×)로 숨긴 항목을 다시 표시합니다">숨긴 항목 복원</button>
+          <span class="cal-hint-desktop" style="font-size:11.5px;color:var(--blue);font-weight:700;white-space:nowrap;">※ 드래그하여 날짜 변경 후 인쇄 가능</span>
+          <span class="cal-hint-mobile">※ 완료·출고 제외 · 드래그로 날짜변경</span>
+          <button type="button" id="main-calPrintBtn" class="btn-plain" style="margin-left:auto;">인쇄</button>
+          <button type="button" id="main-calClose" class="btn-plain">닫기</button>
+        </div>
+        <div class="cal-dow-row" id="main-calDowRow">
+          <div class="cal-dow cal-sun">일</div>
+          <div class="cal-dow">월</div>
+          <div class="cal-dow">화</div>
+          <div class="cal-dow">수</div>
+          <div class="cal-dow">목</div>
+          <div class="cal-dow">금</div>
+          <div class="cal-dow cal-sat">토</div>
+        </div>
+        <div class="calendar-grid" id="main-calendarGrid"></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th><th>품번</th><th>기존도번</th><th>품명</th><th>수량</th>
+              <th>최종납기</th><th>납품일자</th><th>납품여부</th>
+              <th class="wait-col">납품대기</th><th class="wait-col">측정실검사대기</th>
+              <th class="wait-col">크린룸검사대기</th><th class="wait-col">비젼검사대기</th><th>선출고</th>
+            </tr>
+          </thead>
+          <tbody id="main-tableBody"></tbody>
+        </table>
+        <div class="empty-state" id="main-emptyState" style="display:none;">검색 결과가 없습니다.</div>
+      </div>
+      <div class="cards-view" id="main-cardsView"></div>
+    </div>
+    <!-- ===================== OVERDUE(지연 LIST) VIEW ===================== -->
+    <div id="topbar-overdue" class="topbar" style="display:none;">
+      <h1>지연 LIST</h1>
+      <div class="search-box">
+        <input id="overdue-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
+        <button id="overdue-searchBtn">🔍 검색</button>
+        <button id="overdue-printBtn" style="background:#fff;color:var(--navy);border:1px solid var(--navy);">🖨️ 인쇄</button>
+        <button id="overdue-excelBtn" type="button" style="background:#E3F0E7;color:#2E7D46;border:1px solid #B8D9C2;">📊 엑셀 다운로드</button>
+      </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 최종납기가 지났는데 아직 납품 완료되지 않은 건만 모아서 보여줍니다. 지연일수가 많은 순으로 정렬됩니다.</div>
+    </div>
+    <div class="view" id="view-overdue">
+      <div class="summary-row">
+        <div class="stat-card overdue"><div class="label">지연 건수</div><div class="value" id="overdue-statCount">0</div></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>지연일수</th><th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th>
+              <th>기존도번</th><th>품명</th><th>수량</th><th>최종납기</th>
+            </tr>
+          </thead>
+          <tbody id="overdue-tableBody"></tbody>
+        </table>
+        <div class="empty-state" id="overdue-emptyState">검색 버튼을 클릭하면 지연 목록이 표시됩니다.</div>
+      </div>
+    </div>
+    <!-- ===================== INVENTORY VIEW ===================== -->
+    <div id="topbar-inventory" class="topbar" style="display:none;">
+      <h1>입출고 · 재고관리</h1>
+      <span class="sync-toggle" id="inv-syncToggle" style="margin-left:auto;">구글시트 연동 ▾</span>
+    </div>
+    <div class="sync-panel" id="inv-syncPanel">
+      <input id="inv-appsScriptUrl" type="text" value="https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2Xur_FhnxfQReER1VnjFKNkwvEtezRo-93EVHlJ8uQdECpP/exec" placeholder="Apps Script 웹 앱 URL 붙여넣기 (실시간 읽기/쓰기)">
+      <button id="inv-apiSyncBtn">API로 불러오기</button>
+      <span class="sync-or">|</span>
+      <input id="inv-sheetUrl" type="text" placeholder="또는 CSV 게시 링크">
+      <button id="inv-syncBtn">불러오기</button>
+      <span class="sync-or">또는</span>
+      <label class="drop-zone" id="inv-dropZone">
+        <i>📁</i><span id="inv-dropLabel">엑셀/CSV 파일 선택 또는 드래그</span>
+        <input type="file" id="inv-fileInput" accept=".csv,.xlsx,.xls">
+      </label>
+      <button id="inv-resetBtn">샘플 데이터로</button>
+      <div class="sync-note">※ Apps Script로 연동하면 구글시트의 최신 데이터를 실시간으로 읽어옵니다. 열 이름: 품번 / 입고일자 / S/N / 입고수량 / 출고일자 / 출고수량 / 관리번호 / 비고.</div>
+      <div class="sync-note" id="inv-apiStatus"></div>
+    </div>
+    <div class="view" id="view-inventory">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="check">재고확인</button>
+        <button class="tab-btn" data-tab="all">전체 재고 현황</button>
+        <button class="tab-btn" data-tab="aging">⏰ 장기 재고</button>
+      </div>
+      <div class="tab-panel active" id="panel-check">
+        <div class="search-row">
+          <input id="inv-checkPartNo" type="text" placeholder="품번 (예: M200-004-62A)">
+          <input id="inv-checkSN" type="text" placeholder="S/N (예: 140)">
+          <input id="inv-checkCtrlNo" type="text" placeholder="관리번호 (예: 26-234-1)">
+          <button id="inv-checkBtn">재고 검색</button>
+        </div>
+        <div class="stock-summary" id="inv-checkSummary" style="display:none;">
+          <div class="stock-card"><div class="label">보유 재고</div><div class="value" id="inv-stockValue">0</div></div>
+          <div class="stock-card"><div class="label">총 입고 이력</div><div class="value" id="inv-inCount" style="color:var(--blue);">0</div></div>
+          <div class="stock-card"><div class="label">총 출고 이력</div><div class="value" id="inv-outCount" style="color:var(--red);">0</div></div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>품번</th><th>입고일자</th><th>S/N</th><th>입고수량</th><th>출고일자</th><th>출고수량</th><th>관리번호</th><th>비고</th></tr></thead>
+            <tbody id="inv-checkBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="inv-checkEmpty">품번을 검색하면 해당 재고 이력이 표시됩니다.</div>
+      </div>
+      <div class="tab-panel" id="panel-all">
+        <div class="quality-selector-row">
+          <div class="quality-btns" id="inv-allYearBtns"></div>
+        </div>
+        <div class="quality-selector-row">
+          <div class="quality-btns" id="inv-allMonthBtns"></div>
+        </div>
+        <div class="progress-label" id="inv-allRangeLabel" style="margin:4px 0 12px;"></div>
+        <div class="search-row" style="justify-content:flex-end;">
+          <button id="inv-allPrintBtn">인쇄</button>
+        </div>
+        <div class="table-scroll" id="inv-allTableScroll">
+          <table>
+            <thead><tr><th>순번</th><th>품번</th><th>총 입고</th><th>총 출고</th><th>현재 재고</th></tr></thead>
+            <tbody id="inv-allBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="tab-panel" id="panel-aging">
+        <div class="search-row">
+          <input id="inv-agingThreshold" type="number" value="150" style="max-width:120px;" placeholder="기준일수">
+          <span style="align-self:center;color:var(--text-mute);font-size:13px;">일 이상 입고 후 미출고된 재고</span>
+          <button id="inv-agingBtn">🔍 조회</button>
+        </div>
+        <div class="stock-summary" id="inv-agingSummary" style="display:none;">
+          <div class="stock-card"><div class="label">장기 재고 건수</div><div class="value" id="inv-agingCount" style="color:var(--red);">0</div></div>
+        </div>
+        <div class="table-scroll" id="inv-agingTableScroll">
+          <table>
+            <thead><tr><th>경과일수</th><th>품번</th><th>입고일자</th><th>S/N</th><th>입고수량</th><th>관리번호</th><th>비고</th></tr></thead>
+            <tbody id="inv-agingBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="inv-agingEmpty">조회 버튼을 클릭하면 기준일수 이상 오래된 재고가 표시됩니다.</div>
+      </div>
+    </div>
+    <!-- ===================== QUALITY VIEW ===================== -->
+    <div id="topbar-quality" class="topbar" style="display:none;">
+      <h1>품질분석</h1>
+      <div class="topbar-right">
+        <button id="quality-printBtn">보고서 인쇄</button>
+        <span class="sync-toggle" id="quality-syncToggle">구글시트 연동 ▾</span>
+      </div>
+    </div>
+    <div class="sync-panel" id="quality-syncPanel">
+      <input id="quality-appsScriptUrl" type="text" value="https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2Xur_FhnxfQReER1VnjFKNkwvEtezRo-93EVHlJ8uQdECpP/exec" placeholder="Apps Script 웹 앱 URL 붙여넣기">
+      <button id="quality-apiSyncBtn">API로 불러오기</button>
+      <div class="sync-note">※ 공정검사(치수,BOLT,LED) · 공정검사(사내외관) · 수입검사(기능) · 수입검사(외관) · 출하검사 5개 탭을 불러옵니다.</div>
+      <div class="sync-note" id="quality-apiStatus"></div>
+    </div>
+    <div class="view" id="view-quality">
+      <div class="quality-selector-row">
+        <div class="quality-btns" id="quality-yearBtns"></div>
+      </div>
+      <div class="quality-selector-row">
+        <div class="quality-btns" id="quality-monthBtns"></div>
+      </div>
+      <div class="progress-label" id="quality-rangeLabel" style="margin:4px 0 12px;"></div>
+      <div class="tabs">
+        <button class="tab-btn active" data-qtab="process">공정검사</button>
+        <button class="tab-btn" data-qtab="incoming">수입검사</button>
+        <button class="tab-btn" data-qtab="shipping">출하검사</button>
+      </div>
+      <div class="tab-panel active" id="qpanel-process"></div>
+      <div class="tab-panel" id="qpanel-incoming"></div>
+      <div class="tab-panel" id="qpanel-shipping"></div>
+    </div>
+    <!-- ===================== SALES(매출현황) VIEW ===================== -->
+    <div id="topbar-sales" class="topbar" style="display:none;">
+      <h1>매출현황</h1>
+      <div class="topbar-right">
+        <button id="sales-printBtn">보고서 인쇄</button>
+      </div>
+    </div>
+    <div class="view" id="view-sales">
+      <div class="quality-selector-row">
+        <div class="quality-btns" id="sales-yearBtns"></div>
+      </div>
+      <div class="quality-selector-row">
+        <div class="quality-btns" id="sales-monthBtns"></div>
+      </div>
+      <div class="progress-label" id="sales-rangeLabel" style="margin:4px 0 12px;"></div>
+      <div id="sales-print-page1">
+        <div class="table-wrap" style="margin-bottom:18px;">
+          <table>
+            <thead><tr><th>구분</th><th>매출(만원)</th><th>소재및외주(만원)</th><th>순이익(만원)</th><th>이익률(%)</th></tr></thead>
+            <tbody id="sales-kpiBody"></tbody>
+          </table>
+        </div>
+        <div class="summary-row" style="margin-bottom:18px;">
+          <div class="stat-card"><div class="label" style="color:var(--text-mute);">이번달 실적(만원)</div><div id="sales-thisMonth" style="margin-top:6px;"></div></div>
+          <div class="stat-card"><div class="label" style="color:var(--text-mute);">저번달 실적(만원)</div><div id="sales-lastMonth" style="margin-top:6px;"></div></div>
+        </div>
+        <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+          <div id="sales-monthlyChart"></div>
+          <div id="sales-monthlyTable" style="margin-top:14px;overflow-x:auto;"></div>
+        </div>
+        <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">고객사별 매출 현황 (유진테크 / 알파플러스 / 엘티케이 / 기타)</div>
+          <div id="sales-customerTable" style="margin-bottom:14px;overflow-x:auto;"></div>
+          <div id="sales-customerYearChart"></div>
+        </div>
+        <div class="table-wrap" style="padding:16px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">고객사별 월별 매출 추이</div>
+          <div id="sales-customerMonthChart" style="overflow-x:auto;"></div>
+        </div>
+        <div class="table-wrap" style="padding:16px;margin-top:18px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">판매 증가/감소 랭킹 (TOP 5, 전년 대비)</div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:260px;">
+              <div style="font-size:12.5px;font-weight:700;color:var(--green);margin-bottom:6px;">▲ 증가 TOP 5</div>
+              <div id="sales-growthUpTable" style="overflow-x:auto;"></div>
+            </div>
+            <div style="flex:1;min-width:260px;">
+              <div style="font-size:12.5px;font-weight:700;color:var(--red);margin-bottom:6px;">▼ 감소 TOP 5</div>
+              <div id="sales-growthDownTable" style="overflow-x:auto;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="sales-print-page2">
+        <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+          <div id="sales-yoyChart" style="overflow-x:auto;"></div>
+        </div>
+        <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">연도별 비교 요약 (2023년~)</div>
+          <div id="sales-yoySummary" style="overflow-x:auto;"></div>
+        </div>
+        <div class="table-wrap" style="padding:16px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">예상매출 현황</div>
+          <div id="sales-expectedKPI" style="margin-bottom:14px;overflow-x:auto;"></div>
+          <div id="sales-expectedChart"></div>
+          <div id="sales-expectedTable" style="margin-top:14px;overflow-x:auto;"></div>
+        </div>
+      </div>
+    </div>
+    <!-- ===================== VENDOR(거래처 관리) VIEW ===================== -->
+    <div id="topbar-vendor" class="topbar" style="display:none;">
+      <h1>거래처 관리</h1>
+      <div class="search-box">
+        <input id="vendor-searchInput" type="text" placeholder="기존도번, 품번, 품명, 고객사, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
+        <button id="vendor-searchBtn">🔍 검색</button>
+      </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 같은 <b style="color:#FFD400;">기존도번</b> 안에서 이전 이력보다 <b style="color:#FF6B6B;">오르면 빨강</b>, <b style="color:#E0C34A;">내리면 노랑</b>으로 표시됩니다.</div>
+    </div>
+    <div class="view" id="view-vendor">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>기존도번</th><th>자재비</th><th>외주업체비</th><th>후처리(세정)</th>
+            </tr>
+          </thead>
+          <tbody id="vendor-tableBody"></tbody>
+        </table>
+        <div class="empty-state" id="vendor-emptyState">검색 버튼을 클릭하면 기존도번별 단가 이력이 표시됩니다.</div>
       </div>
     </div>
   </div>
 </div>
-
+<template id="quality-category-template">
+  <div class="table-wrap" style="margin-bottom:18px;">
+    <table>
+      <thead><tr><th>구분</th><th>검사수</th><th>양품수</th><th>부적합수</th><th>부적합율(ppm)</th><th class="th-target">목표(ppm)</th></tr></thead>
+      <tbody class="q-kpi-body"></tbody>
+    </table>
+  </div>
+  <div class="summary-row" style="margin-bottom:18px;">
+    <div class="stat-card"><div class="label" style="color:var(--text-mute);">이번달 실적</div><div class="q-this-month" style="margin-top:6px;"></div></div>
+    <div class="stat-card"><div class="label" style="color:var(--text-mute);">저번달 실적</div><div class="q-last-month" style="margin-top:6px;"></div></div>
+  </div>
+  <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+    <div class="q-target-row" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <span style="font-size:13px;color:var(--text-mute);">목표(ppm):</span>
+      <input type="number" class="q-target-input" style="width:110px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;" placeholder="예: 10000">
+      <button class="btn-plain q-target-apply">적용</button>
+    </div>
+    <div class="q-monthly-chart"></div>
+    <div class="q-monthly-table" style="margin-top:14px;overflow-x:auto;"></div>
+  </div>
+  <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+    <div class="q-weekly-section"></div>
+  </div>
+  <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+    <div class="q-detail-section"></div>
+  </div>
+  <div class="table-wrap" style="padding:16px;">
+    <div class="q-type-section"></div>
+  </div>
+</template>
 <script>
-let mainData = [];
-
-// 월별 현황 대시보드 데이터 갱신 로직 (현재 달만 적용되도록 필터링 커스텀)
-function updateSummaryDashboard() {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth(); // 0 = 1월, 1 = 2월 ...
-
-  // 1. 현재 날짜의 '연도'와 '월'이 모두 일치하는 데이터만 추출
-  const currentMonthRows = mainData.filter(r => {
-    if (!r.dueDate) return false;
-    const d = new Date(r.dueDate);
-    return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+/* ============ NAVIGATION ============ */
+document.querySelectorAll(".nav-item").forEach(item=>{
+  item.addEventListener("click", ()=>{
+    document.querySelectorAll(".nav-item").forEach(i=>i.classList.remove("active"));
+    item.classList.add("active");
+    const target = item.dataset.view;
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    document.getElementById("view-"+target).classList.add("active");
+    document.getElementById("topbar-main").style.display = target==="main" ? "flex" : "none";
+    document.getElementById("topbar-inventory").style.display = target==="inventory" ? "flex" : "none";
+    document.getElementById("topbar-overdue").style.display = target==="overdue" ? "flex" : "none";
+    document.getElementById("topbar-quality").style.display = target==="quality" ? "flex" : "none";
+    document.getElementById("topbar-sales").style.display = target==="sales" ? "flex" : "none";
+    document.getElementById("topbar-vendor").style.display = target==="vendor" ? "flex" : "none";
+    document.getElementById("topbar-summary").style.display = target==="summary" ? "flex" : "none";
+    document.getElementById("main-syncPanel").classList.remove("open");
+    document.getElementById("inv-syncPanel").classList.remove("open");
+    document.getElementById("quality-syncPanel").classList.remove("open");
+    if(target==="summary"){
+      setTimeout(renderSummaryView, 0);
+    }
+    if(target==="quality" && !window.__qualityInited){
+      window.__qualityInited = true;
+      setTimeout(initQualityView, 0);
+    }
+    if(target==="overdue"){
+      setTimeout(overdueApplySearch, 0);
+    }
+    if(target==="sales"){
+      const rangeLabelEl = document.getElementById("sales-rangeLabel");
+      if(rangeLabelEl) rangeLabelEl.textContent = "불러오는 중...";
+      setTimeout(renderSalesAll, 0);
+    }
   });
+});
+/* ============ MAIN DASHBOARD LOGIC ============ */
+const MAIN_SAMPLE = [
+  {status:"생산", orderNo:"26-234-1", customer:"유진테크", partNo:"110006106", partName:"GAS LINE HOLDER", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-2", customer:"유진테크", partNo:"110006119", partName:"N2 IN PORT", qty:2, dueDate:"2026-08-05", vendor:"신우(명석),와이엔티", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:1, waitMeasure:35, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-3", customer:"유진테크", partNo:"110006120", partName:"CHAMBER PIN", qty:4, dueDate:"2026-08-05", vendor:"창록", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:7, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"재고", orderNo:"26-234-4", customer:"유진테크", partNo:"110006146", partName:"GAS ADAPTOR", qty:2, dueDate:"2026-08-05", vendor:"용기테크,삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:1, waitMeasure:3, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-5", customer:"유진테크", partNo:"110006223", partName:"VACUUM COVER", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:6, waitMeasure:0, waitClean:10, waitVision:0},
+  {status:"생산", orderNo:"26-234-6", customer:"유진테크", partNo:"110006253", partName:"CHAMBER", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"출고", orderNo:"26-234-7", customer:"유진테크", partNo:"110006262", partName:"CHAMBER LID", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"2026-07-01", shipped:"납품완료", stockPreShip:0, waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-8", customer:"유진테크", partNo:"110006478", partName:"TUBE ADAPTOR", qty:2, dueDate:"2026-06-20", vendor:"삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:1, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-9", customer:"유진테크", partNo:"110006529", partName:"COOLING ADAPTOR", qty:2, dueDate:"2026-08-05", vendor:"와이엔티", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:23, waitClean:17, waitVision:0},
+  {status:"재고", orderNo:"26-234-10", customer:"유진테크", partNo:"110006534", partName:"COOLING ADAPTOR", qty:2, dueDate:"2026-08-05", vendor:"와이엔티", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:2, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-11", customer:"유진테크", partNo:"110006981", partName:"CHAMBER VACUUM PORT", qty:2, dueDate:"2026-05-30", vendor:"와이엔티,더광명", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-12", customer:"유진테크", partNo:"110007981", partName:"TUBE ADAPTOR FLANGE", qty:2, dueDate:"2026-08-05", vendor:"명석정밀,삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:3, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-13", customer:"유진테크", partNo:"120077685", partName:"COUPLER SAFETY COVER", qty:4, dueDate:"2026-08-05", vendor:"케미수지", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:0, waitClean:0, waitVision:0},
+  {status:"생산", orderNo:"26-234-17", customer:"유진테크", partNo:"110006296", partName:"SHOWERHEAD", qty:2, dueDate:"2026-08-05", vendor:"삼영", shipDate:"", shipped:"", stockPreShip:0, waitDeliver:0, waitMeasure:12, waitClean:0, waitVision:16},
+];
+let mainData = [];
+let mainListRevealed = false;
+function isOverdue(dateStr){
+  if(!dateStr) return false;
+  const d = new Date(dateStr);
+  if(isNaN(d)) return false;
+  const today = new Date(); today.setHours(0,0,0,0);
+  return d < today;
+}
+function lookupWaitMap(map, r){
+  const keys = [String(r.oldDrawingNo||"").trim(), String(r.partNo||"").trim()].filter(Boolean);
+  let found = false, total = 0;
+  const seen = new Set();
+  keys.forEach(k=>{
+    if(!seen.has(k) && (k in map)){ total += map[k]; found = true; seen.add(k); }
+  });
+  return found ? total : null;
+}
+function computeWaitMeasureRaw(r){
+  const v = lookupWaitMap(measureWaitMap, r);
+  return v!==null ? v : (Number(r.waitMeasure)||0);
+}
+function computeWaitDeliverRaw(r){
+  if(typeof invComputeStock !== "function") return Number(r.waitDeliver)||0;
+  const keys = [String(r.oldDrawingNo||"").trim(), String(r.partNo||"").trim()].filter(Boolean);
+  let total = 0, found = false;
+  const seen = new Set();
+  keys.forEach(k=>{
+    if(seen.has(k)) return;
+    seen.add(k);
+    const rows = invData.filter(iv=>iv.partNo===k);
+    if(rows.length){ found = true; total += invComputeStock(k).stock; }
+  });
+  return found ? total : (Number(r.waitDeliver)||0);
+}
+function computeWaitCleanRaw(r){
+  const v = lookupWaitMap(cleanWaitMap, r);
+  return v!==null ? v : (Number(r.waitClean)||0);
+}
+function computeWaitVisionRaw(r){
+  const v = lookupWaitMap(visionWaitMap, r);
+  return v!==null ? v : (Number(r.waitVision)||0);
+}
+function computeProductStatusRaw(r){
+  const I = Number(r.qty)||0;
+  if(I === 0) return "";
+  if(r.shipped === "납품완료") return "완료";
+  const V = computeStockPreShip(r);
+  const Q = computeWaitDeliverRaw(r);
+  const S = computeWaitCleanRaw(r);
+  const R = computeWaitMeasureRaw(r);
+  const T = computeWaitVisionRaw(r);
+  if(V - I >= 0) return "출고";
+  if(Q - I >= 0) return "재고";
+  if(S - I >= 0) return "외관";
+  if(T - I >= 0) return "비젼";
+  if(R - I >= 0) return "측정";
+  const sum = Q + R + S + T + V;
+  if(sum >= I) return "OK";
+  return "생산";
+}
+let mainStatusMap = {};
+let mainStatusMapDirty = true;
+function markMainStatusDirty(){ mainStatusMapDirty = true; stockPreShipMap = null; }
+function computeAllStatuses(data){
+  const result = {};
+  const groups = {};
+  const order = [];
+  (data||[]).forEach((r, idx)=>{
+    const key = String(r.oldDrawingNo||"").trim() || String(r.partNo||"").trim() || ("__row__"+idx);
+    if(!groups[key]){ groups[key] = []; order.push(key); }
+    groups[key].push(r);
+  });
+  order.forEach(key=>{
+    const rows = groups[key];
+    const rep = rows[0];
+    let qRemain = computeWaitDeliverRaw(rep);
+    let sRemain = computeWaitCleanRaw(rep);
+    let tRemain = computeWaitVisionRaw(rep);
+    let rRemain = computeWaitMeasureRaw(rep);
+    rows.forEach(r=>{
+      const I = Number(r.qty)||0;
+      if(I === 0){ result[r.orderNo] = {status:"", q:qRemain, s:sRemain, t:tRemain, r:rRemain}; return; }
+      if(r.shipped === "납품완료"){ result[r.orderNo] = {status:"완료", q:qRemain, s:sRemain, t:tRemain, r:rRemain}; return; }
+      const V = computeStockPreShip(r);
+      const snapshot = {q:qRemain, s:sRemain, t:tRemain, r:rRemain};
+      if(V - I >= 0){
+        result[r.orderNo] = Object.assign({status:"출고"}, snapshot);
+        return;
+      }
+      if(qRemain - I >= 0){
+        result[r.orderNo] = Object.assign({status:"재고"}, snapshot);
+        qRemain -= I;
+        return;
+      }
+      if(sRemain - I >= 0){
+        result[r.orderNo] = Object.assign({status:"외관"}, snapshot);
+        sRemain -= I;
+        return;
+      }
+      if(tRemain - I >= 0){
+        result[r.orderNo] = Object.assign({status:"비젼"}, snapshot);
+        tRemain -= I;
+        return;
+      }
+      if(rRemain - I >= 0){
+        result[r.orderNo] = Object.assign({status:"측정"}, snapshot);
+        rRemain -= I;
+        return;
+      }
+      const totalAvail = qRemain + sRemain + tRemain + rRemain + V;
+      if(totalAvail >= I){
+        result[r.orderNo] = Object.assign({status:"OK"}, snapshot);
+        let need = Math.max(I - V, 0);
+        const takeQ = Math.min(qRemain, need); qRemain -= takeQ; need -= takeQ;
+        const takeS = Math.min(sRemain, need); sRemain -= takeS; need -= takeS;
+        const takeT = Math.min(tRemain, need); tRemain -= takeT; need -= takeT;
+        const takeR = Math.min(rRemain, need); rRemain -= takeR; need -= takeR;
+        return;
+      }
+      result[r.orderNo] = Object.assign({status:"생산"}, snapshot);
+    });
+  });
+  return result;
+}
+function computeProductStatus(r){
+  const cached = mainStatusMap[r.orderNo];
+  return cached ? cached.status : computeProductStatusRaw(r);
+}
+function computeWaitDeliver(r){
+  const cached = mainStatusMap[r.orderNo];
+  return cached ? cached.q : computeWaitDeliverRaw(r);
+}
+function computeWaitClean(r){
+  const cached = mainStatusMap[r.orderNo];
+  return cached ? cached.s : computeWaitCleanRaw(r);
+}
+function computeWaitVision(r){
+  const cached = mainStatusMap[r.orderNo];
+  return cached ? cached.t : computeWaitVisionRaw(r);
+}
+function computeWaitMeasure(r){
+  const cached = mainStatusMap[r.orderNo];
+  return cached ? cached.r : computeWaitMeasureRaw(r);
+}
+function statusBadge(status){ return `<span class="badge status-${status}">${status}</span>`; }
+// 대시보드 배지(badge) 색상과 동일한 글자색 매핑 (인쇄물처럼 배지 없이 글자색만 필요한 곳에서 사용)
+function mainStatusTextColor(status){
+  const map = {
+    "생산": "#E02424",
+    "재고": "#2E7D46",
+    "출고": "#1F2A44",
+    "완료": "#7030A0",
+    "외관": "#0B5CAB",
+    "측정": "#0B5CAB",
+    "비젼": "#0B5CAB",
+    "OK": "#8a6d00"
+  };
+  return map[status] || "#1A1E27";
+}
+let stockPreShipMap = null; // ctrlNo -> 합산 출고수량 캐시 (invData가 바뀔 때만 다시 계산)
+function rebuildStockPreShipMapIfNeeded(){
+  if(stockPreShipMap) return;
+  stockPreShipMap = {};
+  if(typeof invData === "undefined") return;
+  invData.forEach(iv=>{
+    if(!iv.ctrlNo) return;
+    stockPreShipMap[iv.ctrlNo] = (stockPreShipMap[iv.ctrlNo]||0) + (Number(iv.outQty)||0);
+  });
+}
+function computeStockPreShip(r){
+  if(typeof invData === "undefined") return 0;
+  rebuildStockPreShipMapIfNeeded();
+  return stockPreShipMap[r.orderNo] || 0;
+}
+function mainRenderStats(data){
+  // 상태(생산/재고/출고/...) 계산은 mainData 전체 x invData 전체를 훑는 무거운 연산이라,
+  // 데이터가 실제로 바뀌었을 때(mainStatusMapDirty=true)만 다시 계산하고,
+  // 상태 필터 체크박스처럼 목록만 다시 그리는 경우엔 이미 계산된 결과를 재사용합니다.
+  if(mainStatusMapDirty){
+    mainStatusMap = computeAllStatuses(mainData);
+    mainStatusMapDirty = false;
+  }
+  const prod = data.filter(r => computeProductStatus(r) === "생산").length;
+  const done = data.filter(r => computeProductStatus(r) === "완료").length;
+  const qc = data.filter(r => {
+    const status = computeProductStatus(r);
+    return ["재고","출고","측정","외관","비젼","OK"].includes(status);
+  }).length;
+  const overdue = data.filter(r => isOverdue(r.dueDate) && r.shipped !== "납품완료").length;
+  const total = data.length || 1;
+  const pct = Math.round(((qc + done) / total) * 100);
+  document.getElementById("main-statProd").textContent = prod;
+  document.getElementById("main-statQc").textContent = qc;
+  document.getElementById("main-statDone").textContent = done;
+  document.getElementById("main-statOverdue").textContent = overdue;
+  document.getElementById("main-statProgress").textContent = pct + "%";
+  document.getElementById("main-progressFill").style.width = pct + "%";
+  document.getElementById("main-progressDetail").textContent = `(${qc + done}/전체 ${total}건)`;
+}
+function mainRenderTable(data){
+  const tbody = document.getElementById("main-tableBody");
+  const empty = document.getElementById("main-emptyState");
+  empty.textContent = "검색 결과가 없습니다.";
+  empty.style.display = data.length===0 ? "block" : "none";
+  // 행마다 appendChild 하면 매번 리플로우가 발생해 모바일에서 느려지므로,
+  // 문자열로 한 번에 모아서 innerHTML을 딱 한 번만 설정합니다.
+  const rowsHtml = data.map(r=>{
+    const _status = computeProductStatus(r);
+    const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
+    const rowClass = r.shipped==="납품완료" ? "row-shipped" : (_status==="출고" ? "row-shipout" : "");
+    return `<tr class="${rowClass}">
+      <td>${statusBadge(_status)}</td><td>${r.orderNo}</td><td>${r.customer}</td>
+      <td style="text-align:left;">${r.vendor||''}</td>
+      <td>${r.partNo}</td>
+      <td>${r.oldDrawingNo||''}</td>
+      <td style="text-align:left;">${r.partName}</td><td>${r.qty}</td>
+      <td class="${overdue?'cell-overdue':''}">${r.dueDate||''}</td>
+      <td>${r.shipDate||''}</td><td>${r.shipped||''}</td>
+      <td class="${computeWaitDeliver(r)>0?'cell-wait-hi':''}">${computeWaitDeliver(r)}</td>
+      <td class="${computeWaitMeasure(r)>0?'cell-wait-hi':''}">${computeWaitMeasure(r)}</td>
+      <td class="${computeWaitClean(r)>0?'cell-wait-hi':''}">${computeWaitClean(r)}</td>
+      <td class="${computeWaitVision(r)>0?'cell-wait-hi':''}">${computeWaitVision(r)}</td>
+      <td style="color:var(--text);font-style:normal;font-weight:700;">${computeStockPreShip(r)}</td>
+    </tr>`;
+  }).join("");
+  tbody.innerHTML = rowsHtml;
+}
+function mainRenderCards(data){
+  const wrap = document.getElementById("main-cardsView");
+  const cardsHtml = data.map(r=>{
+    const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
+    return `<div class="p-card">
+      <div class="p-card-top"><span class="p-card-title">${r.orderNo} · ${r.partName}</span>${statusBadge(computeProductStatus(r))}</div>
+      <div class="p-card-sub">${r.customer}${r.vendor ? ' · PROJECT NO. '+r.vendor : ''} · 품번 ${r.partNo}${r.oldDrawingNo ? ' · 기존도번 '+r.oldDrawingNo : ''}</div>
+      <div class="p-card-grid">
+        <div><span>수량 </span>${r.qty}</div>
+        <div><span>최종납기 </span><span class="${overdue?'cell-overdue':''}">${r.dueDate||'-'}</span></div>
+        <div><span>납품여부 </span>${r.shipped||'-'}</div>
+        <div><span>측정대기 </span>${computeWaitMeasure(r)}</div>
+        <div><span>크린룸대기 </span>${computeWaitClean(r)}</div>
+        <div><span>비젼대기 </span>${computeWaitVision(r)}</div>
+        <div><span>선출고 </span><span style="color:var(--text);font-style:normal;font-weight:700;">${computeStockPreShip(r)}</span></div>
+      </div>
+    </div>`;
+  }).join("");
+  wrap.innerHTML = cardsHtml;
+}
+function mainShowSearchPrompt(){
+  mainListRevealed = false;
+  document.getElementById("main-tableBody").innerHTML = "";
+  document.getElementById("main-cardsView").innerHTML = "";
+  const empty = document.getElementById("main-emptyState");
+  empty.textContent = "검색 버튼을 클릭하면 제품 목록이 표시됩니다.";
+  empty.style.display = "block";
+}
+function mainInitialRender(data){
+  mainRenderStats(data);
+  mainShowSearchPrompt();
+  if(typeof renderSummaryView==="function") renderSummaryView();
+}
+function mainRenderAll(data){ mainRenderStats(data); mainRenderTable(data); mainRenderCards(data); mainListRevealed = true; }
+const ALL_MAIN_STATUSES = ["생산","재고","출고","완료","외관","측정","비젼","OK"];
+let mainSelectedStatuses = ALL_MAIN_STATUSES.slice();
+let mainHideCompleted = false;
+function mainGetFilteredBase(){
+  const raw = document.getElementById("main-searchInput").value.trim().toLowerCase();
+  let filtered = mainData.filter(r=>(Number(r.qty)||0) > 0);
+  if(raw){
+    // 쉼표(,)로 구분한 각 덩어리는 서로 OR(그 중 하나라도 맞으면 검색)로 묶이고,
+    // 쉼표 하나의 덩어리 안에서 슬래시(/)로 여러 단어를 구분하면 그 단어들을 전부
+    // 포함해야 하는 AND(좁혀서 검색)로 동작합니다.
+    // 예: "26-171/SHOWERHEAD, BLOCK PLATE"
+    //   → ("26-171"과 "SHOWERHEAD"를 모두 포함) 이거나, "BLOCK PLATE"를 포함
+    const orGroups = raw.split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim()).filter(Boolean));
+    if(orGroups.length){
+      filtered = filtered.filter(r=>{
+        const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.oldDrawingNo].join(" ").toLowerCase();
+        return orGroups.some(andTerms => andTerms.every(t=>haystack.includes(t)));
+      });
+    }
+  }
+  // 최종납기일 날짜 범위 검색 (YYYY-MM-DD 형식이라 문자열 비교로도 날짜 순서가 그대로 유지됩니다)
+  const dueFrom = document.getElementById("main-dueDateFrom").value;
+  const dueTo = document.getElementById("main-dueDateTo").value;
+  if(dueFrom){ filtered = filtered.filter(r=> r.dueDate && r.dueDate >= dueFrom); }
+  if(dueTo){ filtered = filtered.filter(r=> r.dueDate && r.dueDate <= dueTo); }
+  // ORDER NO 숨기기: "26-175"처럼 프로젝트 번호만 입력하면 "26-175-1" ~ "26-175-70"
+  // 전부(세부 번호와 무관하게) 한 번에 숨깁니다.
+  const hideRaw = document.getElementById("main-hideOrderInput").value.trim().toLowerCase();
+  if(hideRaw){
+    const hideTerms = hideRaw.split(",").map(t=>t.trim()).filter(Boolean);
+    if(hideTerms.length){
+      filtered = filtered.filter(r=>{
+        const orderNoLower = String(r.orderNo||"").toLowerCase();
+        return !hideTerms.some(t=> orderNoLower === t || orderNoLower.startsWith(t + "-"));
+      });
+    }
+  }
+  return filtered;
+}
+function mainApplySort(list){
+  const order = document.getElementById("main-sortOrder").value;
+  if(!order) return list;
+  const withTime = list.map(r=>{
+    const t = r.dueDate ? new Date(r.dueDate).getTime() : NaN;
+    return { r, t: isNaN(t) ? Infinity : t };
+  });
+  withTime.sort((a,b)=> order==="due-asc" ? a.t-b.t : b.t-a.t);
+  return withTime.map(x=>x.r);
+}
+function mainApplySearch(){
+  let filtered = mainGetFilteredBase();
+  filtered = filtered.filter(r=>mainSelectedStatuses.includes(computeProductStatus(r)));
+  if(mainHideCompleted){
+    filtered = filtered.filter(r=>computeProductStatus(r) !== "완료");
+  }
+  filtered = mainApplySort(filtered);
+  mainRenderAll(filtered);
+  if(mainCalendarOpen) renderMainCalendar();
+}
+function mainUpdateStatusToggleLabel(){
+  const btn = document.getElementById("main-statusToggle");
+  if(mainSelectedStatuses.length === ALL_MAIN_STATUSES.length){
+    btn.textContent = "전체 상태 ▾";
+  } else {
+    const excluded = ALL_MAIN_STATUSES.length - mainSelectedStatuses.length;
+    btn.textContent = `${excluded}개 제외 ▾`;
+  }
+}
+document.getElementById("main-statusToggle").addEventListener("click", (e)=>{
+  e.stopPropagation();
+  document.getElementById("main-statusDropdown").classList.toggle("open");
+});
+document.addEventListener("click", (e)=>{
+  const wrap = document.getElementById("main-statusMultiselect");
+  const dropdown = document.getElementById("main-statusDropdown");
+  if(wrap && dropdown && !wrap.contains(e.target)) dropdown.classList.remove("open");
+});
+document.querySelectorAll("#main-statusDropdown input[type=checkbox]").forEach(cb=>{
+  cb.addEventListener("change", ()=>{
+    mainSelectedStatuses = Array.from(document.querySelectorAll("#main-statusDropdown input[type=checkbox]:checked")).map(el=>el.value);
+    mainUpdateStatusToggleLabel();
+    mainApplySearch();
+  });
+});
+document.getElementById("main-hideDoneBtn").addEventListener("click", ()=>{
+  mainHideCompleted = !mainHideCompleted;
+  const btn = document.getElementById("main-hideDoneBtn");
+  btn.textContent = mainHideCompleted ? "완료 표시" : "완료 숨기기";
+  btn.style.background = mainHideCompleted ? "var(--navy)" : "";
+  btn.style.color = mainHideCompleted ? "#fff" : "";
+  mainApplySearch();
+});
+document.getElementById("main-sortOrder").addEventListener("change", mainApplySearch);
+document.getElementById("main-printBtn").addEventListener("click", ()=>{
+  mainApplySearch();
+  let filtered = mainGetFilteredBase();
+  // 대시보드의 "전체 상태" 체크박스 설정을 그대로 인쇄물에도 적용합니다.
+  filtered = filtered.filter(r=>mainSelectedStatuses.includes(computeProductStatus(r)));
+  if(mainHideCompleted){ filtered = filtered.filter(r=>computeProductStatus(r) !== "완료"); }
+  // 분출 LIST 인쇄물에는 체크박스 설정과 상관없이 "출고" 건은 항상 제외합니다.
+  filtered = filtered.filter(r=>computeProductStatus(r) !== "출고");
+  filtered = mainApplySort(filtered);
+  const rowsHtml = filtered.map(r=>{
+    const status = computeProductStatus(r);
+    return `<tr>
+      <td style="color:${mainStatusTextColor(status)};font-weight:700;">${status}</td><td>${r.orderNo}</td>
+      <td style="text-align:left;">${r.vendor||''}</td>
+      <td>${r.oldDrawingNo||''}</td>
+      <td></td>
+      <td>${r.qty}</td>
+      <td></td>
+      <td>${r.dueDate||''}</td>
+      <td></td>
+      <td>${computeWaitDeliver(r)}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("print-area").innerHTML = `
+    <h2>종합제품관리 · MAIN 대시보드 (${new Date().toLocaleString("ko-KR")})</h2>
+    <table>
+      <colgroup>
+        <col style="width:6%"><col style="width:8%"><col style="width:9%"><col style="width:13%">
+        <col style="width:22%"><col style="width:6%"><col style="width:10%"><col style="width:10%">
+        <col style="width:10%"><col style="width:6%">
+      </colgroup>
+      <thead><tr>
+        <th>제품상태</th><th>ORDER NO.</th><th>PROJECT NO.</th><th>기존도번</th><th>S/N</th>
+        <th>수량</th><th>출고날짜</th><th>최종납기</th><th>비고</th><th>납품 대기</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
+  window.print();
+});
+document.getElementById("main-searchBtn").addEventListener("click", mainApplySearch);
+document.getElementById("main-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") mainApplySearch(); });
+// 최종납기 시작일/종료일은 입력하자마자 바로 반응하지 않고, "검색" 버튼을 눌러야 적용됩니다.
+document.getElementById("main-hideOrderInput").addEventListener("keydown", e=>{ if(e.key==="Enter") mainApplySearch(); });
+document.getElementById("main-hideOrderClearBtn").addEventListener("click", ()=>{
+  document.getElementById("main-hideOrderInput").value = "";
+  mainApplySearch();
+});
+let mainCalendarOpen = false;
+let mainCalendarDate = new Date();
+let mainCalendarDismissed = new Set();
+function mainGetCalendarRows(){
+  // 표와 동일한 필터 결과를 그대로 달력에도 반영합니다 (검색/날짜범위/숨기기/상태 필터 모두 포함).
+  let rows = mainGetFilteredBase();
+  rows = rows.filter(r=>{
+    const s = computeProductStatus(r);
+    return s !== "완료" && s !== "출고" && !mainCalendarDismissed.has(r.orderNo);
+  });
+  return rows;
+}
+function renderMainCalendar(){
+  const year = mainCalendarDate.getFullYear();
+  const month = mainCalendarDate.getMonth();
+  document.getElementById("main-calMonthLabel").textContent = year + "년 " + (month+1) + "월";
+  const rows = mainGetCalendarRows();
+  const byDay = {};
+  rows.forEach(r=>{
+    if(!r.dueDate) return;
+    const d = new Date(r.dueDate);
+    if(isNaN(d)) return;
+    if(d.getFullYear()===year && d.getMonth()===month){
+      const key = d.getDate();
+      if(!byDay[key]) byDay[key] = [];
+      byDay[key].push(r);
+    }
+  });
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const todayStr = new Date().toDateString();
+  // 요일 헤더(일~토)는 매달 바뀌지 않으므로 최초 한 번만 채워두고, 이후에는 다시 그리지 않습니다.
+  const dowRow = document.getElementById("main-calDowRow");
+  if(dowRow && !dowRow.dataset.built){
+    const dowLabels = ["일","월","화","수","목","금","토"];
+    dowRow.innerHTML = dowLabels.map((d,i)=>`<div class="cal-dow ${i===0?'cal-sun':''}${i===6?'cal-sat':''}">${d}</div>`).join("");
+    dowRow.dataset.built = "1";
+  }
+  let html = "";
+  let weekCells = [];
+  function flushWeek(){
+    if(weekCells.length){
+      html += `<div class="cal-week-row">${weekCells.join("")}</div>`;
+      weekCells = [];
+    }
+  }
+  for(let i=0;i<firstDow;i++){ weekCells.push(`<div class="cal-cell empty"></div>`); }
+  for(let day=1; day<=daysInMonth; day++){
+    const items = byDay[day] || [];
+    const isToday = new Date(year, month, day).toDateString() === todayStr;
+    const dow = (firstDow + (day-1)) % 7;
+    const dowClass = dow===0 ? 'sun' : (dow===6 ? 'sat' : '');
+    const cellDateStr = year + "-" + String(month+1).padStart(2,"0") + "-" + String(day).padStart(2,"0");
+    const itemRowHtml = r=>
+      `<div class="cal-item" draggable="true" data-order="${r.orderNo}" title="드래그해서 다른 날짜로 옮길 수 있습니다"><b>${r.oldDrawingNo||'-'}</b> · ${r.orderNo} · 수량 ${r.qty}<span class="cal-item-remove" data-order="${r.orderNo}" title="이 항목을 달력에서 숨기기">×</span></div>`;
+    // ORDER NO의 마지막 "-순번"을 뗀 접두부(예: "26-174-53" → "26-174")로 그룹핑합니다.
+    // 같은 그룹(같은 프로젝트 번호)에 항목이 3개 이상이면 그 그룹만 "OO 외 N품목"으로 접고,
+    // 항목이 적은 다른 그룹은 그대로 각 줄에 표시해서 한 날짜에 여러 그룹이 섞여 있어도
+    // 서로 구분되도록 합니다.
+    const groups = {};
+    const groupOrder = [];
+    items.forEach(r=>{
+      const m = String(r.orderNo||"").match(/^(.*)-\d+$/);
+      const key = m ? m[1] : String(r.orderNo||"(미지정)");
+      if(!groups[key]){ groups[key] = []; groupOrder.push(key); }
+      groups[key].push(r);
+    });
+    const itemsHtml = groupOrder.map(key=>{
+      const gItems = groups[key];
+      if(gItems.length >= 3){
+        const first = gItems[0];
+        return `
+          <div class="cal-item-summary"><b>${first.oldDrawingNo||first.partNo||'-'}</b> · ${first.orderNo} 외 ${gItems.length-1}품목<span class="cal-summary-arrow">▾</span></div>
+          <div class="cal-item-full">${gItems.map(itemRowHtml).join("")}</div>
+        `;
+      }
+      return gItems.map(itemRowHtml).join("");
+    }).join("");
+    weekCells.push(`<div class="cal-cell ${items.length?'has-items':''} ${isToday?'today':''} ${dowClass?'weekend '+dowClass:''}" data-date="${cellDateStr}">
+      <div class="cal-date">${day}</div>
+      ${itemsHtml}
+    </div>`);
+    if(weekCells.length===7) flushWeek();
+  }
+  while(weekCells.length && weekCells.length<7){ weekCells.push(`<div class="cal-cell empty"></div>`); }
+  flushWeek();
+  document.getElementById("main-calendarGrid").innerHTML = html;
+}
+document.getElementById("main-calRestoreBtn").addEventListener("click", ()=>{
+  mainCalendarDismissed.clear();
+  renderMainCalendar();
+});
+document.getElementById("main-calendarGrid").addEventListener("click", (e)=>{
+  const summary = e.target.closest(".cal-item-summary");
+  if(summary){
+    const full = summary.nextElementSibling;
+    if(full && full.classList.contains("cal-item-full")){
+      const nowOpen = full.classList.toggle("open");
+      const arrow = summary.querySelector(".cal-summary-arrow");
+      if(arrow) arrow.textContent = nowOpen ? "▴" : "▾";
+    }
+    return;
+  }
+  const btn = e.target.closest(".cal-item-remove");
+  if(!btn) return;
+  const orderNo = btn.dataset.order;
+  if(orderNo){ mainCalendarDismissed.add(orderNo); renderMainCalendar(); }
+});
+// 항목을 드래그해서 다른 날짜 칸에 놓으면 그 항목의 최종납기일을 놓은 날짜로 바꿉니다.
+let mainDragOrderNo = null;
+document.getElementById("main-calendarGrid").addEventListener("dragstart", (e)=>{
+  const item = e.target.closest(".cal-item");
+  if(!item){ e.preventDefault(); return; }
+  mainDragOrderNo = item.dataset.order;
+  item.classList.add("dragging");
+  if(e.dataTransfer){
+    e.dataTransfer.effectAllowed = "move";
+    try{ e.dataTransfer.setData("text/plain", mainDragOrderNo || ""); }catch(err){}
+  }
+});
+document.getElementById("main-calendarGrid").addEventListener("dragend", (e)=>{
+  const item = e.target.closest(".cal-item");
+  if(item) item.classList.remove("dragging");
+  document.querySelectorAll("#main-calendarGrid .cal-drop-target").forEach(el=>el.classList.remove("cal-drop-target"));
+});
+document.getElementById("main-calendarGrid").addEventListener("dragover", (e)=>{
+  const cell = e.target.closest(".cal-cell[data-date]");
+  if(!cell) return;
+  e.preventDefault();
+  if(e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  cell.classList.add("cal-drop-target");
+});
+document.getElementById("main-calendarGrid").addEventListener("dragleave", (e)=>{
+  const cell = e.target.closest(".cal-cell[data-date]");
+  if(cell) cell.classList.remove("cal-drop-target");
+});
+document.getElementById("main-calendarGrid").addEventListener("drop", (e)=>{
+  const cell = e.target.closest(".cal-cell[data-date]");
+  if(!cell) return;
+  e.preventDefault();
+  cell.classList.remove("cal-drop-target");
+  const orderNo = mainDragOrderNo || (e.dataTransfer && e.dataTransfer.getData("text/plain"));
+  const newDate = cell.dataset.date;
+  mainDragOrderNo = null;
+  if(!orderNo || !newDate) return;
+  const row = mainData.find(r=>r.orderNo===orderNo);
+  if(row && row.dueDate !== newDate){
+    row.dueDate = newDate;
+    saveMainData();
+    mainApplySearch();
+    renderMainCalendar();
+  }
+});
+document.getElementById("main-calendarBtn").addEventListener("click", ()=>{
+  mainCalendarOpen = !mainCalendarOpen;
+  document.getElementById("main-calendarPanel").style.display = mainCalendarOpen ? "flex" : "none";
+  document.getElementById("main-calendarBackdrop").classList.toggle("open", mainCalendarOpen);
+  if(mainCalendarOpen) renderMainCalendar();
+});
+document.getElementById("main-calendarBackdrop").addEventListener("click", ()=>{
+  mainCalendarOpen = false;
+  document.getElementById("main-calendarPanel").style.display = "none";
+  document.getElementById("main-calendarBackdrop").classList.remove("open");
+});
+document.getElementById("main-calClose").addEventListener("click", ()=>{
+  mainCalendarOpen = false;
+  document.getElementById("main-calendarPanel").style.display = "none";
+  document.getElementById("main-calendarBackdrop").classList.remove("open");
+});
+document.getElementById("main-calPrev").addEventListener("click", ()=>{
+  mainCalendarDate = new Date(mainCalendarDate.getFullYear(), mainCalendarDate.getMonth()-1, 1);
+  renderMainCalendar();
+});
+document.getElementById("main-calNext").addEventListener("click", ()=>{
+  mainCalendarDate = new Date(mainCalendarDate.getFullYear(), mainCalendarDate.getMonth()+1, 1);
+  renderMainCalendar();
+});
+document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
+  renderMainCalendar();
+  const monthLabel = document.getElementById("main-calMonthLabel").textContent;
+  const dowHtml = document.getElementById("main-calDowRow").innerHTML;
+  const gridHtml = document.getElementById("main-calendarGrid").innerHTML;
+  document.getElementById("print-area").innerHTML = `
+    <h2>MAIN 대시보드 · 최종납기 달력 (${monthLabel})</h2>
+    <div class="calendar-grid">
+      <div class="cal-week-row cal-dow-print-row">${dowHtml}</div>
+      ${gridHtml}
+    </div>
+  `;
+  const orientationStyle = document.createElement("style");
+  orientationStyle.id = "main-cal-print-orientation";
+  orientationStyle.textContent = `
+    @page{ size: A4 landscape; margin: 8mm; }
+    #print-area{
+      display:flex !important; flex-direction:column !important;
+      height:100vh !important; width:100%;
+    }
+    #print-area h2{ flex:none !important; font-size:18px !important; margin:0 0 8px !important; }
+    #print-area .calendar-grid{
+      display:flex !important; flex-direction:column !important;
+      flex:1 !important; min-height:0 !important; gap:6px !important; width:100%;
+      max-height:none !important; overflow:visible !important;
+    }
+    #print-area .cal-dow-print-row{ flex:none !important; }
+    #print-area .cal-week-row{
+      display:flex !important; gap:6px !important; align-items:flex-start !important;
+      flex:1 1 0 !important; min-height:0 !important;
+    }
+    #print-area .cal-week-row .cal-cell,
+    #print-area .cal-dow-print-row .cal-dow{ flex:1.25 1 0 !important; min-width:0 !important; }
+    #print-area .cal-week-row .cal-cell:nth-child(1),
+    #print-area .cal-week-row .cal-cell:nth-child(7),
+    #print-area .cal-dow-print-row .cal-dow:nth-child(1),
+    #print-area .cal-dow-print-row .cal-dow:nth-child(7){ flex:0.55 1 0 !important; }
+    #print-area .cal-dow{ font-size:13px !important; padding:6px 0 !important; }
+    #print-area .cal-cell{
+      min-height:30px !important; font-size:11px !important; padding:5px 6px !important; overflow:visible !important;
+    }
+    #print-area .cal-cell.has-items{ min-height:50px !important; }
+    #print-area .cal-cell .cal-date{ font-size:12.5px !important; }
+    #print-area .cal-cell .cal-item{
+      font-size:8.5px !important; white-space:normal !important; overflow:visible !important;
+      word-break:keep-all !important; padding:1px 3px !important;
+    }
+    #print-area .cal-item-summary{ white-space:normal !important; font-size:8.5px !important; padding:1px 5px !important; }
+    #print-area .cal-item-remove{ display:none !important; }
+    #print-area .cal-item-full{ display:none !important; }
+    #print-area .cal-summary-arrow{ display:none !important; }
+  `;
+  document.head.appendChild(orientationStyle);
+  function restoreOrientation(){
+    const el = document.getElementById("main-cal-print-orientation");
+    if(el) el.remove();
+    window.removeEventListener("afterprint", restoreOrientation);
+  }
+  window.addEventListener("afterprint", restoreOrientation);
+  window.print();
+});
+document.getElementById("main-syncToggle").addEventListener("click", ()=>document.getElementById("main-syncPanel").classList.toggle("open"));
+document.getElementById("main-resetBtn").addEventListener("click", async ()=>{
+  mainData = MAIN_SAMPLE.slice();
+  markMainStatusDirty();
+  await saveMainData();
+  mainInitialRender(mainData);
+});
+function mapRowToMain(row){
+  const baseOrderNo = row["ORDER NO."] || "";
+  const orderSeq = row["발주번호"];
+  const combinedOrderNo = (baseOrderNo && (orderSeq || orderSeq===0)) ? (baseOrderNo + "-" + orderSeq) : baseOrderNo;
+  return {
+    status:row["제품상태"]||"", orderNo:combinedOrderNo, customer:row["고객사"]||"",
+    partNo:row["품 번"]||row["품번"]||"", partName:row["품 명"]||row["품명"]||"", qty:Number(row["수량"]||0),
+    dueDate:row["최종납기"]||"",
+    vendor: getFieldFlexible(row, "PROJECT NO.") || getFieldFlexible(row, "PROJECT NO") || getFieldFlexible(row, "프로젝트번호") || "",
+    shipDate:row["납품일자"]||"",
+    oldDrawingNo:row["기존도번(유진테크)"]||row["기존도번"]||"",
+    shipped:row["납품여부"]||"", stockPreShip:Number(row["재고선출고"]||row["재고\n선출고"]||0), waitDeliver:Number(row["납품대기"]||0), waitMeasure:Number(row["측정실검사대기"]||0),
+    waitClean:Number(row["크린룸검사대기"]||0), waitVision:Number(row["비젼검사대기"]||0),
+    unitPrice: Number(getFieldFlexible(row, "발주단가"))||0,
+    materialCost: Number(getFieldFlexible(row, "자재비"))||0,
+    vendorCost: Number(getFieldFlexible(row, "외주업체비"))||0,
+    deburrCost: Number(getFieldFlexible(row, "집,연마,버")||getFieldFlexible(row, "집연마버"))||0,
+    processCost: Number(getFieldFlexible(row, "후처리(세정)")||getFieldFlexible(row, "처리비(세정)")||getFieldFlexible(row, "후처리")||getFieldFlexible(row, "처리비")||getFieldFlexible(row, "세정처리비")||getFieldFuzzy(row, "후처리")||getFieldFuzzy(row, "세정"))||0,
+  };
+}
+let mainApiUrl = "";
+const CURRENT_YEAR = new Date().getFullYear();
+let measureWaitMap = {};
+let cleanWaitMap = {};
+let visionWaitMap = {};
+function fetchWaitMap(url, datasetName, keyField, valueField, targetMap){
+  return fetch(url + "?dataset=" + encodeURIComponent(datasetName))
+    .then(r=>r.json())
+    .then(res=>{
+      if(!res.success) return;
+      const map = {};
+      res.rows.forEach(row=>{
+        const key = row[keyField];
+        if(key===undefined || key==="") return;
+        const k = String(key).trim();
+        map[k] = (map[k]||0) + (Number(row[valueField])||0);
+      });
+      Object.assign(targetMap, map);
+      for(const k in targetMap){ if(!(k in map)) delete targetMap[k]; }
+    })
+    .catch(()=>{});
+}
+function cacheSet(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+function cacheGet(key){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+// 상단에 항상 보이는 "마지막 동기화 OO분 전" 배너. 색으로 신선도를 표시합니다
+// (초록 10분 이내 / 노랑 1시간 이내 / 빨강 그 이상 또는 기록 없음).
+function formatRelativeMinutes(ts){
+  const mins = Math.floor((Date.now()-ts)/60000);
+  if(mins < 1) return "방금 전";
+  if(mins < 60) return mins + "분 전";
+  const hours = Math.floor(mins/60);
+  if(hours < 24) return hours + "시간 전";
+  return Math.floor(hours/24) + "일 전";
+}
+function updateSyncBanner(){
+  const el = document.getElementById("main-syncBanner");
+  if(!el) return;
+  const ts = cacheGet("mainLastSync");
+  const setBanner = (emoji, text, bg, color)=>{
+    el.innerHTML = `<span class="sync-banner-emoji">${emoji}</span> <span class="sync-banner-text">${text}</span>`;
+    el.style.background = bg; el.style.color = color;
+  };
+  if(!ts){
+    setBanner("⚪", "동기화 기록 없음", "#1D2740", "#B9C2D6");
+    return;
+  }
+  const mins = Math.floor((Date.now()-ts)/60000);
+  const text = "마지막 동기화: " + formatRelativeMinutes(ts);
+  if(mins < 10){ setBanner("🟢", text, "#1E3A2A", "#7FDDA0"); }
+  else if(mins < 60){ setBanner("🟡", text, "#3A3320", "#FFD400"); }
+  else { setBanner("🔴", text, "#3A2222", "#FF9494"); }
+}
+setInterval(updateSyncBanner, 30000);
+  async function saveMainData(){
+  await idbSet("cache_mainData", mainData);
+}
+async function loadMainData(){
+  return await idbGet("cache_mainData");
+}
+  function getLocalCacheVersion(){
+  return cacheGet("sharedCacheVersion") || {};
+}
+function setLocalCacheVersion(v){
+  cacheSet("sharedCacheVersion",v);
+}
+function pushSharedCache(url, section, payload){
+  if(!url) return;
+  fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ mode:"writeCache", section:section, payload:payload, updatedAt:new Date().toISOString() })
+  }).catch(()=>{});
+}
+function fetchSharedCache(url){
+  if(!url) return Promise.resolve(null);
+  return fetch(url + "?mode=readCache").then(r=>r.json()).catch(()=>null);
+}
+  function fetchCacheVersion(url){
+  if(!url) return Promise.resolve(null);
+  return fetch(url + "?mode=cacheVersion")
+    .then(r=>r.json())
+    .catch(()=>null);
+}
+function fmtCacheTime(iso){
+  if(!iso) return "-";
+  try{ return new Date(iso).toLocaleString("ko-KR"); }catch(e){ return "-"; }
+}
+function applySharedCache(cache){
+  if(!cache || !cache.success) return false;
+  let applied = false;
+  if(cache.main && cache.main.data){
+    const d = cache.main.data;
+    if(d.mainData) mainData = d.mainData;
+    if(d.measureWaitMap) measureWaitMap = d.measureWaitMap;
+    if(d.cleanWaitMap) cleanWaitMap = d.cleanWaitMap;
+    if(d.visionWaitMap) visionWaitMap = d.visionWaitMap;
+    markMainStatusDirty();
+    mainInitialRender(mainData);
+   saveMainData();
+    cacheSet("cache_measureWaitMap", measureWaitMap);
+    cacheSet("cache_cleanWaitMap", cleanWaitMap);
+    cacheSet("cache_visionWaitMap", visionWaitMap);
+    document.getElementById("main-apiStatus").textContent = "공유 캐시에서 최신 데이터를 불러왔습니다 (다른 사용자의 동기화 결과) · 마지막 동기화 " + fmtCacheTime(cache.main.updatedAt);
+    applied = true;
+  }
+  if(cache.inv && cache.inv.data){
+    if(cache.inv.data.invData) invData = cache.inv.data.invData;
+    markMainStatusDirty();
+    invRenderCheck(""); invRenderAll();
+    cacheSet("cache_invData", invData);
+    document.getElementById("inv-apiStatus").textContent = "공유 캐시에서 최신 데이터를 불러왔습니다 · 마지막 동기화 " + fmtCacheTime(cache.inv.updatedAt);
+    applied = true;
+  }
+  if(cache.quality && cache.quality.data){
+    try{
+      const restored = {};
+      Object.keys(cache.quality.data).forEach(k=>{
+        restored[k] = cache.quality.data[k].map(r=>Object.assign({}, r, { date:new Date(r.date) }));
+      });
+      qualityRawData = restored;
+      cacheSetQualityData();
+      if(window.__qualityInited) renderQualityAll();
+      const qs = document.getElementById("quality-apiStatus");
+      if(qs) qs.textContent = "공유 캐시에서 최신 데이터를 불러왔습니다 · 마지막 동기화 " + fmtCacheTime(cache.quality.updatedAt);
+      applied = true;
+    }catch(e){}
+  }
+  return applied;
+}
+async function fetchMainData(yearsParam){
+  const url = document.getElementById("main-appsScriptUrl").value.trim();
+  const statusEl = document.getElementById("main-apiStatus");
+  if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return Promise.resolve(); }
+  statusEl.textContent = "불러오는 중...";
+  const yearsQuery = yearsParam ? "&years=" + encodeURIComponent(yearsParam) : "";
+  return Promise.all([
+    fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery).then(r=>r.json()),
+    fetchWaitMap(url, "측정실검사대기", "품 번", "측정실대기", measureWaitMap),
+    fetchWaitMap(url, "크린룸검사대기", "품 번", "검사대기", cleanWaitMap),
+    fetchWaitMap(url, "비젼검사대기", "구 분", "검사대기", visionWaitMap)
+  ])
+    .then(async ([res])=>{
+      if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
+      mainApiUrl = url;
+     // 디버그: 개발자도구(F12) > Console 탭에서 실제 MAIN 시트 열 이름을 확인할 수 있습니다.
+     if(res.rows && res.rows[0]) console.log("MAIN 시트 열 이름 목록:", Object.keys(res.rows[0]));
+     mainData = res.rows.map(mapRowToMain);
+markMainStatusDirty();
+await saveMainData();
+cacheSet("mainLastSync", Date.now());
+mainInitialRender(mainData);
+updateSyncBanner();
+      cacheSet("cache_measureWaitMap", measureWaitMap);
+      cacheSet("cache_cleanWaitMap", cleanWaitMap);
+      cacheSet("cache_visionWaitMap", visionWaitMap);
+      pushSharedCache(url, "main", { mainData:mainData, measureWaitMap:measureWaitMap, cleanWaitMap:cleanWaitMap, visionWaitMap:visionWaitMap });
+      setLocalCacheVersion({
+  main:new Date().toISOString(),
+  inv:getLocalCacheVersion().inv,
+  quality:getLocalCacheVersion().quality
+});
+      const scopeLabel = yearsParam ? (yearsParam + "년만") : "전체 연도";
+      const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
+      statusEl.textContent = "연동 완료 (" + scopeLabel + " · " + mainData.length + "건 불러옴) · 마지막 업데이트 " + nowStr + " · 새로고침하려면 다시 눌러주세요.";
+      if(res.warnings && res.warnings.length){
+        statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
+      }
+    })
+    .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
+}
+document.getElementById("main-apiSyncBtn").addEventListener("click", ()=>fetchMainData(String(CURRENT_YEAR)));
+document.getElementById("main-apiSyncAllBtn").addEventListener("click", ()=>fetchMainData(null));
+document.getElementById("main-syncBtn").addEventListener("click", ()=>{
+  const url = document.getElementById("main-sheetUrl").value.trim();
+  if(!url){ alert("구글시트 CSV 링크를 입력해 주세요."); return; }
+  Papa.parse(url, { download:true, header:true, skipEmptyLines:true,
+    complete:function(results){
+      try{
+        mainData = results.data.map(mapRowToMain);
+        markMainStatusDirty();
+        mainInitialRender(mainData);
+        document.getElementById("main-syncPanel").classList.remove("open");
+      }catch(e){ alert("데이터 형식을 확인해 주세요."); }
+    },
+    error:function(){ alert("불러오기에 실패했습니다."); }
+  });
+});
+function readFileAsRows(file, callback){
+  const name = file.name.toLowerCase();
+  if(name.endsWith(".csv")){
+    Papa.parse(file, { header:true, skipEmptyLines:true,
+      complete:res=>callback(res.data),
+      error:()=>alert("CSV 파일을 읽는 중 오류가 발생했습니다.")
+    });
+  } else {
+    const reader = new FileReader();
+    reader.onload = e=>{
+      try{
+        const wb = XLSX.read(e.target.result, {type:"binary"});
+        const firstSheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(firstSheet, {defval:""});
+        callback(rows);
+      }catch(err){ alert("엑셀 파일을 읽는 중 오류가 발생했습니다."); }
+    };
+    reader.onerror = ()=>alert("파일을 읽을 수 없습니다.");
+    reader.readAsBinaryString(file);
+  }
+}
+function setupDropZone(zoneId, inputId, labelId, onRows){
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+  const label = document.getElementById(labelId);
+  zone.addEventListener("click", e=>{ if(e.target!==input) input.click(); });
+  input.addEventListener("change", ()=>{ if(input.files[0]) handle(input.files[0]); });
+  zone.addEventListener("dragover", e=>{ e.preventDefault(); zone.classList.add("dragover"); });
+  zone.addEventListener("dragleave", ()=>zone.classList.remove("dragover"));
+  zone.addEventListener("drop", e=>{
+    e.preventDefault(); zone.classList.remove("dragover");
+    if(e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]);
+  });
+  function handle(file){
+    label.textContent = file.name;
+    readFileAsRows(file, rows=>onRows(rows));
+  }
+}
+setupDropZone("main-dropZone","main-fileInput","main-dropLabel", rows=>{
+  mainData = rows.map(mapRowToMain);
+  markMainStatusDirty();
+  mainInitialRender(mainData);
+  document.getElementById("main-syncPanel").classList.remove("open");
+});
+/* ============ INVENTORY LOGIC ============ */
+const INV_SAMPLE = [
+  {partNo:"M200-004-62A", inDate:"2026-04-23", sn:140, inQty:1, outDate:"2026-04-23", outQty:1, ctrlNo:"26-225-2", note:""},
+  {partNo:"M200-004-62A", inDate:"2026-04-23", sn:139, inQty:1, outDate:"2026-04-23", outQty:1, ctrlNo:"26-213-3", note:""},
+  {partNo:"M200-004-62A", inDate:"2026-04-23", sn:138, inQty:1, outDate:"2026-04-23", outQty:1, ctrlNo:"26-130-9", note:""},
+  {partNo:"M200-004-62A", inDate:"2026-04-27", sn:135, inQty:1, outDate:"", outQty:"", ctrlNo:"", note:""},
+  {partNo:"M200-004-62A", inDate:"2026-02-27", sn:134, inQty:1, outDate:"2026-03-16", outQty:1, ctrlNo:"26-156-2", note:""},
+  {partNo:"M200-004-62A", inDate:"2026-04-27", sn:133, inQty:1, outDate:"2026-04-28", outQty:1, ctrlNo:"26-130-7", note:""},
+  {partNo:"110006106", inDate:"2026-03-20", sn:12, inQty:5, outDate:"", outQty:"", ctrlNo:"", note:""},
+  {partNo:"110006106", inDate:"2026-03-25", sn:13, inQty:3, outDate:"2026-04-01", outQty:3, ctrlNo:"26-234-1", note:""},
+  {partNo:"110006119", inDate:"2026-03-18", sn:5, inQty:10, outDate:"", outQty:"", ctrlNo:"", note:""},
+  {partNo:"110006223", inDate:"2026-02-10", sn:2, inQty:2, outDate:"", outQty:"", ctrlNo:"", note:""},
+  {partNo:"120008801", inDate:"2022-09-16", sn:1, inQty:1, outDate:"", outQty:"", ctrlNo:"", note:""},
+];
+let invData = INV_SAMPLE.slice();
+function invComputeStock(partNo){
+  const rows = invData.filter(r=>r.partNo===partNo);
+  const totalIn = rows.reduce((s,r)=>s+(Number(r.inQty)||0),0);
+  const totalOut = rows.reduce((s,r)=>s+(Number(r.outQty)||0),0);
+  return {rows, totalIn, totalOut, stock: totalIn-totalOut};
+}
+function invRenderCheck(criteria){
+  const empty = document.getElementById("inv-checkEmpty");
+  const summary = document.getElementById("inv-checkSummary");
+  const body = document.getElementById("inv-checkBody");
+  body.innerHTML = "";
+  const partNoQ = (criteria.partNo||"").trim().toLowerCase();
+  const snQ = (criteria.sn||"").trim().toLowerCase();
+  const ctrlNoQ = (criteria.ctrlNo||"").trim().toLowerCase();
+  if(!partNoQ && !snQ && !ctrlNoQ){
+    empty.style.display="block"; summary.style.display="none";
+    empty.textContent="품번, S/N, 관리번호 중 하나 이상 입력하고 검색하세요.";
+    return;
+  }
+  const rows = invData.filter(r=>
+    (!partNoQ || (r.partNo && String(r.partNo).toLowerCase().includes(partNoQ))) &&
+    (!snQ || (r.sn && String(r.sn).toLowerCase().includes(snQ))) &&
+    (!ctrlNoQ || (r.ctrlNo && String(r.ctrlNo).toLowerCase().includes(ctrlNoQ)))
+  );
+  if(rows.length===0){ empty.textContent = "해당 조건의 이력이 없습니다."; empty.style.display="block"; summary.style.display="none"; return; }
+  empty.style.display="none"; summary.style.display="flex";
+  const totalIn = rows.reduce((s,r)=>s+(Number(r.inQty)||0),0);
+  const totalOut = rows.reduce((s,r)=>s+(Number(r.outQty)||0),0);
+  document.getElementById("inv-stockValue").textContent = totalIn-totalOut;
+  document.getElementById("inv-inCount").textContent = totalIn;
+  document.getElementById("inv-outCount").textContent = totalOut;
+  rows.forEach(r=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${r.partNo}</td><td>${r.inDate||''}</td><td>${r.sn||''}</td>
+      <td class="badge-in">${r.inQty||''}</td><td>${r.outDate||''}</td>
+      <td class="badge-out">${r.outQty||''}</td><td>${r.ctrlNo||''}</td><td>${r.note||''}</td>`;
+    body.appendChild(tr);
+  });
+}
+// 전체 재고 현황: 지정한 연/월 "말일" 기준으로 총입고/총출고/현재재고를 계산합니다.
+// (해당 월까지 발생한 입고·출고 이력만 합산 → 그 시점의 재고 스냅샷)
+function invComputeStockAsOf(partNo, year, month){
+  const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+  const rows = invData.filter(r=>r.partNo===partNo);
+  let totalIn = 0, totalOut = 0;
+  rows.forEach(r=>{
+    if(r.inDate){
+      const d = new Date(r.inDate);
+      if(!isNaN(d) && d<=endDate) totalIn += Number(r.inQty)||0;
+    }
+    if(r.outDate){
+      const d = new Date(r.outDate);
+      if(!isNaN(d) && d<=endDate) totalOut += Number(r.outQty)||0;
+    }
+  });
+  return { totalIn, totalOut, stock: totalIn-totalOut };
+}
+// 지정한 연/월 기준으로 "재고를 보유한" 품목만 순번을 매겨 정렬된 배열로 돌려줍니다.
+// (화면 표시와 인쇄 보고서가 동일한 이 함수를 공유합니다)
+function invGetAllRows(year, month){
+  const parts = [...new Set(invData.map(r=>r.partNo))].filter(Boolean);
+  return parts
+    .map(p=>{
+      const {totalIn, totalOut, stock} = invComputeStockAsOf(p, year, month);
+      return { partNo:p, totalIn, totalOut, stock };
+    })
+    .filter(r=>r.stock>0)
+    .sort((a,b)=>String(a.partNo).localeCompare(String(b.partNo), 'ko'));
+}
+const INV_ALL_YEARS = [2023,2024,2025,2026];
+let invAllYear = new Date().getFullYear();
+let invAllMonth = new Date().getMonth()+1;
+function renderInvAllSelectors(){
+  const yearWrap = document.getElementById("inv-allYearBtns");
+  if(yearWrap){
+    yearWrap.innerHTML = INV_ALL_YEARS.map(y=>
+      `<button class="quality-btn ${y===invAllYear?'active':''}" data-year="${y}">${y}</button>`
+    ).join("");
+    yearWrap.querySelectorAll(".quality-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=>{ invAllYear = Number(btn.dataset.year); renderInvAllSelectors(); invRenderAll(); });
+    });
+  }
+  const monthWrap = document.getElementById("inv-allMonthBtns");
+  if(monthWrap){
+    monthWrap.innerHTML = Array.from({length:12}, (_,i)=>i+1).map(m=>
+      `<button class="quality-btn ${m===invAllMonth?'active':''}" data-month="${m}">${m}월</button>`
+    ).join("");
+    monthWrap.querySelectorAll(".quality-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=>{ invAllMonth = Number(btn.dataset.month); renderInvAllSelectors(); invRenderAll(); });
+    });
+  }
+}
+function invRenderAll(){
+  const body = document.getElementById("inv-allBody");
+  if(!body) return;
+  body.innerHTML = "";
+  const rows = invGetAllRows(invAllYear, invAllMonth);
+  rows.forEach((r, idx)=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${idx+1}</td><td>${r.partNo}</td><td class="badge-in">${r.totalIn}</td><td class="badge-out">${r.totalOut}</td>
+      <td style="font-weight:700;color:var(--green)">${r.stock}</td>`;
+    body.appendChild(tr);
+  });
+  const rangeEl = document.getElementById("inv-allRangeLabel");
+  if(rangeEl) rangeEl.textContent = invAllYear + "년 " + invAllMonth + "월 기준 재고 보유 품목 (" + rows.length + "건)";
+}
+function invPrintAll(){
+  const year = invAllYear, month = invAllMonth;
+  const rows = invGetAllRows(year, month);
+  const rowsHtml = rows.map((r, idx)=>`<tr>
+    <td>${idx+1}</td><td>${r.partNo}</td><td>${r.totalIn}</td><td>${r.totalOut}</td><td>${r.stock}</td>
+  </tr>`).join("");
+  document.getElementById("print-area").innerHTML = `
+    <h2>전체 재고 현황 · ${year}년 ${month}월 기준 (재고 보유 품목 ${rows.length}건)</h2>
+    <table class="inv-print-table">
+      <thead><tr><th>순번</th><th>품번</th><th>총입고</th><th>총출고</th><th>현재재고</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
+  const orientationStyle = document.createElement("style");
+  orientationStyle.id = "inv-print-orientation";
+  orientationStyle.textContent = `
+    @page{ size: A4 portrait; margin: 10mm; }
+    #print-area{ width:100%; }
+    #print-area h2{ font-size:16px !important; margin:0 0 10px !important; }
+    #print-area table.inv-print-table{ width:100%; font-size:12px !important; }
+    #print-area table.inv-print-table th, #print-area table.inv-print-table td{
+      padding:6px 8px !important; font-size:12px !important; border:1px solid #999;
+    }
+    #print-area table.inv-print-table th:nth-child(1),
+    #print-area table.inv-print-table td:nth-child(1){ width:10%; }
+    #print-area table.inv-print-table th:nth-child(2),
+    #print-area table.inv-print-table td:nth-child(2){ width:36%; }
+  `;
+  document.head.appendChild(orientationStyle);
+  function restoreOrientation(){
+    const el = document.getElementById("inv-print-orientation");
+    if(el) el.remove();
+    window.removeEventListener("afterprint", restoreOrientation);
+  }
+  window.addEventListener("afterprint", restoreOrientation);
+  window.print();
+}
+document.getElementById("inv-allPrintBtn").addEventListener("click", invPrintAll);
+renderInvAllSelectors();
+/* ============ 장기 재고(AGING STOCK) LOGIC ============ */
+// 입고는 됐는데 그 수량만큼 아직 출고되지 않은 S/N을, 입고일 기준 경과일수가
+// 기준일수(기본 150일) 이상인 것만 모아서 보여줍니다.
+function invAgingDaysSince(inDate){
+  const d = new Date(inDate);
+  if(isNaN(d)) return 0;
+  const today = new Date(); today.setHours(0,0,0,0);
+  d.setHours(0,0,0,0);
+  return Math.round((today - d) / (1000*60*60*24));
+}
+function invGetAgingRows(thresholdDays){
+  return invData
+    .filter(r=>{
+      if(!r.inDate) return false;
+      const inQty = Number(r.inQty)||0;
+      const outQty = Number(r.outQty)||0;
+      if(inQty<=0 || outQty>=inQty) return false; // 이미 전량 출고된 건 제외
+      const days = invAgingDaysSince(r.inDate);
+      return days >= thresholdDays;
+    })
+    .map(r=>({ ...r, daysSince: invAgingDaysSince(r.inDate) }))
+    .sort((a,b)=> b.daysSince - a.daysSince);
+}
+function invRenderAging(){
+  const threshold = Number(document.getElementById("inv-agingThreshold").value) || 150;
+  const rows = invGetAgingRows(threshold);
+  const tbody = document.getElementById("inv-agingBody");
+  const empty = document.getElementById("inv-agingEmpty");
+  const summary = document.getElementById("inv-agingSummary");
+  tbody.innerHTML = rows.map(r=>`<tr>
+    <td class="cell-overdue">${r.daysSince}일</td>
+    <td>${r.partNo||''}</td><td>${r.inDate||''}</td><td>${r.sn||''}</td>
+    <td class="badge-in">${(Number(r.inQty)||0) - (Number(r.outQty)||0)}</td>
+    <td>${r.ctrlNo||''}</td><td>${r.note||''}</td>
+  </tr>`).join("");
+  document.getElementById("inv-agingCount").textContent = rows.length;
+  summary.style.display = "flex";
+  empty.style.display = rows.length===0 ? "block" : "none";
+  empty.textContent = `${threshold}일 이상 된 장기 재고가 없습니다.`;
+}
+document.getElementById("inv-agingBtn").addEventListener("click", invRenderAging);
+document.getElementById("inv-agingThreshold").addEventListener("keydown", e=>{ if(e.key==="Enter") invRenderAging(); });
+document.querySelectorAll(".tab-btn[data-tab]").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab-btn[data-tab]").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll("#view-inventory > .tab-panel").forEach(p=>p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-"+btn.dataset.tab).classList.add("active");
+    if(btn.dataset.tab==="all") invRenderAll();
+  });
+});
+function getInvCheckCriteria(){
+  return {
+    partNo: document.getElementById("inv-checkPartNo").value,
+    sn: document.getElementById("inv-checkSN").value,
+    ctrlNo: document.getElementById("inv-checkCtrlNo").value
+  };
+}
+document.getElementById("inv-checkBtn").addEventListener("click", ()=>invRenderCheck(getInvCheckCriteria()));
+["inv-checkPartNo","inv-checkSN","inv-checkCtrlNo"].forEach(id=>{
+  document.getElementById(id).addEventListener("keydown", e=>{ if(e.key==="Enter") invRenderCheck(getInvCheckCriteria()); });
+});
+document.getElementById("inv-syncToggle").addEventListener("click", ()=>document.getElementById("inv-syncPanel").classList.toggle("open"));
+document.getElementById("inv-resetBtn").addEventListener("click", ()=>{ invData = INV_SAMPLE.slice(); markMainStatusDirty(); invRenderCheck(""); invRenderAll(); });
+function mapRowToInv(row){
+  return {
+    partNo:row["품 번"]||row["품번"]||"", inDate:row["입고 일자"]||row["입고일자"]||"", sn:row["S/N"]||"",
+    inQty:Number(row["입고 수량"]||row["입고수량"]||0), outDate:row["출고 일자"]||row["출고일자"]||"",
+    outQty:Number(row["출고 수량"]||row["출고수량"]||0)||"", ctrlNo:row["관리번호"]||"", note:row["비 고"]||row["비고"]||""
+  };
+}
+let invApiUrl = "";
+function fetchInvData(){
+  const url = document.getElementById("inv-appsScriptUrl").value.trim();
+  const statusEl = document.getElementById("inv-apiStatus");
+  if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return Promise.resolve(); }
+  statusEl.textContent = "불러오는 중...";
+  return fetch(url + "?dataset=" + encodeURIComponent("입출고"))
+    .then(r=>r.json())
+    .then(res=>{
+      if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
+      invApiUrl = url;
+      invData = res.rows.map(mapRowToInv);
+markMainStatusDirty();
+invRenderCheck("");
+invRenderAll();
+cacheSet("cache_invData", invData);
+cacheSet("invLastSync", Date.now());
+      pushSharedCache(url, "inv", { invData:invData });
+      setLocalCacheVersion({
+  main:getLocalCacheVersion().main,
+  inv:new Date().toISOString(),
+  quality:getLocalCacheVersion().quality
+});
+      const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
+      statusEl.textContent = "연동 완료 (" + invData.length + "건 불러옴) · 마지막 업데이트 " + nowStr + " · 새로고침하려면 다시 눌러주세요.";
+      if(res.warnings && res.warnings.length){
+        statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
+      }
+    })
+    .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
+}
+document.getElementById("inv-apiSyncBtn").addEventListener("click", fetchInvData);
+document.getElementById("inv-syncBtn").addEventListener("click", ()=>{
+  const url = document.getElementById("inv-sheetUrl").value.trim();
+  if(!url){ alert("구글시트 CSV 링크를 입력해 주세요."); return; }
+  Papa.parse(url, { download:true, header:true, skipEmptyLines:true,
+    complete:function(results){
+      try{
+        invData = results.data.map(mapRowToInv);
+        markMainStatusDirty();
+        invRenderCheck(""); invRenderAll();
+        document.getElementById("inv-syncPanel").classList.remove("open");
+      }catch(e){ alert("데이터 형식을 확인해 주세요."); }
+    },
+    error:function(){ alert("불러오기에 실패했습니다."); }
+  });
+});
+setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
+  invData = rows.map(mapRowToInv);
+  markMainStatusDirty();
+  invRenderCheck(""); invRenderAll();
+  document.getElementById("inv-syncPanel").classList.remove("open");
+});
+(function initInvCachedOrFetch(){
+  const cachedInv = cacheGet("cache_invData");
+  const lastSync = cacheGet("invLastSync");
+  const statusEl = document.getElementById("inv-apiStatus");
+  if(cachedInv){
+    invData = cachedInv;
+    markMainStatusDirty();
+    invRenderCheck("");
+    invRenderAll();
+    if(statusEl) statusEl.textContent = "저장된 데이터 사용 중";
+  } else {
+    invRenderCheck("");
+  }
+  const needRefresh = !lastSync || (Date.now() - lastSync > 5 * 60 * 1000);
+  if(needRefresh){
+    if(statusEl) statusEl.textContent = "최신 데이터 자동 확인 중...";
+    fetchInvData();
+  }
+})();
+const QUALITY_SHEETS = [
+  { key:"공정검사(치수,BOLT,LED)", label:"공정검사(치수,BOLT,LED)", dateField:"검사일", qtyField:"검사수", goodField:"양품수", defectField:"부적합수",
+    types:{"일반치수":"일반 치수","공차치수":"공차 치수","누락":"누락","기타":"기타"} },
+  { key:"공정검사(사내외관)", label:"공정검사(사내외관)", dateField:"검사일", qtyField:"검사수", goodField:"양품수", defectField:"부적합수",
+    types:{"기스":"기스","찍힘":"찍힘","얼룩":"얼룩","체결":"체결","누락":"누락","기타":"기타"} },
+  { key:"수입검사(기능)", label:"수입검사(기능)", dateField:"LEAK 검사일", qtyField:"검사수", goodField:"양품수", defectField:"LEAK",
+    types:{"LEAK":"LEAK"} },
+  { key:"수입검사(외관)", label:"수입검사(외관)", dateField:"검사일", qtyField:"검사수", goodField:"양품수", defectField:"부적합수",
+    types:{"기스":"기스","찍힘":"찍힘","얼룩":"얼룩","누락":"누락","기타":"기타"} },
+  { key:"출하검사", label:"출하검사", dateField:"검사일", qtyField:"검사수", goodField:"양품수", defectField:"부적합수",
+    types:{"기스":"기스","찍힘":"찍힘","얼룩":"얼룩","누락":"누락","기타":"기타"} }
+];
+const QUALITY_CATEGORIES = {
+  process:  { label:"공정검사", sheetKeys:["공정검사(치수,BOLT,LED)","공정검사(사내외관)"] },
+  incoming: { label:"수입검사", sheetKeys:["수입검사(기능)","수입검사(외관)"] },
+  shipping: { label:"출하검사", sheetKeys:["출하검사"] }
+};
+const QUALITY_YEARS = [2023,2024,2025,2026];
+let qualityRawData = {};
+let qualityTargets = { process:10000, incoming:10000, shipping:10000 };
+let qualityYear = 2026;
+let qualityMonth = 12;
+function parseQualityDate(v){
+  if(!v) return null;
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function getWeekOfMonth(date){
+  const day = date.getDate();
+  if(day<=7) return 1;
+  if(day<=14) return 2;
+  if(day<=21) return 3;
+  return 4;
+}
+function normalizeHeaderKey(k){ return String(k).replace(/\s+/g,"").trim().toLowerCase(); }
+function getFieldFlexible(row, label){
+  if(label in row) return row[label];
+  const target = normalizeHeaderKey(label);
+  const foundKey = Object.keys(row).find(k=>normalizeHeaderKey(k)===target);
+  return foundKey ? row[foundKey] : undefined;
+}
+function getFieldFuzzy(row, label){
+  const exact = getFieldFlexible(row, label);
+  if(exact !== undefined && exact !== "") return exact;
+  const target = normalizeHeaderKey(label);
+  const foundKey = Object.keys(row).find(k=>normalizeHeaderKey(k).includes(target));
+  return foundKey ? row[foundKey] : undefined;
+}
+function fetchQualityData(){
+  const url = document.getElementById("quality-appsScriptUrl").value.trim();
+  const statusEl = document.getElementById("quality-apiStatus");
+  if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return Promise.resolve(); }
+  statusEl.textContent = "불러오는 중...";
+  return Promise.all(QUALITY_SHEETS.map(s=>
+    fetch(url + "?dataset=" + encodeURIComponent(s.key)).then(r=>r.json())
+  )).then(results=>{
+    const warnings = [];
+    QUALITY_SHEETS.forEach((s, i)=>{
+      const res = results[i];
+      if(!res || !res.success){ warnings.push(s.label + " 오류: " + (res&&res.error||"알 수 없음")); qualityRawData[s.key] = []; return; }
+      qualityRawData[s.key] = res.rows.map(row=>{
+        const typeVals = {};
+        Object.keys(s.types).forEach(tk=>{ typeVals[tk] = Number(getFieldFlexible(row, s.types[tk]))||0; });
+        return {
+          date: parseQualityDate(getFieldFlexible(row, s.dateField)),
+          partNo: getFieldFuzzy(row, "도번") || "",
+          sn: getFieldFlexible(row, "S/N")||"",
+          note: getFieldFlexible(row, "비고")||getFieldFlexible(row, "비 고")||"",
+          qty: Number(getFieldFlexible(row, s.qtyField))||0,
+          good: Number(getFieldFlexible(row, s.goodField))||0,
+          defect: Number(getFieldFlexible(row, s.defectField))||0,
+          types: typeVals
+        };
+      }).filter(r=>r.date);
+      if(res.warnings && res.warnings.length) warnings.push(s.label+": "+res.warnings.join(" / "));
+    });
+    cacheSetQualityData();
+    cacheSet("qualityLastSync", Date.now());
+    const serializableQ = {};
+    Object.keys(qualityRawData).forEach(k=>{
+      serializableQ[k] = qualityRawData[k].map(r=>Object.assign({}, r, { date:r.date.toISOString() }));
+    });
+    pushSharedCache(url, "quality", serializableQ);
+    setLocalCacheVersion({
+  main:getLocalCacheVersion().main,
+  inv:getLocalCacheVersion().inv,
+  quality:new Date().toISOString()
+});
+    const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
+    statusEl.textContent = "연동 완료 · 마지막 업데이트 " + nowStr + (warnings.length ? " · 일부 오류: "+warnings.join(" / ") : "");
+    renderQualityAll();
+  }).catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
+}
+function idbSet(key, value){
+  return new Promise((resolve)=>{
+    try{
+      const req = indexedDB.open("erp_cache_db", 1);
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore("kv"); };
+      req.onsuccess = ()=>{
+        const db = req.result;
+        const tx = db.transaction("kv","readwrite");
+        tx.objectStore("kv").put(value, key);
+        tx.oncomplete = ()=>resolve(true);
+        tx.onerror = ()=>resolve(false);
+      };
+      req.onerror = ()=>resolve(false);
+    }catch(e){ resolve(false); }
+  });
+}
+function idbGet(key){
+  return new Promise((resolve)=>{
+    try{
+      const req = indexedDB.open("erp_cache_db", 1);
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore("kv"); };
+      req.onsuccess = ()=>{
+        const db = req.result;
+        const tx = db.transaction("kv","readonly");
+        const getReq = tx.objectStore("kv").get(key);
+        getReq.onsuccess = ()=>resolve(getReq.result || null);
+        getReq.onerror = ()=>resolve(null);
+      };
+      req.onerror = ()=>resolve(null);
+    }catch(e){ resolve(null); }
+  });
+}
+function cacheSetQualityData(){
+  const serializable = {};
+  Object.keys(qualityRawData).forEach(k=>{
+    serializable[k] = qualityRawData[k].map(r=>Object.assign({}, r, { date: r.date.toISOString() }));
+  });
+  return idbSet("cache_qualityRawData", serializable);
+}
+function cacheGetQualityData(){
+  return idbGet("cache_qualityRawData").then(cached=>{
+    if(!cached) return null;
+    const result = {};
+    Object.keys(cached).forEach(k=>{
+      result[k] = cached[k].map(r=>Object.assign({}, r, { date: new Date(r.date) }));
+    });
+    return result;
+  });
+}
+function renderQualityButtons(){
+  const yearWrap = document.getElementById("quality-yearBtns");
+  yearWrap.innerHTML = QUALITY_YEARS.map(y=>
+    `<button class="quality-btn ${y===qualityYear?'active':''}" data-year="${y}">${y}</button>`
+  ).join("");
+  yearWrap.querySelectorAll(".quality-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ qualityYear = Number(btn.dataset.year); renderQualityButtons(); renderQualityAll(); });
+  });
+  const monthWrap = document.getElementById("quality-monthBtns");
+  monthWrap.innerHTML = Array.from({length:12}, (_,i)=>i+1).map(m=>
+    `<button class="quality-btn ${m===qualityMonth?'active':''}" data-month="${m}">${m}월</button>`
+  ).join("");
+  monthWrap.querySelectorAll(".quality-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ qualityMonth = Number(btn.dataset.month); renderQualityButtons(); renderQualityAll(); });
+  });
+}
+function drawLineChart(container, labels, values, title, target){
+  const w = 860, h = 110, padL = 45, padR = 15, padT = 14, padB = 22;
+  const maxV = Math.max(...values, target||0, 10);
+  const stepX = labels.length>1 ? (w-padL-padR)/(labels.length-1) : 0;
+  const points = values.map((v,i)=>{
+    const x = padL + stepX*i;
+    const y = padT + (h-padT-padB)*(1 - v/maxV);
+    return [x,y];
+  });
+  const pathD = points.map((p,i)=>(i===0?"M":"L")+p[0]+","+p[1]).join(" ");
+  const circles = points.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="#E02424"></circle><text x="${p[0]}" y="${h-8}" font-size="11" text-anchor="middle" fill="#6B7280">${labels[i]}</text>`).join("");
+  let targetLine = "";
+  if(target){
+    const ty = padT + (h-padT-padB)*(1 - target/maxV);
+    targetLine = `<line x1="${padL}" y1="${ty}" x2="${w-padR}" y2="${ty}" stroke="#0B5CAB" stroke-width="1.5" stroke-dasharray="5,4"></line>
+      <text x="${w-padR}" y="${ty-6}" font-size="11" text-anchor="end" fill="#0B5CAB">목표 ${target.toLocaleString()}ppm</text>`;
+  }
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}</div>
+    <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="width:100%;height:auto;">
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${h-padB}" stroke="#DDE1E8"></line>
+      <line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" stroke="#DDE1E8"></line>
+      ${targetLine}
+      <path d="${pathD}" fill="none" stroke="#E02424" stroke-width="2"></path>
+      ${circles}
+    </svg>
+  `;
+}
+function drawBarChart(container, labels, values, title){
+  const w = 860, barH = 16, gap = 6, padL = 110, padR = 55, padT = 14;
+  const maxV = Math.max(...values, 1);
+  const h = padT + labels.length*(barH+gap);
+  const bars = labels.map((lb,i)=>{
+    const y = padT + i*(barH+gap);
+    const bw = values[i]/maxV * (w-padL-padR);
+    return `<text x="${padL-8}" y="${y+barH/2+4}" font-size="12" text-anchor="end" fill="#1A1E27">${lb}</text>
+      <rect x="${padL}" y="${y}" width="${Math.max(bw,1)}" height="${barH}" fill="#0B5CAB" rx="3"></rect>
+      <text x="${padL+bw+8}" y="${y+barH/2+4}" font-size="12" fill="#1A1E27">${values[i].toLocaleString()}</text>`;
+  }).join("");
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}</div>
+    <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="width:100%;height:auto;">${bars}</svg>
+  `;
+}
+function ensureCategoryPanel(catKey){
+  const panel = document.getElementById("qpanel-"+catKey);
+  if(panel.dataset.built) return panel;
+  const tpl = document.getElementById("quality-category-template");
+  panel.appendChild(tpl.content.cloneNode(true));
+  panel.dataset.built = "1";
+  return panel;
+}
+function renderCategoryKPI(panel, catKey){
+  const cat = QUALITY_CATEGORIES[catKey];
+  const body = panel.querySelector(".q-kpi-body");
+  body.innerHTML = "";
+  let totalQty=0, totalGood=0, totalDefect=0;
+  cat.sheetKeys.forEach(key=>{
+    const rows = (qualityRawData[key]||[]).filter(r=>
+      r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)<=qualityMonth
+    );
+    totalQty += rows.reduce((s,r)=>s+r.qty,0);
+    totalGood += rows.reduce((s,r)=>s+r.good,0);
+    totalDefect += rows.reduce((s,r)=>s+r.defect,0);
+  });
+  const totalPpm = totalQty>0 ? Math.round((totalDefect/totalQty)*1000000) : 0;
+  const target = qualityTargets[catKey] || 0;
+  const ppmClass = target ? (totalPpm > target ? 'ppm-over' : 'ppm-under') : '';
+  const tr = document.createElement("tr");
+  tr.style.fontWeight = "700";
+  tr.innerHTML = `<td style="text-align:left;">${cat.label}</td><td>${totalQty}</td><td>${totalGood}</td>
+    <td class="${totalDefect>0?'cell-defect':''}">${totalDefect}</td><td class="${ppmClass}">${totalPpm.toLocaleString()}</td>
+    <td class="td-target">${target ? target.toLocaleString() : '-'}</td>`;
+  body.appendChild(tr);
+}
+function computeCategoryMonthStats(catKey, year, month){
+  let qty=0, defect=0;
+  QUALITY_CATEGORIES[catKey].sheetKeys.forEach(key=>{
+    (qualityRawData[key]||[]).forEach(r=>{
+      if(r.date.getFullYear()===year && (r.date.getMonth()+1)===month){ qty+=r.qty; defect+=r.defect; }
+    });
+  });
+  return { qty, defect, ppm: qty>0 ? Math.round((defect/qty)*1000000) : 0 };
+}
+function renderCategoryMonthlyChart(panel, catKey){
+  const cat = QUALITY_CATEGORIES[catKey];
+  const monthlyQty = [], monthlyDefect = [], monthlyPpm = [];
+  for(let m=1;m<=qualityMonth;m++){
+    const {qty, defect, ppm} = computeCategoryMonthStats(catKey, qualityYear, m);
+    monthlyQty.push(qty); monthlyDefect.push(defect); monthlyPpm.push(ppm);
+  }
+  const labels = Array.from({length:qualityMonth},(_,i)=>(i+1)+"월");
+  const thisM = computeCategoryMonthStats(catKey, qualityYear, qualityMonth);
+  let prevYear = qualityYear, prevMonth = qualityMonth-1;
+  if(prevMonth<1){ prevMonth = 12; prevYear = qualityYear-1; }
+  const prevM = computeCategoryMonthStats(catKey, prevYear, prevMonth);
+  const target = qualityTargets[catKey] || 0;
+  const thisClass = target ? (thisM.ppm > target ? 'ppm-over' : 'ppm-under') : '';
+  const prevClass = target ? (prevM.ppm > target ? 'ppm-over' : 'ppm-under') : '';
+  const changePct = prevM.ppm>0 ? Math.round(((thisM.ppm - prevM.ppm)/prevM.ppm)*100) : (thisM.ppm>0 ? 100 : 0);
+  const changeSign = changePct>0 ? '+' : '';
+  panel.querySelector(".q-this-month").innerHTML =
+    `<div class="${thisClass}" style="font-size:22px;font-weight:700;">${thisM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span> <span class="q-change-badge">변동 ${changeSign}${changePct}%</span></div>
+     <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${qualityYear}년 ${qualityMonth}월 · 검사수 ${thisM.qty.toLocaleString()} · 부적합수 ${thisM.defect.toLocaleString()}</div>`;
+  panel.querySelector(".q-last-month").innerHTML =
+    `<div class="${prevClass}" style="font-size:22px;font-weight:700;">${prevM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span></div>
+     <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevYear}년 ${prevMonth}월 · 검사수 ${prevM.qty.toLocaleString()} · 부적합수 ${prevM.defect.toLocaleString()}</div>`;
+  const targetInput = panel.querySelector(".q-target-input");
+  if(!targetInput.dataset.wired){
+    targetInput.value = qualityTargets[catKey] || "";
+    targetInput.dataset.wired = "1";
+    panel.querySelector(".q-target-apply").addEventListener("click", ()=>{
+      qualityTargets[catKey] = Number(targetInput.value)||0;
+      renderCategoryKPI(panel, catKey);
+      renderCategoryMonthlyChart(panel, catKey);
+    });
+  }
+  drawLineChart(panel.querySelector(".q-monthly-chart"), labels, monthlyPpm, qualityYear+"년 1~"+qualityMonth+"월 "+cat.label+" 월별 부적합율(ppm) 추이", qualityTargets[catKey]);
+  const totalQty = monthlyQty.reduce((a,b)=>a+b,0);
+  const totalDefect = monthlyDefect.reduce((a,b)=>a+b,0);
+  const totalPpm = totalQty>0 ? Math.round((totalDefect/totalQty)*1000000) : 0;
+  const tableHtml = `
+    <table style="min-width:820px;">
+      <thead><tr><th style="text-align:left;">항목</th>${labels.map(l=>`<th>${l}</th>`).join("")}<th>합계</th></tr></thead>
+      <tbody>
+        <tr><td style="text-align:left;">검사수</td>${monthlyQty.map(v=>`<td>${v.toLocaleString()}</td>`).join("")}<td>${totalQty.toLocaleString()}</td></tr>
+        <tr><td style="text-align:left;">부적합수</td>${monthlyDefect.map(v=>`<td class="${v>0?'cell-defect':''}">${v.toLocaleString()}</td>`).join("")}<td>${totalDefect.toLocaleString()}</td></tr>
+        <tr><td style="text-align:left;">부적합율(ppm)</td>${monthlyPpm.map(v=>`<td class="${target ? (v>target?'ppm-over':'ppm-under') : ''}">${v.toLocaleString()}</td>`).join("")}<td>${totalPpm.toLocaleString()}</td></tr>
+      </tbody>
+    </table>
+  `;
+  panel.querySelector(".q-monthly-table").innerHTML = tableHtml;
+}
+function renderCategoryWeekly(panel, catKey){
+  const cat = QUALITY_CATEGORIES[catKey];
+  const weekly = [1,2,3,4].map(w=>{
+    let qty=0, defect=0;
+    cat.sheetKeys.forEach(key=>{
+      (qualityRawData[key]||[]).forEach(r=>{
+        if(r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)===qualityMonth && getWeekOfMonth(r.date)===w){
+          qty+=r.qty; defect+=r.defect;
+        }
+      });
+    });
+    return { week:w, qty, defect, ppm: qty>0 ? Math.round((defect/qty)*1000000) : 0 };
+  });
+  const section = panel.querySelector(".q-weekly-section");
+  const tableRows = weekly.map(w=>`<tr><td>${w.week}주차</td><td>${w.qty}</td><td class="${w.defect>0?'cell-defect':''}">${w.defect}</td><td>${w.ppm.toLocaleString()}</td></tr>`).join("");
+  section.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 주차별 현황</div>
+    <table style="width:100%;margin-bottom:14px;">
+      <thead><tr><th>주차</th><th>검사수</th><th>부적합수</th><th>부적합율(ppm)</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    <div class="q-weekly-chart"></div>
+  `;
+  drawLineChart(section.querySelector(".q-weekly-chart"), weekly.map(w=>w.week+"주차"), weekly.map(w=>w.ppm), "주차별 부적합율(ppm)");
+}
+function renderCategoryDetailList(panel, catKey){
+  const cat = QUALITY_CATEGORIES[catKey];
+  const grouped = {};
+  cat.sheetKeys.forEach(key=>{
+    const meta = QUALITY_SHEETS.find(s=>s.key===key);
+    (qualityRawData[key]||[]).forEach(r=>{
+      if(r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)===qualityMonth && r.defect>0){
+        const partNo = r.partNo || "(도번 미기재)";
+        if(!grouped[partNo]){
+          grouped[partNo] = { snList: [], dateList: [], defect: 0, typeTotals: {}, notes: [] };
+        }
+        const g = grouped[partNo];
+        if(r.sn && !g.snList.includes(String(r.sn))) g.snList.push(String(r.sn));
+        const dateStr = r.date.toISOString().slice(0,10);
+        if(!g.dateList.includes(dateStr)) g.dateList.push(dateStr);
+        g.defect += r.defect;
+        Object.keys(meta.types).forEach(tk=>{
+          if(r.types[tk]>0){
+            const label = meta.types[tk];
+            g.typeTotals[label] = (g.typeTotals[label]||0) + r.types[tk];
+          }
+        });
+        if(r.note && !g.notes.includes(r.note)) g.notes.push(r.note);
+      }
+    });
+  });
+  const rows = Object.keys(grouped).map(partNo=>{
+    const g = grouped[partNo];
+    g.dateList.sort();
+    let typeDisplay = Object.keys(g.typeTotals).map(l=>l+"("+g.typeTotals[l]+")").join(", ");
+    if(!typeDisplay){ typeDisplay = g.notes.length ? ("비고: "+g.notes.join(", ")) : "-"; }
+    return {
+      partNo,
+      sn: g.snList.join(", ") || "-",
+      date: g.dateList.join(", "),
+      defect: g.defect,
+      types: typeDisplay
+    };
+  }).sort((a,b)=>b.defect-a.defect);
+  const section = panel.querySelector(".q-detail-section");
+  if(rows.length===0){
+    section.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역</div>
+      <div class="empty-state">이 달에 발생한 부적합이 없습니다.</div>`;
+    return;
+  }
+  const totalDefect = rows.reduce((s,r)=>s+r.defect,0);
+  const tableRows = rows.map(r=>`<tr>
+    <td>${r.partNo}</td><td>${r.sn}</td><td>${r.date}</td>
+    <td class="cell-defect">${r.defect}</td><td style="text-align:left;">${r.types}</td>
+  </tr>`).join("");
+  section.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역 (도번 ${rows.length}건, 부적합 합계 ${totalDefect}건)</div>
+    <div style="overflow-x:auto;">
+    <table style="min-width:560px;">
+      <thead><tr><th>도번</th><th>S/N</th><th>검사일</th><th>부적합수</th><th style="text-align:left;">불량 유형</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    </div>
+  `;
+}
+function renderCategoryTypeBreakdown(panel, catKey){
+  const cat = QUALITY_CATEGORIES[catKey];
+  const typeTotals = {};
+  let totalQty = 0;
+  cat.sheetKeys.forEach(key=>{
+    const meta = QUALITY_SHEETS.find(s=>s.key===key);
+    const rows = (qualityRawData[key]||[]).filter(r=>
+      r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)<=qualityMonth
+    );
+    rows.forEach(r=>{ totalQty += r.qty; });
+    Object.keys(meta.types).forEach(tk=>{
+      const label = meta.types[tk];
+      typeTotals[label] = (typeTotals[label]||0) + rows.reduce((s,r)=>s+(r.types[tk]||0),0);
+    });
+  });
+  const labels = Object.keys(typeTotals);
+  const values = labels.map(l=>typeTotals[l]);
+  const section = panel.querySelector(".q-type-section");
+  const rowsHtml = labels.map((l,i)=>{
+    const ppm = totalQty>0 ? Math.round((values[i]/totalQty)*1000000) : 0;
+    return `<tr><td style="text-align:left;">${l}</td><td>${values[i]}</td><td>${ppm.toLocaleString()}</td></tr>`;
+  }).join("");
+  section.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 1~${qualityMonth}월 누적 · ${cat.label} 불량 유형별 현황</div>
+    <table style="width:100%;margin-bottom:14px;">
+      <thead><tr><th>불량 유형</th><th>건수</th><th>PPM</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <div class="q-type-chart"></div>
+  `;
+  drawBarChart(section.querySelector(".q-type-chart"), labels, values, "불량 유형별 건수");
+}
+function renderQualityAll(){
+  document.getElementById("quality-rangeLabel").textContent =
+    qualityYear + "년 1월 ~ " + qualityMonth + "월 누적 기준";
+  Object.keys(QUALITY_CATEGORIES).forEach(catKey=>{
+    const panel = ensureCategoryPanel(catKey);
+    renderCategoryKPI(panel, catKey);
+    renderCategoryMonthlyChart(panel, catKey);
+    renderCategoryWeekly(panel, catKey);
+    renderCategoryDetailList(panel, catKey);
+    renderCategoryTypeBreakdown(panel, catKey);
+  });
+}
+function printQualityReport(){
+  renderQualityAll();
+  const order = ["process","incoming","shipping"];
+  const approvalBox = `
+    <table class="q-approval-table">
+      <tbody>
+        <tr>
+          <th rowspan="2" class="q-approval-label">결재</th>
+          <th>작성</th><th>검토</th><th>승인</th>
+        </tr>
+        <tr>
+          <td></td><td></td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+  const html = order.map((key, idx)=>{
+    const cat = QUALITY_CATEGORIES[key];
+    const panel = document.getElementById("qpanel-"+key);
+    return `
+      <div class="q-report-page">
+        <div class="q-page-header">
+          <h2>품질분석 보고서 · ${cat.label} (${qualityYear}년 1~${qualityMonth}월 누적)</h2>
+          ${approvalBox}
+        </div>
+        ${panel.innerHTML}
+      </div>
+    `;
+  }).join("");
+  document.getElementById("print-area").innerHTML = html;
+  window.print();
+}
+document.getElementById("quality-printBtn").addEventListener("click", printQualityReport);
+/* ============ SALES(매출현황) LOGIC ============ */
+const SALES_YEARS = QUALITY_YEARS;
+let salesYear = CURRENT_YEAR;
+const SALES_COMPARE_YEARS = [2023,2024,2025,2026];
+const CHART_COLORS = ['#E02424','#0B5CAB','#2E7D46','#7030A0','#FF9F1C','#00B8D9'];
+function parseSalesDate(v){
+  if(!v) return null;
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function computeRowSales(r){
+  const qty = Number(r.qty)||0;
+  const unitPrice = Number(r.unitPrice)||0;
+  const unitCost = (Number(r.materialCost)||0) + (Number(r.vendorCost)||0) + (Number(r.deburrCost)||0) + (Number(r.processCost)||0);
+  const revenue = unitPrice * qty;
+  const cost = unitCost * qty;
+  return { revenue, cost, profit: revenue - cost };
+}
+function getSalesRowsForMonth(year, month){
+  return (mainData||[]).filter(r=>{
+    const d = parseSalesDate(r.shipDate);
+    if(!d) return false;
+    return d.getFullYear()===year && (month ? (d.getMonth()+1)===month : true);
+  });
+}
+function computeMonthSalesStats(year, month){
+  const rows = getSalesRowsForMonth(year, month);
+  let revenue=0, cost=0;
+  rows.forEach(r=>{
+    const s = computeRowSales(r);
+    revenue += s.revenue; cost += s.cost;
+  });
+  const profit = revenue - cost;
+  const margin = revenue>0 ? Math.round((profit/revenue)*1000)/10 : 0;
+  return { revenue, cost, profit, margin, count: rows.length };
+}
+function computeYearSalesStats(year){
+  let revenue=0, cost=0, count=0;
+  const monthly = [];
+  for(let m=1;m<=12;m++){
+    const s = computeMonthSalesStats(year, m);
+    monthly.push(s);
+    revenue += s.revenue; cost += s.cost; count += s.count;
+  }
+  const profit = revenue - cost;
+  const margin = revenue>0 ? Math.round((profit/revenue)*1000)/10 : 0;
+  return { revenue, cost, profit, margin, count, monthly };
+}
+function fmtWon(n){
+  return Math.round((n||0)/10000).toLocaleString();
+}
+let salesMonth = new Date().getMonth()+1;
+function renderSalesYearButtons(){
+  const wrap = document.getElementById("sales-yearBtns");
+  wrap.innerHTML = SALES_YEARS.map(y=>
+    `<button class="quality-btn ${y===salesYear?'active':''}" data-year="${y}">${y}</button>`
+  ).join("");
+  wrap.querySelectorAll(".quality-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ salesYear = Number(btn.dataset.year); renderSalesAll(); });
+  });
+  const monthWrap = document.getElementById("sales-monthBtns");
+  monthWrap.innerHTML = Array.from({length:12}, (_,i)=>i+1).map(m=>
+    `<button class="quality-btn ${m===salesMonth?'active':''}" data-month="${m}">${m}월</button>`
+  ).join("");
+  monthWrap.querySelectorAll(".quality-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ salesMonth = Number(btn.dataset.month); renderSalesAll(); });
+  });
+}
 
-  // 2. 추출된 이번 달 데이터 중 지연(경과일수 계산)된 건 정렬 및 수집
+function drawMultiLineChart(container, labels, series, title){
+  const w = 860, h = 170, padL = 55, padR = 15, padT = 30, padB = 22;
+  const allValues = series.flatMap(s=>s.values);
+  const maxV = Math.max(...allValues, 10);
+  const stepX = labels.length>1 ? (w-padL-padR)/(labels.length-1) : 0;
+  function toPoints(values){
+    return values.map((v,i)=>{
+      const x = padL + stepX*i;
+      const y = padT + (h-padT-padB)*(1 - v/maxV);
+      return [x,y];
+    });
+  }
+  const paths = series.map(s=>{
+    const pts = toPoints(s.values);
+    const d = pts.map((p,i)=>(i===0?"M":"L")+p[0]+","+p[1]).join(" ");
+    const circles = pts.map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="2.5" fill="${s.color}"></circle>`).join("");
+    return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2"></path>${circles}`;
+  }).join("");
+  const legend = series.map(s=>`<span style="margin-left:10px;color:${s.color};">● ${s.name}</span>`).join("");
+  const xLabels = labels.map((l,i)=>`<text x="${padL+stepX*i}" y="${h-6}" font-size="11" text-anchor="middle" fill="#6B7280">${l}</text>`).join("");
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}${legend}</div>
+    <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="width:100%;height:auto;">
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${h-padB}" stroke="#DDE1E8"></line>
+      <line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" stroke="#DDE1E8"></line>
+      ${paths}
+      ${xLabels}
+    </svg>
+  `;
+}
+function drawYearRevenueBarChart(container, years, revenues, profits, title){
+  const barW = 34, barGap = 8, groupGap = 40;
+  const padL = 60, padR = 20, padT = 36, padB = 34;
+  const groupW = barW*2 + barGap;
+  const w = Math.max(700, padL + padR + years.length*groupW + (years.length-1)*groupGap);
+  const h = 240;
+  const maxV = Math.max(...revenues, ...profits.map(v=>Math.abs(v)), 10);
+  const minV = Math.min(0, ...profits);
+  const range = (maxV - minV) || 1;
+  function yFor(v){ return padT + (h-padT-padB) * (1 - (v-minV)/range); }
+  const baseY = yFor(0);
+  let bars = "";
+  const revPoints = [], profPoints = [];
+  years.forEach((y,i)=>{
+    const groupX = padL + i*(groupW+groupGap);
+    const rev = revenues[i], prof = profits[i];
+    const profColor = prof>=0 ? "#2E7D46" : "#B23A3A";
+    const revY = yFor(rev), revH = Math.max(baseY-revY,1);
+    bars += `<rect x="${groupX}" y="${revY}" width="${barW}" height="${revH}" fill="#0B5CAB" rx="3" opacity="0.9"></rect>`;
+    const profX = groupX + barW + barGap;
+    const profY = yFor(prof), profH = Math.max(Math.abs(baseY-profY),1);
+    bars += `<rect x="${profX}" y="${Math.min(profY,baseY)}" width="${barW}" height="${profH}" fill="${profColor}" rx="3" opacity="0.9"></rect>`;
+    bars += `<text x="${groupX+groupW/2}" y="${h-10}" font-size="13" font-weight="700" text-anchor="middle" fill="#1A1E27">${y}년</text>`;
+    revPoints.push([groupX+barW/2, revY]);
+    profPoints.push([profX+barW/2, profY]);
+  });
+  const revLinePath = revPoints.map((p,i)=>(i===0?"M":"L")+p[0]+","+p[1]).join(" ");
+  const profLinePath = profPoints.map((p,i)=>(i===0?"M":"L")+p[0]+","+p[1]).join(" ");
+  let revMarkers = "", profMarkers = "";
+  revPoints.forEach((p,i)=>{
+    revMarkers += `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="#fff" stroke="#E02424" stroke-width="2.5"></circle>`;
+    revMarkers += `<text x="${p[0]}" y="${p[1]-10}" font-size="11.5" font-weight="700" text-anchor="middle" fill="#E02424">${Math.round(revenues[i]).toLocaleString()}</text>`;
+  });
+  profPoints.forEach((p,i)=>{
+    const profColor = profits[i]>=0 ? "#2E7D46" : "#B23A3A";
+    profMarkers += `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="#fff" stroke="${profColor}" stroke-width="2.5"></circle>`;
+    profMarkers += `<text x="${p[0]}" y="${profits[i]>=0?p[1]-10:p[1]+16}" font-size="11.5" font-weight="700" text-anchor="middle" fill="${profColor}">${Math.round(profits[i]).toLocaleString()}</text>`;
+  });
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}
+      <span style="margin-left:10px;color:#0B5CAB;">■ 매출(막대)</span>
+      <span style="margin-left:8px;color:#2E7D46;">■ 순이익(막대)</span>
+      <span style="margin-left:8px;color:#E02424;">● 매출 추세</span>
+      <span style="margin-left:8px;color:#2E7D46;">● 순이익 추세</span>
+    </div>
+    <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="width:100%;height:auto;">
+      <line x1="${padL-10}" y1="${baseY}" x2="${w-padR+10}" y2="${baseY}" stroke="#DDE1E8"></line>
+      ${bars}
+      <path d="${revLinePath}" fill="none" stroke="#E02424" stroke-width="2.5"></path>
+      ${revMarkers}
+      <path d="${profLinePath}" fill="none" stroke="#2E7D46" stroke-width="2.5" stroke-dasharray="5,4"></path>
+      ${profMarkers}
+    </svg>
+  `;
+}
+function drawPieChart(container, items, title){
+  const total = items.reduce((s,it)=>s+it.value,0);
+  if(!total){
+    container.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}</div><div class="empty-state">데이터 없음</div>`;
+    return;
+  }
+  const w = 260, h = 240, cx = 120, cy = 120, r = 95;
+  let angle = -Math.PI/2;
+  let paths = "";
+  let legend = "";
+  items.forEach(it=>{
+    const frac = it.value/total;
+    const endAngle = angle + frac*Math.PI*2;
+    const x1 = cx + r*Math.cos(angle), y1 = cy + r*Math.sin(angle);
+    const x2 = cx + r*Math.cos(endAngle), y2 = cy + r*Math.sin(endAngle);
+    const largeArc = (endAngle-angle) > Math.PI ? 1 : 0;
+    paths += `<path d="M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z" fill="${it.color}"></path>`;
+    const pct = Math.round(frac*1000)/10;
+    legend += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+      <span style="width:11px;height:11px;border-radius:3px;background:${it.color};display:inline-block;flex-shrink:0;"></span>
+      <span style="font-size:12.5px;">${it.name} · ${pct}% · ${it.valueLabel}</span>
+    </div>`;
+    angle = endAngle;
+  });
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center;">
+      <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="max-width:240px;width:100%;height:auto;flex-shrink:0;">${paths}</svg>
+      <div>${legend}</div>
+    </div>
+  `;
+}
+function renderSalesKPI(){
+  const stats = computeYearSalesStats(salesYear);
+  const body = document.getElementById("sales-kpiBody");
+  body.innerHTML = `
+    <tr style="font-weight:700;">
+      <td style="text-align:left;">${salesYear}년 전체</td>
+      <td>${fmtWon(stats.revenue)}</td>
+      <td>${fmtWon(stats.cost)}</td>
+      <td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td>
+      <td class="${stats.profit>=0?'rev-good':'rev-bad'}">${stats.margin}%</td>
+    </tr>
+  `;
+}
+function renderSalesMonthly(){
+  const stats = computeYearSalesStats(salesYear);
+  const labels = Array.from({length:12},(_,i)=>(i+1)+"월");
+  drawLineChart(document.getElementById("sales-monthlyChart"), labels, stats.monthly.map(m=>Math.round(m.revenue/10000)), salesYear+"년 월별 매출액 추이(만원)");
+  const tableHtml = `
+    <table style="min-width:900px;">
+      <thead><tr><th style="text-align:left;">항목</th>${labels.map(l=>`<th>${l}</th>`).join("")}<th>합계</th></tr></thead>
+      <tbody>
+        <tr><td style="text-align:left;">매출(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.revenue)}</td>`).join("")}<td>${fmtWon(stats.revenue)}</td></tr>
+        <tr><td style="text-align:left;">소재및외주(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
+        <tr><td style="text-align:left;">순이익(만원)</td>${stats.monthly.map(m=>`<td class="${m.profit>=0?'rev-good':'rev-bad'}">${fmtWon(m.profit)}</td>`).join("")}<td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td></tr>
+        <tr><td style="text-align:left;">이익률(%)</td>${stats.monthly.map(m=>`<td class="${m.profit>=0?'rev-good':'rev-bad'}">${m.margin}%</td>`).join("")}<td class="${stats.profit>=0?'rev-good':'rev-bad'}">${stats.margin}%</td></tr>
+      </tbody>
+    </table>
+  `;
+  document.getElementById("sales-monthlyTable").innerHTML = tableHtml;
+  const now = new Date();
+  const curMonth = (salesYear===now.getFullYear()) ? now.getMonth()+1 : 12;
+  const thisM = stats.monthly[curMonth-1];
+  let prevM, prevLabel;
+  if(curMonth-2 >= 0){
+    prevM = stats.monthly[curMonth-2];
+    prevLabel = salesYear+"년 "+(curMonth-1)+"월";
+  } else {
+    prevM = computeYearSalesStats(salesYear-1).monthly[11];
+    prevLabel = (salesYear-1)+"년 12월";
+  }
+  const changePct = prevM.revenue>0 ? Math.round(((thisM.revenue-prevM.revenue)/prevM.revenue)*100) : (thisM.revenue>0?100:0);
+  const changeSign = changePct>0 ? "+" : "";
+  document.getElementById("sales-thisMonth").innerHTML = `
+    <div style="font-size:22px;font-weight:700;">${fmtWon(thisM.revenue)} <span class="q-change-badge">변동 ${changeSign}${changePct}%</span></div>
+    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${salesYear}년 ${curMonth}월 · 소재및외주 ${fmtWon(thisM.cost)} · 순이익 <span class="${thisM.profit>=0?'rev-good':'rev-bad'}">${fmtWon(thisM.profit)}</span> (${thisM.margin}%)</div>
+  `;
+  document.getElementById("sales-lastMonth").innerHTML = `
+    <div style="font-size:22px;font-weight:700;">${fmtWon(prevM.revenue)}</div>
+    <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${prevLabel} · 소재및외주 ${fmtWon(prevM.cost)} · 순이익 <span class="${prevM.profit>=0?'rev-good':'rev-bad'}">${fmtWon(prevM.profit)}</span> (${prevM.margin}%)</div>
+  `;
+}
+function renderSalesYoY(){
+  const years = SALES_COMPARE_YEARS;
+  const statsByYear = years.map(y=>computeYearSalesStats(y));
+  drawYearRevenueBarChart(
+    document.getElementById("sales-yoyChart"),
+    years,
+    statsByYear.map(s=>Math.round(s.revenue/10000)),
+    statsByYear.map(s=>Math.round(s.profit/10000)),
+    "연도별 매출/순이익 변화(만원)"
+  );
+  let rowsHtml = "";
+  years.forEach((y,i)=>{
+    const cur = statsByYear[i];
+    const prev = i>0 ? statsByYear[i-1] : null;
+    const revChange = prev && prev.revenue>0 ? Math.round(((cur.revenue-prev.revenue)/prev.revenue)*1000)/10 : null;
+    const profChange = prev && prev.profit>0 ? Math.round(((cur.profit-prev.profit)/prev.profit)*1000)/10 : null;
+    rowsHtml += `<tr>
+      <td style="text-align:left;">${y}년</td>
+      <td>${fmtWon(cur.revenue)}</td>
+      <td class="${cur.profit>=0?'rev-good':'rev-bad'}">${fmtWon(cur.profit)}</td>
+      <td class="${cur.profit>=0?'rev-good':'rev-bad'}">${cur.margin}%</td>
+      <td class="${revChange===null?'':(revChange>=0?'rev-good':'rev-bad')}">${revChange===null?'-':(revChange>=0?'+':'')+revChange+'%'}</td>
+      <td class="${profChange===null?'':(profChange>=0?'rev-good':'rev-bad')}">${profChange===null?'-':(profChange>=0?'+':'')+profChange+'%'}</td>
+    </tr>`;
+  });
+  document.getElementById("sales-yoySummary").innerHTML = `
+    <table style="width:100%;min-width:640px;">
+      <thead><tr><th style="text-align:left;">연도</th><th>매출(만원)</th><th>순이익(만원)</th><th>이익률(%)</th><th>매출 증감률</th><th>순이익 증감률</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
+}
+const SALES_CUSTOMER_GROUPS = ["유진테크","알파플러스","엘티케이"];
+const SALES_CUSTOMER_COLORS = { "유진테크":"#0B5CAB", "알파플러스":"#2E7D46", "엘티케이":"#7030A0", "기타":"#6B7280" };
+function groupCustomerName(name){
+  return SALES_CUSTOMER_GROUPS.includes(name) ? name : "기타";
+}
+function computeCustomerYearStats(year){
+  const byCustomer = { "유진테크":{revenue:0}, "알파플러스":{revenue:0}, "엘티케이":{revenue:0}, "기타":{revenue:0} };
+  getSalesRowsForMonth(year, null).forEach(r=>{
+    const cust = groupCustomerName(r.customer||"");
+    byCustomer[cust].revenue += computeRowSales(r).revenue;
+  });
+  return byCustomer;
+}
+function computeCustomerMonthlyStats(year){
+  const result = { "유진테크":Array(12).fill(0), "알파플러스":Array(12).fill(0), "엘티케이":Array(12).fill(0), "기타":Array(12).fill(0) };
+  for(let m=1;m<=12;m++){
+    getSalesRowsForMonth(year, m).forEach(r=>{
+      const cust = groupCustomerName(r.customer||"");
+      result[cust][m-1] += computeRowSales(r).revenue;
+    });
+  }
+  return result;
+}
+function drawCustomerBarChart(container, items, title){
+  const w = 860, barH = 34, gap = 16, padL = 110, padR = 90, padT = 10;
+  const maxV = Math.max(...items.map(it=>it.value), 1);
+  const h = padT + items.length*(barH+gap);
+  const bars = items.map((it,i)=>{
+    const y = padT + i*(barH+gap);
+    const bw = (it.value/maxV) * (w-padL-padR);
+    return `<text x="${padL-10}" y="${y+barH/2+5}" font-size="14" font-weight="700" text-anchor="end" fill="#1A1E27">${it.name}</text>
+      <rect x="${padL}" y="${y}" width="${Math.max(bw,2)}" height="${barH}" fill="${it.color}" rx="5"></rect>
+      <text x="${padL+bw+10}" y="${y+barH/2+5}" font-size="13" fill="#1A1E27">${it.value.toLocaleString()} (${it.share}%)</text>`;
+  }).join("");
+  container.innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${title}</div>
+    <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="width:100%;height:auto;">${bars}</svg>
+  `;
+}
+function renderSalesCustomer(){
+  const order = ["유진테크","알파플러스","엘티케이","기타"];
+  const yearStats = computeCustomerYearStats(salesYear);
+  const totalRevenue = order.reduce((s,c)=>s+yearStats[c].revenue,0) || 1;
+  const rowsHtml = order.map(cust=>{
+    const v = yearStats[cust];
+    const share = Math.round((v.revenue/totalRevenue)*1000)/10;
+    return `<tr><td style="text-align:left;">${cust}</td><td>${fmtWon(v.revenue)}</td><td>${share}%</td></tr>`;
+  }).join("");
+  document.getElementById("sales-customerTable").innerHTML = `
+    <table style="width:100%;min-width:420px;">
+      <thead><tr><th style="text-align:left;">고객사</th><th>매출액(만원)</th><th>비중(%)</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
+  const barItems = order.map(cust=>{
+    const revenue = Math.round(yearStats[cust].revenue/10000);
+    const share = Math.round((yearStats[cust].revenue/totalRevenue)*1000)/10;
+    return { name:cust, value:revenue, share, color:SALES_CUSTOMER_COLORS[cust] };
+  });
+  drawCustomerBarChart(document.getElementById("sales-customerYearChart"), barItems, salesYear+"년 고객사별 매출 비중 (만원)");
+  const monthly = computeCustomerMonthlyStats(salesYear);
+  const series = order.map(cust=>({
+    name: cust,
+    values: monthly[cust].map(v=>Math.round(v/10000)),
+    color: SALES_CUSTOMER_COLORS[cust]
+  }));
+  drawMultiLineChart(document.getElementById("sales-customerMonthChart"), Array.from({length:12},(_,i)=>(i+1)+"월"), series, salesYear+"년 월별 고객사별 매출 추이(만원)");
+}
+// 판매 증가/감소 랭킹: 전년 대비 판매수량(EA)이 얼마나 늘고 줄었는지 기존도번 기준으로 비교합니다.
+// 수익성(단가/원가)과는 무관하게 순수 수량 증감만 봅니다.
+function computeSalesQtyByPart(year){
+  const byPart = {};
+  getSalesRowsForMonth(year, null).forEach(r=>{
+    const key = (r.oldDrawingNo || r.partNo || "(품번 미기재)");
+    byPart[key] = (byPart[key]||0) + (Number(r.qty)||0);
+  });
+  return byPart;
+}
+function computeSalesGrowthRanking(year){
+  const thisYearQty = computeSalesQtyByPart(year);
+  const prevYearQty = computeSalesQtyByPart(year-1);
+  const keys = new Set([...Object.keys(thisYearQty), ...Object.keys(prevYearQty)]);
+  const rows = [];
+  keys.forEach(key=>{
+    const prev = prevYearQty[key] || 0;
+    const cur = thisYearQty[key] || 0;
+    if(prev===0 && cur===0) return;
+    let growth;
+    if(prev===0) growth = null; // 작년엔 없던 신규 품목 (증가율 계산 불가 → "신규"로 표시)
+    else growth = Math.round(((cur-prev)/prev)*1000)/10;
+    rows.push({ key, prev, cur, growth });
+  });
+  const withGrowth = rows.filter(r=>r.growth!==null);
+  const newItems = rows.filter(r=>r.growth===null && r.cur>0);
+  // 신규 품목은 증가 랭킹 맨 앞쪽에 우선 반영(전년 0 → 올해 있음 = 가장 큰 증가로 취급)
+  const increasing = [...newItems.sort((a,b)=>b.cur-a.cur), ...withGrowth.filter(r=>r.growth>0).sort((a,b)=>b.growth-a.growth)].slice(0,5);
+  const decreasing = withGrowth.filter(r=>r.growth<0).sort((a,b)=>a.growth-b.growth).slice(0,5);
+  return { increasing, decreasing, prevYear: year-1, year };
+}
+function renderSalesGrowthTable(containerId, rows, prevYear, year){
+  const el = document.getElementById(containerId);
+  if(rows.length===0){ el.innerHTML = `<div class="empty-state" style="padding:12px;">비교할 데이터가 없습니다.</div>`; return; }
+  const rowsHtml = rows.map(r=>{
+    const growthLabel = r.growth===null ? "신규" : (r.growth>=0?"+":"")+r.growth+"%";
+    const growthClass = r.growth===null || r.growth>=0 ? "rev-good" : "rev-bad";
+    return `<tr>
+      <td style="text-align:left;">${r.key}</td><td>${r.prev.toLocaleString()}</td><td>${r.cur.toLocaleString()}</td>
+      <td class="${growthClass}">${growthLabel}</td>
+    </tr>`;
+  }).join("");
+  el.innerHTML = `
+    <table style="width:100%;min-width:280px;">
+      <thead><tr><th style="text-align:left;">기존도번</th><th>${prevYear}년(EA)</th><th>${year}년(EA)</th><th>증가율(%)</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
+}
+function renderSalesQtyRanking(){
+  const { increasing, decreasing, prevYear, year } = computeSalesGrowthRanking(salesYear);
+  renderSalesGrowthTable("sales-growthUpTable", increasing, prevYear, year);
+  renderSalesGrowthTable("sales-growthDownTable", decreasing, prevYear, year);
+}
+function getExpectedRowsForMonth(year, month){
+  return (mainData||[]).filter(r=>{
+    const isShipped = r.shipped === "납품완료";
+    const d = parseSalesDate(isShipped ? r.shipDate : r.dueDate);
+    if(!d) return false;
+    return d.getFullYear()===year && (month ? (d.getMonth()+1)===month : true);
+  });
+}
+function computeMonthExpectedStats(year, month){
+  const rows = getExpectedRowsForMonth(year, month);
+  let revenue=0, cost=0;
+  rows.forEach(r=>{ const s = computeRowSales(r); revenue += s.revenue; cost += s.cost; });
+  const profit = revenue - cost;
+  const margin = revenue>0 ? Math.round((profit/revenue)*1000)/10 : 0;
+  return { revenue, cost, profit, margin, count: rows.length };
+}
+function computeYearExpectedStats(year){
+  let revenue=0, cost=0, count=0;
+  const monthly = [];
+  for(let m=1;m<=12;m++){
+    const s = computeMonthExpectedStats(year, m);
+    monthly.push(s);
+    revenue += s.revenue; cost += s.cost; count += s.count;
+  }
+  const profit = revenue - cost;
+  const margin = revenue>0 ? Math.round((profit/revenue)*1000)/10 : 0;
+  return { revenue, cost, profit, margin, monthly, count };
+}
+function renderSalesExpected(){
+  const stats = computeYearExpectedStats(salesYear);
+  const labels = Array.from({length:12},(_,i)=>(i+1)+"월");
+  document.getElementById("sales-expectedKPI").innerHTML = `
+    <table style="width:100%;min-width:420px;">
+      <thead><tr><th style="text-align:left;">구분</th><th>예상매출(만원)</th><th>예상 소재및외주(만원)</th><th>예상순이익(만원)</th><th>예상이익률(%)</th></tr></thead>
+      <tbody>
+        <tr style="font-weight:700;">
+          <td style="text-align:left;">${salesYear}년 전체</td>
+          <td>${fmtWon(stats.revenue)}</td>
+          <td>${fmtWon(stats.cost)}</td>
+          <td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td>
+          <td class="${stats.profit>=0?'rev-good':'rev-bad'}">${stats.margin}%</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+  drawLineChart(document.getElementById("sales-expectedChart"), labels, stats.monthly.map(m=>Math.round(m.revenue/10000)), salesYear+"년 월별 예상매출 추이 (만원)");
+  document.getElementById("sales-expectedTable").innerHTML = `
+    <table style="min-width:900px;">
+      <thead><tr><th style="text-align:left;">항목</th>${labels.map(l=>`<th>${l}</th>`).join("")}<th>합계</th></tr></thead>
+      <tbody>
+        <tr><td style="text-align:left;">예상매출(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.revenue)}</td>`).join("")}<td>${fmtWon(stats.revenue)}</td></tr>
+        <tr><td style="text-align:left;">예상 소재및외주(만원)</td>${stats.monthly.map(m=>`<td>${fmtWon(m.cost)}</td>`).join("")}<td>${fmtWon(stats.cost)}</td></tr>
+        <tr><td style="text-align:left;">예상순이익(만원)</td>${stats.monthly.map(m=>`<td class="${m.profit>=0?'rev-good':'rev-bad'}">${fmtWon(m.profit)}</td>`).join("")}<td class="${stats.profit>=0?'rev-good':'rev-bad'}">${fmtWon(stats.profit)}</td></tr>
+        <tr><td style="text-align:left;">예상이익률(%)</td>${stats.monthly.map(m=>`<td class="${m.profit>=0?'rev-good':'rev-bad'}">${m.margin}%</td>`).join("")}<td class="${stats.profit>=0?'rev-good':'rev-bad'}">${stats.margin}%</td></tr>
+      </tbody>
+    </table>
+  `;
+}
+function renderSalesAll(){
+  renderSalesYearButtons();
+  document.getElementById("sales-rangeLabel").textContent = salesYear + "년 매출현황";
+  renderSalesKPI();
+  renderSalesMonthly();
+  renderSalesCustomer();
+  renderSalesQtyRanking();
+  renderSalesYoY();
+  renderSalesExpected();
+}
+function printSalesReport(){
+  renderSalesAll();
+  const page1 = document.getElementById("sales-print-page1");
+  const page2 = document.getElementById("sales-print-page2");
+  document.getElementById("print-area").innerHTML = `
+    <div class="q-report-page">
+      <h2>매출현황 보고서 · ${salesYear}년 (1/2)</h2>
+      ${page1.innerHTML}
+    </div>
+    <div class="q-report-page">
+      <h2>매출현황 보고서 · ${salesYear}년 (2/2)</h2>
+      ${page2.innerHTML}
+    </div>
+  `;
+  const orientationStyle = document.createElement("style");
+  orientationStyle.id = "sales-print-orientation";
+  orientationStyle.textContent = `
+    @page{ size: A4 landscape; margin: 5mm; }
+    #print-area table{ font-size:7.5px; }
+    #print-area th, #print-area td{ padding:1px 3px !important; }
+    #print-area .table-wrap{ margin-bottom:1mm !important; }
+    #print-area .table-wrap > div:first-child{ font-size:8px !important; margin-bottom:2px !important; }
+    #print-area #sales-monthlyChart > div:first-child,
+    #print-area #sales-yoyChart > div:first-child,
+    #print-area #sales-customerYearChart > div:first-child,
+    #print-area #sales-customerMonthChart > div:first-child,
+    #print-area #sales-expectedChart > div:first-child{ font-size:8px !important; margin-bottom:2px !important; }
+    #print-area #sales-monthlyChart svg,
+    #print-area #sales-expectedChart svg{ max-height:78px !important; }
+    #print-area #sales-yoyChart svg{ max-height:108px !important; }
+    #print-area #sales-customerYearChart svg{ max-height:95px !important; }
+    #print-area #sales-customerMonthChart svg{ max-height:95px !important; }
+  `;
+  document.head.appendChild(orientationStyle);
+  function restoreOrientation(){
+    const el = document.getElementById("sales-print-orientation");
+    if(el) el.remove();
+    window.removeEventListener("afterprint", restoreOrientation);
+  }
+  window.addEventListener("afterprint", restoreOrientation);
+  window.print();
+}
+document.getElementById("sales-printBtn").addEventListener("click", printSalesReport);
+/* ============ OVERDUE(지연 LIST) LOGIC ============ */
+function overdueDaysLate(dueDate){
+  const d = new Date(dueDate);
+  if(isNaN(d)) return 0;
+  const today = new Date(); today.setHours(0,0,0,0);
+  d.setHours(0,0,0,0);
+  return Math.round((today - d) / (1000*60*60*24));
+}
+function overdueGetRows(){
+  return (mainData||[]).filter(r=>(Number(r.qty)||0) > 0 && isOverdue(r.dueDate) && r.shipped !== "납품완료");
+}
+// 검색창 필터까지 적용한 결과를 돌려줍니다. 화면 표시/인쇄/엑셀 다운로드가 전부 이 함수 하나를
+// 공유해서, "검색 결과만 인쇄"·"검색 결과만 다운로드"가 실제로 검색 결과와 항상 일치합니다.
+function overdueGetFilteredRows(){
+  const raw = document.getElementById("overdue-searchInput").value.trim().toLowerCase();
+  let rows = overdueGetRows();
+  if(raw){
+    // 다른 검색창과 동일한 규칙: 쉼표(,)=OR, 슬래시(/)=AND(좁혀서 검색)
+    const orGroups = raw.split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim()).filter(Boolean));
+    if(orGroups.length){
+      rows = rows.filter(r=>{
+        const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.oldDrawingNo].join(" ").toLowerCase();
+        return orGroups.some(andTerms => andTerms.every(t=>haystack.includes(t)));
+      });
+    }
+  }
+  // 지연일수가 많은 순으로 정렬 (가장 급한 건이 맨 위)
+  return rows.slice().sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
+}
+function overdueApplySearch(){
+  overdueRenderTable(overdueGetFilteredRows());
+}
+function overdueRenderTable(rows){
+  const tbody = document.getElementById("overdue-tableBody");
+  const empty = document.getElementById("overdue-emptyState");
+  tbody.innerHTML = "";
+  empty.textContent = rows.length===0 ? "지연된 건이 없습니다." : "";
+  empty.style.display = rows.length===0 ? "block" : "none";
+  document.getElementById("overdue-statCount").textContent = rows.length;
+  rows.forEach(r=>{
+    const days = overdueDaysLate(r.dueDate);
+    const status = computeProductStatus(r);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="cell-overdue">${days}일</td>
+      <td>${statusBadge(status)}</td>
+      <td>${r.orderNo}</td><td>${r.customer}</td>
+      <td style="text-align:left;">${r.vendor||''}</td>
+      <td>${r.oldDrawingNo||''}</td>
+      <td style="text-align:left;">${r.partName}</td><td>${r.qty}</td>
+      <td class="cell-overdue">${r.dueDate||''}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+document.getElementById("overdue-searchBtn").addEventListener("click", overdueApplySearch);
+document.getElementById("overdue-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") overdueApplySearch(); });
+document.getElementById("overdue-printBtn").addEventListener("click", ()=>{
+  const rows = overdueGetFilteredRows();
+  overdueRenderTable(rows);
+  const rowsHtml = rows.map(r=>{
+    const days = overdueDaysLate(r.dueDate);
+    const status = computeProductStatus(r);
+    return `<tr>
+      <td>${days}일</td><td style="color:${mainStatusTextColor(status)};font-weight:700;">${status}</td><td>${r.orderNo}</td><td>${r.customer}</td>
+      <td style="text-align:left;">${r.vendor||''}</td>
+      <td>${r.oldDrawingNo||''}</td>
+      <td style="text-align:left;">${r.partName}</td><td>${r.qty}</td>
+      <td>${r.dueDate||''}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("print-area").innerHTML = `
+    <h2>지연 LIST (${new Date().toLocaleString("ko-KR")}) · 총 ${rows.length}건</h2>
+    <table>
+      <thead><tr>
+        <th>지연일수</th><th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th>
+        <th>기존도번</th><th>품명</th><th>수량</th><th>최종납기</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
+  window.print();
+});
+document.getElementById("overdue-excelBtn").addEventListener("click", ()=>{
+  const rows = overdueGetFilteredRows();
+  const aoa = [["지연일수","제품상태","ORDER NO.","고객사","PROJECT NO.","기존도번","품명","수량","최종납기"]];
+  rows.forEach(r=>{
+    aoa.push([
+      overdueDaysLate(r.dueDate) + "일",
+      computeProductStatus(r),
+      r.orderNo||'', r.customer||'', r.vendor||'',
+      r.oldDrawingNo||'', r.partName||'', r.qty||0, r.dueDate||''
+    ]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "지연 LIST");
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `지연LIST_${dateStr}.xlsx`);
+});
+/* ============ VENDOR(거래처 관리) LOGIC ============ */
+// 단가 이력: mainData에 이미 있는 발주단가/자재비/외주업체비/집연마버/처리비(세정)를
+// 기존도번 기준으로 정리해서 보여줍니다. 검색 전에는 빈 상태로 두어(다른 화면과 동일한 UX)
+// 초기 로딩 부담을 줄입니다.
+function vendorGetRows(){
+  return (mainData||[]).filter(r=>(Number(r.qty)||0) > 0);
+}
+function vendorApplySearch(){
+  const raw = document.getElementById("vendor-searchInput").value.trim().toLowerCase();
+  let rows = vendorGetRows();
+  if(raw){
+    // 다른 검색창과 동일한 규칙: 쉼표(,)=OR, 슬래시(/)=AND(좁혀서 검색)
+    const orGroups = raw.split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim()).filter(Boolean));
+    if(orGroups.length){
+      rows = rows.filter(r=>{
+        const haystack = [r.oldDrawingNo,r.partNo,r.partName,r.customer,r.vendor,r.orderNo].join(" ").toLowerCase();
+        return orGroups.some(andTerms => andTerms.every(t=>haystack.includes(t)));
+      });
+    }
+  }
+  // 기존도번별로 묶어서 보기 쉽도록, 기존도번 → 최종납기(과거→최신) 순으로 정렬합니다.
+  rows = rows.slice().sort((a,b)=>{
+    const ka = String(a.oldDrawingNo||""), kb = String(b.oldDrawingNo||"");
+    if(ka !== kb) return ka.localeCompare(kb, "ko");
+    return String(a.dueDate||"").localeCompare(String(b.dueDate||""));
+  });
+  vendorRenderTable(rows);
+}
+function vendorRenderTable(rows){
+  const tbody = document.getElementById("vendor-tableBody");
+  const empty = document.getElementById("vendor-emptyState");
+  tbody.innerHTML = "";
+  empty.textContent = rows.length===0 ? "검색 결과가 없습니다." : "";
+  empty.style.display = rows.length===0 ? "block" : "none";
+  // 값이 오르면 빨강(cell-price-up), 내리면 노랑(cell-price-down)으로 표시하는 헬퍼
+  function changeClass(key, prevKey, prev, cur){
+    if(!key || key!==prevKey || prev===null) return "";
+    if(cur > prev) return "cell-price-up";
+    if(cur < prev) return "cell-price-down";
+    return "";
+  }
+  let prevKey = null, prevMaterial = null, prevVendorCost = null, prevProcess = null;
+  rows.forEach(r=>{
+    const key = r.oldDrawingNo || "";
+    const materialCost = Number(r.materialCost)||0;
+    const vendorCost = Number(r.vendorCost)||0;
+    const processCost = Number(r.processCost)||0;
+    const materialClass = changeClass(key, prevKey, prevMaterial, materialCost);
+    const vendorCostClass = changeClass(key, prevKey, prevVendorCost, vendorCost);
+    const processClass = changeClass(key, prevKey, prevProcess, processCost);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${r.oldDrawingNo||''}</td>
+      <td class="${materialClass}">${materialCost.toLocaleString()}</td>
+      <td class="${vendorCostClass}">${vendorCost.toLocaleString()}</td>
+      <td class="${processClass}">${processCost.toLocaleString()}</td>
+    `;
+    tbody.appendChild(tr);
+    prevKey = key; prevMaterial = materialCost; prevVendorCost = vendorCost; prevProcess = processCost;
+  });
+}
+document.getElementById("vendor-searchBtn").addEventListener("click", vendorApplySearch);
+document.getElementById("vendor-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") vendorApplySearch(); });
+async function initQualityView(){
+  renderQualityButtons();
+  const cached = await cacheGetQualityData();
+  const lastSync = cacheGet("qualityLastSync");
+  const statusEl = document.getElementById("quality-apiStatus");
+  if(cached){
+    qualityRawData = cached;
+    renderQualityAll();
+    if(statusEl) statusEl.textContent = "저장된 데이터 사용 중";
+  }
+  const needRefresh = !lastSync || (Date.now() - lastSync > 5 * 60 * 1000);
+  if(needRefresh){
+    if(statusEl) statusEl.textContent = "최신 데이터 자동 확인 중...";
+    fetchQualityData();
+  }
+}
+document.getElementById("quality-syncToggle").addEventListener("click", ()=>document.getElementById("quality-syncPanel").classList.toggle("open"));
+document.getElementById("quality-apiSyncBtn").addEventListener("click", fetchQualityData);
+document.querySelectorAll('[data-qtab]').forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll('[data-qtab]').forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll('#view-quality > .tab-panel').forEach(p=>p.classList.remove("active"));
+    document.getElementById("qpanel-"+btn.dataset.qtab).classList.add("active");
+  });
+});
+window.__qualityInited = true;
+initQualityView();
+/* ============ 전체 현황(SUMMARY) LOGIC ============ */
+function renderSummaryView(){
+  const now = new Date();
+  const year = now.getFullYear(), month = now.getMonth()+1;
+  document.getElementById("summary-rangeLabel").textContent = year + "년 " + month + "월 (현재)";
+
+  // 지연 건수 + TOP5 (전체 지연 건 기준)
+ // 2. 추출된 이번 달 데이터 중 지연(경과일수 계산)된 건 정렬 및 수집
   const agingRows = currentMonthRows
     .filter(r => r.daysSince && r.daysSince > 0)
     .sort((a, b) => b.daysSince - a.daysSince);
@@ -515,22 +3248,63 @@ function updateSummaryDashboard() {
   ).join("") : `<div class="empty-state" style="padding:12px;">이번 달 납기 대상 중 지연된 내역이 없습니다.</div>`;
 }
 
-// 초기화 예시 데이터 바인딩 시 대시보드 렌더링 호출
-function mainInitialRender(data) {
-  mainData = data;
-  updateSummaryDashboard();
-}
+  // 이번달 매출(현재까지) vs 저번달 매출 비교
+  const thisMonthStats = computeMonthSalesStats(year, month);
+  let prevYear = year, prevMonth = month-1;
+  if(prevMonth<1){ prevMonth = 12; prevYear = year-1; }
+  const prevMonthStats = computeMonthSalesStats(prevYear, prevMonth);
+  document.getElementById("summary-statRevenue").textContent = fmtWon(thisMonthStats.revenue);
+  const changePct = prevMonthStats.revenue>0 ? Math.round(((thisMonthStats.revenue-prevMonthStats.revenue)/prevMonthStats.revenue)*100) : (thisMonthStats.revenue>0?100:0);
+  const changeSign = changePct>0 ? "+" : "";
+  document.getElementById("summary-revenueChange").textContent = `전월대비 ${changeSign}${changePct}%`;
+  document.getElementById("summary-revenueDetail").textContent = `저번달(${prevYear}.${prevMonth}) ${fmtWon(prevMonthStats.revenue)}만원`;
 
-document.addEventListener('DOMContentLoaded', () => {
-  // 샘플 동작 확인용 가상 데이터 생성 및 주입 테스트
-  const dummyData = [
-    { partNo: "A-01", sn: "1001", dueDate: "2026-07-05", daysSince: 7 }, // 이번 달 지연
-    { partNo: "A-02", sn: "1002", dueDate: "2026-07-02", daysSince: 10 },// 이번 달 지연
-    { partNo: "B-05", sn: "2005", dueDate: "2026-05-10", daysSince: 63 },// 과거 달 지연 (제외됨)
-    { partNo: "A-03", sn: "1003", dueDate: "2026-07-10", daysSince: 2 }  // 이번 달 지연
-  ];
-  mainInitialRender(dummyData);
-});
+  // 올해 누적 매출 (1월~이번달까지 합계)
+  const yearStats = computeYearSalesStats(year);
+  document.getElementById("summary-ytdLabel").textContent = year + "년 누적 매출(만원)";
+  document.getElementById("summary-statYtdRevenue").textContent = fmtWon(yearStats.revenue);
+
+  // 장기 재고 (150일 기준, 현재 시점 스냅샷) + TOP5
+  const agingRows = invGetAgingRows(150);
+  document.getElementById("summary-statAging").textContent = agingRows.length;
+  const agingTop5 = agingRows.slice(0,5);
+  document.getElementById("summary-agingList").innerHTML = agingTop5.length ? agingTop5.map(r=>
+    `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
+      <span>${r.partNo} (S/N ${r.sn||'-'})</span><span class="cell-overdue">${r.daysSince}일 경과</span>
+    </div>`
+  ).join("") : `<div class="empty-state" style="padding:12px;">150일 이상 된 장기 재고가 없습니다.</div>`;
+}
+(async function initCachedOrFetch(){
+  const cachedMain = await loadMainData();
+  const lastSync = cacheGet("mainLastSync");
+  updateSyncBanner();
+  if(cachedMain){
+    mainData = cachedMain;
+    markMainStatusDirty();
+    mainInitialRender(mainData);
+    document.getElementById("main-apiStatus").textContent =
+      "저장된 데이터 사용 중";
+  }else{
+    mainInitialRender([]);
+  }
+  const needRefresh =
+    !lastSync ||
+    (Date.now() - lastSync > 5 * 60 * 1000);
+  if(needRefresh){
+    document.getElementById("main-apiStatus").textContent =
+      "최신 데이터 자동 확인 중...";
+    fetchMainData(String(CURRENT_YEAR));
+  }
+  renderSummaryView();
+})();
+setInterval(() => {
+  console.log("자동 데이터 갱신");
+  fetchMainData(String(CURRENT_YEAR)).then(() => {
+    fetchInvData();
+  });
+  fetchQualityData().catch(() => {});
+}, 3 * 60 * 60 * 1000);
 </script>
+<div id="print-area" style="display:none;"></div>
 </body>
 </html>
