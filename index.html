@@ -482,7 +482,7 @@
     </div>
     <div class="sync-panel" id="main-syncPanel">
       <input id="main-appsScriptUrl" type="text" value="https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2Xur_FhnxfQReER1VnjFKNkwvEtezRo-93EVHlJ8uQdECpP/exec" placeholder="Apps Script 웹 앱 URL 붙여넣기 (실시간 읽기/쓰기)">
-      <button id="main-apiSyncBtn">API로 불러오기 (올해)</button>
+      <button id="main-apiSyncBtn">API로 불러오기 (2025년, 2026년)</button>
       <button id="main-apiSyncAllBtn" class="secondary">전체 연도 포함 (느림)</button>
       <span class="sync-or">|</span>
       <input id="main-sheetUrl" type="text" placeholder="또는 CSV 게시 링크">
@@ -1840,7 +1840,7 @@ updateSyncBanner();
     })
     .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
 }
-document.getElementById("main-apiSyncBtn").addEventListener("click", ()=>fetchMainData(String(CURRENT_YEAR)));
+document.getElementById("main-apiSyncBtn").addEventListener("click", ()=>fetchMainData("2025,2026"));
 document.getElementById("main-apiSyncAllBtn").addEventListener("click", ()=>fetchMainData(null));
 document.getElementById("main-syncBtn").addEventListener("click", ()=>{
   const url = document.getElementById("main-sheetUrl").value.trim();
@@ -3045,9 +3045,13 @@ function renderSalesCustomer(){
 }
 // 판매 증가/감소 랭킹: 전년 대비 판매수량(EA)이 얼마나 늘고 줄었는지 기존도번 기준으로 비교합니다.
 // 수익성(단가/원가)과는 무관하게 순수 수량 증감만 봅니다.
+const SALES_COMPARE_KEYWORDS = ["SHOWERHEAD","BLOCK PLATE","CHAMBER"];
 function computeSalesQtyByPart(year){
   const byPart = {};
+  const kws = SALES_COMPARE_KEYWORDS.map(k=>k.toLowerCase());
   getSalesRowsForMonth(year, null).forEach(r=>{
+    const nameLower = String(r.partName||"").toLowerCase();
+    if(!kws.some(kw=>nameLower.includes(kw))) return;
     const key = (r.oldDrawingNo || r.partNo || "(품번 미기재)");
     byPart[key] = (byPart[key]||0) + (Number(r.qty)||0);
   });
@@ -3074,7 +3078,7 @@ function computeSalesGrowthRanking(year){
   const decreasing = withGrowth.filter(r=>r.growth<0).sort((a,b)=>a.growth-b.growth).slice(0,5);
   return { increasing, decreasing, prevYear: year-1, year };
 }
-function renderSalesGrowthTable(containerId, rows, prevYear, year){
+function renderSalesGrowthTable(containerId, rows, prevYear, year, keyLabel){
   const el = document.getElementById(containerId);
   if(rows.length===0){ el.innerHTML = `<div class="empty-state" style="padding:12px;">비교할 데이터가 없습니다.</div>`; return; }
   const rowsHtml = rows.map(r=>{
@@ -3087,7 +3091,7 @@ function renderSalesGrowthTable(containerId, rows, prevYear, year){
   }).join("");
   el.innerHTML = `
     <table style="width:100%;min-width:280px;">
-      <thead><tr><th style="text-align:left;">기존도번</th><th>${prevYear}년(EA)</th><th>${year}년(EA)</th><th>증가율(%)</th></tr></thead>
+      <thead><tr><th style="text-align:left;">${keyLabel||'기존도번'}</th><th>${prevYear}년(EA)</th><th>${year}년(EA)</th><th>증가율(%)</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
   `;
@@ -3547,13 +3551,13 @@ function renderSummaryView(){
   if(needRefresh){
     document.getElementById("main-apiStatus").textContent =
       "최신 데이터 자동 확인 중...";
-    fetchMainData(String(CURRENT_YEAR));
+    fetchMainData("2025,2026");
   }
   renderSummaryView();
 })();
 setInterval(() => {
   console.log("자동 데이터 갱신");
-  fetchMainData(String(CURRENT_YEAR)).then(() => {
+  fetchMainData("2025,2026").then(() => {
     fetchInvData();
   });
   fetchQualityData().catch(() => {});
