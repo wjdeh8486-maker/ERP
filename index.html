@@ -614,6 +614,7 @@
             <div class="status-dropdown" id="overdue-statusDropdown">
               <label><input type="checkbox" value="생산" checked> 생산</label>
               <label><input type="checkbox" value="재고" checked> 재고</label>
+              <label><input type="checkbox" value="출고" checked> 출고</label>
               <label><input type="checkbox" value="측정" checked> 측정</label>
               <label><input type="checkbox" value="외관" checked> 외관</label>
               <label><input type="checkbox" value="비젼" checked> 비젼</label>
@@ -1193,7 +1194,7 @@ function mainShowSearchPrompt(){
   empty.style.display = "block";
 }
 function mainInitialRender(data){
-  mainRenderStats(data);
+  mainRenderStats(data.filter(r=>(Number(r.qty)||0) > 0));
   mainShowSearchPrompt();
   if(typeof renderSummaryView==="function") renderSummaryView();
 }
@@ -2220,7 +2221,7 @@ setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
   } else {
     invRenderCheck("");
   }
-  const needRefresh = !lastSync || (Date.now() - lastSync > 5 * 60 * 1000);
+  const needRefresh = !lastSync || (Date.now() - lastSync > 1 * 60 * 1000);
   if(needRefresh){
     if(statusEl) statusEl.textContent = "최신 데이터 자동 확인 중...";
     fetchInvData();
@@ -3249,14 +3250,12 @@ function overdueGetRows(){
     if((Number(r.qty)||0) <= 0) return false;
     if(!isOverdue(r.dueDate)) return false;
     if(r.shipped === "납품완료") return false;
-    // 이미 "출고" 상태로 넘어간 건은 지연으로 보지 않습니다 (실제로는 배송 중인 건이라서).
-    if(computeProductStatus(r) === "출고") return false;
     return true;
   });
 }
 // 검색창 필터까지 적용한 결과를 돌려줍니다. 화면 표시/인쇄/엑셀 다운로드가 전부 이 함수 하나를
 // 공유해서, "검색 결과만 인쇄"·"검색 결과만 다운로드"가 실제로 검색 결과와 항상 일치합니다.
-let overdueSelectedStatuses = ["생산","재고","측정","외관","비젼","OK"];
+let overdueSelectedStatuses = ["생산","재고","출고","측정","외관","비젼","OK"];
 function overdueGetFilteredRows(){
   const raw = document.getElementById("overdue-searchInput").value.trim().toLowerCase();
   let rows = overdueGetRows();
@@ -3292,7 +3291,7 @@ document.querySelectorAll("#overdue-statusDropdown input[type=checkbox]").forEac
   cb.addEventListener("change", ()=>{
     overdueSelectedStatuses = Array.from(document.querySelectorAll("#overdue-statusDropdown input[type=checkbox]:checked")).map(el=>el.value);
     const btn = document.getElementById("overdue-statusToggle");
-    const ALL = ["생산","재고","측정","외관","비젼","OK"];
+    const ALL = ["생산","재고","출고","측정","외관","비젼","OK"];
     btn.textContent = overdueSelectedStatuses.length===ALL.length ? "전체 상태 ▾" : `${ALL.length-overdueSelectedStatuses.length}개 제외 ▾`;
     overdueApplySearch();
   });
@@ -3442,7 +3441,7 @@ async function initQualityView(){
     renderQualityAll();
     if(statusEl) statusEl.textContent = "저장된 데이터 사용 중";
   }
-  const needRefresh = !lastSync || (Date.now() - lastSync > 5 * 60 * 1000);
+  const needRefresh = !lastSync || (Date.now() - lastSync > 1 * 60 * 1000);
   if(needRefresh){
     if(statusEl) statusEl.textContent = "최신 데이터 자동 확인 중...";
     fetchQualityData();
@@ -3490,10 +3489,11 @@ function renderSummaryView(){
   const progressPct = Math.round(((qcCount+doneCount)/totalCount)*100);
   document.getElementById("summary-statProgress").textContent = progressPct + "%";
 
-  // 지연 건수 + TOP5 (최종납기가 이번달인 건만)
+  // 지연 건수 + TOP5 (최종납기가 이번달인 건만, 출고 건은 제외)
   const monthPrefix = year + "-" + String(month).padStart(2,"0");
   const overdueRows = overdueGetRows()
     .filter(r=>String(r.dueDate||"").startsWith(monthPrefix))
+    .filter(r=>computeProductStatus(r) !== "출고")
     .sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
   document.getElementById("summary-statOverdue").textContent = overdueRows.length;
   const overdueTop5 = overdueRows.slice(0,5);
@@ -3541,7 +3541,7 @@ function renderSummaryView(){
   }
   const needRefresh =
     !lastSync ||
-    (Date.now() - lastSync > 5 * 60 * 1000);
+    (Date.now() - lastSync > 1 * 60 * 1000);
   if(needRefresh){
     document.getElementById("main-apiStatus").textContent =
       "최신 데이터 자동 확인 중...";
