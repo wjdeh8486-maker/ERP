@@ -3231,22 +3231,14 @@ function renderSummaryView(){
   document.getElementById("summary-rangeLabel").textContent = year + "년 " + month + "월 (현재)";
 
   // 지연 건수 + TOP5 (전체 지연 건 기준)
- // 2. 추출된 이번 달 데이터 중 지연(경과일수 계산)된 건 정렬 및 수집
-  const agingRows = currentMonthRows
-    .filter(r => r.daysSince && r.daysSince > 0)
-    .sort((a, b) => b.daysSince - a.daysSince);
-
-  // 3. 화면 UI 적용
-  document.getElementById("summary-statAging").textContent = agingRows.length + "건";
-  
-  const agingTop5 = agingRows.slice(0, 5);
-  document.getElementById("summary-agingList").innerHTML = agingTop5.length ? agingTop5.map(r =>
-    `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
-      <span><b>${r.partNo || '품번없음'}</b> (S/N: ${r.sn || '-'})</span>
-      <span class="cell-overdue">${r.daysSince}일 지연</span>
+  const overdueRows = overdueGetRows().slice().sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
+  document.getElementById("summary-statOverdue").textContent = overdueRows.length;
+  const overdueTop5 = overdueRows.slice(0,5);
+  document.getElementById("summary-overdueList").innerHTML = overdueTop5.length ? overdueTop5.map(r=>
+    `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
+      <span>${r.orderNo} · ${r.partName}</span><span class="cell-overdue">${overdueDaysLate(r.dueDate)}일 지연</span>
     </div>`
-  ).join("") : `<div class="empty-state" style="padding:12px;">이번 달 납기 대상 중 지연된 내역이 없습니다.</div>`;
-}
+  ).join("") : `<div class="empty-state" style="padding:12px;">지연 건이 없습니다.</div>`;
 
   // 이번달 매출(현재까지) vs 저번달 매출 비교
   const thisMonthStats = computeMonthSalesStats(year, month);
@@ -3258,6 +3250,7 @@ function renderSummaryView(){
   const changeSign = changePct>0 ? "+" : "";
   document.getElementById("summary-revenueChange").textContent = `전월대비 ${changeSign}${changePct}%`;
   document.getElementById("summary-revenueDetail").textContent = `저번달(${prevYear}.${prevMonth}) ${fmtWon(prevMonthStats.revenue)}만원`;
+
   // 올해 누적 매출 (1월~이번달까지 합계)
   const yearStats = computeYearSalesStats(year);
   document.getElementById("summary-ytdLabel").textContent = year + "년 누적 매출(만원)";
