@@ -142,6 +142,8 @@
   #quality-printBtn{padding:9px 16px;border-radius:6px;border:1px solid #fff;background:#fff;color:var(--navy);font-weight:700;cursor:pointer;white-space:nowrap;}
   .summary-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px;margin-bottom:12px;}
   .stat-card{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px 18px;min-width:120px;flex:1;}
+  .summary-clickable-card{cursor:pointer;transition:box-shadow .15s,transform .1s;}
+  .summary-clickable-card:hover{box-shadow:0 4px 14px rgba(31,42,68,.15);transform:translateY(-1px);}
   .stat-card .label{font-size:13px;font-weight:700;}
   .stat-card .value{font-size:26px;font-weight:700;margin-top:4px;}
   .stat-card.prod .label,.stat-card.prod .value{color:var(--red);}
@@ -485,9 +487,9 @@
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13.5px;line-height:1.6;" id="summary-narrative"></div>
       </div>
       <div class="summary-row">
-        <div class="stat-card overdue" style="flex:1 1 calc(33.333% - 8px);min-width:150px;"><div class="label">지연 건수</div><div class="value" id="summary-statOverdue">0</div></div>
-        <div class="stat-card prod" style="flex:1 1 calc(33.333% - 8px);min-width:150px;"><div class="label">생산 진행률(%)</div><div class="value" id="summary-statProgress">0%</div></div>
-        <div class="stat-card done" style="flex:1 1 calc(33.333% - 8px);min-width:150px;"><div class="label">장기재고(150일+)</div><div class="value" id="summary-statAging">0</div></div>
+        <div class="stat-card overdue summary-clickable-card" id="summary-card-overdue" style="flex:1 1 calc(33.333% - 8px);min-width:150px;"><div class="label">지연 건수</div><div class="value" id="summary-statOverdue">0</div></div>
+        <div class="stat-card prod summary-clickable-card" id="summary-card-progress" style="flex:1 1 calc(33.333% - 8px);min-width:150px;"><div class="label">생산 진행률(%)</div><div class="value" id="summary-statProgress">0%</div></div>
+        <div class="stat-card done summary-clickable-card" id="summary-card-aging" style="flex:1 1 calc(33.333% - 8px);min-width:150px;"><div class="label">장기재고(150일+)</div><div class="value" id="summary-statAging">0</div></div>
         <div class="stat-card qc" style="flex:1 1 calc(50% - 6px);min-width:150px;">
           <div class="label">이번달 매출(만원, 현재까지) <span id="summary-revenueChange" class="q-change-badge" style="font-size:11px;"></span></div>
           <div class="value" id="summary-statRevenue" style="font-size:20px;">0</div>
@@ -2009,6 +2011,7 @@ document.querySelectorAll(".tab-btn[data-tab]").forEach(btn=>{
     btn.classList.add("active");
     document.getElementById("panel-"+btn.dataset.tab).classList.add("active");
     if(btn.dataset.tab==="all") invRenderAll();
+    if(btn.dataset.tab==="aging") invRenderAging();
   });
 });
 function getInvCheckCriteria(){
@@ -3250,6 +3253,21 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
 window.__qualityInited = true;
 initQualityView();
 /* ============ 전체 현황(SUMMARY) LOGIC ============ */
+// 카드 클릭 시 관련 메뉴로 바로 이동합니다 (렌더링마다 다시 붙지 않도록 한 번만 등록합니다).
+document.getElementById("summary-card-overdue").addEventListener("click", ()=>{
+  const nav = document.querySelector('.nav-item[data-view="overdue"]');
+  if(nav) nav.click();
+});
+document.getElementById("summary-card-progress").addEventListener("click", ()=>{
+  const nav = document.querySelector('.nav-item[data-view="main"]');
+  if(nav) nav.click();
+});
+document.getElementById("summary-card-aging").addEventListener("click", ()=>{
+  const nav = document.querySelector('.nav-item[data-view="inventory"]');
+  if(nav) nav.click();
+  const tabBtn = document.querySelector('.tab-btn[data-tab="aging"]');
+  if(tabBtn) tabBtn.click();
+});
 function renderSummaryView(){
   const now = new Date();
   const year = now.getFullYear(), month = now.getMonth()+1;
