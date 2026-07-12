@@ -3481,8 +3481,10 @@ function renderSummaryView(){
   document.getElementById("summary-rangeLabel").textContent = "📊 " + year + "년 " + month + "월 월별 현황 보고서";
   document.getElementById("summary-generatedAt").textContent = "생성 시각: " + now.toLocaleString("ko-KR");
 
-  // 생산 진행률(%) - 전체 데이터 기준
-  const allRows = (mainData||[]).filter(r=>(Number(r.qty)||0)>0);
+  // 생산 진행률(%) - 최종납기가 "오늘(당일) 이하"인 건만 대상으로 계산합니다.
+  // (아직 납기가 안 된 미래 건까지 포함하면 진행률이 실제보다 낮게 나오기 때문입니다)
+  const todayStr2 = year + "-" + String(month).padStart(2,"0") + "-" + String(now.getDate()).padStart(2,"0");
+  const allRows = (mainData||[]).filter(r=>(Number(r.qty)||0)>0 && r.dueDate && r.dueDate <= todayStr2);
   const doneCount = allRows.filter(r=>computeProductStatus(r)==="완료").length;
   const qcCount = allRows.filter(r=>["재고","출고","측정","외관","비젼","OK"].includes(computeProductStatus(r))).length;
   const totalCount = allRows.length || 1;
