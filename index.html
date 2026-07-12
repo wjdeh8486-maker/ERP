@@ -477,24 +477,37 @@
       <div class="sync-note" id="main-apiStatus"></div>
     </div>
     <div class="view active" id="view-summary">
-      <div class="progress-label" id="summary-rangeLabel" style="margin:4px 0 12px;"></div>
+      <div class="table-wrap" style="padding:16px 20px;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
+          <div style="font-size:16px;font-weight:700;color:var(--navy);" id="summary-rangeLabel"></div>
+          <div style="font-size:11.5px;color:var(--text-mute);" id="summary-generatedAt"></div>
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13.5px;line-height:1.6;" id="summary-narrative"></div>
+      </div>
       <div class="summary-row">
-        <div class="stat-card overdue" style="flex:1 1 calc(50% - 6px);min-width:140px;"><div class="label">지연 건수</div><div class="value" id="summary-statOverdue">0</div></div>
-        <div class="stat-card qc" style="flex:1 1 calc(50% - 6px);min-width:140px;">
+        <div class="stat-card overdue" style="flex:1 1 calc(33.333% - 8px);min-width:150px;"><div class="label">지연 건수</div><div class="value" id="summary-statOverdue">0</div></div>
+        <div class="stat-card prod" style="flex:1 1 calc(33.333% - 8px);min-width:150px;"><div class="label">생산 진행률(%)</div><div class="value" id="summary-statProgress">0%</div></div>
+        <div class="stat-card done" style="flex:1 1 calc(33.333% - 8px);min-width:150px;"><div class="label">장기재고(150일+)</div><div class="value" id="summary-statAging">0</div></div>
+        <div class="stat-card qc" style="flex:1 1 calc(50% - 6px);min-width:150px;">
           <div class="label">이번달 매출(만원, 현재까지) <span id="summary-revenueChange" class="q-change-badge" style="font-size:11px;"></span></div>
           <div class="value" id="summary-statRevenue" style="font-size:20px;">0</div>
           <div class="progress-label" id="summary-revenueDetail"></div>
         </div>
-        <div class="stat-card done" style="flex:1 1 calc(50% - 6px);min-width:140px;"><div class="label">장기재고(150일+)</div><div class="value" id="summary-statAging">0</div></div>
-        <div class="stat-card prod" style="flex:1 1 calc(50% - 6px);min-width:140px;"><div class="label" id="summary-ytdLabel">올해 누적 매출(만원)</div><div class="value" id="summary-statYtdRevenue" style="font-size:20px;">0</div></div>
+        <div class="stat-card prod" style="flex:1 1 calc(50% - 6px);min-width:150px;"><div class="label" id="summary-ytdLabel">올해 누적 매출(만원)</div><div class="value" id="summary-statYtdRevenue" style="font-size:20px;">0</div></div>
       </div>
       <div class="table-wrap" style="padding:16px;margin-bottom:16px;">
         <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">🔴 지연 심한 순 TOP 5</div>
-        <div id="summary-overdueList"></div>
+        <table>
+          <thead><tr><th style="text-align:left;">구분</th><th style="text-align:left;">품명</th><th>고객사</th><th>지연일수</th></tr></thead>
+          <tbody id="summary-overdueList"></tbody>
+        </table>
       </div>
       <div class="table-wrap" style="padding:16px;">
         <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">📦 장기 재고 TOP 5 (오래된 순)</div>
-        <div id="summary-agingList"></div>
+        <table>
+          <thead><tr><th style="text-align:left;">품번</th><th>재고수량</th><th>경과일수</th></tr></thead>
+          <tbody id="summary-agingList"></tbody>
+        </table>
       </div>
     </div>
     <div class="view" id="view-main">
@@ -654,7 +667,7 @@
       <div class="tab-panel" id="panel-aging">
         <div class="search-row">
           <input id="inv-agingThreshold" type="number" value="150" style="max-width:120px;" placeholder="기준일수">
-          <span style="align-self:center;color:var(--text-mute);font-size:13px;">일 이상 입고 후 미출고된 재고</span>
+          <span style="align-self:center;color:var(--text-mute);font-size:13px;">일 이상, 품번 기준 최종 입출고일 경과 & 재고 보유</span>
           <button id="inv-agingBtn">🔍 조회</button>
         </div>
         <div class="stock-summary" id="inv-agingSummary" style="display:none;">
@@ -662,7 +675,7 @@
         </div>
         <div class="table-scroll" id="inv-agingTableScroll">
           <table>
-            <thead><tr><th>경과일수</th><th>품번</th><th>입고일자</th><th>S/N</th><th>입고수량</th><th>관리번호</th><th>비고</th></tr></thead>
+            <thead><tr><th>경과일수</th><th>품번</th><th>현재 재고수량</th></tr></thead>
             <tbody id="inv-agingBody"></tbody>
           </table>
         </div>
@@ -1946,16 +1959,29 @@ function invAgingDaysSince(inDate){
   return Math.round((today - d) / (1000*60*60*24));
 }
 function invGetAgingRows(thresholdDays){
-  return invData
-    .filter(r=>{
-      if(!r.inDate) return false;
-      const inQty = Number(r.inQty)||0;
-      const outQty = Number(r.outQty)||0;
-      if(inQty<=0 || outQty>=inQty) return false; // 이미 전량 출고된 건 제외
-      const days = invAgingDaysSince(r.inDate);
-      return days >= thresholdDays;
+  const byPart = {};
+  invData.forEach(r=>{
+    const key = r.partNo;
+    if(!key) return;
+    if(!byPart[key]) byPart[key] = { partNo:key, totalIn:0, totalOut:0, lastDate:null };
+    byPart[key].totalIn += Number(r.inQty)||0;
+    byPart[key].totalOut += Number(r.outQty)||0;
+    [r.inDate, r.outDate].forEach(d=>{
+      if(!d) return;
+      const dt = new Date(d);
+      if(isNaN(dt)) return;
+      if(!byPart[key].lastDate || dt > byPart[key].lastDate) byPart[key].lastDate = dt;
+    });
+  });
+  const today = new Date(); today.setHours(0,0,0,0);
+  return Object.values(byPart)
+    .filter(p=> (p.totalIn - p.totalOut) > 0 && p.lastDate)
+    .map(p=>{
+      const d = new Date(p.lastDate); d.setHours(0,0,0,0);
+      const daysSince = Math.round((today-d)/(1000*60*60*24));
+      return { partNo:p.partNo, stock: p.totalIn-p.totalOut, daysSince };
     })
-    .map(r=>({ ...r, daysSince: invAgingDaysSince(r.inDate) }))
+    .filter(p=>p.daysSince>=thresholdDays)
     .sort((a,b)=> b.daysSince - a.daysSince);
 }
 function invRenderAging(){
@@ -1966,9 +1992,8 @@ function invRenderAging(){
   const summary = document.getElementById("inv-agingSummary");
   tbody.innerHTML = rows.map(r=>`<tr>
     <td class="cell-overdue">${r.daysSince}일</td>
-    <td>${r.partNo||''}</td><td>${r.inDate||''}</td><td>${r.sn||''}</td>
-    <td class="badge-in">${(Number(r.inQty)||0) - (Number(r.outQty)||0)}</td>
-    <td>${r.ctrlNo||''}</td><td>${r.note||''}</td>
+    <td>${r.partNo||''}</td>
+    <td class="badge-in">${r.stock}</td>
   </tr>`).join("");
   document.getElementById("inv-agingCount").textContent = rows.length;
   summary.style.display = "flex";
@@ -3228,17 +3253,27 @@ initQualityView();
 function renderSummaryView(){
   const now = new Date();
   const year = now.getFullYear(), month = now.getMonth()+1;
-  document.getElementById("summary-rangeLabel").textContent = year + "년 " + month + "월 (현재)";
+  document.getElementById("summary-rangeLabel").textContent = "📊 " + year + "년 " + month + "월 월별 현황 보고서";
+  document.getElementById("summary-generatedAt").textContent = "생성 시각: " + now.toLocaleString("ko-KR");
 
-  // 지연 건수 + TOP5 (전체 지연 건 기준)
-  const overdueRows = overdueGetRows().slice().sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
+  // 생산 진행률(%) - 전체 데이터 기준
+  const allRows = (mainData||[]).filter(r=>(Number(r.qty)||0)>0);
+  const doneCount = allRows.filter(r=>computeProductStatus(r)==="완료").length;
+  const qcCount = allRows.filter(r=>["재고","출고","측정","외관","비젼","OK"].includes(computeProductStatus(r))).length;
+  const totalCount = allRows.length || 1;
+  const progressPct = Math.round(((qcCount+doneCount)/totalCount)*100);
+  document.getElementById("summary-statProgress").textContent = progressPct + "%";
+
+  // 지연 건수 + TOP5 (최종납기가 이번달인 건만)
+  const monthPrefix = year + "-" + String(month).padStart(2,"0");
+  const overdueRows = overdueGetRows()
+    .filter(r=>String(r.dueDate||"").startsWith(monthPrefix))
+    .sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
   document.getElementById("summary-statOverdue").textContent = overdueRows.length;
   const overdueTop5 = overdueRows.slice(0,5);
   document.getElementById("summary-overdueList").innerHTML = overdueTop5.length ? overdueTop5.map(r=>
-    `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
-      <span>${r.orderNo} · ${r.partName}</span><span class="cell-overdue">${overdueDaysLate(r.dueDate)}일 지연</span>
-    </div>`
-  ).join("") : `<div class="empty-state" style="padding:12px;">지연 건이 없습니다.</div>`;
+    `<tr><td style="text-align:left;">${r.orderNo}</td><td style="text-align:left;">${r.partName}</td><td>${r.customer}</td><td class="cell-overdue">${overdueDaysLate(r.dueDate)}일</td></tr>`
+  ).join("") : `<tr><td colspan="4" style="padding:16px;color:var(--text-mute);">지연 건이 없습니다.</td></tr>`;
 
   // 이번달 매출(현재까지) vs 저번달 매출 비교
   const thisMonthStats = computeMonthSalesStats(year, month);
@@ -3261,10 +3296,22 @@ function renderSummaryView(){
   document.getElementById("summary-statAging").textContent = agingRows.length;
   const agingTop5 = agingRows.slice(0,5);
   document.getElementById("summary-agingList").innerHTML = agingTop5.length ? agingTop5.map(r=>
-    `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
-      <span>${r.partNo} (S/N ${r.sn||'-'})</span><span class="cell-overdue">${r.daysSince}일 경과</span>
-    </div>`
-  ).join("") : `<div class="empty-state" style="padding:12px;">150일 이상 된 장기 재고가 없습니다.</div>`;
+    `<tr><td style="text-align:left;">${r.partNo}</td><td>${r.stock}</td><td class="cell-overdue">${r.daysSince}일</td></tr>`
+  ).join("") : `<tr><td colspan="3" style="padding:16px;color:var(--text-mute);">150일 이상 된 장기 재고가 없습니다.</td></tr>`;
+
+  // 종합 코멘트 (경영진이 한눈에 볼 수 있는 자동 요약 문장)
+  const comments = [];
+  comments.push(overdueRows.length>0
+    ? `🔴 이번달 최종납기 기준 <b>지연 ${overdueRows.length}건</b> 발생 중 — 가장 오래된 건은 <b>${overdueDaysLate(overdueRows[0].dueDate)}일</b> 지연되었습니다.`
+    : `🟢 이번달 최종납기 기준 지연 건 없이 정상적으로 진행 중입니다.`);
+  comments.push(changePct>=0
+    ? `📈 이번달 매출은 전월대비 <b>${changeSign}${changePct}%</b> 입니다.`
+    : `📉 이번달 매출이 전월대비 <b>${changePct}%</b> 감소했습니다.`);
+  comments.push(agingRows.length>0
+    ? `📦 150일 이상 장기 재고가 <b>${agingRows.length}건</b> 있습니다 — 재고 정리 검토가 필요합니다.`
+    : `📦 150일 이상 된 장기 재고가 없습니다.`);
+  comments.push(`⚙️ 전체 생산 진행률은 <b>${progressPct}%</b> 입니다 (${totalCount}건 중 ${qcCount+doneCount}건 완료/검사 단계).`);
+  document.getElementById("summary-narrative").innerHTML = comments.map(c=>`<div style="margin-bottom:4px;">${c}</div>`).join("");
 }
 (async function initCachedOrFetch(){
   const cachedMain = await loadMainData();
