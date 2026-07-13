@@ -1346,13 +1346,14 @@ function mainGetPrintListRows(){
   if(mainHideCompleted){ filtered = filtered.filter(r=>computeProductStatus(r) !== "완료"); }
   // "출고" 건은 체크박스 설정과 상관없이 항상 제외합니다.
   filtered = filtered.filter(r=>computeProductStatus(r) !== "출고");
-  // 화면의 정렬 드롭다운과 상관없이 항상 "최종납기 빠른 날짜가 위로",
-  // 같은 날짜 안에서는 "기존도번 오름차순(1→N)"으로 정렬합니다.
+  // 화면의 정렬 드롭다운과 상관없이 항상 "기존도번 오름차순(1→N)"이 우선,
+  // 같은 기존도번 안에서는 "최종납기 빠른 날짜가 위로" 정렬합니다.
   filtered = filtered.slice().sort((a,b)=>{
-    const da = a.dueDate || "", db = b.dueDate || "";
-    if(da !== db) return da.localeCompare(db);
     const oa = String(a.oldDrawingNo||""), ob = String(b.oldDrawingNo||"");
-    return oa.localeCompare(ob, undefined, {numeric:true, sensitivity:"base"});
+    const cmp = oa.localeCompare(ob, undefined, {numeric:true, sensitivity:"base"});
+    if(cmp !== 0) return cmp;
+    const da = a.dueDate || "", db = b.dueDate || "";
+    return da.localeCompare(db);
   });
   return filtered;
 }
