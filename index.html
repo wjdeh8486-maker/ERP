@@ -450,6 +450,7 @@
         <div class="status-multiselect" id="main-statusMultiselect">
           <button type="button" id="main-statusToggle" class="status-toggle-btn">전체 상태 ▾</button>
           <div class="status-dropdown" id="main-statusDropdown">
+            <button type="button" id="main-statusRestoreBtn" style="width:100%;margin-bottom:6px;padding:6px;border-radius:4px;border:1px solid var(--border);background:#F0F4FA;color:var(--navy);font-weight:700;font-size:12.5px;cursor:pointer;">↺ 전체 복원</button>
             <label><input type="checkbox" value="생산" checked> 생산</label>
             <label><input type="checkbox" value="재고" checked> 재고</label>
             <label><input type="checkbox" value="출고" checked> 출고</label>
@@ -517,7 +518,7 @@
       <div class="table-wrap" style="padding:16px;margin-bottom:16px;">
         <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">🔴 지연 심한 순 TOP 5</div>
         <table>
-          <thead><tr><th style="text-align:center;">구분</th><th style="text-align:center;">기존도번</th><th style="text-align:center;">품명</th><th>고객사</th><th>수량</th><th>지연일수</th></tr></thead>
+          <thead><tr><th style="text-align:center;">구분</th><th style="text-align:center;">PROJECT NO.</th><th style="text-align:center;">기존도번</th><th style="text-align:center;">품명</th><th>고객사</th><th>수량</th><th>지연일수</th></tr></thead>
           <tbody id="summary-overdueList"></tbody>
         </table>
       </div>
@@ -612,6 +613,7 @@
           <div class="status-multiselect" id="overdue-statusMultiselect" style="margin-top:8px;">
             <button type="button" class="status-toggle-btn" id="overdue-statusToggle">전체 상태 ▾</button>
             <div class="status-dropdown" id="overdue-statusDropdown">
+              <button type="button" id="overdue-statusRestoreBtn" style="width:100%;margin-bottom:6px;padding:6px;border-radius:4px;border:1px solid var(--border);background:#F0F4FA;color:var(--navy);font-weight:700;font-size:12.5px;cursor:pointer;">↺ 전체 복원</button>
               <label><input type="checkbox" value="생산" checked> 생산</label>
               <label><input type="checkbox" value="재고" checked> 재고</label>
               <label><input type="checkbox" value="출고" checked> 출고</label>
@@ -1282,6 +1284,13 @@ document.querySelectorAll("#main-statusDropdown input[type=checkbox]").forEach(c
     mainUpdateStatusToggleLabel();
     mainApplySearch();
   });
+});
+document.getElementById("main-statusRestoreBtn").addEventListener("click", (e)=>{
+  e.stopPropagation();
+  document.querySelectorAll("#main-statusDropdown input[type=checkbox]").forEach(cb=>{ cb.checked = true; });
+  mainSelectedStatuses = ALL_MAIN_STATUSES.slice();
+  mainUpdateStatusToggleLabel();
+  mainApplySearch();
 });
 document.getElementById("main-hideDoneBtn").addEventListener("click", ()=>{
   mainHideCompleted = !mainHideCompleted;
@@ -3300,6 +3309,13 @@ document.querySelectorAll("#overdue-statusDropdown input[type=checkbox]").forEac
     overdueApplySearch();
   });
 });
+document.getElementById("overdue-statusRestoreBtn").addEventListener("click", (e)=>{
+  e.stopPropagation();
+  document.querySelectorAll("#overdue-statusDropdown input[type=checkbox]").forEach(cb=>{ cb.checked = true; });
+  overdueSelectedStatuses = ["생산","재고","출고","측정","외관","비젼","OK"];
+  document.getElementById("overdue-statusToggle").textContent = "전체 상태 ▾";
+  overdueApplySearch();
+});
 function overdueApplySearch(){
   overdueRenderTable(overdueGetFilteredRows());
 }
@@ -3504,8 +3520,8 @@ function renderSummaryView(){
   document.getElementById("summary-statOverdue").textContent = overdueRows.length;
   const overdueTop5 = overdueRows.slice(0,5);
   document.getElementById("summary-overdueList").innerHTML = overdueTop5.length ? overdueTop5.map(r=>
-    `<tr><td style="text-align:center;">${r.orderNo}</td><td style="text-align:center;">${r.oldDrawingNo||''}</td><td style="text-align:center;">${r.partName}</td><td>${r.customer}</td><td>${r.qty}</td><td class="cell-overdue">${overdueDaysLate(r.dueDate)}일</td></tr>`
-  ).join("") : `<tr><td colspan="6" style="padding:16px;color:var(--text-mute);">지연 건이 없습니다.</td></tr>`;
+    `<tr><td style="text-align:center;">${r.orderNo}</td><td style="text-align:center;">${r.vendor||''}</td><td style="text-align:center;">${r.oldDrawingNo||''}</td><td style="text-align:center;">${r.partName}</td><td>${r.customer}</td><td>${r.qty}</td><td class="cell-overdue">${overdueDaysLate(r.dueDate)}일</td></tr>`
+  ).join("") : `<tr><td colspan="7" style="padding:16px;color:var(--text-mute);">지연 건이 없습니다.</td></tr>`;
 
   // 이번달 매출(현재까지) vs 저번달 매출 비교
   const thisMonthStats = computeMonthSalesStats(year, month);
