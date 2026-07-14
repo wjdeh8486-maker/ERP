@@ -1683,13 +1683,32 @@ document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
     #print-area .cal-summary-arrow{ display:none !important; }
   `;
   document.head.appendChild(orientationStyle);
+  // 실제로 그려진 높이를 측정해서, 한 페이지(194mm)를 넘으면 전체를 비례 축소해서
+  // 무조건 1페이지 안에 들어가도록 만듭니다 (내용이 아무리 많아도 2페이지로 안 넘어감).
+  requestAnimationFrame(()=>{
+    const grid = document.querySelector("#print-area .calendar-grid");
+    const printArea = document.getElementById("print-area");
+    if(grid && printArea){
+      const mmToPx = 96/25.4; // 96dpi 기준 1mm = 약 3.78px
+      const availablePx = 194 * mmToPx - (printArea.querySelector("h2")?.offsetHeight || 30);
+      const neededPx = grid.scrollHeight;
+      if(neededPx > availablePx && availablePx > 0){
+        const scale = availablePx / neededPx;
+        grid.style.transform = `scale(${scale})`;
+        grid.style.transformOrigin = "top left";
+        grid.style.width = (100/scale) + "%";
+      }
+    }
+    window.print();
+  });
   function restoreOrientation(){
     const el = document.getElementById("main-cal-print-orientation");
     if(el) el.remove();
+    const grid = document.querySelector("#print-area .calendar-grid");
+    if(grid){ grid.style.transform=""; grid.style.transformOrigin=""; grid.style.width=""; }
     window.removeEventListener("afterprint", restoreOrientation);
   }
   window.addEventListener("afterprint", restoreOrientation);
-  window.print();
 });
 document.getElementById("main-calExcelBtn").addEventListener("click", ()=>{
   const rows = mainGetCalendarRows().filter(r=>{
