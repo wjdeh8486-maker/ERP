@@ -1470,6 +1470,16 @@ function renderMainCalendar(){
   const firstDow = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const todayStr = new Date().toDateString();
+  // 요일별로 폭을 "그 요일 중 가장 바쁜 주"에 맞춰 통일합니다.
+  // 예: 수요일이 어느 한 주라도 항목이 많으면, 그 달의 모든 수요일 칸이 그 넓은 폭을 함께 씁니다.
+  // 이렇게 하면 요일별 세로줄은 항상 정렬되면서도, 내용이 많은 요일은 여전히 넓게 나옵니다.
+  const dowMaxCount = [0,0,0,0,0,0,0];
+  for(let day=1; day<=daysInMonth; day++){
+    const dow = (firstDow + (day-1)) % 7;
+    const cnt = (byDay[day]||[]).length;
+    if(cnt > dowMaxCount[dow]) dowMaxCount[dow] = cnt;
+  }
+  const dowFlex = dowMaxCount.map(cnt => cnt>0 ? "flex:2.2 1 0;" : "flex:0.4 1 0;");
   // 요일 헤더(일~토)는 매달 바뀌지 않으므로 최초 한 번만 채워두고, 이후에는 다시 그리지 않습니다.
   const dowRow = document.getElementById("main-calDowRow");
   if(dowRow && !dowRow.dataset.built){
@@ -1487,9 +1497,7 @@ function renderMainCalendar(){
   }
   // 내용이 없는 요일은 폭을 최소화하고, 내용이 있는 요일은 그만큼 넓혀서
   // 셀 안에서 옆으로 슬라이드할 필요가 최대한 없도록 합니다.
-  const EMPTY_FLEX = "flex:0.4 1 0;";
-  const BUSY_FLEX = "flex:2.2 1 0;";
-  for(let i=0;i<firstDow;i++){ weekCells.push(`<div class="cal-cell empty" style="${EMPTY_FLEX}"></div>`); }
+  for(let i=0;i<firstDow;i++){ weekCells.push(`<div class="cal-cell empty" style="${dowFlex[i]}"></div>`); }
   for(let day=1; day<=daysInMonth; day++){
     const items = byDay[day] || [];
     const isToday = new Date(year, month, day).toDateString() === todayStr;
@@ -1521,14 +1529,14 @@ function renderMainCalendar(){
       }
       return gItems.map(itemRowHtml).join("");
     }).join("");
-    const cellFlex = items.length ? BUSY_FLEX : EMPTY_FLEX;
+    const cellFlex = dowFlex[dow];
     weekCells.push(`<div class="cal-cell ${items.length?'has-items':''} ${isToday?'today':''} ${dowClass?'weekend '+dowClass:''}" style="${cellFlex}" data-date="${cellDateStr}">
       <div class="cal-date">${day}</div>
       ${itemsHtml}
     </div>`);
     if(weekCells.length===7) flushWeek();
   }
-  while(weekCells.length && weekCells.length<7){ weekCells.push(`<div class="cal-cell empty" style="${EMPTY_FLEX}"></div>`); }
+  while(weekCells.length && weekCells.length<7){ weekCells.push(`<div class="cal-cell empty" style="${dowFlex[weekCells.length]}"></div>`); }
   flushWeek();
   document.getElementById("main-calendarGrid").innerHTML = html;
 }
@@ -1622,7 +1630,6 @@ document.getElementById("main-calNext").addEventListener("click", ()=>{
   renderMainCalendar();
 });
 document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
-  renderMainCalendar();
   const monthLabel = document.getElementById("main-calMonthLabel").textContent;
   const dowHtml = document.getElementById("main-calDowRow").innerHTML;
   const gridHtml = document.getElementById("main-calendarGrid").innerHTML;
