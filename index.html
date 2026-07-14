@@ -188,6 +188,9 @@
   table{border-collapse:collapse;width:100%;font-size:13px;}
   thead th{background:var(--navy);color:#fff;font-weight:700;padding:10px 8px;position:sticky;top:0;white-space:nowrap;text-align:center;border-right:1px solid #33406099;}
   thead th.wait-col{color:var(--yellow);}
+  thead th.wait-col, tbody td.wait-col-cell{max-width:70px;font-size:12px;}
+  #main-tableBody td:nth-child(14), #main-tableBody td:nth-child(15), #main-tableBody td:nth-child(16){max-width:60px;font-size:12px;padding:8px 4px;}
+  #view-main thead th:nth-child(14), #view-main thead th:nth-child(15), #view-main thead th:nth-child(16){font-size:11.5px;padding:8px 4px;}
   thead th.defect-col{color:#ff9d9d;}
   tbody td{padding:8px;border-bottom:1px solid var(--border);text-align:center;white-space:nowrap;}
   tbody tr:hover{background:#F8F9FC;}
@@ -609,7 +612,7 @@
           <thead>
             <tr>
               <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th><th>품번</th><th>기존도번</th><th>품명</th><th>수량</th>
-              <th>최종납기</th><th>납품일자</th><th>납품여부</th>
+              <th>최종납기</th><th>납품일자</th><th>납품여부</th><th>현재진행공정</th>
               <th class="wait-col">납품대기</th><th class="wait-col">측정실검사대기</th>
               <th class="wait-col">크린룸검사대기</th><th class="wait-col">비젼검사대기</th><th>선출고</th>
             </tr>
@@ -665,7 +668,7 @@
           <thead>
             <tr>
               <th>지연일수</th><th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th>
-              <th>기존도번</th><th>품명</th><th>수량</th><th>최종납기</th>
+              <th>기존도번</th><th>품명</th><th>수량</th><th>현재진행공정</th><th>최종납기</th>
             </tr>
           </thead>
           <tbody id="overdue-tableBody"></tbody>
@@ -1193,7 +1196,7 @@ function mainRenderTable(data){
       <td>${r.oldDrawingNo||''}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
       <td class="${overdue?'cell-overdue':''}">${r.dueDate||''}</td>
-      <td>${r.shipDate||''}</td><td>${r.shipped||''}</td>
+      <td>${r.shipDate||''}</td><td>${r.shipped||''}</td><td>${getCurrentProcess(r.orderNo)}</td>
       <td class="${computeWaitDeliver(r)>0?'cell-wait-hi':''}">${computeWaitDeliver(r)}</td>
       <td class="${computeWaitMeasure(r)>0?'cell-wait-hi':''}">${computeWaitMeasure(r)}</td>
       <td class="${computeWaitClean(r)>0?'cell-wait-hi':''}">${computeWaitClean(r)}</td>
@@ -1972,6 +1975,39 @@ const INV_SAMPLE = [
   {partNo:"120008801", inDate:"2022-09-16", sn:1, inQty:1, outDate:"", outQty:"", ctrlNo:"", note:""},
 ];
 let invData = INV_SAMPLE.slice();
+// 관리번호-순번 을 합친 키(예: "22-M34-1")로 "현재진행공정"을 찾을 수 있는 맵입니다.
+// MAIN의 ORDER NO. 값이 이미 이 형식(관리번호-순번)과 같은 방식이라, ORDER NO로 바로 조회합니다.
+let processMap = {};
+function getCurrentProcess(orderNo){
+  return processMap[orderNo] || "";
+}
+function buildProcessMap(rows){
+  const map = {};
+  rows.forEach(row=>{
+    const ctrlNo = String(row["관리번호"]||"").trim();
+    const seq = String(row["순번"]||"").trim();
+    if(!ctrlNo || !seq) return;
+    const key = ctrlNo + "-" + seq;
+    map[key] = row["현재진행공정"] || "";
+  });
+  return map;
+}
+async function fetchProcessData(){
+  const url = mainApiUrl || document.getElementById("main-appsScriptUrl")?.value?.trim();
+  if(!url) return;
+  try{
+    const res = await fetch(url + "?dataset=" + encodeURIComponent("생산공정현황")).then(r=>r.json());
+    if(!res.success) return;
+    processMap = buildProcessMap(res.rows||[]);
+    cacheSet("cache_processMap", processMap);
+    cacheSet("processLastSync", Date.now());
+    mainApplySearch();
+  }catch(e){ /* 조용히 무시: 이 데이터는 보조 정보라 실패해도 나머지 화면은 정상 동작해야 합니다 */ }
+}
+(function initProcessCached(){
+  const cached = cacheGet("cache_processMap");
+  if(cached) processMap = cached;
+})();
 function invComputeStock(partNo){
   const rows = invData.filter(r=>r.partNo===partNo);
   const totalIn = rows.reduce((s,r)=>s+(Number(r.inQty)||0),0);
@@ -3384,6 +3420,7 @@ function overdueRenderTable(rows){
       <td style="text-align:center;">${r.vendor||''}</td>
       <td>${r.oldDrawingNo||''}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
+      <td>${getCurrentProcess(r.orderNo)}</td>
       <td class="cell-overdue">${r.dueDate||''}</td>
     `;
     tbody.appendChild(tr);
@@ -3403,6 +3440,7 @@ document.getElementById("overdue-printBtn").addEventListener("click", ()=>{
       <td style="text-align:center;">${r.vendor||''}</td>
       <td>${r.oldDrawingNo||''}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
+      <td>${getCurrentProcess(r.orderNo)}</td>
       <td>${r.dueDate||''}</td>
     </tr>`;
   }).join("");
@@ -3411,7 +3449,7 @@ document.getElementById("overdue-printBtn").addEventListener("click", ()=>{
     <table>
       <thead><tr>
         <th>지연일수</th><th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th>
-        <th>기존도번</th><th>품명</th><th>수량</th><th>최종납기</th>
+        <th>기존도번</th><th>품명</th><th>수량</th><th>현재진행공정</th><th>최종납기</th>
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
@@ -3616,6 +3654,7 @@ function renderSummaryView(){
       "최신 데이터 자동 확인 중...";
     fetchMainData("2025,2026");
   }
+  fetchProcessData();
   renderSummaryView();
 })();
 setInterval(() => {
@@ -3624,6 +3663,7 @@ setInterval(() => {
     fetchInvData();
   });
   fetchQualityData().catch(() => {});
+  fetchProcessData();
 }, 3 * 60 * 60 * 1000);
 </script>
 <div id="print-area" style="display:none;"></div>
