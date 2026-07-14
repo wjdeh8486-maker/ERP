@@ -92,7 +92,7 @@
     background:var(--card-bg);border:1px solid var(--border);border-radius:12px;
     box-shadow:0 20px 60px rgba(20,27,46,.35);
     position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-    width:94vw;max-width:1200px;height:90vh;max-height:900px;
+    width:98vw;max-width:1600px;height:96vh;max-height:1100px;
     z-index:200;display:flex;flex-direction:column;padding:14px;overflow:hidden;
   }
   .calendar-panel .calendar-grid{flex:1;min-height:0;max-height:none;}
@@ -122,10 +122,10 @@
   .cal-cell .cal-date{font-weight:700;font-size:12px;margin-bottom:3px;color:var(--text);}
   .cal-cell.sun .cal-date{color:var(--red);}
   .cal-cell.sat .cal-date{color:var(--blue);}
-  .cal-cell .cal-item{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 18px 2px 4px;margin-bottom:3px;position:relative;white-space:nowrap;cursor:grab;}
+  .cal-cell .cal-item{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 24px 2px 4px;margin-bottom:3px;position:relative;white-space:nowrap;cursor:grab;}
   .cal-cell .cal-item.dragging{opacity:0.4;}
   .cal-cell.cal-drop-target{outline:2px dashed var(--blue);outline-offset:-2px;background:#EAF1FB;}
-  .cal-item-remove{position:absolute;right:3px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-mute);font-weight:700;font-size:13px;line-height:1;padding:2px 4px;border-radius:3px;}
+  .cal-item-remove{position:absolute;right:2px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-mute);font-weight:700;font-size:13px;line-height:1;padding:2px 5px;border-radius:3px;background:#EAF1FB;}
   .cal-item-remove:hover{color:#fff;background:var(--red);}
   .cal-cell .cal-item b{color:var(--red);}
   .cal-item-summary{font-size:10.5px;line-height:1.35;color:var(--navy);background:#EAF1FB;border-left:3px solid var(--blue);border-radius:3px;padding:2px 6px;margin-bottom:3px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:4px;white-space:nowrap;}
@@ -311,6 +311,7 @@
     #print-area .cal-cell .cal-item{ font-size:7.5px; white-space:normal; overflow:visible; }
     #print-area .cal-item-remove{ display:none !important; }
     #print-area .cal-item-full{ display:none !important; }
+    #print-area .cal-item-full.open{ display:block !important; }
     #print-area .cal-summary-arrow{ display:none !important; }
     #print-area .q-monthly-table table,
     #print-area .q-detail-section table{ min-width:0 !important; font-size:7.5px; }
@@ -1484,7 +1485,11 @@ function renderMainCalendar(){
       weekCells = [];
     }
   }
-  for(let i=0;i<firstDow;i++){ weekCells.push(`<div class="cal-cell empty"></div>`); }
+  // 내용이 없는 요일은 폭을 최소화하고, 내용이 있는 요일은 그만큼 넓혀서
+  // 셀 안에서 옆으로 슬라이드할 필요가 최대한 없도록 합니다.
+  const EMPTY_FLEX = "flex:0.4 1 0;";
+  const BUSY_FLEX = "flex:2.2 1 0;";
+  for(let i=0;i<firstDow;i++){ weekCells.push(`<div class="cal-cell empty" style="${EMPTY_FLEX}"></div>`); }
   for(let day=1; day<=daysInMonth; day++){
     const items = byDay[day] || [];
     const isToday = new Date(year, month, day).toDateString() === todayStr;
@@ -1516,13 +1521,14 @@ function renderMainCalendar(){
       }
       return gItems.map(itemRowHtml).join("");
     }).join("");
-    weekCells.push(`<div class="cal-cell ${items.length?'has-items':''} ${isToday?'today':''} ${dowClass?'weekend '+dowClass:''}" data-date="${cellDateStr}">
+    const cellFlex = items.length ? BUSY_FLEX : EMPTY_FLEX;
+    weekCells.push(`<div class="cal-cell ${items.length?'has-items':''} ${isToday?'today':''} ${dowClass?'weekend '+dowClass:''}" style="${cellFlex}" data-date="${cellDateStr}">
       <div class="cal-date">${day}</div>
       ${itemsHtml}
     </div>`);
     if(weekCells.length===7) flushWeek();
   }
-  while(weekCells.length && weekCells.length<7){ weekCells.push(`<div class="cal-cell empty"></div>`); }
+  while(weekCells.length && weekCells.length<7){ weekCells.push(`<div class="cal-cell empty" style="${EMPTY_FLEX}"></div>`); }
   flushWeek();
   document.getElementById("main-calendarGrid").innerHTML = html;
 }
@@ -1665,6 +1671,7 @@ document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
     #print-area .cal-item-summary{ white-space:normal !important; font-size:8.5px !important; padding:1px 5px !important; }
     #print-area .cal-item-remove{ display:none !important; }
     #print-area .cal-item-full{ display:none !important; }
+    #print-area .cal-item-full.open{ display:block !important; }
     #print-area .cal-summary-arrow{ display:none !important; }
   `;
   document.head.appendChild(orientationStyle);
