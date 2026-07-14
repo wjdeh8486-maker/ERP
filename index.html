@@ -707,6 +707,13 @@
           <input id="inv-checkPartNo" type="text" placeholder="품번 (예: M200-004-62A)">
           <input id="inv-checkSN" type="text" placeholder="S/N (예: 140)">
           <input id="inv-checkCtrlNo" type="text" placeholder="관리번호 (예: 26-234-1)">
+          <select id="inv-checkSort">
+            <option value="">정렬 없음</option>
+            <option value="sn-asc">S/N 오름차순</option>
+            <option value="sn-desc">S/N 내림차순</option>
+            <option value="outdate-asc">출고일자 빠른순</option>
+            <option value="outdate-desc">출고일자 늦은순</option>
+          </select>
           <button id="inv-checkBtn">🔍 재고 검색</button>
         </div>
         <div class="stock-summary" id="inv-checkSummary" style="display:none;">
@@ -2034,6 +2041,11 @@ function invRenderCheck(criteria){
   );
   if(rows.length===0){ empty.textContent = "해당 조건의 이력이 없습니다."; empty.style.display="block"; summary.style.display="none"; return; }
   empty.style.display="none"; summary.style.display="flex";
+  const sortMode = document.getElementById("inv-checkSort").value;
+  if(sortMode==="sn-asc") rows.sort((a,b)=> String(a.sn||"").localeCompare(String(b.sn||""), undefined, {numeric:true}));
+  else if(sortMode==="sn-desc") rows.sort((a,b)=> String(b.sn||"").localeCompare(String(a.sn||""), undefined, {numeric:true}));
+  else if(sortMode==="outdate-asc") rows.sort((a,b)=> String(a.outDate||"9999-99-99").localeCompare(String(b.outDate||"9999-99-99")));
+  else if(sortMode==="outdate-desc") rows.sort((a,b)=> String(b.outDate||"0000-00-00").localeCompare(String(a.outDate||"0000-00-00")));
   const totalIn = rows.reduce((s,r)=>s+(Number(r.inQty)||0),0);
   const totalOut = rows.reduce((s,r)=>s+(Number(r.outQty)||0),0);
   document.getElementById("inv-stockValue").textContent = totalIn-totalOut;
@@ -2234,6 +2246,7 @@ function getInvCheckCriteria(){
   };
 }
 document.getElementById("inv-checkBtn").addEventListener("click", (e)=> withSearchIndicator(e.currentTarget, ()=>invRenderCheck(getInvCheckCriteria())));
+document.getElementById("inv-checkSort").addEventListener("change", ()=> invRenderCheck(getInvCheckCriteria()));
 ["inv-checkPartNo","inv-checkSN","inv-checkCtrlNo"].forEach(id=>{
   document.getElementById(id).addEventListener("keydown", e=>{ if(e.key==="Enter") invRenderCheck(getInvCheckCriteria()); });
 });
