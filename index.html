@@ -454,6 +454,7 @@
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
     <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
+    <div class="nav-item" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
   </div>
   <button type="button" id="sideNavToggle" class="side-nav-toggle" title="메뉴 접기/펴기">◀</button>
   <div class="main-area">
@@ -891,6 +892,23 @@
         <div class="empty-state" id="vendor-emptyState">검색 버튼을 클릭하면 기존도번별 단가 이력이 표시됩니다.</div>
       </div>
     </div>
+    <!-- ===================== UPLOAD VIEW ===================== -->
+    <div id="topbar-upload" class="topbar" style="display:none;">
+      <h1>📤 데이터 업로드</h1>
+      <div style="width:100%;font-size:12px;color:#B9C2D6;margin-top:-4px;">
+        NAS의 엑셀 파일을 아래 해당 카드에 드래그하면 <b style="color:#FFD400;">구글시트 파일 ID를 유지한 채 내용만 덮어쓰기</b>합니다. API 주소 변경이 필요 없습니다.
+      </div>
+    </div>
+    <div class="view" id="view-upload">
+      <div id="upload-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;"></div>
+      <div class="table-wrap" style="margin-top:16px;padding:14px 16px;font-size:12.5px;color:var(--text-mute);line-height:1.7;">
+        <b>사용 순서</b><br>
+        1. NAS(\\Ntl\5.품질팀\...)의 엑셀 파일을 해당 카드에 드래그 (또는 클릭해서 선택)<br>
+        2. 카드에 표시된 탭이 업로드한 엑셀의 같은 이름 탭으로 자동 교체됩니다 (엑셀에 없는 탭은 건너뜀)<br>
+        3. 전부 완료되면 각 화면의 <b>동기화(불러오기)</b> 버튼을 눌러 최신 데이터를 반영하세요<br>
+        ※ 덮어쓰기는 탭 단위로만 이뤄지며, 같은 파일의 다른 탭은 건드리지 않습니다.
+      </div>
+    </div>
   </div>
 </div>
 <template id="quality-category-template">
@@ -946,6 +964,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("topbar-sales").style.display = target==="sales" ? "flex" : "none";
     document.getElementById("topbar-vendor").style.display = target==="vendor" ? "flex" : "none";
     document.getElementById("topbar-summary").style.display = target==="summary" ? "flex" : "none";
+    document.getElementById("topbar-upload").style.display = target==="upload" ? "flex" : "none";
     document.getElementById("main-syncPanel").classList.remove("open");
     document.getElementById("inv-syncPanel").classList.remove("open");
     document.getElementById("quality-syncPanel").classList.remove("open");
@@ -3721,6 +3740,145 @@ setInterval(() => {
   fetchQualityData().catch(() => {});
   fetchProcessData();
 }, 3 * 60 * 60 * 1000);
+
+/* ============ 데이터 업로드 (엑셀 → 구글시트 덮어쓰기) ============
+ * 각 카드는 "구글시트 파일 ID + 교체할 탭 목록"으로 정의됩니다.
+ * 파일 ID를 유지한 채 내용만 교체하므로 SOURCES / API 주소는 그대로 유지됩니다.
+ */
+const UPLOAD_TARGETS = [
+  { name:"QC제품관리(2023년)", nas:"\\\\Ntl\\5.품질팀\\제품관리\\QC관리도",
+    fileId:"1WQpPWKzQxnZm3WQH7dSro_juqK7CoCk-QQcaKef7bDs", tabs:["QC제품관리(2023)"] },
+  { name:"QC제품관리(2024년)", nas:"\\\\Ntl\\5.품질팀\\제품관리\\QC관리도",
+    fileId:"1-W5Q6t4mQRaELpOGRHlz7xoqrh9ssNInhnThf337d2k", tabs:["QC제품관리(2024)"] },
+  { name:"QC제품관리(2025년)", nas:"\\\\Ntl\\5.품질팀\\제품관리\\QC관리도",
+    fileId:"11Xd7v0-5FtgTRkPcU5qWUqEuQZOIitgz6Ec-FCx7bx0", tabs:["QC제품관리(2025)"] },
+  { name:"QC제품관리(2026년)", nas:"\\\\Ntl\\5.품질팀\\제품관리\\QC관리도",
+    fileId:"1xITLF_ZmjXTJNJnwRqzxC2TT8HmXtUSQkAkl1pAykiE", tabs:["QC제품관리(2026)"] },
+  { name:"제품입출고현황", nas:"\\\\Ntl\\5.품질팀\\품질문서\\2. 재고관리",
+    fileId:"1e2vMqewro_xT9DGXj4vKokiLugr49knogp6kSApOKYM", tabs:["제품 입출고현황"] },
+  { name:"검사종합", nas:"\\\\Ntl\\5.품질팀\\품질문서\\29. 수입, 공정, 출하검사 기록관리",
+    fileId:"1KmEjFFONvVzJ8wokOhfayIlNCP-qvTSi8Qc7cFpAnx0",
+    tabs:["측정실검사대기","크린룸검사대기","공정검사(치수,BOLT,LED)","공정검사(사내외관)","수입검사(기능)","수입검사(외관)","출하검사"] },
+  { name:"비젼검사(SHOWERHEAD 이력)", nas:"\\\\Ntl\\5.품질팀\\제품관리",
+    fileId:"17GiX14_B0De46jZsJ0emsnmwIXrRV9HSsz0mSHogzC0", tabs:["SHOWERHEAD 이력"] },
+  { name:"생산공정현황", nas:"\\\\Ntl\\5.품질팀\\제품관리",
+    fileId:"13PrbzapbBQ3aX1Qi4VNMc6FID8mnJOJLH2gh9fLtGpw", tabs:["sheet 1"] }
+];
+const UPLOAD_CHUNK_ROWS = 1000; // 한 번에 전송할 행 수 (대용량 시트도 안전하게 나눠 전송)
+
+function uploadGetApiUrl(){
+  const el = document.getElementById("main-appsScriptUrl");
+  return el ? el.value.trim() : "";
+}
+function uploadNormTab(s){ return String(s||"").replace(/\s+/g,"").toLowerCase(); }
+
+// 날짜(Date 객체)는 yyyy-MM-dd 문자열로, 나머지는 그대로 전송합니다.
+function uploadCellValue(v){
+  if(v instanceof Date){
+    const y=v.getFullYear(), m=String(v.getMonth()+1).padStart(2,"0"), d=String(v.getDate()).padStart(2,"0");
+    return `${y}-${m}-${d}`;
+  }
+  if(v===undefined||v===null) return "";
+  return v;
+}
+
+function uploadPostChunk(apiUrl, payload){
+  return fetch(apiUrl, {
+    method:"POST",
+    headers:{ "Content-Type":"text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  }).then(r=>r.json());
+}
+
+// 하나의 탭을 청크로 나눠 순차 전송 (첫 청크에서만 기존 내용 삭제)
+async function uploadReplaceTab(apiUrl, fileId, sheetName, aoa, onProgress){
+  const numCols = aoa.reduce((m,r)=>Math.max(m, r.length), 1);
+  const rows = aoa.map(r=>{
+    const c = r.slice(0, numCols).map(uploadCellValue);
+    while(c.length < numCols) c.push("");
+    return c;
+  });
+  if(!rows.length) throw new Error("데이터가 없습니다");
+  let startRow = 1;
+  for(let i=0; i<rows.length; i+=UPLOAD_CHUNK_ROWS){
+    const chunk = rows.slice(i, i+UPLOAD_CHUNK_ROWS);
+    const res = await uploadPostChunk(apiUrl, {
+      action:"replaceSheet", fileId:fileId, sheetName:sheetName,
+      rows:chunk, startRow:startRow, numCols:numCols, clearFirst:(i===0)
+    });
+    if(!res || !res.success) throw new Error((res && res.error) || "서버 응답 오류");
+    startRow += chunk.length;
+    if(onProgress) onProgress(Math.min(i+UPLOAD_CHUNK_ROWS, rows.length), rows.length);
+  }
+  return rows.length;
+}
+
+async function uploadHandleFile(target, file, statusEl){
+  const apiUrl = uploadGetApiUrl();
+  if(!apiUrl){ statusEl.innerHTML = '<span style="color:#FF6B6B;">Apps Script URL이 비어있습니다 (MAIN 동기화 패널 확인)</span>'; return; }
+  statusEl.textContent = "파일 읽는 중...";
+  let wb;
+  try{
+    const buf = await file.arrayBuffer();
+    wb = XLSX.read(buf, { type:"array", cellDates:true });
+  }catch(e){
+    statusEl.innerHTML = '<span style="color:#FF6B6B;">엑셀 파일을 읽을 수 없습니다</span>';
+    return;
+  }
+  const results = [];
+  for(const tab of target.tabs){
+    // 탭 이름 매칭: 공백 무시 비교, 단일 탭 대상 + 단일 시트 파일이면 그 시트를 사용
+    let wsName = wb.SheetNames.find(n => uploadNormTab(n) === uploadNormTab(tab));
+    if(!wsName && target.tabs.length===1 && wb.SheetNames.length===1) wsName = wb.SheetNames[0];
+    if(!wsName){ results.push(`⏭️ ${tab}: 엑셀에 해당 탭 없음(건너뜀)`); continue; }
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wsName], { header:1, defval:"", raw:true });
+    try{
+      statusEl.textContent = `${tab} 업로드 중... 0/${aoa.length}행`;
+      const written = await uploadReplaceTab(apiUrl, target.fileId, tab, aoa,
+        (done,total)=>{ statusEl.textContent = `${tab} 업로드 중... ${done.toLocaleString()}/${total.toLocaleString()}행`; });
+      results.push(`✅ ${tab}: ${written.toLocaleString()}행 완료`);
+    }catch(e){
+      results.push(`❌ ${tab}: ${e.message}`);
+    }
+  }
+  statusEl.innerHTML = results.join("<br>") +
+    '<br><span style="color:var(--text-mute);">→ 완료 후 각 화면의 동기화 버튼으로 반영하세요</span>';
+}
+
+function uploadRenderCards(){
+  const wrap = document.getElementById("upload-cards");
+  if(!wrap) return;
+  wrap.innerHTML = "";
+  UPLOAD_TARGETS.forEach((t, idx)=>{
+    const card = document.createElement("div");
+    card.className = "table-wrap";
+    card.style.cssText = "padding:14px 16px;";
+    card.innerHTML = `
+      <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${t.name}</div>
+      <div style="font-size:11px;color:var(--text-mute);margin-bottom:8px;word-break:break-all;">${t.nas}</div>
+      <div style="font-size:11.5px;color:var(--text-mute);margin-bottom:10px;">교체 탭: ${t.tabs.join(", ")}</div>
+      <label class="drop-zone" id="upload-zone-${idx}" style="color:var(--text-mute);border-color:var(--border);white-space:normal;">
+        <i>📁</i><span id="upload-label-${idx}">엑셀 파일 선택 또는 드래그</span>
+        <input type="file" id="upload-input-${idx}" accept=".xlsx,.xls,.xlsb,.xlsm">
+      </label>
+      <div id="upload-status-${idx}" style="font-size:12px;margin-top:8px;line-height:1.6;"></div>`;
+    wrap.appendChild(card);
+    const zone = card.querySelector(`#upload-zone-${idx}`);
+    const input = card.querySelector(`#upload-input-${idx}`);
+    const label = card.querySelector(`#upload-label-${idx}`);
+    const status = card.querySelector(`#upload-status-${idx}`);
+    const handle = (file)=>{ label.textContent = file.name; uploadHandleFile(t, file, status); };
+    zone.addEventListener("click", e=>{ if(e.target!==input) input.click(); });
+    input.addEventListener("change", ()=>{ if(input.files[0]) handle(input.files[0]); });
+    zone.addEventListener("dragover", e=>{ e.preventDefault(); zone.classList.add("dragover"); });
+    zone.addEventListener("dragleave", ()=>zone.classList.remove("dragover"));
+    zone.addEventListener("drop", e=>{
+      e.preventDefault(); zone.classList.remove("dragover");
+      if(e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]);
+    });
+  });
+}
+uploadRenderCards();
 </script>
 <div id="print-area" style="display:none;"></div>
 </body>
