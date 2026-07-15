@@ -184,6 +184,11 @@
   .progress-bar-fill{height:100%;background:linear-gradient(90deg,#4CAF67,#2E7D46);border-radius:20px;transition:width .3s ease;}
   .progress-label{font-size:12px;color:var(--text-mute);margin-top:4px;}
   .table-wrap{background:var(--card-bg);border-radius:10px;border:1px solid var(--border);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;max-width:100%;max-height:calc(100vh - 260px);box-shadow:0 1px 3px rgba(31,42,68,.06);padding-bottom:14px;}
+  /* 데이터 업로드 화면: 카드는 내부 스크롤/높이 제한 없이 내용만큼 늘어나야 함 (PC/모바일 공통) */
+  #upload-cards{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(340px,100%), 1fr)); gap:14px; }
+  .upload-card{ background:var(--card-bg); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 3px rgba(31,42,68,.06); padding:14px 16px; max-width:100%; min-width:0; overflow:hidden; }
+  .upload-card .drop-zone{ width:100%; white-space:normal; color:var(--text-mute); border-color:var(--border); box-sizing:border-box; }
+  .upload-note{ background:var(--card-bg); border:1px solid var(--border); border-radius:10px; box-shadow:0 1px 3px rgba(31,42,68,.06); padding:14px 16px; margin-top:16px; font-size:12.5px; color:var(--text-mute); line-height:1.7; max-width:100%; }
   #view-main > .table-wrap{ max-height: calc(100vh - 300px); min-height: 240px; }
   table{border-collapse:collapse;width:100%;font-size:13px;}
   thead th{background:var(--navy);color:#fff;font-weight:700;padding:10px 8px;position:sticky;top:0;white-space:nowrap;text-align:center;border-right:1px solid #33406099;}
@@ -900,8 +905,8 @@
       </div>
     </div>
     <div class="view" id="view-upload">
-      <div id="upload-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;"></div>
-      <div class="table-wrap" style="margin-top:16px;padding:14px 16px;font-size:12.5px;color:var(--text-mute);line-height:1.7;">
+      <div id="upload-cards"></div>
+      <div class="upload-note">
         <b>사용 순서</b><br>
         1. NAS(\\Ntl\5.품질팀\...)의 엑셀 파일을 해당 카드에 드래그 (또는 클릭해서 선택)<br>
         2. 카드에 표시된 탭이 업로드한 엑셀의 같은 이름 탭으로 자동 교체됩니다 (엑셀에 없는 탭은 건너뜀)<br>
@@ -3764,7 +3769,16 @@ const UPLOAD_TARGETS = [
   { name:"생산공정현황", nas:"\\\\Ntl\\5.품질팀\\제품관리",
     fileId:"13PrbzapbBQ3aX1Qi4VNMc6FID8mnJOJLH2gh9fLtGpw", tabs:["sheet 1"] }
 ];
-const UPLOAD_CHUNK_ROWS = 1000; // 한 번에 전송할 행 수 (대용량 시트도 안전하게 나눠 전송)
+const UPLOAD_CELLS_PER_CHUNK = 200000; // 한 번에 전송할 셀 수 (행수는 열 수에 따라 자동 계산)
+
+// 여러 카드에 동시에 드래그해도 순서대로 하나씩 처리하는 대기열입니다.
+// (백엔드는 전역 잠금으로 순차 처리하므로, 동시에 보내면 잠금 대기로 실패만 늘어납니다)
+let uploadQueue = Promise.resolve();
+function uploadEnqueue(fn){
+  const p = uploadQueue.then(fn, fn);
+  uploadQueue = p.catch(()=>{});
+  return p;
+}
 
 function uploadGetApiUrl(){
   const el = document.getElementById("main-appsScriptUrl");
@@ -3782,6 +3796,20 @@ function uploadCellValue(v){
   return v;
 }
 
+// 끝쪽의 완전히 빈 행/열을 잘라내 전송량을 줄입니다 (엑셀은 사용 범위가 실제 데이터보다 큰 경우가 많음)
+function uploadTrimAoa(aoa){
+  const isEmpty = v => v===""||v===undefined||v===null;
+  let lastRow = aoa.length - 1;
+  while(lastRow >= 0 && aoa[lastRow].every(isEmpty)) lastRow--;
+  let numCols = 1;
+  for(let i=0; i<=lastRow; i++){
+    let c = aoa[i].length - 1;
+    while(c >= 0 && isEmpty(aoa[i][c])) c--;
+    if(c+1 > numCols) numCols = c+1;
+  }
+  return { rows: aoa.slice(0, lastRow+1), numCols: numCols };
+}
+
 function uploadPostChunk(apiUrl, payload){
   return fetch(apiUrl, {
     method:"POST",
@@ -3792,23 +3820,25 @@ function uploadPostChunk(apiUrl, payload){
 
 // 하나의 탭을 청크로 나눠 순차 전송 (첫 청크에서만 기존 내용 삭제)
 async function uploadReplaceTab(apiUrl, fileId, sheetName, aoa, onProgress){
-  const numCols = aoa.reduce((m,r)=>Math.max(m, r.length), 1);
-  const rows = aoa.map(r=>{
+  const trimmed = uploadTrimAoa(aoa);
+  const numCols = trimmed.numCols;
+  const rows = trimmed.rows.map(r=>{
     const c = r.slice(0, numCols).map(uploadCellValue);
     while(c.length < numCols) c.push("");
     return c;
   });
   if(!rows.length) throw new Error("데이터가 없습니다");
+  const chunkRows = Math.max(500, Math.floor(UPLOAD_CELLS_PER_CHUNK / numCols));
   let startRow = 1;
-  for(let i=0; i<rows.length; i+=UPLOAD_CHUNK_ROWS){
-    const chunk = rows.slice(i, i+UPLOAD_CHUNK_ROWS);
+  for(let i=0; i<rows.length; i+=chunkRows){
+    const chunk = rows.slice(i, i+chunkRows);
     const res = await uploadPostChunk(apiUrl, {
       action:"replaceSheet", fileId:fileId, sheetName:sheetName,
       rows:chunk, startRow:startRow, numCols:numCols, clearFirst:(i===0)
     });
     if(!res || !res.success) throw new Error((res && res.error) || "서버 응답 오류");
     startRow += chunk.length;
-    if(onProgress) onProgress(Math.min(i+UPLOAD_CHUNK_ROWS, rows.length), rows.length);
+    if(onProgress) onProgress(Math.min(i+chunkRows, rows.length), rows.length);
   }
   return rows.length;
 }
@@ -3816,33 +3846,36 @@ async function uploadReplaceTab(apiUrl, fileId, sheetName, aoa, onProgress){
 async function uploadHandleFile(target, file, statusEl){
   const apiUrl = uploadGetApiUrl();
   if(!apiUrl){ statusEl.innerHTML = '<span style="color:#FF6B6B;">Apps Script URL이 비어있습니다 (MAIN 동기화 패널 확인)</span>'; return; }
-  statusEl.textContent = "파일 읽는 중...";
-  let wb;
-  try{
-    const buf = await file.arrayBuffer();
-    wb = XLSX.read(buf, { type:"array", cellDates:true });
-  }catch(e){
-    statusEl.innerHTML = '<span style="color:#FF6B6B;">엑셀 파일을 읽을 수 없습니다</span>';
-    return;
-  }
-  const results = [];
-  for(const tab of target.tabs){
-    // 탭 이름 매칭: 공백 무시 비교, 단일 탭 대상 + 단일 시트 파일이면 그 시트를 사용
-    let wsName = wb.SheetNames.find(n => uploadNormTab(n) === uploadNormTab(tab));
-    if(!wsName && target.tabs.length===1 && wb.SheetNames.length===1) wsName = wb.SheetNames[0];
-    if(!wsName){ results.push(`⏭️ ${tab}: 엑셀에 해당 탭 없음(건너뜀)`); continue; }
-    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wsName], { header:1, defval:"", raw:true });
+  statusEl.textContent = "대기 중... (앞선 업로드가 끝나면 자동 시작)";
+  await uploadEnqueue(async ()=>{
+    statusEl.textContent = "파일 읽는 중...";
+    let wb;
     try{
-      statusEl.textContent = `${tab} 업로드 중... 0/${aoa.length}행`;
-      const written = await uploadReplaceTab(apiUrl, target.fileId, tab, aoa,
-        (done,total)=>{ statusEl.textContent = `${tab} 업로드 중... ${done.toLocaleString()}/${total.toLocaleString()}행`; });
-      results.push(`✅ ${tab}: ${written.toLocaleString()}행 완료`);
+      const buf = await file.arrayBuffer();
+      wb = XLSX.read(buf, { type:"array", cellDates:true });
     }catch(e){
-      results.push(`❌ ${tab}: ${e.message}`);
+      statusEl.innerHTML = '<span style="color:#FF6B6B;">엑셀 파일을 읽을 수 없습니다</span>';
+      return;
     }
-  }
-  statusEl.innerHTML = results.join("<br>") +
-    '<br><span style="color:var(--text-mute);">→ 완료 후 각 화면의 동기화 버튼으로 반영하세요</span>';
+    const results = [];
+    for(const tab of target.tabs){
+      // 탭 이름 매칭: 공백 무시 비교, 단일 탭 대상 + 단일 시트 파일이면 그 시트를 사용
+      let wsName = wb.SheetNames.find(n => uploadNormTab(n) === uploadNormTab(tab));
+      if(!wsName && target.tabs.length===1 && wb.SheetNames.length===1) wsName = wb.SheetNames[0];
+      if(!wsName){ results.push(`⏭️ ${tab}: 엑셀에 해당 탭 없음(건너뜀)`); continue; }
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wsName], { header:1, defval:"", raw:true });
+      try{
+        statusEl.textContent = `${tab} 업로드 중... 0/${aoa.length}행`;
+        const written = await uploadReplaceTab(apiUrl, target.fileId, tab, aoa,
+          (done,total)=>{ statusEl.textContent = `${tab} 업로드 중... ${done.toLocaleString()}/${total.toLocaleString()}행`; });
+        results.push(`✅ ${tab}: ${written.toLocaleString()}행 완료`);
+      }catch(e){
+        results.push(`❌ ${tab}: ${e.message}`);
+      }
+    }
+    statusEl.innerHTML = results.join("<br>") +
+      '<br><span style="color:var(--text-mute);">→ 완료 후 각 화면의 동기화 버튼으로 반영하세요</span>';
+  });
 }
 
 function uploadRenderCards(){
@@ -3851,17 +3884,16 @@ function uploadRenderCards(){
   wrap.innerHTML = "";
   UPLOAD_TARGETS.forEach((t, idx)=>{
     const card = document.createElement("div");
-    card.className = "table-wrap";
-    card.style.cssText = "padding:14px 16px;";
+    card.className = "upload-card";
     card.innerHTML = `
       <div style="font-weight:700;font-size:14px;margin-bottom:2px;">${t.name}</div>
       <div style="font-size:11px;color:var(--text-mute);margin-bottom:8px;word-break:break-all;">${t.nas}</div>
-      <div style="font-size:11.5px;color:var(--text-mute);margin-bottom:10px;">교체 탭: ${t.tabs.join(", ")}</div>
-      <label class="drop-zone" id="upload-zone-${idx}" style="color:var(--text-mute);border-color:var(--border);white-space:normal;">
-        <i>📁</i><span id="upload-label-${idx}">엑셀 파일 선택 또는 드래그</span>
+      <div style="font-size:11.5px;color:var(--text-mute);margin-bottom:10px;word-break:keep-all;">교체 탭: ${t.tabs.join(", ")}</div>
+      <label class="drop-zone" id="upload-zone-${idx}">
+        <i>📁</i><span id="upload-label-${idx}" style="min-width:0;word-break:break-all;">엑셀 파일 선택 또는 드래그</span>
         <input type="file" id="upload-input-${idx}" accept=".xlsx,.xls,.xlsb,.xlsm">
       </label>
-      <div id="upload-status-${idx}" style="font-size:12px;margin-top:8px;line-height:1.6;"></div>`;
+      <div id="upload-status-${idx}" style="font-size:12px;margin-top:8px;line-height:1.6;word-break:break-all;"></div>`;
     wrap.appendChild(card);
     const zone = card.querySelector(`#upload-zone-${idx}`);
     const input = card.querySelector(`#upload-input-${idx}`);
