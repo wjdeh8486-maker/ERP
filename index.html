@@ -1800,6 +1800,11 @@ function computeWaitIncomingInspection(mainRow){
   const oldDrawingNo = String(mainRow["기존도번(유진테크)"]||mainRow["기존도번"]||"").trim();
   if(!oldDrawingNo) return 0;
   
+  // 디버깅용 로그 (M600-010-002만)
+  const isDebug = oldDrawingNo === "M600-010-002";
+  if(isDebug) console.log("=== 수입검사 대기 계산 (디버깅) ===");
+  if(isDebug) console.log("기존도번:", oldDrawingNo);
+  
   // 생산공정현황에서 도면번호(D) + 등록일자(I) 2026년 + 현재진행공정(K)이 사상/E.P/CP인 행의 수량(F) 합계
   let processQty = 0;
   if(processData && processData.length){
@@ -1813,10 +1818,12 @@ function computeWaitIncomingInspection(mainRow){
         const hasProcessKeyword = ["사상", "E.P", "CP"].some(keyword => currentProcess.includes(keyword));
         if(hasProcessKeyword){
           processQty += Number(p["수량"]||0);
+          if(isDebug) console.log("생산공정 매칭:", pDrawingNo, regYear, currentProcess, Number(p["수량"]||0));
         }
       }
     });
   }
+  if(isDebug) console.log("진행공정수량 합계:", processQty);
   
   // 수입검사(외관)에서 도 번이 같고 검사일이 2026년인 행의 검사수 합계
   let inspectionQty = 0;
@@ -1827,11 +1834,14 @@ function computeWaitIncomingInspection(mainRow){
       const inspectYear = String(inspectDate).split("-")[0];
       if(iDrawingNo === oldDrawingNo && inspectYear === "2026"){
         inspectionQty += Number(i["검사수"]||0);
+        if(isDebug) console.log("검사 매칭:", iDrawingNo, inspectYear, Number(i["검사수"]||0));
       }
     });
   }
+  if(isDebug) console.log("검사수량 합계:", inspectionQty);
   
   const result = processQty - inspectionQty;
+  if(isDebug) console.log("수입검사 대기:", result);
   return Math.max(0, result); // 음수면 0
 }
 let mainApiUrl = "";
