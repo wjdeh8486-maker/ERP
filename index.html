@@ -1797,25 +1797,22 @@ function mapRowToMain(row){
 
 // 수입검사 대기 수량 계산
 function computeWaitIncomingInspection(mainRow){
-  // 필터: 등록일자 2026년 이후인지 확인
-  const regDateStr = mainRow["등록일자"]||"";
-  const parts = String(regDateStr).split("-");
-  const regYear = parts.length >= 1 ? parseInt(parts[0]) : 0;
-  if(regYear < 2026) return 0;
-  
   const oldDrawingNo = String(mainRow["기존도번(유진테크)"]||mainRow["기존도번"]||"").trim();
   if(!oldDrawingNo) return 0;
   
-  // mainData 전체에서 같은 기존도번인 모든 행을 찾아, 현재진행공정에 CP/E.P/사상이 포함되는 행들의 수량 합산
+  // 생산공정현황에서 도면번호(D) + 등록일자(I) 2026년 + 현재진행공정(K)이 사상/E.P/CP인 행의 수량(F) 합계
   let processQty = 0;
-  if(mainData && mainData.length){
-    mainData.forEach(row=>{
-      const rowDrawingNo = String(row["기존도번(유진테크)"]||row["기존도번"]||"").trim();
-      if(rowDrawingNo === oldDrawingNo){
-        const currentProcess = String(row["현재진행공정"]||"").trim();
-        const hasProcessKeyword = ["CP", "E.P", "사상"].some(p => currentProcess.includes(p));
+  if(processData && processData.length){
+    processData.forEach(p=>{
+      const pDrawingNo = String(p["도면번호"]||"").trim();
+      const regDateStr = p["등록일자"]||"";
+      const regYear = String(regDateStr).split("-")[0];
+      const currentProcess = String(p["현재진행공정"]||"").trim();
+      
+      if(pDrawingNo === oldDrawingNo && regYear === "2026"){
+        const hasProcessKeyword = ["사상", "E.P", "CP"].some(keyword => currentProcess.includes(keyword));
         if(hasProcessKeyword){
-          processQty += Number(row["수량"]||0);
+          processQty += Number(p["수량"]||0);
         }
       }
     });
@@ -1985,6 +1982,7 @@ function applySharedCache(cache){
   }
   return applied;
 }
+let processData = []; // 생산공정현황 (도면번호, 수량, 등록일자, 현재진행공정)
 let incomingInspectionData = []; // 수입검사(외관) 검사결과
 
 async function fetchMainData(yearsParam){
@@ -1995,19 +1993,23 @@ async function fetchMainData(yearsParam){
   const yearsQuery = yearsParam ? "&years=" + encodeURIComponent(yearsParam) : "";
   return Promise.all([
     fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery).then(r=>r.json()),
+    fetch(url + "?sheet=" + encodeURIComponent("sheet 1") + "&id=13PrbzapbBQ3aX1Qi4VNMc6FID8mnJOJLH2gh9fLtGpw").then(r=>r.json()).catch(()=>({success:false})),
     fetch(url + "?sheet=" + encodeURIComponent("수입검사(외관)")).then(r=>r.json()).catch(()=>({success:false})),
     fetchWaitMap(url, "측정실검사대기", "품 번", "측정실대기", measureWaitMap),
     fetchWaitMap(url, "크린룸검사대기", "품 번", "검사대기", cleanWaitMap),
     fetchWaitMap(url, "비젼검사대기", "구 분", "검사대기", visionWaitMap)
   ])
-    .then(async ([res, incomingRes])=>{
+    .then(async ([res, processRes, incomingRes])=>{
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       mainApiUrl = url;
      // 디버그: 개발자도구(F12) > Console 탭에서 실제 MAIN 시트 열 이름을 확인할 수 있습니다.
      if(res.rows && res.rows[0]) console.log("MAIN 시트 열 이름 목록:", Object.keys(res.rows[0]));
-     // 수입검사 데이터 로드
+     // 생산공정현황, 수입검사 데이터 로드
+     processData = processRes.success ? processRes.rows : [];
      incomingInspectionData = incomingRes.success ? incomingRes.rows : [];
+     console.log("생산공정현황 데이터:", processData.length, "건");
      console.log("수입검사(외관) 데이터:", incomingInspectionData.length, "건");
+     if(processData.length > 0) console.log("생산공정현황 샘플:", processData[0]);
      if(incomingInspectionData.length > 0) console.log("수입검사(외관) 샘플:", incomingInspectionData[0]);
      mainData = res.rows.map(mapRowToMain);
 markMainStatusDirty();
