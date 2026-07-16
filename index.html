@@ -1808,26 +1808,30 @@ function computeWaitIncomingInspection(mainRow){
   
   // 생산공정현황에서 도면번호 + 현재진행공정이 사상/E.P/C.P인 행의 진행수량 합계
   let processQty = 0;
-  processData.forEach(p=>{
-    const pDrawingNo = String(p["도면번호"]||"").trim();
-    if(pDrawingNo === oldDrawingNo){
-      const process = String(p["현재진행공정"]||"").trim();
-      if(["사상", "E.P", "C.P"].includes(process)){
-        processQty += Number(p["진행수량"]||p["수량"]||0);
+  if(processData && processData.length){
+    processData.forEach(p=>{
+      const pDrawingNo = String(p["도면번호"]||"").trim();
+      if(pDrawingNo === oldDrawingNo){
+        const process = String(p["현재진행공정"]||"").trim();
+        if(["사상", "E.P", "C.P"].includes(process)){
+          processQty += Number(p["진행수량"]||p["수량"]||0);
+        }
       }
-    }
-  });
+    });
+  }
   
   // 수입검사(외관)에서 도 번이 같고 검사일이 2026년인 행의 검사수 합계
   let inspectionQty = 0;
-  incomingInspectionData.forEach(i=>{
-    const iDrawingNo = String(i["도 번"]||"").trim();
-    const inspectDate = i["검사일"]||"";
-    const inspectYear = String(inspectDate).split("-")[0];
-    if(iDrawingNo === oldDrawingNo && inspectYear === "2026"){
-      inspectionQty += Number(i["검사수"]||i["수량"]||0);
-    }
-  });
+  if(incomingInspectionData && incomingInspectionData.length){
+    incomingInspectionData.forEach(i=>{
+      const iDrawingNo = String(i["도 번"]||"").trim();
+      const inspectDate = i["검사일"]||"";
+      const inspectYear = String(inspectDate).split("-")[0];
+      if(iDrawingNo === oldDrawingNo && inspectYear === "2026"){
+        inspectionQty += Number(i["검사수"]||i["수량"]||0);
+      }
+    });
+  }
   
   const result = processQty - inspectionQty;
   return Math.max(0, result); // 음수면 0
@@ -2005,6 +2009,10 @@ async function fetchMainData(yearsParam){
      // 생산공정현황, 수입검사 데이터 로드
      processData = processRes.success ? processRes.rows : [];
      incomingInspectionData = incomingRes.success ? incomingRes.rows : [];
+     console.log("생산공정현황 데이터:", processData.length, "건");
+     console.log("수입검사(외관) 데이터:", incomingInspectionData.length, "건");
+     if(processData.length > 0) console.log("생산공정현황 샘플:", processData[0]);
+     if(incomingInspectionData.length > 0) console.log("수입검사(외관) 샘플:", incomingInspectionData[0]);
      mainData = res.rows.map(mapRowToMain);
 markMainStatusDirty();
 await saveMainData();
@@ -3908,7 +3916,7 @@ async function uploadHandleFile(target, file, statusEl){
     let wb;
     try{
       const buf = await file.arrayBuffer();
-      wb = XLSX.read(buf, { type:"array", cellDates:true });
+      wb = XLSX.read(buf, { type:"array", cellDates:false });
     }catch(e){
       statusEl.innerHTML = '<span style="color:#FF6B6B;">엑셀 파일을 읽을 수 없습니다</span>';
       return;
