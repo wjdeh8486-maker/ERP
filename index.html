@@ -447,27 +447,13 @@
     #main-syncToggle{ order:6; }
   }
 
-  /* 리포트 탭 스타일 */
-  .summary-tab {
-    transition: all 0.2s ease;
-  }
-  
-  .summary-tab:hover {
-    opacity: 0.7;
-  }
-  
-  .summary-tab.active {
-    color: var(--navy);
-    border-bottom-color: var(--navy);
-  }
-  
-  #summary-reportButtons {
-    display: none !important;
-  }
-  
+  /* 월간 리포트 팝업(모달) */
+  #summary-openReportBtn { transition: opacity 0.2s ease; }
+  #summary-openReportBtn:hover { opacity: 0.85; }
+
   @media print {
-    .summary-tab, #summary-reportButtons { display: none !important; }
-    #summary-reportContent { display: block !important; }
+    /* 인쇄는 #print-area를 통해서만 하므로 모달 자체는 인쇄에서 숨긴다 */
+    #summary-reportModal { display: none !important; }
   }
 </style>
 </head>
@@ -528,21 +514,13 @@
     <div class="view active" id="view-summary">
       <div class="table-wrap" style="padding:16px 20px;margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-          <!-- 탭 -->
-          <div style="display:flex;gap:12px;align-items:center;">
-            <button id="summary-tabCurrent" class="summary-tab active" style="padding:6px 12px;border:none;background:transparent;color:var(--navy);font-weight:700;font-size:14px;cursor:pointer;border-bottom:2px solid var(--navy);">월별 현황</button>
-            <button id="summary-tabReport" class="summary-tab" style="padding:6px 12px;border:none;background:transparent;color:var(--text-mute);font-weight:700;font-size:14px;cursor:pointer;border-bottom:2px solid transparent;">리포트</button>
-          </div>
           <!-- 제목 -->
           <div>
             <div style="font-size:16px;font-weight:700;color:var(--navy);" id="summary-rangeLabel"></div>
             <div style="font-size:11.5px;color:var(--text-mute);" id="summary-generatedAt"></div>
           </div>
-          <!-- 인쇄/다운로드 버튼 (리포트 탭에만 표시) -->
-          <div style="display:none;gap:8px;" id="summary-reportButtons">
-            <button id="summary-printBtn" class="tb-print-btn" style="padding:6px 12px;background:var(--navy);color:white;border:none;border-radius:4px;cursor:pointer;font-weight:700;">🖨️ 인쇄</button>
-            <button id="summary-downloadBtn" class="tb-download-btn" style="padding:6px 12px;background:var(--navy);color:white;border:none;border-radius:4px;cursor:pointer;font-weight:700;">📥 다운로드</button>
-          </div>
+          <!-- 리포트 보기 버튼 (팝업 열기) -->
+          <button id="summary-openReportBtn" style="padding:8px 16px;background:var(--navy);color:white;border:none;border-radius:4px;cursor:pointer;font-weight:700;font-size:13px;">📋 월간 리포트 보기</button>
         </div>
       </div>
       <div class="summary-row">
@@ -571,34 +549,52 @@
         </table>
       </div>
 
-      <!-- 리포트 콘텐츠 (숨김 상태) -->
-      <div id="summary-reportContent" style="display:none;padding:0 16px;">
-        <!-- KPI 달성율 -->
-        <div class="table-wrap" style="padding:16px;margin-bottom:16px;">
-          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:12px;">📊 KPI 달성율</div>
-          <div style="display:flex;gap:20px;flex-wrap:wrap;">
-            <div style="flex:1;min-width:150px;padding:12px;background:var(--card-bg);border-radius:4px;">
-              <div style="font-size:12px;color:var(--text-mute);">목표 달성율</div>
-              <div style="font-size:24px;font-weight:700;color:var(--green);" id="report-kpiRate">0%</div>
-            </div>
+    </div>
+
+    <!-- 월간 리포트 팝업(모달) -->
+    <div id="summary-reportModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px;">
+      <div style="background:var(--bg,#fff);width:100%;max-width:900px;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.3);overflow:hidden;">
+        <!-- 모달 헤더 -->
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--navy);">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:#fff;" id="report-modalTitle">월간 리포트</div>
+            <div style="font-size:11px;color:#cdd6e6;" id="report-modalGeneratedAt"></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="summary-printBtn" style="padding:6px 12px;background:#fff;color:var(--navy);border:none;border-radius:4px;cursor:pointer;font-weight:700;font-size:12.5px;">🖨️ 인쇄</button>
+            <button id="summary-downloadBtn" style="padding:6px 12px;background:#fff;color:var(--navy);border:none;border-radius:4px;cursor:pointer;font-weight:700;font-size:12.5px;">📥 다운로드</button>
+            <button id="summary-closeReportBtn" style="padding:6px 12px;background:transparent;color:#fff;border:1px solid #fff;border-radius:4px;cursor:pointer;font-weight:700;font-size:12.5px;">✕ 닫기</button>
           </div>
         </div>
-        
-        <!-- PPM / 품질지표 -->
+        <!-- 모달 본문 = 리포트 콘텐츠 -->
+        <div id="summary-reportContent" style="padding:16px;max-height:calc(100vh - 140px);overflow-y:auto;">
+        <!-- KPI 달성률 (생산완료율 / 납기달성률 / 품질합격률) -->
         <div class="table-wrap" style="padding:16px;margin-bottom:16px;">
-          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:12px;">⚙️ 품질지표 (PPM)</div>
-          <div style="display:flex;gap:20px;flex-wrap:wrap;">
-            <div style="flex:1;min-width:150px;padding:12px;background:var(--card-bg);border-radius:4px;">
-              <div style="font-size:12px;color:var(--text-mute);">PPM</div>
-              <div style="font-size:24px;font-weight:700;color:var(--navy);" id="report-ppm">0</div>
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:12px;">📊 KPI 달성률 (2026년 월별 추이)</div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;">
+            <!-- 생산 완료율 -->
+            <div style="flex:1;min-width:220px;padding:12px;background:var(--card-bg);border-radius:6px;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+                <span style="font-size:12px;color:var(--text-mute);font-weight:700;">🏭 생산 완료율</span>
+                <span style="font-size:22px;font-weight:700;color:var(--blue);" id="report-prodRate">0%</span>
+              </div>
+              <div id="report-prodChart"></div>
             </div>
-            <div style="flex:1;min-width:150px;padding:12px;background:var(--card-bg);border-radius:4px;">
-              <div style="font-size:12px;color:var(--text-mute);">불량률 (%)</div>
-              <div style="font-size:24px;font-weight:700;color:var(--navy);" id="report-defectRate">0%</div>
+            <!-- 납기 달성률 -->
+            <div style="flex:1;min-width:220px;padding:12px;background:var(--card-bg);border-radius:6px;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+                <span style="font-size:12px;color:var(--text-mute);font-weight:700;">🚚 납기 달성률</span>
+                <span style="font-size:22px;font-weight:700;color:var(--navy);" id="report-deliveryRate">0%</span>
+              </div>
+              <div id="report-deliveryChart"></div>
             </div>
-            <div style="flex:1;min-width:150px;padding:12px;background:var(--card-bg);border-radius:4px;">
-              <div style="font-size:12px;color:var(--text-mute);">양품률 (%)</div>
-              <div style="font-size:24px;font-weight:700;color:var(--green);" id="report-goodRate">0%</div>
+            <!-- 품질 합격률 -->
+            <div style="flex:1;min-width:220px;padding:12px;background:var(--card-bg);border-radius:6px;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+                <span style="font-size:12px;color:var(--text-mute);font-weight:700;">✅ 품질 합격률</span>
+                <span style="font-size:22px;font-weight:700;color:var(--green);" id="report-qualityRate">0%</span>
+              </div>
+              <div id="report-qualityChart"></div>
             </div>
           </div>
         </div>
@@ -648,8 +644,9 @@
             </ul>
           </div>
         </div>
-      </div>
-    </div>
+        </div><!-- /summary-reportContent -->
+      </div><!-- /modal box -->
+    </div><!-- /summary-reportModal -->
     <div class="view" id="view-main">
       <div class="summary-row">
         <div class="stat-card prod">
@@ -4092,45 +4089,31 @@ function uploadRenderCards(){
 }
 uploadRenderCards();
 
-// ===== 리포트 탭 전환 기능 =====
+// ===== 리포트 팝업(모달) 기능 =====
 function initSummaryTabs(){
-  const tabCurrent = document.getElementById("summary-tabCurrent");
-  const tabReport = document.getElementById("summary-tabReport");
-  const currentContent = document.getElementById("view-summary").querySelector(".summary-row").parentElement;
-  const reportContent = document.getElementById("summary-reportContent");
-  const reportButtons = document.getElementById("summary-reportButtons");
-  
-  if(!tabCurrent || !tabReport) return;
-  
-  // 월별 현황 탭 클릭
-  tabCurrent.addEventListener("click", ()=>{
-    tabCurrent.style.color = "var(--navy)";
-    tabCurrent.style.borderBottomColor = "var(--navy)";
-    tabReport.style.color = "var(--text-mute)";
-    tabReport.style.borderBottomColor = "transparent";
-    
-    // 월별 현황 표시, 리포트 숨김
-    document.querySelectorAll("#view-summary > .summary-row, #view-summary > .table-wrap").forEach(el => el.style.display = "block");
-    reportContent.style.display = "none";
-    reportButtons.style.display = "none";
-  });
-  
-  // 리포트 탭 클릭
-  tabReport.addEventListener("click", ()=>{
-    tabReport.style.color = "var(--navy)";
-    tabReport.style.borderBottomColor = "var(--navy)";
-    tabCurrent.style.color = "var(--text-mute)";
-    tabCurrent.style.borderBottomColor = "transparent";
-    
-    // 월별 현황 숨김, 리포트 표시
-    document.querySelectorAll("#view-summary > .summary-row, #view-summary > .table-wrap").forEach(el => el.style.display = "none");
-    reportContent.style.display = "block";
-    reportButtons.style.display = "flex";
-    
-    // 리포트 데이터 업데이트
+  const openBtn = document.getElementById("summary-openReportBtn");
+  const closeBtn = document.getElementById("summary-closeReportBtn");
+  const modal = document.getElementById("summary-reportModal");
+  if(!openBtn || !modal) return;
+
+  function openReport(){
+    // 모달 제목/생성시각 채우기
+    document.getElementById("report-modalTitle").textContent =
+      (document.getElementById("summary-rangeLabel").textContent || "월간 리포트");
+    document.getElementById("report-modalGeneratedAt").textContent =
+      document.getElementById("summary-generatedAt").textContent || "";
     updateReportData();
-  });
-  
+    modal.style.display = "flex";
+  }
+  function closeReport(){ modal.style.display = "none"; }
+
+  openBtn.addEventListener("click", openReport);
+  if(closeBtn) closeBtn.addEventListener("click", closeReport);
+  // 배경(오버레이) 클릭 시 닫기
+  modal.addEventListener("click", (e)=>{ if(e.target === modal) closeReport(); });
+  // ESC 키로 닫기
+  document.addEventListener("keydown", (e)=>{ if(e.key === "Escape" && modal.style.display === "flex") closeReport(); });
+
   // 인쇄 버튼
   document.getElementById("summary-printBtn").addEventListener("click", ()=>{
     const title = document.getElementById("summary-rangeLabel").textContent;
@@ -4149,7 +4132,7 @@ function initSummaryTabs(){
     `;
     window.print();
   });
-  
+
   // 다운로드 버튼 (브라우저 인쇄 대화상자에서 "PDF로 저장" 선택)
   document.getElementById("summary-downloadBtn").addEventListener("click", ()=>{
     alert("인쇄 대화상자가 열리면 프린터 선택에서 'PDF로 저장'을 선택해 주세요.");
@@ -4157,41 +4140,103 @@ function initSummaryTabs(){
   });
 }
 
+// ===== KPI 월별 계산 =====
+// 생산 완료율: 해당 월 최종납기 건 중 "완료" 상태 비율
+function computeProdRateMonth(year, month){
+  const prefix = year + "-" + String(month).padStart(2,"0");
+  const rows = (mainData||[]).filter(r=> String(r.dueDate||"").startsWith(prefix));
+  if(!rows.length) return null;
+  const done = rows.filter(r=> computeProductStatus(r)==="완료").length;
+  return Math.round((done/rows.length)*100);
+}
+// 납기 달성률: 해당 월 최종납기 건 중 납기일 이내 납품(납품일<=최종납기)한 비율
+function computeDeliveryRateMonth(year, month){
+  const prefix = year + "-" + String(month).padStart(2,"0");
+  const rows = (mainData||[]).filter(r=> String(r.dueDate||"").startsWith(prefix));
+  if(!rows.length) return null;
+  const onTime = rows.filter(r=>{
+    const ship = String(r.shipDate||"").trim();
+    if(!ship) return false;              // 아직 미납품 → 미달성
+    return ship <= String(r.dueDate||"");// 납기일 이내 납품
+  }).length;
+  return Math.round((onTime/rows.length)*100);
+}
+// 품질 합격률: 해당 월 검사 전체(공정+수입+출하) 양품수/검사수
+function computeQualityRateMonth(year, month){
+  let qty=0, defect=0;
+  ["process","incoming","shipping"].forEach(catKey=>{
+    const s = computeCategoryMonthStats(catKey, year, month);
+    qty += s.qty; defect += s.defect;
+  });
+  if(qty<=0) return null;
+  return Math.round(((qty-defect)/qty)*1000)/10; // 소수 1자리
+}
+// KPI 미니 비교차트 (전월 vs 당월 두 막대, 0~100% 스케일)
+function drawKpiMiniChart(container, prevVal, currVal, prevLabel, currLabel, color){
+  const w=240, h=110, padT=14, padB=22, base=h-padB;
+  const barW=54, gap=70, x1=46, x2=x1+gap;
+  const scale = v => (v==null?0:v)/100*(base-padT);
+  const yOf = v => base - scale(v);
+  // 변화량
+  let deltaTxt = "", deltaColor = "#9AA3B2";
+  if(prevVal!=null && currVal!=null){
+    const d = Math.round((currVal - prevVal)*10)/10;
+    if(d>0){ deltaTxt = "▲ +" + d; deltaColor = "#2E7D46"; }
+    else if(d<0){ deltaTxt = "▼ " + d; deltaColor = "#C0392B"; }
+    else { deltaTxt = "─ 0"; }
+  }
+  function bar(x, v, lbl, faded){
+    if(v==null){
+      return `<text x="${x+barW/2}" y="${base-6}" font-size="8" text-anchor="middle" fill="#B8C0CC">데이터 없음</text>
+        <text x="${x+barW/2}" y="${h-6}" font-size="8" text-anchor="middle" fill="#9AA3B2">${lbl}</text>`;
+    }
+    const y = yOf(v), bh = base - y;
+    const fill = faded ? "#C7D0DC" : color;
+    return `<rect x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${bh.toFixed(1)}" rx="3" fill="${fill}"></rect>
+      <text x="${x+barW/2}" y="${(y-4).toFixed(1)}" font-size="10" font-weight="700" text-anchor="middle" fill="${faded?'#7A8494':color}">${v}%</text>
+      <text x="${x+barW/2}" y="${h-6}" font-size="8.5" text-anchor="middle" fill="#6B7280">${lbl}</text>`;
+  }
+  container.innerHTML = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="display:block;">
+    <line x1="30" y1="${base}" x2="${w-10}" y2="${base}" stroke="#EAEDF2"></line>
+    ${bar(x1, prevVal, prevLabel, true)}
+    ${bar(x2, currVal, currLabel, false)}
+    ${deltaTxt ? `<text x="${w-14}" y="${padT+2}" font-size="10" font-weight="700" text-anchor="end" fill="${deltaColor}">${deltaTxt}</text>` : ""}
+  </svg>`;
+}
+
 // 리포트 데이터 업데이트
 async function updateReportData(){
   const now = new Date();
   const year = now.getFullYear(), month = now.getMonth()+1;
 
-  // 품질 데이터가 아직 로드 안 됐으면 불러오기 (품질분석 탭을 안 들어갔어도 동작하도록)
+  // 품질 데이터가 아직 로드 안 됐으면 불러오기
   if(!qualityRawData || !Object.keys(qualityRawData).length){
-    try{
-      const cached = await cacheGetQualityData();
-      if(cached) qualityRawData = cached;
-    }catch(e){}
+    try{ const cached = await cacheGetQualityData(); if(cached) qualityRawData = cached; }catch(e){}
   }
   if(!qualityRawData || !Object.keys(qualityRawData).length){
     await fetchQualityData().catch(()=>{});
   }
 
-  // KPI 달성율 (지연율 역산)
-  const overdue = parseInt(document.getElementById("summary-statOverdue")?.textContent || 0);
-  const total = mainData ? mainData.length : 1;
-  const kpiRate = Math.max(0, 100 - Math.round((overdue / Math.max(total, 1)) * 100));
-  document.getElementById("report-kpiRate").textContent = kpiRate + "%";
+  // ---- KPI 3종: 전월 vs 당월 비교 ----
+  let prevYear = year, prevMonth = month - 1;
+  if(prevMonth < 1){ prevMonth = 12; prevYear = year - 1; }
+  const prevLabel = prevMonth + "월";
+  const currLabel = month + "월";
 
-  // PPM / 품질지표 (공정검사+수입검사+출하검사 전체, 이번 달 기준)
-  let totalQty=0, totalDefect=0;
-  ["process","incoming","shipping"].forEach(catKey=>{
-    const s = computeCategoryMonthStats(catKey, year, month);
-    totalQty += s.qty; totalDefect += s.defect;
-  });
-  const totalGood = totalQty - totalDefect;
-  const ppm = totalQty>0 ? Math.round((totalDefect/totalQty)*1000000) : 0;
-  const defectRate = totalQty>0 ? Math.round((totalDefect/totalQty)*10000)/100 : 0;
-  const goodRate = totalQty>0 ? Math.round((totalGood/totalQty)*10000)/100 : 0;
-  document.getElementById("report-ppm").textContent = ppm.toLocaleString();
-  document.getElementById("report-defectRate").textContent = defectRate + "%";
-  document.getElementById("report-goodRate").textContent = goodRate + "%";
+  const prodPrev = computeProdRateMonth(prevYear, prevMonth);
+  const prodNow  = computeProdRateMonth(year, month);
+  const deliveryPrev = computeDeliveryRateMonth(prevYear, prevMonth);
+  const deliveryNow  = computeDeliveryRateMonth(year, month);
+  const qualityPrev = computeQualityRateMonth(prevYear, prevMonth);
+  const qualityNow  = computeQualityRateMonth(year, month);
+
+  document.getElementById("report-prodRate").textContent = (prodNow==null?0:prodNow) + "%";
+  document.getElementById("report-deliveryRate").textContent = (deliveryNow==null?0:deliveryNow) + "%";
+  document.getElementById("report-qualityRate").textContent = (qualityNow==null?0:qualityNow) + "%";
+
+  drawKpiMiniChart(document.getElementById("report-prodChart"), prodPrev, prodNow, prevLabel, currLabel, "#0B5CAB");
+  drawKpiMiniChart(document.getElementById("report-deliveryChart"), deliveryPrev, deliveryNow, prevLabel, currLabel, "#1A2B4A");
+  drawKpiMiniChart(document.getElementById("report-qualityChart"), qualityPrev, qualityNow, prevLabel, currLabel, "#2E7D46");
 
   // 매출액 (현재 표시된 값 그대로 사용)
   const monthRevenue = document.getElementById("summary-statRevenue")?.textContent || "0";
@@ -4212,12 +4257,20 @@ async function updateReportData(){
   document.getElementById("report-customer2").textContent = Math.round(custRevs["알파플러스"]/totalCustRev*100) + "%";
   document.getElementById("report-customer3").textContent = Math.round(custRevs["엘티케이"]/totalCustRev*100) + "%";
 
-  // 개선권고사항 (자동 생성)
-  const target = qualityTargets.process || 10000;
+  // 개선권고사항 (자동 생성) - KPI 3종 기준
+  const overdue = parseInt(document.getElementById("summary-statOverdue")?.textContent || 0);
   const improvements = [];
   improvements.push(overdue>0 ? `지연건 ${overdue}건 발생 - TOP 10 우선 검토 필요` : "이번 달 지연건 없음 - 양호");
-  improvements.push(ppm>target ? `품질 PPM ${ppm.toLocaleString()} - 목표(${target.toLocaleString()}) 초과, 개선 필요` : `품질 PPM ${ppm.toLocaleString()} - 목표(${target.toLocaleString()}) 이내 양호`);
-  improvements.push("고객사별 납기율 지속 모니터링");
+  if(deliveryNow==null){
+    improvements.push("납기 데이터 없음 - 이번 달 납기 대상 건 확인 필요");
+  }else{
+    improvements.push(deliveryNow<90 ? `납기 달성률 ${deliveryNow}% - 90% 미만, 납기 관리 강화 필요` : `납기 달성률 ${deliveryNow}% - 양호`);
+  }
+  if(qualityNow==null){
+    improvements.push("품질 검사 데이터 없음 - 이번 달 검사 실적 확인 필요");
+  }else{
+    improvements.push(qualityNow<99 ? `품질 합격률 ${qualityNow}% - 99% 미만, 품질 개선 필요` : `품질 합격률 ${qualityNow}% - 양호`);
+  }
   document.getElementById("report-improvements").innerHTML = improvements.map(t=>`<li>${t}</li>`).join("");
 }
 
