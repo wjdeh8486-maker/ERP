@@ -1800,33 +1800,33 @@ function computeWaitIncomingInspection(mainRow){
   const oldDrawingNo = String(mainRow["기존도번(유진테크)"]||mainRow["기존도번"]||"").trim();
   if(!oldDrawingNo) return 0;
   
-  // 생산공정현황에서 도면번호(D) + 등록일자(I) 2026년 + 현재진행공정(K)이 사상/E.P/CP인 행의 수량(F) 합계
+  // 생산공정현황: D열(3)도면번호, F열(5)수량, I열(8)등록일자, K열(10)현재진행공정
   let processQty = 0;
   if(processData && processData.length){
     processData.forEach(p=>{
-      const pDrawingNo = String(getFieldFlexible(p, "도면번호")||"").trim();
-      const regDateStr = getFieldFlexible(p, "등록일자")||"";
+      const pDrawingNo = String(Object.values(p)[3] || "").trim();
+      const regDateStr = Object.values(p)[8] || "";
       const regYear = String(regDateStr).split("-")[0];
-      const currentProcess = String(getFieldFlexible(p, "현재진행공정")||"").trim();
+      const currentProcess = String(Object.values(p)[10] || "").trim();
       
       if(pDrawingNo === oldDrawingNo && regYear === "2026"){
         const hasProcessKeyword = ["사상", "E.P", "CP"].some(keyword => currentProcess.includes(keyword));
         if(hasProcessKeyword){
-          processQty += Number(getFieldFlexible(p, "수량")||0);
+          processQty += Number(Object.values(p)[5] || 0);
         }
       }
     });
   }
   
-  // 수입검사(외관)에서 도 번이 같고 검사일이 2026년인 행의 검사수 합계
+  // 수입검사(외관): A열(0)도 번, D열(3)검사일, F열(5)검사수
   let inspectionQty = 0;
   if(incomingInspectionData && incomingInspectionData.length){
     incomingInspectionData.forEach(i=>{
-      const iDrawingNo = String(getFieldFlexible(i, "도 번")||getFieldFlexible(i, "도번")||"").trim();
-      const inspectDate = getFieldFlexible(i, "검사일")||"";
+      const iDrawingNo = String(Object.values(i)[0] || "").trim();
+      const inspectDate = Object.values(i)[3] || "";
       const inspectYear = String(inspectDate).split("-")[0];
       if(iDrawingNo === oldDrawingNo && inspectYear === "2026"){
-        inspectionQty += Number(getFieldFlexible(i, "검사수")||0);
+        inspectionQty += Number(Object.values(i)[5] || 0);
       }
     });
   }
