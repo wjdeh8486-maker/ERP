@@ -193,7 +193,7 @@
   table{border-collapse:collapse;width:100%;font-size:13px;}
   thead th{background:var(--navy);color:#fff;font-weight:700;padding:10px 8px;position:sticky;top:0;white-space:nowrap;text-align:center;border-right:1px solid #33406099;}
   thead th.wait-col{color:var(--yellow);}
-  thead th.wait-col, tbody td.wait-col-cell{max-width:70px;font-size:12px;}
+  thead th.wait-col, tbody td.wait-col-cell{min-width:58px;max-width:80px;font-size:12px;line-height:1.3;}
   #main-tableBody td:nth-child(14), #main-tableBody td:nth-child(15), #main-tableBody td:nth-child(16){max-width:60px;font-size:12px;padding:8px 4px;}
   #view-main thead th:nth-child(14), #view-main thead th:nth-child(15), #view-main thead th:nth-child(16){font-size:11.5px;padding:8px 4px;}
   thead th.defect-col{color:#ff9d9d;}
@@ -734,8 +734,8 @@
             <tr>
               <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th><th>기존도번</th><th>품명</th><th>수량</th>
               <th>최종납기</th><th>납품일자</th><th>납품여부</th><th>현재진행공정</th>
-              <th class="wait-col">납품대기</th><th class="wait-col">수입검사대기</th><th class="wait-col">측정실검사대기</th>
-              <th class="wait-col">크린룸검사대기</th><th class="wait-col">비젼검사대기</th><th>선출고</th>
+              <th class="wait-col">납품<br>대기</th><th class="wait-col">수입검사<br>대기</th><th class="wait-col">측정실<br>검사대기</th>
+              <th class="wait-col">크린룸<br>검사대기</th><th class="wait-col">비젼검사<br>대기</th><th>선출고</th>
             </tr>
           </thead>
           <tbody id="main-tableBody"></tbody>
@@ -4193,16 +4193,16 @@ function computeProdRateMonth(year, month){
   return Math.round((done/rows.length)*100);
 }
 // 납기 달성률: 해당 월 최종납기 건 중 납기일 이내 납품(납품일<=최종납기)한 비율
+// 납기 달성률: 해당 월 최종납기 건 중 납품 완료한 비율 (납기 초과 납품도 달성으로 인정, 미납품만 미달성)
 function computeDeliveryRateMonth(year, month){
   const prefix = year + "-" + String(month).padStart(2,"0");
   const rows = (mainData||[]).filter(r=> String(r.dueDate||"").startsWith(prefix));
   if(!rows.length) return null;
-  const onTime = rows.filter(r=>{
+  const delivered = rows.filter(r=>{
     const ship = String(r.shipDate||"").trim();
-    if(!ship) return false;              // 아직 미납품 → 미달성
-    return ship <= String(r.dueDate||"");// 납기일 이내 납품
+    return !!ship || r.shipped === "납품완료"; // 납품일이 있거나 납품완료면 달성
   }).length;
-  return Math.round((onTime/rows.length)*100);
+  return Math.round((delivered/rows.length)*100);
 }
 // 품질 합격률: 해당 월 검사 전체(공정+수입+출하) 양품수/검사수
 function computeQualityRateMonth(year, month){
