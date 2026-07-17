@@ -537,7 +537,7 @@
       <div class="table-wrap" style="padding:16px;margin-bottom:16px;">
         <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">🔴 지연 심한 순 TOP 10</div>
         <table>
-          <thead><tr><th style="text-align:center;">구분</th><th style="text-align:center;">PROJECT NO.</th><th style="text-align:center;">기존도번</th><th style="text-align:center;">품명</th><th>고객사</th><th>수량</th><th>지연일수</th></tr></thead>
+          <thead><tr><th style="text-align:center;">구분</th><th style="text-align:center;">PROJECT NO.</th><th style="text-align:center;">기존도번</th><th style="text-align:center;">품명</th><th style="text-align:center;">현재진행공정</th><th>수량</th><th>지연일수</th></tr></thead>
           <tbody id="summary-overdueList"></tbody>
         </table>
       </div>
@@ -1928,7 +1928,17 @@ function buildWaitInspIndex(){
     for(const i of incomingInspectionData){
       const inspectYear = String(i["검사일"] || "").split("-")[0];
       if(inspectYear !== "2026") continue;
-      const dn = String(i["도 번"] || "").trim();
+      const dn = String(i["도 번"] || i["도번"] || "").trim();
+      if(!dn) continue;
+      inspQtyMap.set(dn, (inspQtyMap.get(dn) || 0) + Number(i["검사수"] || 0));
+    }
+  }
+  // 공정검사(사내외관)도 수입검사와 동일 기준으로 차감 (도 번 + 검사일 2026 → 검사수 합)
+  if(inhouseInspectionData && inhouseInspectionData.length){
+    for(const i of inhouseInspectionData){
+      const inspectYear = String(i["검사일"] || "").split("-")[0];
+      if(inspectYear !== "2026") continue;
+      const dn = String(i["도 번"] || i["도번"] || "").trim();
       if(!dn) continue;
       inspQtyMap.set(dn, (inspQtyMap.get(dn) || 0) + Number(i["검사수"] || 0));
     }
@@ -2093,6 +2103,7 @@ function applySharedCache(cache){
 }
 let processData = []; // 생산공정현황 (도면번호, 수량, 등록일자, 현재진행공정)
 let incomingInspectionData = []; // 수입검사(외관) 검사결과
+let inhouseInspectionData = []; // 공정검사(사내외관) 검사결과 (수입검사 대기에서 추가 차감)
 
 async function fetchMainData(yearsParam){
   const url = document.getElementById("main-appsScriptUrl").value.trim();
@@ -2104,11 +2115,12 @@ async function fetchMainData(yearsParam){
     fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery).then(r=>r.json()),
     fetch(url + "?dataset=" + encodeURIComponent("생산공정현황")).then(r=>r.json()).catch(()=>({success:false})),
     fetch(url + "?dataset=" + encodeURIComponent("수입검사(외관)")).then(r=>r.json()).catch(()=>({success:false})),
+    fetch(url + "?dataset=" + encodeURIComponent("공정검사(사내외관)")).then(r=>r.json()).catch(()=>({success:false})),
     fetchWaitMap(url, "측정실검사대기", "품 번", "측정실대기", measureWaitMap),
     fetchWaitMap(url, "크린룸검사대기", "품 번", "검사대기", cleanWaitMap),
     fetchWaitMap(url, "비젼검사대기", "구 분", "검사대기", visionWaitMap)
   ])
-    .then(async ([res, processRes, incomingRes])=>{
+    .then(async ([res, processRes, incomingRes, inhouseRes])=>{
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       mainApiUrl = url;
      // 디버그: 개발자도구(F12) > Console 탭에서 실제 MAIN 시트 열 이름을 확인할 수 있습니다.
@@ -2116,9 +2128,11 @@ async function fetchMainData(yearsParam){
      // 생산공정현황, 수입검사 데이터 로드
      processData = processRes.success ? processRes.rows : [];
      incomingInspectionData = incomingRes.success ? incomingRes.rows : [];
+     inhouseInspectionData = (inhouseRes && inhouseRes.success) ? inhouseRes.rows : [];
      invalidateWaitInspIndex(); // 도면번호별 합계 인덱스 재계산 예약
      console.log("생산공정현황 데이터:", processData.length, "건");
      console.log("수입검사(외관) 데이터:", incomingInspectionData.length, "건");
+     console.log("공정검사(사내외관) 데이터:", inhouseInspectionData.length, "건");
      // 진단: M600-010-002 수입검사 이력 건수 (필터/캐시 문제 확인용)
      console.log("진단 M600-010-002 수입검사 건수:",
        incomingInspectionData.filter(i=>String(i["도 번"]||"").trim()==="M600-010-002").length,
@@ -3869,7 +3883,7 @@ function renderSummaryView(){
   document.getElementById("summary-statOverdue").textContent = overdueRows.length;
   const overdueTop5 = overdueRows.slice(0,10);
   document.getElementById("summary-overdueList").innerHTML = overdueTop5.length ? overdueTop5.map(r=>
-    `<tr><td style="text-align:center;">${r.orderNo}</td><td style="text-align:center;">${r.vendor||''}</td><td style="text-align:center;">${r.oldDrawingNo||''}</td><td style="text-align:center;">${r.partName}</td><td>${r.customer}</td><td>${r.qty}</td><td class="cell-overdue">${overdueDaysLate(r.dueDate)}일</td></tr>`
+    `<tr><td style="text-align:center;">${r.orderNo}</td><td style="text-align:center;">${r.vendor||''}</td><td style="text-align:center;">${r.oldDrawingNo||''}</td><td style="text-align:center;">${r.partName}</td><td style="text-align:center;">${getCurrentProcess(r.orderNo)||''}</td><td>${r.qty}</td><td class="cell-overdue">${overdueDaysLate(r.dueDate)}일</td></tr>`
   ).join("") : `<tr><td colspan="7" style="padding:16px;color:var(--text-mute);">지연 건이 없습니다.</td></tr>`;
 
   // 이번달 매출(현재까지) vs 저번달 매출 비교
