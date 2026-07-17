@@ -489,6 +489,7 @@
       <div id="main-searchGroup">
         <div class="search-box">
           <span id="main-syncBanner" class="sync-banner">⚪ 동기화 확인 중...</span>
+          <span id="main-processStatus" class="sync-banner" style="display:none;"></span>
           <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
           <button id="main-searchBtn">🔍 검색</button>
         </div>
@@ -2145,6 +2146,24 @@ async function fetchMainData(yearsParam){
      inhouseInspectionData = (inhouseRes && inhouseRes.success) ? inhouseRes.rows : [];
      invalidateWaitInspIndex(); // 도면번호별 합계 인덱스 재계산 예약
      console.log("생산공정현황 데이터:", processData.length, "건");
+     // 공정현황 연동 상태 배지: 연동 여부 + 데이터 최신일(등록일자 최대값)
+     (function(){
+       const el = document.getElementById("main-processStatus");
+       if(!el) return;
+       el.style.display = "inline-block";
+       if(processRes && processRes.success && processData.length){
+         let latest = "";
+         for(const p of processData){
+           const d = String(p["등록일자"]||"").slice(0,10);
+           if(d > latest) latest = d;
+         }
+         el.textContent = "🟢 공정현황 연동됨 · 최신 " + (latest||"?") + " (" + processData.length.toLocaleString() + "건)";
+         el.style.background = "#123524"; el.style.color = "#7BD8A0";
+       }else{
+         el.textContent = "🔴 공정현황 연동 실패";
+         el.style.background = "#3A1A1A"; el.style.color = "#FF9B9B";
+       }
+     })();
      console.log("수입검사(외관) 데이터:", incomingInspectionData.length, "건");
      console.log("공정검사(사내외관) 데이터:", inhouseInspectionData.length, "건");
      // 진단: M600-010-002 수입검사 이력 건수 (필터/캐시 문제 확인용)
