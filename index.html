@@ -570,29 +570,29 @@
         <div id="summary-reportContent" style="padding:16px;max-height:calc(100vh - 140px);overflow-y:auto;">
         <!-- KPI 달성률 (생산완료율 / 납기달성률 / 품질합격률) -->
         <div class="table-wrap" style="padding:16px;margin-bottom:16px;">
-          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:12px;">📊 KPI 달성률 (2026년 월별 추이)</div>
-          <div style="display:flex;gap:16px;flex-wrap:wrap;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:12px;">📊 KPI 달성률 (전월 vs 당월)</div>
+          <div style="display:flex;gap:12px;flex-wrap:nowrap;">
             <!-- 생산 완료율 -->
-            <div style="flex:1;min-width:220px;padding:12px;background:var(--card-bg);border-radius:6px;">
-              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
-                <span style="font-size:12px;color:var(--text-mute);font-weight:700;">🏭 생산 완료율</span>
-                <span style="font-size:22px;font-weight:700;color:var(--blue);" id="report-prodRate">0%</span>
+            <div style="flex:1;padding:10px;background:var(--card-bg);border-radius:6px;min-width:0;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;gap:6px;">
+                <span style="font-size:11.5px;color:var(--text-mute);font-weight:700;white-space:nowrap;">🏭 생산</span>
+                <span style="font-size:20px;font-weight:700;color:var(--blue);" id="report-prodRate">0%</span>
               </div>
               <div id="report-prodChart"></div>
             </div>
             <!-- 납기 달성률 -->
-            <div style="flex:1;min-width:220px;padding:12px;background:var(--card-bg);border-radius:6px;">
-              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
-                <span style="font-size:12px;color:var(--text-mute);font-weight:700;">🚚 납기 달성률</span>
-                <span style="font-size:22px;font-weight:700;color:var(--navy);" id="report-deliveryRate">0%</span>
+            <div style="flex:1;padding:10px;background:var(--card-bg);border-radius:6px;min-width:0;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;gap:6px;">
+                <span style="font-size:11.5px;color:var(--text-mute);font-weight:700;white-space:nowrap;">🚚 납기</span>
+                <span style="font-size:20px;font-weight:700;color:var(--navy);" id="report-deliveryRate">0%</span>
               </div>
               <div id="report-deliveryChart"></div>
             </div>
             <!-- 품질 합격률 -->
-            <div style="flex:1;min-width:220px;padding:12px;background:var(--card-bg);border-radius:6px;">
-              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
-                <span style="font-size:12px;color:var(--text-mute);font-weight:700;">✅ 품질 합격률</span>
-                <span style="font-size:22px;font-weight:700;color:var(--green);" id="report-qualityRate">0%</span>
+            <div style="flex:1;padding:10px;background:var(--card-bg);border-radius:6px;min-width:0;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;gap:6px;">
+                <span style="font-size:11.5px;color:var(--text-mute);font-weight:700;white-space:nowrap;">✅ 품질</span>
+                <span style="font-size:20px;font-weight:700;color:var(--green);" id="report-qualityRate">0%</span>
               </div>
               <div id="report-qualityChart"></div>
             </div>
@@ -4120,11 +4120,15 @@ function initSummaryTabs(){
     const genAt = document.getElementById("summary-generatedAt").textContent;
     document.getElementById("print-area").innerHTML = `
       <style>
-        #print-area{ padding:6mm; }
-        #print-area h2{ font-size:15px; margin:0 0 2px; }
-        #print-area .r-genat{ font-size:10px; color:#666; margin-bottom:8px; }
-        #print-area .table-wrap{ border:1px solid #999 !important; padding:6px !important; margin-bottom:5mm !important; background:none !important; }
-        #print-area ul{ margin:0; padding-left:16px; font-size:10.5px; line-height:1.6; }
+        @page{ size: A4 landscape; margin: 8mm; }
+        #print-area{ padding:2mm; }
+        #print-area h2{ font-size:14px; margin:0 0 1px; }
+        #print-area .r-genat{ font-size:9px; color:#666; margin-bottom:5px; }
+        #print-area .table-wrap{ border:1px solid #999 !important; padding:5px 8px !important; margin-bottom:3mm !important; background:none !important; break-inside:avoid; }
+        #print-area ul{ margin:0; padding-left:16px; font-size:10px; line-height:1.5; }
+        /* KPI 3열 가로 유지 */
+        #print-area .table-wrap > div[style*="display:flex"]{ flex-wrap:nowrap !important; }
+        #print-area svg{ max-width:200px !important; max-height:90px !important; }
       </style>
       <h2>${title}</h2>
       <div class="r-genat">${genAt}</div>
@@ -4196,7 +4200,7 @@ function drawKpiMiniChart(container, prevVal, currVal, prevLabel, currLabel, col
       <text x="${x+barW/2}" y="${(y-4).toFixed(1)}" font-size="10" font-weight="700" text-anchor="middle" fill="${faded?'#7A8494':color}">${v}%</text>
       <text x="${x+barW/2}" y="${h-6}" font-size="8.5" text-anchor="middle" fill="#6B7280">${lbl}</text>`;
   }
-  container.innerHTML = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="display:block;">
+  container.innerHTML = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="auto" style="display:block;max-width:${w}px;margin:0 auto;">
     <line x1="30" y1="${base}" x2="${w-10}" y2="${base}" stroke="#EAEDF2"></line>
     ${bar(x1, prevVal, prevLabel, true)}
     ${bar(x2, currVal, currLabel, false)}
