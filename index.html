@@ -730,7 +730,7 @@
         <table>
           <thead>
             <tr>
-              <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th><th>품번</th><th>기존도번</th><th>품명</th><th>수량</th>
+              <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th><th>기존도번</th><th>품명</th><th>수량</th>
               <th>최종납기</th><th>납품일자</th><th>납품여부</th><th>현재진행공정</th>
               <th class="wait-col">납품대기</th><th class="wait-col">수입검사대기</th><th class="wait-col">측정실검사대기</th>
               <th class="wait-col">크린룸검사대기</th><th class="wait-col">비젼검사대기</th><th>선출고</th>
@@ -1341,7 +1341,6 @@ function mainRenderTable(data){
     return `<tr class="${rowClass}">
       <td>${statusBadge(_status)}</td><td>${r.orderNo}</td><td>${r.customer}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
-      <td>${r.partNo}</td>
       <td>${r.oldDrawingNo||''}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
       <td class="${overdue?'cell-overdue':''}">${r.dueDate||''}</td>
@@ -1908,43 +1907,41 @@ function mapRowToMain(row){
 }
 
 // 수입검사 대기 수량 계산
+// ===== 수입검사 대기: 도면번호별 합계를 1회만 인덱싱해 캐싱 (성능 최적화) =====
+let waitInspIndexCache = null; // { processQty: Map, inspQty: Map }
+function invalidateWaitInspIndex(){ waitInspIndexCache = null; }
+function buildWaitInspIndex(){
+  const processQtyMap = new Map();   // 도면번호 → 2026년 사상/E.P/CP 수량 합
+  const inspQtyMap = new Map();      // 도 번 → 2026년 검사수 합
+  if(processData && processData.length){
+    for(const p of processData){
+      const regYear = String(p["등록일자"] || "").split("-")[0];
+      if(regYear !== "2026") continue;
+      const cp = String(p["현재진행공정"] || "");
+      if(!(cp.includes("사상") || cp.includes("E.P") || cp.includes("CP"))) continue;
+      const dn = String(p["도면번호"] || "").trim();
+      if(!dn) continue;
+      processQtyMap.set(dn, (processQtyMap.get(dn) || 0) + Number(p["수량"] || 0));
+    }
+  }
+  if(incomingInspectionData && incomingInspectionData.length){
+    for(const i of incomingInspectionData){
+      const inspectYear = String(i["검사일"] || "").split("-")[0];
+      if(inspectYear !== "2026") continue;
+      const dn = String(i["도 번"] || "").trim();
+      if(!dn) continue;
+      inspQtyMap.set(dn, (inspQtyMap.get(dn) || 0) + Number(i["검사수"] || 0));
+    }
+  }
+  waitInspIndexCache = { processQty: processQtyMap, inspQty: inspQtyMap };
+}
 function computeWaitIncomingInspection(mainRow){
   const oldDrawingNo = String(mainRow["기존도번(유진테크)"]||mainRow["기존도번"]||"").trim();
   if(!oldDrawingNo) return 0;
-
-  // 생산공정현황: 도면번호 + 등록일자(2026) + 현재진행공정(사상/E.P/CP) → 수량 합계
-  // 데이터는 필드명을 키로 가진 객체이므로 필드명으로 직접 접근한다.
-  let processQty = 0;
-  if(processData && processData.length){
-    processData.forEach(p=>{
-      const pDrawingNo = String(p["도면번호"] || "").trim();
-      const regDateStr = p["등록일자"] || "";
-      const regYear = String(regDateStr).split("-")[0];
-      const currentProcess = String(p["현재진행공정"] || "").trim();
-      if(pDrawingNo === oldDrawingNo && regYear === "2026"){
-        const hasProcessKeyword = ["사상", "E.P", "CP"].some(k => currentProcess.includes(k));
-        if(hasProcessKeyword){
-          processQty += Number(p["수량"] || 0);
-        }
-      }
-    });
-  }
-
-  // 수입검사(외관): 도 번 + 검사일(2026) → 검사수 합계
-  let inspectionQty = 0;
-  if(incomingInspectionData && incomingInspectionData.length){
-    incomingInspectionData.forEach(i=>{
-      const iDrawingNo = String(i["도 번"] || "").trim();
-      const inspectDate = i["검사일"] || "";
-      const inspectYear = String(inspectDate).split("-")[0];
-      if(iDrawingNo === oldDrawingNo && inspectYear === "2026"){
-        inspectionQty += Number(i["검사수"] || 0);
-      }
-    });
-  }
-
-  const result = processQty - inspectionQty;
-  return Math.max(0, result); // 음수면 0
+  if(!waitInspIndexCache) buildWaitInspIndex();
+  const processQty = waitInspIndexCache.processQty.get(oldDrawingNo) || 0;
+  const inspectionQty = waitInspIndexCache.inspQty.get(oldDrawingNo) || 0;
+  return Math.max(0, processQty - inspectionQty); // 음수면 0
 }
 let mainApiUrl = "";
 const CURRENT_YEAR = new Date().getFullYear();
@@ -2119,8 +2116,14 @@ async function fetchMainData(yearsParam){
      // 생산공정현황, 수입검사 데이터 로드
      processData = processRes.success ? processRes.rows : [];
      incomingInspectionData = incomingRes.success ? incomingRes.rows : [];
+     invalidateWaitInspIndex(); // 도면번호별 합계 인덱스 재계산 예약
      console.log("생산공정현황 데이터:", processData.length, "건");
      console.log("수입검사(외관) 데이터:", incomingInspectionData.length, "건");
+     // 진단: M600-010-002 수입검사 이력 건수 (필터/캐시 문제 확인용)
+     console.log("진단 M600-010-002 수입검사 건수:",
+       incomingInspectionData.filter(i=>String(i["도 번"]||"").trim()==="M600-010-002").length,
+       "| 2026년분:",
+       incomingInspectionData.filter(i=>String(i["도 번"]||"").trim()==="M600-010-002" && String(i["검사일"]||"").startsWith("2026")).length);
      if(processData.length > 0) console.log("생산공정현황 샘플:", processData[0]);
      if(incomingInspectionData.length > 0){
        console.log("수입검사(외관) 샘플:", incomingInspectionData[0]);
@@ -4120,15 +4123,23 @@ function initSummaryTabs(){
     const genAt = document.getElementById("summary-generatedAt").textContent;
     document.getElementById("print-area").innerHTML = `
       <style>
-        @page{ size: A4 landscape; margin: 8mm; }
-        #print-area{ padding:2mm; }
-        #print-area h2{ font-size:14px; margin:0 0 1px; }
-        #print-area .r-genat{ font-size:9px; color:#666; margin-bottom:5px; }
-        #print-area .table-wrap{ border:1px solid #999 !important; padding:5px 8px !important; margin-bottom:3mm !important; background:none !important; break-inside:avoid; }
-        #print-area ul{ margin:0; padding-left:16px; font-size:10px; line-height:1.5; }
-        /* KPI 3열 가로 유지 */
-        #print-area .table-wrap > div[style*="display:flex"]{ flex-wrap:nowrap !important; }
-        #print-area svg{ max-width:200px !important; max-height:90px !important; }
+        @page{ size: A4 landscape; margin: 6mm; }
+        #print-area{ padding:0; }
+        #print-area h2{ font-size:13px; margin:0 0 1px; }
+        #print-area .r-genat{ font-size:8px; color:#666; margin-bottom:4px; }
+        #print-area .table-wrap{ border:1px solid #999 !important; padding:4px 8px !important; margin-bottom:2mm !important; background:none !important; break-inside:avoid; box-shadow:none !important; }
+        #print-area .table-wrap:last-child{ margin-bottom:0 !important; }
+        #print-area ul{ margin:0; padding-left:14px; font-size:9.5px; line-height:1.4; }
+        #print-area li{ margin:0; }
+        /* KPI 3열 가로 유지 + 차트 축소 */
+        #print-area .table-wrap div[style*="display:flex"]{ flex-wrap:nowrap !important; }
+        #print-area svg{ max-width:170px !important; max-height:78px !important; }
+        /* 카드 내부 여백/글씨 축소 */
+        #print-area .table-wrap [style*="font-size:20px"]{ font-size:15px !important; }
+        #print-area .table-wrap [style*="font-size:24px"]{ font-size:16px !important; }
+        #print-area .table-wrap [style*="font-size:13px"]{ font-size:10.5px !important; margin-bottom:4px !important; }
+        #print-area .table-wrap [style*="padding:10px"],
+        #print-area .table-wrap [style*="padding:12px"]{ padding:4px 8px !important; }
       </style>
       <h2>${title}</h2>
       <div class="r-genat">${genAt}</div>
