@@ -205,6 +205,7 @@
   .badge.status-출고{background:var(--navy);color:#fff;}
   .badge.status-완료{background:#F1E9F7;color:var(--purple);border:1px solid var(--purple);}
   .badge.status-외관{background:#E7F0FB;color:var(--blue);border:1px solid var(--blue);}
+  .badge.status-수입{background:#E7F0FB;color:var(--blue);border:1px solid var(--blue);}
   .badge.status-측정{background:#E7F0FB;color:var(--blue);border:1px solid var(--blue);}
   .badge.status-비젼{background:#E7F0FB;color:var(--blue);border:1px solid var(--blue);}
   .badge.status-OK{background:#FFF6D6;color:#8a6d00;border:1px solid #C9A400;}
@@ -677,6 +678,7 @@
             <label><input type="checkbox" value="외관" checked> 외관</label>
             <label><input type="checkbox" value="측정" checked> 측정</label>
             <label><input type="checkbox" value="비젼" checked> 비젼</label>
+            <label><input type="checkbox" value="수입" checked> 수입</label>
             <label><input type="checkbox" value="OK" checked> OK</label>
           </div>
         </div>
@@ -768,6 +770,7 @@
               <label><input type="checkbox" value="측정" checked> 측정</label>
               <label><input type="checkbox" value="외관" checked> 외관</label>
               <label><input type="checkbox" value="비젼" checked> 비젼</label>
+              <label><input type="checkbox" value="수입" checked> 수입</label>
               <label><input type="checkbox" value="OK" checked> OK</label>
             </div>
           </div>
@@ -1176,12 +1179,14 @@ function computeProductStatusRaw(r){
   const S = computeWaitCleanRaw(r);
   const R = computeWaitMeasureRaw(r);
   const T = computeWaitVisionRaw(r);
+  const W = computeWaitIncomingInspection(r);
   if(V - I >= 0) return "출고";
   if(Q - I >= 0) return "재고";
   if(S - I >= 0) return "외관";
   if(T - I >= 0) return "비젼";
   if(R - I >= 0) return "측정";
-  const sum = Q + R + S + T + V;
+  if(W - I >= 0) return "수입";
+  const sum = Q + R + S + T + V + W;
   if(sum >= I) return "OK";
   return "생산";
 }
@@ -1207,6 +1212,7 @@ function computeAllStatuses(data){
     let sRemain = computeWaitCleanRaw(rep);
     let tRemain = computeWaitVisionRaw(rep);
     let rRemain = computeWaitMeasureRaw(rep);
+    let wRemain = computeWaitIncomingInspection(rep);
     rows.forEach(r=>{
       const I = Number(r.qty)||0;
       if(I === 0){ result[r.orderNo] = {status:"", q:qRemain, s:sRemain, t:tRemain, r:rRemain}; return; }
@@ -1237,7 +1243,12 @@ function computeAllStatuses(data){
         rRemain -= I;
         return;
       }
-      const totalAvail = qRemain + sRemain + tRemain + rRemain + V;
+      if(wRemain - I >= 0){
+        result[r.orderNo] = Object.assign({status:"수입"}, snapshot);
+        wRemain -= I;
+        return;
+      }
+      const totalAvail = qRemain + sRemain + tRemain + rRemain + wRemain + V;
       if(totalAvail >= I){
         result[r.orderNo] = Object.assign({status:"OK"}, snapshot);
         let need = Math.max(I - V, 0);
@@ -1245,6 +1256,7 @@ function computeAllStatuses(data){
         const takeS = Math.min(sRemain, need); sRemain -= takeS; need -= takeS;
         const takeT = Math.min(tRemain, need); tRemain -= takeT; need -= takeT;
         const takeR = Math.min(rRemain, need); rRemain -= takeR; need -= takeR;
+        const takeW = Math.min(wRemain, need); wRemain -= takeW; need -= takeW;
         return;
       }
       result[r.orderNo] = Object.assign({status:"생산"}, snapshot);
@@ -1283,6 +1295,7 @@ function mainStatusTextColor(status){
     "외관": "#0B5CAB",
     "측정": "#0B5CAB",
     "비젼": "#0B5CAB",
+    "수입": "#0B5CAB",
     "OK": "#8a6d00"
   };
   return map[status] || "#1A1E27";
@@ -1314,7 +1327,7 @@ function mainRenderStats(data){
   const done = data.filter(r => computeProductStatus(r) === "완료").length;
   const qc = data.filter(r => {
     const status = computeProductStatus(r);
-    return ["재고","출고","측정","외관","비젼","OK"].includes(status);
+    return ["재고","출고","측정","외관","비젼","수입","OK"].includes(status);
   }).length;
   const overdue = data.filter(r => isOverdue(r.dueDate) && r.shipped !== "납품완료").length;
   const total = data.length || 1;
@@ -1390,7 +1403,7 @@ function mainInitialRender(data){
   if(typeof renderSummaryView==="function") renderSummaryView();
 }
 function mainRenderAll(data){ mainRenderStats(data); mainRenderTable(data); mainRenderCards(data); mainListRevealed = true; }
-const ALL_MAIN_STATUSES = ["생산","재고","출고","완료","외관","측정","비젼","OK"];
+const ALL_MAIN_STATUSES = ["생산","재고","출고","완료","외관","측정","비젼","수입","OK"];
 let mainSelectedStatuses = ALL_MAIN_STATUSES.slice();
 let mainHideCompleted = false;
 function mainGetFilteredBase(){
