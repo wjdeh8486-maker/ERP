@@ -4662,25 +4662,25 @@ function renderManagementSummary(rows){
   if(!el) return;
   
   el.innerHTML = `
-    <h2 style="font-size:13px;font-weight:700;margin-bottom:12px;">📊 종합 현황</h2>
+    <h2 style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1A1E27;">📊 종합 현황</h2>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
-      <div style="background:var(--card-bg);border-left:4px solid #E02424;padding:12px;border-radius:6px;">
-        <div style="font-size:11px;color:#B9C2D6;margin-bottom:4px;">생산 대기</div>
-        <div style="font-size:20px;font-weight:700;color:#E02424;">${data.productWait}개</div>
-        <div style="font-size:10px;color:#FFD400;">7월: ${data.julyProd}개</div>
+      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #E02424;padding:12px;border-radius:6px;">
+        <div style="font-size:11px;color:#6B7280;margin-bottom:8px;font-weight:700;">생산 대기</div>
+        <div style="font-size:24px;font-weight:700;color:#E02424;margin-bottom:4px;">${data.productWait}</div>
+        <div style="font-size:10px;color:#6B7280;">7월: ${data.julyProd}개</div>
       </div>
-      <div style="background:var(--card-bg);border-left:4px solid #0B5CAB;padding:12px;border-radius:6px;">
-        <div style="font-size:11px;color:#B9C2D6;margin-bottom:4px;">품질 대기</div>
-        <div style="font-size:20px;font-weight:700;color:#0B5CAB;">${data.qualityWait}개</div>
-        <div style="font-size:10px;color:#FFD400;">7월: ${data.julyQual}개</div>
+      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #0B5CAB;padding:12px;border-radius:6px;">
+        <div style="font-size:11px;color:#6B7280;margin-bottom:8px;font-weight:700;">품질 대기</div>
+        <div style="font-size:24px;font-weight:700;color:#0B5CAB;margin-bottom:4px;">${data.qualityWait}</div>
+        <div style="font-size:10px;color:#6B7280;">7월: ${data.julyQual}개</div>
       </div>
-      <div style="background:var(--card-bg);border-left:4px solid #E02424;padding:12px;border-radius:6px;">
-        <div style="font-size:11px;color:#B9C2D6;margin-bottom:4px;">납기 지연</div>
-        <div style="font-size:20px;font-weight:700;color:#E02424;">${data.delayed}건</div>
+      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #E02424;padding:12px;border-radius:6px;">
+        <div style="font-size:11px;color:#6B7280;margin-bottom:8px;font-weight:700;">납기 지연</div>
+        <div style="font-size:24px;font-weight:700;color:#E02424;margin-bottom:4px;">${data.delayed}</div>
       </div>
-      <div style="background:var(--card-bg);border-left:4px solid #FF9800;padding:12px;border-radius:6px;">
-        <div style="font-size:11px;color:#B9C2D6;margin-bottom:4px;">납기 연장 권고</div>
-        <div style="font-size:20px;font-weight:700;color:#FF9800;">${data.extendRec}건</div>
+      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #FF9800;padding:12px;border-radius:6px;">
+        <div style="font-size:11px;color:#6B7280;margin-bottom:8px;font-weight:700;">납기 연장 권고</div>
+        <div style="font-size:24px;font-weight:700;color:#FF9800;margin-bottom:4px;">${data.extendRec}</div>
       </div>
     </div>
   `;
@@ -4864,19 +4864,35 @@ function renderManagementPlan(rows){
 
 // 전체 렌더링 + 검색 연결
 function renderManagementAll(){
-  // mainData가 없으면 (데이터 로드 전) 초기 메시지 표시
-  if(!mainData || mainData.length === 0){
-    const el = document.getElementById("management-print-page");
-    if(el) el.innerHTML = `<div style="padding:40px;text-align:center;color:#B9C2D6;">데이터를 로드해주세요. (구글시트 연동 또는 엑셀 업로드)</div>`;
-    return;
+  try {
+    // mainData가 없으면 (데이터 로드 전) 초기 메시지 표시
+    if(!mainData || mainData.length === 0){
+      const el = document.getElementById("management-print-page");
+      if(el) el.innerHTML = `<div style="padding:40px;text-align:center;color:#B9C2D6;">데이터를 로드해주세요. (구글시트 연동 또는 엑셀 업로드)</div>`;
+      return;
+    }
+    
+    const filtered = filterManagementRows(managementSearchKeyword);
+    console.log("렌더링 - 필터링된 행 수:", filtered.length);
+    
+    renderManagementSummary(filtered);
+    console.log("✓ 종합 현황 렌더링 완료");
+    
+    renderManagementExtend(filtered);
+    console.log("✓ 납기 연장 렌더링 완료");
+    
+    renderManagementTop10(filtered);
+    console.log("✓ TOP10 렌더링 완료");
+    
+    renderManagementDetail(filtered);
+    console.log("✓ 상세 렌더링 완료");
+    
+    renderManagementPlan(filtered);
+    console.log("✓ 월별 계획 렌더링 완료");
+  } catch(err) {
+    console.error("관리항목 현황 렌더링 에러:", err);
+    alert("렌더링 에러 발생: " + err.message);
   }
-  
-  const filtered = filterManagementRows(managementSearchKeyword);
-  renderManagementSummary(filtered);
-  renderManagementExtend(filtered);
-  renderManagementTop10(filtered);
-  renderManagementDetail(filtered);
-  renderManagementPlan(filtered);
 }
 
 // 메뉴 클릭 이벤트 연결
