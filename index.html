@@ -455,70 +455,16 @@
   @media print {
     /* 인쇄는 #print-area를 통해서만 하므로 모달 자체는 인쇄에서 숨긴다 */
     #summary-reportModal { display: none !important; }
-    
-    /* 관리항목 현황 인쇄 최적화 */
-    @page { size: A4 landscape; margin: 8mm; }
-    #view-management { padding: 0 !important; }
-    #management-print-page { 
-      padding: 8mm !important;
-      width: 100%;
-      break-after: avoid;
+    /* 관리항목 현황 인쇄 (#print-area 안으로 복사되어 인쇄됨) */
+    #print-area #management-summary > div{
+      border:1px solid #999 !important; border-left:3px solid #999 !important;
+      padding:4px 8px !important; break-inside:avoid; background:#fff !important;
     }
-    #management-print-page h2 {
-      font-size: 12px;
-      font-weight: 700;
-      margin: 0 0 6px 0;
-      break-after: avoid;
-    }
-    #management-print-page > div {
-      break-inside: avoid;
-      margin-bottom: 6mm !important;
-    }
-    #management-summary {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr) !important;
-      gap: 6px !important;
-      break-inside: avoid;
-    }
-    #management-summary > div {
-      border-left: 3px solid currentColor !important;
-      padding: 6px 8px !important;
-      font-size: 10px !important;
-      break-inside: avoid;
-    }
-    #management-summary > div > div:first-child { font-size: 9px !important; }
-    #management-summary > div > div:nth-child(2) { font-size: 14px !important; font-weight: 700; }
-    #management-summary > div > div:nth-child(3) { font-size: 8px !important; }
-    
-    #management-extend table,
-    #management-top10 table,
-    #management-detail table,
-    #management-plan table {
-      width: 100%;
-      font-size: 9px !important;
-      border-collapse: collapse;
-      break-inside: avoid;
-    }
-    #management-extend th,
-    #management-top10 th,
-    #management-detail th,
-    #management-plan th {
-      padding: 4px 3px !important;
-      background: var(--navy) !important;
-      color: #fff !important;
-      break-inside: avoid;
-    }
-    #management-extend td,
-    #management-top10 td,
-    #management-detail td,
-    #management-plan td {
-      padding: 3px 2px !important;
-      border-bottom: 1px solid #3A3F4B !important;
-    }
-    .badge {
-      padding: 1px 3px !important;
-      font-size: 8px !important;
-    }
+    #print-area [id^="management-"]{ break-inside:avoid; margin-bottom:3mm !important; box-shadow:none !important; border:none !important; padding:0 !important; }
+    #print-area [id^="management-"] h2{ font-size:11px; margin:0 0 2px; }
+    #print-area [id^="management-"] table{ font-size:8px !important; }
+    #print-area [id^="management-"] th{ background:#f2f2f2 !important; color:#000 !important; }
+    #print-area [id^="management-"] .badge{ border:1px solid #999; background:#fff !important; padding:1px 4px !important; font-size:7.5px !important; }
   }
 
   /* 관리항목 현황 모바일 최적화 */
@@ -873,7 +819,7 @@
     <div id="topbar-management" class="topbar" style="display:none;">
       <h1>관리항목 현황</h1>
       <div class="search-box">
-        <input id="management-searchInput" type="text" placeholder="도번 (예: M200-005), 품명 (예: SHOWERHEAD), 또는 복합 (예: M200 SHOWERHEAD)">
+        <input id="management-searchInput" type="text" placeholder="도번·품명·품번·ORDER NO 검색 (쉼표=OR, 공백=AND · 예: M200-005 SHOWERHEAD)">
         <button id="management-searchBtn">🔍 검색</button>
         <button id="management-printBtn">🖨️ 인쇄</button>
         <button id="management-excelBtn" type="button" class="tb-download-btn">📥 다운로드</button>
@@ -4494,7 +4440,8 @@ setTimeout(() => {
 /* ============ MANAGEMENT(관리항목 현황) LOGIC ============ */
 let managementSearchKeyword = ""; // 현재 검색어
 
-// 검색어로 행 필터링 (도번, 품명, 도번+품명, 도번+도번, 품명+품명)
+// 검색어로 행 필터링: 각 단어를 도번+품명 양쪽에서 찾음
+// 쉼표(,) = OR (여러 개 중 하나), 공백 = AND (모두 포함, 예: "M200-005 SHOWERHEAD")
 function filterManagementRows(keyword){
   // 상태 캐시가 오래됐으면 먼저 다시 계산 (그래야 수입/비젼 등 상태가 정확)
   if(mainStatusMapDirty){
@@ -4505,22 +4452,23 @@ function filterManagementRows(keyword){
   let data = mainData || [];
   
   if(keyword.trim()){
-    const terms = keyword.trim().split(/[\s,]+/).filter(t=>t);
-    const isMultiDraw = terms.every(t => t.match(/^[A-Z0-9\-]+$/)); // 도번만
-    const isMultiName = terms.every(t => t.match(/[가-힣]/)); // 품명만
+    // 쉼표로 OR 그룹 분리 → 각 그룹 안에서 공백으로 AND 단어 분리
+    const orGroups = keyword.trim().split(",")
+      .map(g => g.trim()).filter(Boolean)
+      .map(g => g.split(/\s+/).map(t => t.trim().toUpperCase()).filter(Boolean));
     
-    data = data.filter(row => {
-      const drawingNo = String(row.oldDrawingNo||'').toUpperCase();
-      const partName = String(row.partName||'');
-      
-      if(isMultiDraw) return terms.some(t => drawingNo.includes(t.toUpperCase()));
-      if(isMultiName) return terms.some(t => partName.includes(t));
-      // 도번+품명 혼합
-      return terms.every(t => {
-        const isEng = t.match(/^[A-Z0-9\-]+$/);
-        return isEng ? drawingNo.includes(t.toUpperCase()) : partName.includes(t);
+    if(orGroups.length){
+      data = data.filter(row => {
+        const haystack = [
+          String(row.oldDrawingNo||''),
+          String(row.partName||''),
+          String(row.partNo||''),
+          String(row.orderNo||'')
+        ].join(" ").toUpperCase();
+        // OR 그룹 중 하나라도, 그 그룹의 모든 단어가 포함되면 매칭
+        return orGroups.some(andTerms => andTerms.every(t => haystack.includes(t)));
       });
-    });
+    }
   }
   
   // 각 행에 productStatus 계산해서 추가
@@ -4925,11 +4873,23 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 인쇄 버튼
+  // 인쇄 버튼: 기존 인쇄 시스템(#print-area)에 내용을 복사한 뒤 인쇄
   const printBtn = document.getElementById("management-printBtn");
   if(printBtn){
     printBtn.addEventListener("click", () => {
+      const src = document.getElementById("management-print-page");
+      const pa = document.getElementById("print-area");
+      if(!src || !pa) return;
+      const dateStr = new Date().toLocaleDateString('ko-KR');
+      const kw = managementSearchKeyword ? ` · 검색: ${managementSearchKeyword}` : '';
+      pa.innerHTML = `
+        <div class="q-report-page">
+          <h2>관리항목 현황 (${dateStr}${kw})</h2>
+          ${src.innerHTML}
+        </div>
+      `;
       window.print();
+      setTimeout(() => { pa.innerHTML = ""; }, 500);
     });
   }
 
