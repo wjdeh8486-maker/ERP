@@ -4496,24 +4496,32 @@ let managementSearchKeyword = ""; // 현재 검색어
 
 // 검색어로 행 필터링 (도번, 품명, 도번+품명, 도번+도번, 품명+품명)
 function filterManagementRows(keyword){
-  if(!keyword.trim()) return mainData || [];
+  let data = mainData || [];
   
-  const terms = keyword.trim().split(/[\s,]+/).filter(t=>t);
-  const isMultiDraw = terms.every(t => t.match(/^[A-Z0-9\-]+$/)); // 도번만
-  const isMultiName = terms.every(t => t.match(/[가-힣]/)); // 품명만
-  
-  return (mainData||[]).filter(row => {
-    const drawingNo = String(row.oldDrawingNo||'').toUpperCase();
-    const partName = String(row.partName||'');
+  if(keyword.trim()){
+    const terms = keyword.trim().split(/[\s,]+/).filter(t=>t);
+    const isMultiDraw = terms.every(t => t.match(/^[A-Z0-9\-]+$/)); // 도번만
+    const isMultiName = terms.every(t => t.match(/[가-힣]/)); // 품명만
     
-    if(isMultiDraw) return terms.some(t => drawingNo.includes(t.toUpperCase()));
-    if(isMultiName) return terms.some(t => partName.includes(t));
-    // 도번+품명 혼합
-    return terms.every(t => {
-      const isEng = t.match(/^[A-Z0-9\-]+$/);
-      return isEng ? drawingNo.includes(t.toUpperCase()) : partName.includes(t);
+    data = data.filter(row => {
+      const drawingNo = String(row.oldDrawingNo||'').toUpperCase();
+      const partName = String(row.partName||'');
+      
+      if(isMultiDraw) return terms.some(t => drawingNo.includes(t.toUpperCase()));
+      if(isMultiName) return terms.some(t => partName.includes(t));
+      // 도번+품명 혼합
+      return terms.every(t => {
+        const isEng = t.match(/^[A-Z0-9\-]+$/);
+        return isEng ? drawingNo.includes(t.toUpperCase()) : partName.includes(t);
+      });
     });
-  });
+  }
+  
+  // 각 행에 productStatus 계산해서 추가
+  return data.map(r => ({
+    ...r,
+    productStatus: computeProductStatus(r)
+  }));
 }
 
 // 생산대기 수량 (아직 검사 전)
