@@ -455,6 +455,70 @@
   @media print {
     /* 인쇄는 #print-area를 통해서만 하므로 모달 자체는 인쇄에서 숨긴다 */
     #summary-reportModal { display: none !important; }
+    
+    /* 관리항목 현황 인쇄 최적화 */
+    @page { size: A4 landscape; margin: 8mm; }
+    #view-management { padding: 0 !important; }
+    #management-print-page { 
+      padding: 8mm !important;
+      width: 100%;
+      break-after: avoid;
+    }
+    #management-print-page h2 {
+      font-size: 12px;
+      font-weight: 700;
+      margin: 0 0 6px 0;
+      break-after: avoid;
+    }
+    #management-print-page > div {
+      break-inside: avoid;
+      margin-bottom: 6mm !important;
+    }
+    #management-summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr) !important;
+      gap: 6px !important;
+      break-inside: avoid;
+    }
+    #management-summary > div {
+      border-left: 3px solid currentColor !important;
+      padding: 6px 8px !important;
+      font-size: 10px !important;
+      break-inside: avoid;
+    }
+    #management-summary > div > div:first-child { font-size: 9px !important; }
+    #management-summary > div > div:nth-child(2) { font-size: 14px !important; font-weight: 700; }
+    #management-summary > div > div:nth-child(3) { font-size: 8px !important; }
+    
+    #management-extend table,
+    #management-top10 table,
+    #management-detail table,
+    #management-plan table {
+      width: 100%;
+      font-size: 9px !important;
+      border-collapse: collapse;
+      break-inside: avoid;
+    }
+    #management-extend th,
+    #management-top10 th,
+    #management-detail th,
+    #management-plan th {
+      padding: 4px 3px !important;
+      background: var(--navy) !important;
+      color: #fff !important;
+      break-inside: avoid;
+    }
+    #management-extend td,
+    #management-top10 td,
+    #management-detail td,
+    #management-plan td {
+      padding: 3px 2px !important;
+      border-bottom: 1px solid #3A3F4B !important;
+    }
+    .badge {
+      padding: 1px 3px !important;
+      font-size: 8px !important;
+    }
   }
 
   /* 관리항목 현황 모바일 최적화 */
@@ -4592,23 +4656,23 @@ function renderManagementSummary(rows){
   el.innerHTML = `
     <h2 style="font-size:13px;font-weight:700;margin-bottom:12px;">📊 종합 현황</h2>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
-      <div style="background:var(--bg-card);border-left:4px solid #E02424;padding:12px;border-radius:6px;">
+      <div style="background:var(--card-bg);border-left:4px solid #E02424;padding:12px;border-radius:6px;">
         <div style="font-size:11px;color:#B9C2D6;margin-bottom:4px;">생산 대기</div>
-        <div style="font-size:20px;font-weight:700;color:var(--text-bright);">${data.productWait}개</div>
+        <div style="font-size:20px;font-weight:700;color:#E02424;">${data.productWait}개</div>
         <div style="font-size:10px;color:#FFD400;">7월: ${data.julyProd}개</div>
       </div>
-      <div style="background:var(--bg-card);border-left:4px solid #0B5CAB;padding:12px;border-radius:6px;">
+      <div style="background:var(--card-bg);border-left:4px solid #0B5CAB;padding:12px;border-radius:6px;">
         <div style="font-size:11px;color:#B9C2D6;margin-bottom:4px;">품질 대기</div>
-        <div style="font-size:20px;font-weight:700;color:var(--text-bright);">${data.qualityWait}개</div>
+        <div style="font-size:20px;font-weight:700;color:#0B5CAB;">${data.qualityWait}개</div>
         <div style="font-size:10px;color:#FFD400;">7월: ${data.julyQual}개</div>
       </div>
-      <div style="background:var(--bg-card);border-left:4px solid #E02424;padding:12px;border-radius:6px;">
+      <div style="background:var(--card-bg);border-left:4px solid #E02424;padding:12px;border-radius:6px;">
         <div style="font-size:11px;color:#B9C2D6;margin-bottom:4px;">납기 지연</div>
         <div style="font-size:20px;font-weight:700;color:#E02424;">${data.delayed}건</div>
       </div>
-      <div style="background:var(--bg-card);border-left:4px solid #FF9800;padding:12px;border-radius:6px;">
+      <div style="background:var(--card-bg);border-left:4px solid #FF9800;padding:12px;border-radius:6px;">
         <div style="font-size:11px;color:#B9C2D6;margin-bottom:4px;">납기 연장 권고</div>
-        <div style="font-size:20px;font-weight:700;color:var(--text-bright);">${data.extendRec}건</div>
+        <div style="font-size:20px;font-weight:700;color:#FF9800;">${data.extendRec}건</div>
       </div>
     </div>
   `;
@@ -4770,17 +4834,17 @@ function renderManagementPlan(rows){
         </thead>
         <tbody>
           <tr style="border-bottom:1px solid #3A3F4B;">
-            <td style="padding:8px;font-weight:700;background:#2A3150;">생산</td>
+            <td style="padding:8px;font-weight:700;background:#2A3150;color:#fff;">생산</td>
             ${Array.from({length:12}, (_,i) => `<td style="padding:8px;text-align:right;">${plan[i+1].production}</td>`).join('')}
             <td style="padding:8px;text-align:right;font-weight:700;">${Object.values(plan).reduce((sum, p) => sum + p.production, 0)}</td>
           </tr>
           <tr style="border-bottom:1px solid #3A3F4B;">
-            <td style="padding:8px;font-weight:700;background:#2A3150;">검사</td>
+            <td style="padding:8px;font-weight:700;background:#2A3150;color:#fff;">검사</td>
             ${Array.from({length:12}, (_,i) => `<td style="padding:8px;text-align:right;">${plan[i+1].quality}</td>`).join('')}
             <td style="padding:8px;text-align:right;font-weight:700;">${Object.values(plan).reduce((sum, p) => sum + p.quality, 0)}</td>
           </tr>
           <tr>
-            <td style="padding:8px;font-weight:700;background:#2A3150;">완료</td>
+            <td style="padding:8px;font-weight:700;background:#2A3150;color:#fff;">완료</td>
             ${Array.from({length:12}, (_,i) => `<td style="padding:8px;text-align:right;">${plan[i+1].completed}</td>`).join('')}
             <td style="padding:8px;text-align:right;font-weight:700;">${Object.values(plan).reduce((sum, p) => sum + p.completed, 0)}</td>
           </tr>
@@ -4792,6 +4856,13 @@ function renderManagementPlan(rows){
 
 // 전체 렌더링 + 검색 연결
 function renderManagementAll(){
+  // mainData가 없으면 (데이터 로드 전) 초기 메시지 표시
+  if(!mainData || mainData.length === 0){
+    const el = document.getElementById("management-print-page");
+    if(el) el.innerHTML = `<div style="padding:40px;text-align:center;color:#B9C2D6;">데이터를 로드해주세요. (구글시트 연동 또는 엑셀 업로드)</div>`;
+    return;
+  }
+  
   const filtered = filterManagementRows(managementSearchKeyword);
   renderManagementSummary(filtered);
   renderManagementExtend(filtered);
@@ -4828,7 +4899,154 @@ document.addEventListener("DOMContentLoaded", () => {
       renderManagementAll();
     });
   }
+
+  // 인쇄 버튼
+  const printBtn = document.getElementById("management-printBtn");
+  if(printBtn){
+    printBtn.addEventListener("click", () => {
+      window.print();
+    });
+  }
+
+  // 엑셀 다운로드 버튼
+  const excelBtn = document.getElementById("management-excelBtn");
+  if(excelBtn){
+    excelBtn.addEventListener("click", managementDownloadExcel);
+  }
 });
+
+// 관리항목 현황 엑셀 다운로드
+function managementDownloadExcel(){
+  const filtered = filterManagementRows(managementSearchKeyword);
+  const aoa = [];
+  
+  // 제목
+  aoa.push(["관리항목 현황 (A4 1페이지)", new Date().toLocaleDateString('ko-KR')]);
+  aoa.push([]);
+  
+  // 1. 종합 현황
+  const summary = getManagementSummary(filtered);
+  aoa.push(["📊 종합 현황"]);
+  aoa.push(["항목", "수량/건"]);
+  aoa.push(["생산 대기", summary.productWait + "개"]);
+  aoa.push(["  ├ 7월 납기", summary.julyProd + "개"]);
+  aoa.push(["품질 대기", summary.qualityWait + "개"]);
+  aoa.push(["  ├ 7월 납기", summary.julyQual + "개"]);
+  aoa.push(["납기 지연", summary.delayed + "건"]);
+  aoa.push(["납기 연장 권고", summary.extendRec + "건"]);
+  aoa.push([]);
+  
+  // 2. 납기 연장 권고
+  const extList = getExtensionList(filtered);
+  if(extList.length){
+    aoa.push(["⚠️ 납기 연장 권고"]);
+    aoa.push(["도번", "품명", "상태", "수량", "남은일", "현재납기", "권고납기"]);
+    extList.forEach(r => {
+      aoa.push([
+        r.oldDrawingNo||'',
+        r.partName||'',
+        r.productStatus,
+        r.qty,
+        r.daysRemain + "일",
+        r.dueDate,
+        r.suggestedDate
+      ]);
+    });
+    aoa.push([]);
+  }
+  
+  // 3. 우선순위 TOP 10
+  const top10 = getTop10List(filtered);
+  if(top10.length){
+    aoa.push(["⭐ 우선순위 TOP 10"]);
+    aoa.push(["순", "도번", "품명", "상태", "수량", "남은일", "진행률"]);
+    top10.forEach((r, i) => {
+      aoa.push([
+        i+1,
+        r.oldDrawingNo||'',
+        r.partName||'',
+        r.productStatus,
+        r.qty,
+        r.daysRemain + "일",
+        r.progress + "%"
+      ]);
+    });
+    aoa.push([]);
+  }
+  
+  // 4. 도번/품명별 상세
+  const details = getDetailByDrawing(filtered);
+  if(details.length){
+    aoa.push(["📋 도번/품명별 상세"]);
+    details.forEach((g, gIdx) => {
+      if(gIdx > 0) aoa.push([]);
+      aoa.push([g.drawing + " · " + g.partName + " (합계 " + g.totalQty + "개)"]);
+      aoa.push(["ORDER", "상태", "수량", "7월", "8월"]);
+      g.items.forEach(r => {
+        const julyHas = String(r.dueDate).includes('-07');
+        const augHas = String(r.dueDate).includes('-08');
+        aoa.push([
+          r.orderNo||'',
+          r.productStatus,
+          r.qty,
+          julyHas ? r.qty : '-',
+          augHas ? r.qty : '-'
+        ]);
+      });
+    });
+    aoa.push([]);
+  }
+  
+  // 5. 월별 생산 계획
+  const plan = getMonthlyPlan(filtered);
+  aoa.push(["📅 월/년 생산 계획"]);
+  const headerRow = ["월"];
+  for(let m=1; m<=12; m++) headerRow.push(m + "월");
+  headerRow.push("합계");
+  aoa.push(headerRow);
+  
+  const prodRow = ["생산"];
+  let prodTotal = 0;
+  for(let m=1; m<=12; m++){
+    prodRow.push(plan[m].production);
+    prodTotal += plan[m].production;
+  }
+  prodRow.push(prodTotal);
+  aoa.push(prodRow);
+  
+  const qualRow = ["검사"];
+  let qualTotal = 0;
+  for(let m=1; m<=12; m++){
+    qualRow.push(plan[m].quality);
+    qualTotal += plan[m].quality;
+  }
+  qualRow.push(qualTotal);
+  aoa.push(qualRow);
+  
+  const compRow = ["완료"];
+  let compTotal = 0;
+  for(let m=1; m<=12; m++){
+    compRow.push(plan[m].completed);
+    compTotal += plan[m].completed;
+  }
+  compRow.push(compTotal);
+  aoa.push(compRow);
+  
+  // XLSX 생성 및 다운로드
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [
+    {wch: 12}, {wch: 18}, {wch: 15}, {wch: 8}, {wch: 10},
+    {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12},
+    {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12}
+  ];
+  
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "관리항목 현황");
+  
+  const dateStr = new Date().toISOString().slice(0,10);
+  const keyword = managementSearchKeyword ? "_" + managementSearchKeyword.replace(/\s+/g,'_') : "";
+  XLSX.writeFile(wb, `관리항목현황${keyword}_${dateStr}.xlsx`);
+}
 </script>
 <div id="print-area" style="display:none;"></div>
 </body>
