@@ -914,6 +914,9 @@
           <tbody id="overdue-tableBody"></tbody>
         </table>
         <div class="empty-state" id="overdue-emptyState">검색 버튼을 클릭하면 지연 목록이 표시됩니다.</div>
+        <div id="overdue-moreWrap" style="display:none;text-align:center;padding:12px 0 4px;">
+          <button id="overdue-moreBtn" type="button" style="padding:8px 28px;">▼ 더보기 (<span id="overdue-moreCount">0</span>건 남음)</button>
+        </div>
       </div>
     </div>
     <!-- ===================== INVENTORY VIEW ===================== -->
@@ -3917,8 +3920,14 @@ document.getElementById("overdue-statusRestoreBtn").addEventListener("click", (e
   overdueApplySearch();
 });
 function overdueApplySearch(){
+  overdueVisibleLimit = OVERDUE_PAGE_SIZE; // 새 검색/필터마다 상위 100건부터 다시 시작
   overdueRenderTable(overdueGetFilteredRows());
 }
+// ===== 상위 100건 + 더보기 =====
+// 지연 건수가 많아져도 화면이 버벅이지 않도록, 처음에는 지연일수 많은 순 상위 100건만 그리고
+// [더보기]를 누르면 100건씩 추가로 표시합니다. (지연 건수 통계, 인쇄, 엑셀은 항상 전체 기준)
+const OVERDUE_PAGE_SIZE = 100;
+let overdueVisibleLimit = OVERDUE_PAGE_SIZE;
 function overdueRenderTable(rows){
   const tbody = document.getElementById("overdue-tableBody");
   const empty = document.getElementById("overdue-emptyState");
@@ -3926,7 +3935,8 @@ function overdueRenderTable(rows){
   empty.textContent = rows.length===0 ? "지연된 건이 없습니다." : "";
   empty.style.display = rows.length===0 ? "block" : "none";
   document.getElementById("overdue-statCount").textContent = rows.length;
-  rows.forEach(r=>{
+  const visible = rows.slice(0, overdueVisibleLimit);
+  visible.forEach(r=>{
     const days = overdueDaysLate(r.dueDate);
     const status = computeProductStatus(r);
     const tr = document.createElement("tr");
@@ -3942,7 +3952,19 @@ function overdueRenderTable(rows){
     `;
     tbody.appendChild(tr);
   });
+  // 더보기 버튼 표시/숨김
+  const moreWrap = document.getElementById("overdue-moreWrap");
+  const moreCount = document.getElementById("overdue-moreCount");
+  const remain = rows.length - visible.length;
+  if(moreWrap){
+    moreWrap.style.display = remain > 0 ? "block" : "none";
+    if(moreCount) moreCount.textContent = remain;
+  }
 }
+document.getElementById("overdue-moreBtn").addEventListener("click", ()=>{
+  overdueVisibleLimit += OVERDUE_PAGE_SIZE;
+  runBusy(()=>overdueRenderTable(overdueGetFilteredRows()));
+});
 document.getElementById("overdue-searchBtn").addEventListener("click", (e)=> withSearchIndicator(e.currentTarget, overdueApplySearch));
 document.getElementById("overdue-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") overdueApplySearch(); });
 document.getElementById("overdue-dueDateBtn").addEventListener("click", overdueApplySearch);
