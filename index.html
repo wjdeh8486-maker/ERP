@@ -461,7 +461,12 @@
       border:1px solid #999 !important; border-left:3px solid #999 !important;
       padding:4px 8px !important; break-inside:avoid; background:#fff !important;
     }
-    #print-area [id^="management-"]{ break-inside:avoid; margin-bottom:3mm !important; box-shadow:none !important; border:none !important; padding:0 !important; }
+    #print-area [id^="management-"]{ margin-bottom:3mm !important; box-shadow:none !important; border:none !important; padding:0 !important; }
+    /* 한 페이지보다 긴 구역(상세 등)은 페이지 나눔 허용 — 통째로 avoid 걸면 다음 구역과 겹쳐 인쇄됨 */
+    #print-area #management-summary, #print-area #management-extend, #print-area #management-top10, #print-area #management-plan{ break-inside:avoid; }
+    #print-area #management-detail{ break-inside:auto !important; }
+    #print-area #management-detail > div{ break-inside:avoid; page-break-inside:avoid; }
+    #print-area [id^="management-"] tr{ break-inside:avoid; }
     #print-area [id^="management-"] h2{ font-size:11px; margin:0 0 2px; }
     #print-area [id^="management-"] table{ font-size:8px !important; }
     #print-area [id^="management-"] th{ background:#f2f2f2 !important; color:#000 !important; }
@@ -629,8 +634,6 @@
       <div class="sync-note" id="main-apiStatus"></div>
     </div>
     <div class="view active" id="view-summary">
-      <!-- 공지사항 (구글시트 "공지" 탭에서 읽음, 없으면 자동 숨김) -->
-      <div id="notice-board" style="display:none;margin-bottom:16px;"></div>
       <div class="table-wrap" style="padding:16px 20px;margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
           <!-- 제목 -->
@@ -1356,7 +1359,6 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("quality-syncPanel").classList.remove("open");
     if(target==="summary"){
       runBusy(renderSummaryView);
-      refreshNoticesIfStale();
     }
     if(target==="weekly"){
       runBusy(renderWeeklyView);
@@ -5437,6 +5439,12 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         #print-area [id^="management-"] .badge{ font-size:6.5px !important; padding:0 2px !important; }
         #print-area .mgmt-noprint{ display:none !important; }
+        /* 겹침 방지: 긴 구역은 페이지 나눔 허용, 카드/행 단위로만 나눔 방지 */
+        #print-area #management-detail{ break-inside:auto !important; }
+        #print-area #management-detail > div{ break-inside:avoid !important; page-break-inside:avoid !important; }
+        #print-area #management-summary, #print-area #management-extend, #print-area #management-top10, #print-area #management-plan{ break-inside:avoid !important; }
+        #print-area [id^="management-"] tr{ break-inside:avoid !important; }
+        #print-area *{ position:static !important; float:none !important; }
       `;
       document.head.appendChild(orientationStyle);
       const cleanupMgmtPrint = () => {
@@ -5619,66 +5627,6 @@ function managementDownloadExcel(){
   const dateStr = new Date().toISOString().slice(0,10);
   const keyword = managementSearchKeyword ? "_" + managementSearchKeyword.replace(/\s+/g,'_') : "";
   XLSX.writeFile(wb, `관리항목현황${keyword}_${dateStr}.xlsx`);
-}
-
-/* ============ 공지사항 (구글시트 "공지" 탭) ============ */
-// 구글시트에 "공지" 탭(헤더: 날짜 | 제목 | 내용 | 중요)을 만들고 Code.gs SOURCES에 공지를 추가하면
-// 월별 현황 첫 화면 상단에 표시됩니다. 데이터셋이 없으면 배너를 조용히 숨깁니다.
-let noticeLastFetch = 0;
-function getMainApiUrl(){
-  const el = document.getElementById("main-appsScriptUrl");
-  return el ? el.value.trim() : "";
-}
-function renderNotices(rows){
-  const board = document.getElementById("notice-board");
-  if(!board) return;
-  const list = (rows || [])
-    .map(r => ({
-      date: String(getFieldFlexible(r, "날짜") || "").slice(0,10),
-      title: String(getFieldFlexible(r, "제목") || "").trim(),
-      body: String(getFieldFlexible(r, "내용") || "").trim(),
-      important: String(getFieldFlexible(r, "중요") || "").trim() !== ""
-    }))
-    .filter(n => n.title || n.body)
-    .sort((a,b) => String(b.date).localeCompare(String(a.date)))
-    .slice(0, 5);
-  if(!list.length){ board.style.display = "none"; return; }
-  const esc = t => String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  board.innerHTML = `
-    <div class="table-wrap" style="padding:14px 18px;border-left:4px solid #C9A227;">
-      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:8px;">📢 공지사항</div>
-      ${list.map(n => `
-        <div style="padding:7px 0;border-bottom:1px dashed #EAEDF2;font-size:12px;line-height:1.6;">
-          <span style="color:#6B7280;font-size:11px;margin-right:8px;">${esc(n.date)}</span>
-          ${n.important ? '<span style="color:#E02424;font-weight:700;margin-right:4px;">📌</span>' : ''}
-          <b>${esc(n.title)}</b>
-          ${n.body ? `<span style="color:#4B5563;"> — ${esc(n.body)}</span>` : ''}
-        </div>`).join('')}
-    </div>`;
-  board.style.display = "block";
-}
-function fetchNotices(){
-  const url = getMainApiUrl();
-  if(!url) return;
-  noticeLastFetch = Date.now();
-  fetch(url + "?dataset=" + encodeURIComponent("공지"))
-    .then(r => r.json())
-    .then(res => {
-      if(res && res.success && Array.isArray(res.rows)){
-        cacheSet("erp_notice_cache", res.rows);
-        renderNotices(res.rows);
-      } else {
-        const cached = cacheGet("erp_notice_cache");
-        if(cached) renderNotices(cached);
-      }
-    })
-    .catch(() => {
-      const cached = cacheGet("erp_notice_cache");
-      if(cached) renderNotices(cached);
-    });
-}
-function refreshNoticesIfStale(){
-  if(Date.now() - noticeLastFetch > 5*60*1000) fetchNotices();
 }
 
 /* ============ 도번 이력 조회 ============ */
@@ -5870,8 +5818,6 @@ document.addEventListener("DOMContentLoaded", () => {
     hBtn.addEventListener("click", doSearch);
     hInput.addEventListener("keydown", e => { if(e.key === "Enter") doSearch(); });
   }
-  // 공지 최초 로드 (데이터 로드와 겹치지 않게 잠시 뒤)
-  setTimeout(fetchNotices, 2500);
 });
 </script>
 <div id="print-area" style="display:none;"></div>
@@ -5897,9 +5843,6 @@ document.addEventListener("DOMContentLoaded", () => {
       <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">🔎 도번 이력 · 🚚 주간 출하</div>
       도번 이력: 도번/품명 검색 → 납품 이력, 지연 횟수, 학습 간격, 검사 이력 요약.<br>
       주간 출하: 이번 주·다음 주 최종납기 건을 요일별 보드로 표시 (아침 회의용).
-      <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">📢 공지사항 (관리자)</div>
-      구글시트에 <b>"공지" 탭</b>을 만들고 1행에 <b>날짜 | 제목 | 내용 | 중요</b> 헤더를 넣은 뒤 행을 추가하면
-      월별 현황 첫 화면 상단에 표시됩니다. (중요 열에 O를 넣으면 📌 강조)
       <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">🔄 데이터</div>
       상단 배너에 마지막 동기화 시각이 색으로 표시됩니다 (초록=10분 이내). 숫자가 다르면 새로고침으로 최신 데이터를 받아주세요.
       인쇄 버튼은 남색, 검색·조회 버튼은 연노랑입니다.
