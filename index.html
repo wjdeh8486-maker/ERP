@@ -63,6 +63,11 @@
   .nav-item.nav-sub .dot{ width:5px; height:5px; background:#47536F; }
   .nav-item.nav-sub.active{ font-weight:700; }
   .nav-item.nav-sub.active .dot{ background:var(--yellow); }
+  /* 소메뉴 그룹: display:contents로 감싸서 접고/펴기 (모바일 가로 메뉴 레이아웃도 유지됨) */
+  .nav-group{ display:contents; }
+  .nav-group.closed{ display:none; }
+  .nav-caret{ margin-left:auto; font-size:11px; color:#7F8CAD; padding:4px 6px; border-radius:4px; flex:none; }
+  .nav-caret:hover{ background:#2A3556; color:#fff; }
   .main-area{ flex:1; min-width:0; display:flex; flex-direction:column; }
   .topbar{
     background:linear-gradient(180deg,#243156,var(--navy)); color:#fff; padding:14px 20px; display:flex; flex-wrap:wrap;
@@ -583,12 +588,16 @@
 <div class="app-shell">
   <div class="side-nav" id="sideNav">
     <div class="brand">종합제품관리<small>ERP 웹 시스템</small></div>
-    <div class="nav-item active" data-view="summary"><span class="dot"></span>📊 월별 현황</div>
-    <div class="nav-item nav-sub" data-view="weekly"><span class="dot"></span>🚚 주간 출하</div>
-    <div class="nav-item nav-sub" data-view="overdue"><span class="dot"></span>지연 LIST</div>
-    <div class="nav-item" data-view="main"><span class="dot"></span>MAIN 대시보드</div>
-    <div class="nav-item nav-sub" data-view="history"><span class="dot"></span>🔎 도번 이력</div>
-    <div class="nav-item nav-sub" data-view="management"><span class="dot"></span>관리항목 현황</div>
+    <div class="nav-item active" data-view="summary" data-navgroup="summary"><span class="dot"></span>📊 월별 현황<span class="nav-caret" data-caret="summary">▾</span></div>
+    <div class="nav-group" id="navgroup-summary">
+      <div class="nav-item nav-sub" data-view="weekly"><span class="dot"></span>🚚 주간 출하</div>
+      <div class="nav-item nav-sub" data-view="overdue"><span class="dot"></span>지연 LIST</div>
+    </div>
+    <div class="nav-item" data-view="main" data-navgroup="main"><span class="dot"></span>MAIN 대시보드<span class="nav-caret" data-caret="main">▾</span></div>
+    <div class="nav-group" id="navgroup-main">
+      <div class="nav-item nav-sub" data-view="history"><span class="dot"></span>🔎 도번 이력</div>
+      <div class="nav-item nav-sub" data-view="management"><span class="dot"></span>관리항목 현황</div>
+    </div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
@@ -922,7 +931,11 @@
     <!-- ===================== WEEKLY(주간 출하) VIEW ===================== -->
     <div id="topbar-weekly" class="topbar" style="display:none;">
       <h1>주간 출하 예정</h1>
-      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 최종납기일 기준으로 이번 주·다음 주 출하 예정 건을 요일별로 표시합니다.</div>
+      <div style="display:flex;gap:8px;margin-left:auto;">
+        <button id="weekly-printBtn">🖨️ 인쇄</button>
+        <button id="weekly-downloadBtn" type="button" class="tb-download-btn">📥 다운로드</button>
+      </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 최종납기일 기준 이번 주·다음 주 출하 예정 (완료·출고 건 제외). 인쇄는 이번 주/다음 주 각 1페이지.</div>
     </div>
     <div class="view" id="view-weekly">
       <div id="weekly-content"></div>
@@ -1340,9 +1353,32 @@ document.getElementById("sideNavToggle").addEventListener("click", ()=>{
   btn.textContent = collapsed ? "▶" : "◀";
   btn.classList.toggle("collapsed-pos", collapsed);
 });
+/* 소메뉴 접고/펴기 */
+function setNavGroup(name, open){
+  const group = document.getElementById("navgroup-" + name);
+  const caret = document.querySelector('[data-caret="' + name + '"]');
+  if(!group) return;
+  group.classList.toggle("closed", !open);
+  if(caret) caret.textContent = open ? "▾" : "▸";
+  try{ localStorage.setItem("nav_group_" + name, open ? "1" : "0"); }catch(e){}
+}
+["summary","main"].forEach(name => {
+  let open = true;
+  try{ open = localStorage.getItem("nav_group_" + name) !== "0"; }catch(e){}
+  setNavGroup(name, open);
+});
+document.querySelectorAll(".nav-caret").forEach(caret => {
+  caret.addEventListener("click", (e) => {
+    e.stopPropagation(); // 화면 전환 없이 접고/펴기만
+    const name = caret.dataset.caret;
+    const group = document.getElementById("navgroup-" + name);
+    setNavGroup(name, group.classList.contains("closed"));
+  });
+});
 document.querySelectorAll(".nav-item").forEach(item=>{
   item.addEventListener("click", ()=>{
     if(!item.dataset.view) return; // 사용법(❓) 등 화면 전환이 아닌 메뉴는 제외
+    if(item.dataset.navgroup) setNavGroup(item.dataset.navgroup, true); // 상위 메뉴 클릭 시 소메뉴 자동 펼침
     document.querySelectorAll(".nav-item").forEach(i=>i.classList.remove("active"));
     item.classList.add("active");
     const target = item.dataset.view;
@@ -5748,6 +5784,54 @@ function renderHistoryView(keyword){
 }
 
 /* ============ 주간 출하 예정 보드 ============ */
+// 완료(납품완료)·출고 상태 건은 제외하고, 아직 처리해야 할 출하 예정만 표시합니다.
+function weeklyMonday(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dow = (today.getDay() + 6) % 7; // 월=0 ... 일=6
+  return { today, monday: mgmtAddDays(today, -dow) };
+}
+function buildWeekSection(monday, label, today){
+  const days = ["월","화","수","목","금","토","일"];
+  const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const dayCells = [];
+  let weekTotal = 0, weekQty = 0;
+  for(let i=0;i<7;i++){
+    const d = mgmtAddDays(monday, i);
+    const dStr = mgmtFmtYMD(d);
+    const items = mainData
+      .filter(r => String(r.dueDate||"").slice(0,10) === dStr && (Number(r.qty)||0) > 0 && String(r.oldDrawingNo||"").trim())
+      .map(r => ({ r, st: computeProductStatus(r) }))
+      .filter(x => x.st !== "완료" && x.st !== "출고"); // 완료·출고 제외
+    weekTotal += items.length;
+    const isToday = d.getTime() === today.getTime();
+    const cellItems = items.map(x => {
+      const r = x.r, st = x.st;
+      weekQty += Number(r.qty)||0;
+      return `<div style="background:#fff;border:1px solid #E5EAF1;border-left:3px solid #0B5CAB;border-radius:5px;padding:6px 8px;margin-bottom:6px;font-size:11px;line-height:1.5;">
+        <div style="font-weight:700;">${esc(r.oldDrawingNo)}</div>
+        <div style="color:#4B5563;">${esc(r.partName||'')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;gap:4px;">
+          <span style="color:#6B7280;">${esc(r.customer||'')} · ${r.qty}개</span>
+          <span class="badge status-${st}" style="font-size:9px;">${st}</span>
+        </div>
+      </div>`;
+    }).join('');
+    dayCells.push(`
+      <div style="flex:1;min-width:130px;background:${isToday ? '#FFF9E8' : '#F7F9FC'};border:1px solid ${isToday ? '#E4C441' : '#E5EAF1'};border-radius:8px;padding:8px;">
+        <div style="font-size:11.5px;font-weight:700;color:${i>=5 ? '#C0392B' : '#1F2A44'};margin-bottom:6px;text-align:center;">
+          ${days[i]} <span style="font-weight:400;color:#6B7280;">${d.getMonth()+1}/${d.getDate()}</span>${isToday ? ' <span style="color:#C9A227;">●오늘</span>' : ''}
+        </div>
+        ${cellItems || '<div style="text-align:center;color:#C6CDD8;font-size:10.5px;padding:8px 0;">-</div>'}
+      </div>`);
+  }
+  return `
+    <div class="table-wrap weekly-week" style="margin-bottom:16px;padding:14px 16px;">
+      <div style="font-size:13.5px;font-weight:700;color:#1F2A44;margin-bottom:10px;">
+        ${label} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">(${mgmtFmtYMD(monday)} ~ ${mgmtFmtYMD(mgmtAddDays(monday,6))}) · ${weekTotal}건 / ${weekQty.toLocaleString()}개</span>
+      </div>
+      <div class="weekly-board" style="display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;align-items:flex-start;">${dayCells.join('')}</div>
+    </div>`;
+}
 function renderWeeklyView(){
   const el = document.getElementById("weekly-content");
   if(!el) return;
@@ -5755,51 +5839,89 @@ function renderWeeklyView(){
     el.innerHTML = `<div style="padding:40px;text-align:center;color:#B9C2D6;">데이터를 로드해주세요. (구글시트 연동 또는 엑셀 업로드)</div>`;
     return;
   }
-  const today = new Date(); today.setHours(0,0,0,0);
-  const dow = (today.getDay() + 6) % 7; // 월=0 ... 일=6
-  const monThis = mgmtAddDays(today, -dow);
-  const days = ["월","화","수","목","금","토","일"];
-  const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const { today, monday } = weeklyMonday();
+  el.innerHTML = buildWeekSection(monday, "📦 이번 주 출하 예정", today)
+               + buildWeekSection(mgmtAddDays(monday, 7), "🗓 다음 주 출하 예정", today);
+}
 
-  const weekSection = (monday, label) => {
-    const dayCells = [];
-    let weekTotal = 0, weekOpen = 0;
-    for(let i=0;i<7;i++){
-      const d = mgmtAddDays(monday, i);
-      const dStr = mgmtFmtYMD(d);
-      const items = mainData.filter(r => String(r.dueDate||"").slice(0,10) === dStr && (Number(r.qty)||0) > 0 && String(r.oldDrawingNo||"").trim());
-      weekTotal += items.length;
-      const isToday = d.getTime() === today.getTime();
-      const cellItems = items.map(r => {
-        const st = computeProductStatus(r);
-        if(st !== "완료") weekOpen++;
-        return `<div style="background:#fff;border:1px solid #E5EAF1;border-left:3px solid ${st==="완료" ? '#2E7D46' : '#0B5CAB'};border-radius:5px;padding:6px 8px;margin-bottom:6px;font-size:11px;line-height:1.5;">
-          <div style="font-weight:700;">${esc(r.oldDrawingNo)}</div>
-          <div style="color:#4B5563;">${esc(r.partName||'')}</div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;gap:4px;">
-            <span style="color:#6B7280;">${esc(r.customer||'')} · ${r.qty}개</span>
-            <span class="badge status-${st}" style="font-size:9px;">${st}</span>
-          </div>
-        </div>`;
-      }).join('');
-      dayCells.push(`
-        <div style="flex:1;min-width:130px;background:${isToday ? '#FFF9E8' : '#F7F9FC'};border:1px solid ${isToday ? '#E4C441' : '#E5EAF1'};border-radius:8px;padding:8px;">
-          <div style="font-size:11.5px;font-weight:700;color:${i>=5 ? '#C0392B' : '#1F2A44'};margin-bottom:6px;text-align:center;">
-            ${days[i]} <span style="font-weight:400;color:#6B7280;">${d.getMonth()+1}/${d.getDate()}</span>${isToday ? ' <span style="color:#C9A227;">●오늘</span>' : ''}
-          </div>
-          ${cellItems || '<div style="text-align:center;color:#C6CDD8;font-size:10.5px;padding:8px 0;">-</div>'}
-        </div>`);
-    }
-    return `
-      <div class="table-wrap" style="margin-bottom:16px;padding:14px 16px;">
-        <div style="font-size:13.5px;font-weight:700;color:#1F2A44;margin-bottom:10px;">
-          ${label} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">(${mgmtFmtYMD(monday)} ~ ${mgmtFmtYMD(mgmtAddDays(monday,6))}) · 총 ${weekTotal}건 / 미완료 ${weekOpen}건</span>
-        </div>
-        <div style="display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;align-items:flex-start;">${dayCells.join('')}</div>
-      </div>`;
+// 주간 출하 인쇄: 이번 주 1페이지 + 다음 주 1페이지 (A4 가로, 화면 색상 유지)
+function weeklyPrint(){
+  if(!mainData || mainData.length === 0){ alert("데이터를 먼저 로드해 주세요."); return; }
+  const pa = document.getElementById("print-area");
+  if(!pa) return;
+  const { today, monday } = weeklyMonday();
+  const dateStr = new Date().toLocaleDateString('ko-KR');
+  pa.innerHTML = `
+    <div class="q-report-page"><h2>주간 출하 예정 - 이번 주 (${dateStr} 기준)</h2>${buildWeekSection(monday, "📦 이번 주 출하 예정", today)}</div>
+    <div class="q-report-page"><h2>주간 출하 예정 - 다음 주 (${dateStr} 기준)</h2>${buildWeekSection(mgmtAddDays(monday, 7), "🗓 다음 주 출하 예정", today)}</div>
+  `;
+  const st = document.createElement("style");
+  st.id = "weekly-print-style";
+  st.textContent = `
+    @page{ size: A4 landscape; margin: 8mm; }
+    #print-area *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    #print-area .weekly-board{ overflow:visible !important; }
+    #print-area .weekly-board > div{ min-width:0 !important; }
+    #print-area .weekly-week{ break-inside:avoid; border:none !important; box-shadow:none !important; }
+    #print-area .weekly-week .badge{ font-size:8px !important; padding:1px 6px !important; }
+  `;
+  document.head.appendChild(st);
+  const cleanup = () => {
+    const el = document.getElementById("weekly-print-style");
+    if(el) el.remove();
+    pa.innerHTML = "";
+    window.removeEventListener("afterprint", cleanup);
   };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  setTimeout(cleanup, 1500);
+}
 
-  el.innerHTML = weekSection(monThis, "📦 이번 주 출하 예정") + weekSection(mgmtAddDays(monThis, 7), "🗓 다음 주 출하 예정");
+// 주간 출하 다운로드: 화면 디자인 그대로 보이는 단독 HTML 파일로 저장 (더블클릭으로 열림)
+function weeklyDownload(){
+  if(!mainData || mainData.length === 0){ alert("데이터를 먼저 로드해 주세요."); return; }
+  const { today, monday } = weeklyMonday();
+  const dateStr = new Date().toISOString().slice(0,10);
+  const body = buildWeekSection(monday, "📦 이번 주 출하 예정", today)
+             + buildWeekSection(mgmtAddDays(monday, 7), "🗓 다음 주 출하 예정", today);
+  const html = `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주간 출하 예정 (${dateStr})</title>
+<style>
+  :root{ --navy:#1F2A44; --red:#E02424; --green:#2E7D46; --purple:#7C3AED; }
+  body{ font-family:'맑은 고딕','Malgun Gothic',sans-serif; background:#F4F6FA; color:#1A1E27; margin:0; padding:18px; }
+  h1{ font-size:17px; color:var(--navy); margin:0 0 14px; }
+  .table-wrap{ background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(20,30,60,0.07); }
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;}
+  .badge.status-생산{background:#FDEBEB;color:var(--red);border:1px solid var(--red);}
+  .badge.status-재고{background:#EAF4EC;color:var(--green);border:1px solid var(--green);}
+  .badge.status-외관{background:#E7F0FB;color:#0B5CAB;border:1px solid #0B5CAB;}
+  .badge.status-수입{background:#ECEBFB;color:#4F46E5;border:1px solid #4F46E5;}
+  .badge.status-측정{background:#E0F2F1;color:#0E7C7B;border:1px solid #0E7C7B;}
+  .badge.status-비젼{background:#FBEEE0;color:#C05621;border:1px solid #C05621;}
+  .badge.status-OK{background:#FFF6D6;color:#8a6d00;border:1px solid #C9A400;}
+  @media print{
+    @page{ size:A4 landscape; margin:8mm; }
+    body{ background:#fff; padding:0; }
+    *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    .weekly-week{ break-inside:avoid; page-break-after:always; box-shadow:none; }
+    .weekly-week:last-child{ page-break-after:auto; }
+    .weekly-board{ overflow:visible !important; }
+    .weekly-board > div{ min-width:0 !important; }
+  }
+</style></head>
+<body>
+<h1>🚚 주간 출하 예정 <span style="font-size:12px;font-weight:400;color:#6B7280;">(${new Date().toLocaleDateString('ko-KR')} 기준 · 완료/출고 제외)</span></h1>
+${body}
+</body></html>`;
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `주간출하_${dateStr}.html`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
 /* ============ 도움말 모달 + 신규 메뉴 이벤트 ============ */
@@ -5812,6 +5934,11 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("help-closeBtn").addEventListener("click", () => { helpModal.style.display = "none"; });
     helpModal.addEventListener("click", (e) => { if(e.target === helpModal) helpModal.style.display = "none"; });
   }
+  // 주간 출하 인쇄/다운로드
+  const wPrint = document.getElementById("weekly-printBtn");
+  if(wPrint) wPrint.addEventListener("click", () => runBusy(weeklyPrint, "인쇄 준비 중..."));
+  const wDown = document.getElementById("weekly-downloadBtn");
+  if(wDown) wDown.addEventListener("click", () => runBusy(weeklyDownload, "파일 생성 중..."));
   // 도번 이력 검색
   const hBtn = document.getElementById("history-searchBtn");
   const hInput = document.getElementById("history-searchInput");
