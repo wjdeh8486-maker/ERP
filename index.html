@@ -4612,7 +4612,7 @@ function filterManagementRows(keyword){
   // + 수량 0 이하 제외 (수량 > 0 만 표시)
   // + 도번(기존도번) 없는 행 제외
   // + 상태가 계산되지 않는(빈) 행 제외
-  return data
+  const mapped = data
     .map(r => ({
       ...r,
       productStatus: computeProductStatus(r)
@@ -4622,6 +4622,10 @@ function filterManagementRows(keyword){
       String(r.oldDrawingNo || "").trim() !== "" &&
       String(r.productStatus || "").trim() !== ""
     );
+  // ✕로 제거(숨김)한 항목은 관리항목 "전체 구역"에서 제외합니다.
+  // (종합 현황·연장 권고·TOP10·상세·월별 계획, 그리고 인쇄·엑셀까지 모두 남은 항목 기준으로 계산)
+  managementLastHiddenCount = mapped.filter(r => managementHiddenOrders.has(String(r.orderNo))).length;
+  return mapped.filter(r => !managementHiddenOrders.has(String(r.orderNo)));
 }
 
 // 생산대기 수량 (제품상태가 "생산"인 행의 수량)
@@ -4829,15 +4833,13 @@ try{
 function saveManagementHidden(){
   try{ localStorage.setItem("mgmt_hidden_orders", JSON.stringify([...managementHiddenOrders])); }catch(e){}
 }
-// 현재 검색 결과 중 숨김 처리되어 안 보이는 건수
-function countManagementHidden(rows){
-  return rows.filter(r => r.productStatus !== "완료" && managementHiddenOrders.has(String(r.orderNo))).length;
-}
+// 현재 검색 결과 중 숨김 처리되어 안 보이는 건수 (filterManagementRows 실행 시 갱신)
+let managementLastHiddenCount = 0;
 
-// 도번/품명별 상세 (같은 도번끼리 그룹, 완료 항목·숨김 항목 제외)
+// 도번/품명별 상세 (같은 도번끼리 그룹, 완료 항목 제외 · 숨김 항목은 filterManagementRows에서 이미 제외됨)
 function getDetailByDrawing(rows){
   const grouped = {};
-  rows.filter(r => r.productStatus !== "완료" && !managementHiddenOrders.has(String(r.orderNo))).forEach(r => {
+  rows.filter(r => r.productStatus !== "완료").forEach(r => {
     const key = String(r.oldDrawingNo||'');
     if(!grouped[key]) grouped[key] = [];
     grouped[key].push(r);
@@ -5013,7 +5015,7 @@ function renderManagementDetail(rows){
   }
 
   const groups = getDetailByDrawing(rows);
-  const hiddenCount = countManagementHidden(rows);
+  const hiddenCount = managementLastHiddenCount;
   const restoreChip = hiddenCount > 0
     ? `<button id="management-restoreHiddenBtn" type="button" class="mgmt-noprint" style="margin-left:10px;font-size:11px;padding:3px 12px;border-radius:12px;border:1px solid #DDE1E8;background:#FFF7DE;cursor:pointer;">↩ 숨긴 항목 ${hiddenCount}건 복원</button>`
     : "";
@@ -5038,8 +5040,7 @@ function renderManagementDetail(rows){
                 <th style="padding:6px;text-align:center;">PRJ</th>
                 <th style="padding:6px;text-align:center;">상태</th>
                 <th style="padding:6px;text-align:center;">수량</th>
-                <th style="padding:6px;text-align:center;">7월</th>
-                <th style="padding:6px;text-align:center;">8월</th>
+                ${Array.from({length:12}, (_,i) => `<th style="padding:6px 4px;text-align:center;">${i+1}월</th>`).join('')}
                 <th class="mgmt-noprint" style="padding:6px;text-align:center;width:40px;">제거</th>
               </tr>
             </thead>
@@ -5047,16 +5048,17 @@ function renderManagementDetail(rows){
               ${g.items.map(r => {
                 const _ym = getDueYM(r.dueDate);
                 const _ty = new Date().getFullYear();
-                const julyHas = _ym && _ym.y === _ty && _ym.m === 7;
-                const augHas = _ym && _ym.y === _ty && _ym.m === 8;
                 const _ord = String(r.orderNo||'').replace(/"/g,'&quot;');
+                const monthCells = Array.from({length:12}, (_,i) => {
+                  const has = _ym && _ym.y === _ty && _ym.m === (i+1);
+                  return `<td style="padding:6px 4px;text-align:center;${has ? 'font-weight:700;color:#0B5CAB;' : 'color:#B9C2D6;'}">${has ? r.qty : '-'}</td>`;
+                }).join('');
                 return `<tr style="border-bottom:1px solid #DDE1E8;">
                   <td style="padding:6px;text-align:center;">${r.orderNo||''}</td>
                   <td style="padding:6px;text-align:center;">${r.vendor||'-'}</td>
                   <td style="padding:6px;text-align:center;"><span class="badge status-${r.productStatus}">${r.productStatus}</span></td>
                   <td style="padding:6px;text-align:center;">${r.qty}</td>
-                  <td style="padding:6px;text-align:center;">${julyHas ? r.qty : '-'}</td>
-                  <td style="padding:6px;text-align:center;">${augHas ? r.qty : '-'}</td>
+                  ${monthCells}
                   <td class="mgmt-noprint" style="padding:6px;text-align:center;">
                     <button type="button" data-mgmt-remove="${_ord}" title="확인 완료 · 목록에서 제거" style="border:1px solid #DDE1E8;background:#fff;color:#E02424;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;line-height:1.2;">✕</button>
                   </td>
@@ -5193,14 +5195,14 @@ document.addEventListener("DOMContentLoaded", () => {
       if(removeBtn){
         managementHiddenOrders.add(removeBtn.getAttribute("data-mgmt-remove"));
         saveManagementHidden();
-        // 상세 구역만 다시 그림 (다른 구역 집계는 그대로)
-        renderManagementDetail(filterManagementRows(managementSearchKeyword));
+        // 제거한 항목이 종합 현황·월별 계획 등 모든 집계에서 빠지도록 전 구역 다시 그림
+        renderManagementAll();
         return;
       }
       if(e.target.closest("#management-restoreHiddenBtn")){
         managementHiddenOrders.clear();
         saveManagementHidden();
-        renderManagementDetail(filterManagementRows(managementSearchKeyword));
+        renderManagementAll();
       }
     });
   }
@@ -5283,9 +5285,9 @@ function managementDownloadExcel(){
   const aoa = [];
   const titleRows = [], headerRows = [], totalRows = [];
   
-  // 제목
+  // 제목 (숨긴 항목이 있으면 전 구역이 남은 항목 기준임을 표기)
   titleRows.push(aoa.length);
-  aoa.push(["관리항목 현황", new Date().toLocaleDateString('ko-KR')]);
+  aoa.push(["관리항목 현황" + (managementLastHiddenCount > 0 ? ` (제거한 항목 ${managementLastHiddenCount}건 제외)` : ""), new Date().toLocaleDateString('ko-KR')]);
   aoa.push([]);
   
   // 1. 종합 현황
@@ -5345,31 +5347,28 @@ function managementDownloadExcel(){
     aoa.push([]);
   }
   
-  // 4. 도번/품명별 상세 (PRJ 포함, 숨긴 항목 제외)
+  // 4. 도번/품명별 상세 (PRJ 포함 · 숨긴 항목은 전 구역에서 이미 제외됨)
   const details = getDetailByDrawing(filtered);
-  const hiddenCnt = countManagementHidden(filtered);
   if(details.length){
     titleRows.push(aoa.length);
-    aoa.push(["📋 도번/품명별 상세" + (hiddenCnt > 0 ? ` (숨긴 항목 ${hiddenCnt}건 제외)` : "")]);
+    aoa.push(["📋 도번/품명별 상세"]);
     details.forEach((g, gIdx) => {
       if(gIdx > 0) aoa.push([]);
       titleRows.push(aoa.length);
       aoa.push([g.drawing + " · " + g.partName + " (합계 " + g.totalQty + "개)"]);
       headerRows.push(aoa.length);
-      aoa.push(["ORDER", "PRJ", "상태", "수량", "7월", "8월"]);
+      const detailHeader = ["ORDER", "PRJ", "상태", "수량"];
+      for(let m=1; m<=12; m++) detailHeader.push(m + "월");
+      aoa.push(detailHeader);
       g.items.forEach(r => {
         const _ym = getDueYM(r.dueDate);
         const _ty = new Date().getFullYear();
-        const julyHas = _ym && _ym.y === _ty && _ym.m === 7;
-        const augHas = _ym && _ym.y === _ty && _ym.m === 8;
-        aoa.push([
-          r.orderNo||'',
-          r.vendor||'-',
-          r.productStatus,
-          r.qty,
-          julyHas ? r.qty : '-',
-          augHas ? r.qty : '-'
-        ]);
+        const row = [r.orderNo||'', r.vendor||'-', r.productStatus, r.qty];
+        for(let m=1; m<=12; m++){
+          const has = _ym && _ym.y === _ty && _ym.m === m;
+          row.push(has ? r.qty : '-');
+        }
+        aoa.push(row);
       });
     });
     aoa.push([]);
