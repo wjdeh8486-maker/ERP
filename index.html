@@ -4864,6 +4864,16 @@ function saveManagementHidden(){
 }
 // 현재 검색 결과 중 숨김 처리되어 안 보이는 건수 (filterManagementRows 실행 시 갱신)
 let managementLastHiddenCount = 0;
+// 월/년 생산 계획에서 월을 클릭하면 그 달 납기 항목만 상세에 표시 (null = 전체)
+let managementMonthFilter = null;
+// 제거한 도번 목록 패널 열림 여부
+let managementHiddenPanelOpen = false;
+// 도번으로 품명 찾기 (제거 목록 표시용)
+function lookupPartName(drawing){
+  const key = String(drawing||"").trim();
+  const hit = (mainData||[]).find(r => String(r.oldDrawingNo||"").trim() === key && String(r.partName||"").trim());
+  return hit ? hit.partName : "";
+}
 
 // 도번/품명별 상세 (같은 도번끼리 그룹, 완료 항목 제외 · 숨김 항목은 filterManagementRows에서 이미 제외됨)
 function getDetailByDrawing(rows){
@@ -5043,19 +5053,53 @@ function renderManagementDetail(rows){
     return;
   }
 
-  const groups = getDetailByDrawing(rows);
+  // 월/년 계획에서 선택한 월이 있으면 그 달 납기 항목만 상세에 표시
+  let detailRows = rows;
+  const _tyF = new Date().getFullYear();
+  if(managementMonthFilter){
+    detailRows = rows.filter(r => {
+      const ym = getDueYM(r.dueDate);
+      return ym && ym.y === _tyF && ym.m === managementMonthFilter;
+    });
+  }
+  const groups = getDetailByDrawing(detailRows);
   const hiddenCount = managementLastHiddenCount;
-  const restoreChip = hiddenCount > 0
-    ? `<button id="management-restoreHiddenBtn" type="button" class="mgmt-noprint" style="margin-left:10px;font-size:11px;padding:3px 12px;border-radius:12px;border:1px solid #DDE1E8;background:#FFF7DE;cursor:pointer;">↩ 제거한 도번 ${managementHiddenDrawings.size}개(${hiddenCount}건) 복원</button>`
-    : "";
+
+  // 제거한 도번 목록 버튼 + 전체 복원 버튼
+  const hiddenChips = hiddenCount > 0 ? `
+    <button id="management-hiddenListToggle" type="button" class="mgmt-noprint" style="margin-left:10px;font-size:11px;padding:3px 12px;border-radius:12px;border:1px solid #DDE1E8;background:#FFF7DE;cursor:pointer;">🗂 제거한 도번 ${managementHiddenDrawings.size}개 ${managementHiddenPanelOpen ? "▲" : "▼"}</button>
+    <button id="management-restoreHiddenBtn" type="button" class="mgmt-noprint" style="margin-left:6px;font-size:11px;padding:3px 12px;border-radius:12px;border:1px solid #DDE1E8;background:#EAF3FF;cursor:pointer;">↩ 전체 복원</button>` : "";
+
+  // 월 필터 표시 칩
+  const monthChip = managementMonthFilter ? `
+    <span class="mgmt-noprint" style="margin-left:10px;font-size:11px;padding:3px 12px;border-radius:12px;background:#0B5CAB;color:#fff;display:inline-flex;align-items:center;gap:6px;">📆 ${managementMonthFilter}월 납기만 표시
+      <button id="management-monthFilterClear" type="button" style="border:none;background:transparent;color:#fff;cursor:pointer;font-size:11px;padding:0;line-height:1;">✕ 해제</button>
+    </span>` : "";
+
+  // 제거한 도번 관리 패널 (개별 복원)
+  const hiddenPanel = (hiddenCount > 0 && managementHiddenPanelOpen) ? `
+    <div class="mgmt-noprint" style="background:#FFFDF3;border:1px solid #EADFA8;border-radius:6px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:11.5px;font-weight:700;margin-bottom:6px;color:#4B5563;">제거한 도번 목록 (개별 복원 가능)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${[...managementHiddenDrawings].map(d => {
+          const pn = lookupPartName(d);
+          const dEsc = String(d).replace(/"/g,'&quot;');
+          return `<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #DDE1E8;border-radius:14px;padding:3px 6px 3px 12px;font-size:11px;">
+            ${d}${pn ? ` <span style="color:#6B7280;">· ${pn}</span>` : ""}
+            <button type="button" data-mgmt-restore-one="${dEsc}" title="이 도번만 복원" style="border:none;background:#EAF3FF;color:#0B5CAB;border-radius:10px;padding:2px 10px;cursor:pointer;font-size:11px;font-weight:700;">복원</button>
+          </span>`;
+        }).join('')}
+      </div>
+    </div>` : "";
 
   if(!groups.length){
-    el.innerHTML = `<h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세 ${restoreChip}</h2><div style="padding:20px;text-align:center;color:#B9C2D6;">${hiddenCount > 0 ? "모든 항목을 숨겼습니다. [복원] 버튼으로 되돌릴 수 있습니다." : "검색 결과가 없습니다."}</div>`;
+    el.innerHTML = `<h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세 ${hiddenChips}${monthChip}</h2>${hiddenPanel}<div style="padding:20px;text-align:center;color:#B9C2D6;">${managementMonthFilter ? `${managementMonthFilter}월 납기 항목이 없습니다.` : (hiddenCount > 0 ? "검색된 도번을 모두 제거했습니다. [복원] 버튼으로 되돌릴 수 있습니다." : "검색 결과가 없습니다.")}</div>`;
     return;
   }
   
   el.innerHTML = `
-    <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세 ${restoreChip}</h2>
+    <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세 ${hiddenChips}${monthChip}</h2>
+    ${hiddenPanel}
     ${groups.map(g => `
       <div style="background:var(--bg-card);padding:10px;margin-bottom:10px;border-radius:6px;border-left:4px solid #0B5CAB;">
         <div style="font-weight:700;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
@@ -5104,13 +5148,16 @@ function renderManagementPlan(rows){
   if(!el) return;
   
   el.innerHTML = `
-    <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📅 월/년 생산 계획 <span style="font-size:11px;font-weight:400;color:#4B5563;">(최종납기일 기준)</span></h2>
+    <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📅 월/년 생산 계획 <span style="font-size:11px;font-weight:400;color:#4B5563;">(최종납기일 기준 · 월을 클릭하면 그 달 납기 상세만 표시)</span></h2>
     <div style="overflow-x:auto;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead>
           <tr style="background:var(--navy);color:#fff;">
             <th style="padding:8px;text-align:center;">월</th>
-            ${Array.from({length:12}, (_,i) => `<th style="padding:8px;text-align:center;">${i+1}월</th>`).join('')}
+            ${Array.from({length:12}, (_,i) => {
+              const sel = managementMonthFilter === (i+1);
+              return `<th data-mgmt-month="${i+1}" title="클릭하면 ${i+1}월 납기 상세만 표시" style="padding:8px;text-align:center;cursor:pointer;text-decoration:underline;${sel ? 'background:#0B5CAB;' : ''}">${i+1}월${sel ? ' ●' : ''}</th>`;
+            }).join('')}
             <th style="padding:8px;text-align:center;">합계</th>
           </tr>
         </thead>
@@ -5227,8 +5274,47 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if(e.target.closest("#management-restoreHiddenBtn")){
         managementHiddenDrawings.clear();
+        managementHiddenPanelOpen = false;
         saveManagementHidden();
         runBusy(renderManagementAll);
+        return;
+      }
+      // 제거한 도번 개별 복원
+      const restoreOne = e.target.closest("[data-mgmt-restore-one]");
+      if(restoreOne){
+        managementHiddenDrawings.delete(String(restoreOne.getAttribute("data-mgmt-restore-one") || "").trim());
+        if(managementHiddenDrawings.size === 0) managementHiddenPanelOpen = false;
+        saveManagementHidden();
+        runBusy(renderManagementAll);
+        return;
+      }
+      // 제거한 도번 목록 패널 열기/닫기
+      if(e.target.closest("#management-hiddenListToggle")){
+        managementHiddenPanelOpen = !managementHiddenPanelOpen;
+        renderManagementDetail(filterManagementRows(managementSearchKeyword));
+        return;
+      }
+      // 월/년 계획에서 월 클릭 → 그 달 납기 상세만 표시 + 상세로 스크롤
+      const monthTh = e.target.closest("[data-mgmt-month]");
+      if(monthTh){
+        const m = parseInt(monthTh.getAttribute("data-mgmt-month"));
+        managementMonthFilter = (managementMonthFilter === m) ? null : m; // 같은 월 다시 클릭 = 해제
+        const fr = filterManagementRows(managementSearchKeyword);
+        renderManagementDetail(fr);
+        renderManagementPlan(fr); // 선택된 월 표시 갱신
+        if(managementMonthFilter){
+          const det = document.getElementById("management-detail");
+          if(det) det.scrollIntoView({ behavior:"smooth", block:"start" });
+        }
+        return;
+      }
+      // 월 필터 해제
+      if(e.target.closest("#management-monthFilterClear")){
+        managementMonthFilter = null;
+        const fr = filterManagementRows(managementSearchKeyword);
+        renderManagementDetail(fr);
+        renderManagementPlan(fr);
+        return;
       }
     });
   }
@@ -5246,6 +5332,7 @@ document.addEventListener("DOMContentLoaded", () => {
     searchBtn.addEventListener("click", () => {
       const input = document.getElementById("management-searchInput");
       managementSearchKeyword = input.value;
+      managementMonthFilter = null; managementHiddenPanelOpen = false;
       runBusy(renderManagementAll, "검색 중...");
     });
   }
@@ -5255,6 +5342,7 @@ document.addEventListener("DOMContentLoaded", () => {
     searchInputEl.addEventListener("keydown", (e) => {
       if(e.key === "Enter"){
         managementSearchKeyword = searchInputEl.value;
+        managementMonthFilter = null; managementHiddenPanelOpen = false;
         runBusy(renderManagementAll, "검색 중...");
       }
     });
@@ -5265,6 +5353,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if(clearBtn){
     clearBtn.addEventListener("click", () => {
       managementSearchKeyword = "";
+      managementMonthFilter = null; managementHiddenPanelOpen = false;
       document.getElementById("management-searchInput").value = "";
       runBusy(renderManagementAll);
     });
