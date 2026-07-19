@@ -577,11 +577,14 @@
     <div class="nav-item" data-view="main"><span class="dot"></span>MAIN 대시보드</div>
     <div class="nav-item" data-view="management"><span class="dot"></span>관리항목 현황</div>
     <div class="nav-item" data-view="overdue"><span class="dot"></span>지연 LIST</div>
+    <div class="nav-item" data-view="history"><span class="dot"></span>🔎 도번 이력</div>
+    <div class="nav-item" data-view="weekly"><span class="dot"></span>🚚 주간 출하</div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
     <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
     <div class="nav-item" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
+    <div class="nav-item" id="helpNavBtn" title="사용법 안내"><span class="dot"></span>❓ 사용법</div>
   </div>
   <button type="button" id="sideNavToggle" class="side-nav-toggle" title="메뉴 접기/펴기">◀</button>
   <div class="main-area">
@@ -626,6 +629,8 @@
       <div class="sync-note" id="main-apiStatus"></div>
     </div>
     <div class="view active" id="view-summary">
+      <!-- 공지사항 (구글시트 "공지" 탭에서 읽음, 없으면 자동 숨김) -->
+      <div id="notice-board" style="display:none;margin-bottom:16px;"></div>
       <div class="table-wrap" style="padding:16px 20px;margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
           <!-- 제목 -->
@@ -888,6 +893,31 @@
         <div class="table-wrap" id="management-plan" style="margin-bottom:16px;"></div>
         
       </div>
+    </div>
+    <!-- ===================== HISTORY(도번 이력) VIEW ===================== -->
+    <div id="topbar-history" class="topbar" style="display:none;">
+      <h1>도번 이력</h1>
+      <div class="search-box">
+        <input id="history-searchInput" type="text" placeholder="도번 또는 품명 검색 (쉼표로 여러 개)">
+        <button id="history-searchBtn">🔍 검색</button>
+      </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 도번별 과거 납품 이력, 지연 횟수, 학습된 소요 간격, 검사 이력을 한눈에 확인합니다.</div>
+    </div>
+    <div class="view" id="view-history">
+      <div id="history-content">
+        <div style="padding:60px 20px;text-align:center;color:#B9C2D6;">
+          <div style="font-size:28px;margin-bottom:12px;">🔎</div>
+          <div style="font-size:13px;font-weight:700;color:#4B5563;">도번이나 품명을 검색하면 이력이 표시됩니다.</div>
+        </div>
+      </div>
+    </div>
+    <!-- ===================== WEEKLY(주간 출하) VIEW ===================== -->
+    <div id="topbar-weekly" class="topbar" style="display:none;">
+      <h1>주간 출하 예정</h1>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 최종납기일 기준으로 이번 주·다음 주 출하 예정 건을 요일별로 표시합니다.</div>
+    </div>
+    <div class="view" id="view-weekly">
+      <div id="weekly-content"></div>
     </div>
     <!-- ===================== OVERDUE(지연 LIST) VIEW ===================== -->
     <div id="topbar-overdue" class="topbar" style="display:none;">
@@ -1304,6 +1334,7 @@ document.getElementById("sideNavToggle").addEventListener("click", ()=>{
 });
 document.querySelectorAll(".nav-item").forEach(item=>{
   item.addEventListener("click", ()=>{
+    if(!item.dataset.view) return; // 사용법(❓) 등 화면 전환이 아닌 메뉴는 제외
     document.querySelectorAll(".nav-item").forEach(i=>i.classList.remove("active"));
     item.classList.add("active");
     const target = item.dataset.view;
@@ -1318,11 +1349,20 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("topbar-vendor").style.display = target==="vendor" ? "flex" : "none";
     document.getElementById("topbar-summary").style.display = target==="summary" ? "flex" : "none";
     document.getElementById("topbar-upload").style.display = target==="upload" ? "flex" : "none";
+    document.getElementById("topbar-history").style.display = target==="history" ? "flex" : "none";
+    document.getElementById("topbar-weekly").style.display = target==="weekly" ? "flex" : "none";
     document.getElementById("main-syncPanel").classList.remove("open");
     document.getElementById("inv-syncPanel").classList.remove("open");
     document.getElementById("quality-syncPanel").classList.remove("open");
     if(target==="summary"){
       runBusy(renderSummaryView);
+      refreshNoticesIfStale();
+    }
+    if(target==="weekly"){
+      runBusy(renderWeeklyView);
+    }
+    if(target==="history" && historyKeyword){
+      runBusy(()=>renderHistoryView(historyKeyword));
     }
     if(target==="quality" && !window.__qualityInited){
       window.__qualityInited = true;
@@ -5580,7 +5620,291 @@ function managementDownloadExcel(){
   const keyword = managementSearchKeyword ? "_" + managementSearchKeyword.replace(/\s+/g,'_') : "";
   XLSX.writeFile(wb, `관리항목현황${keyword}_${dateStr}.xlsx`);
 }
+
+/* ============ 공지사항 (구글시트 "공지" 탭) ============ */
+// 구글시트에 "공지" 탭(헤더: 날짜 | 제목 | 내용 | 중요)을 만들고 Code.gs SOURCES에 공지를 추가하면
+// 월별 현황 첫 화면 상단에 표시됩니다. 데이터셋이 없으면 배너를 조용히 숨깁니다.
+let noticeLastFetch = 0;
+function getMainApiUrl(){
+  const el = document.getElementById("main-appsScriptUrl");
+  return el ? el.value.trim() : "";
+}
+function renderNotices(rows){
+  const board = document.getElementById("notice-board");
+  if(!board) return;
+  const list = (rows || [])
+    .map(r => ({
+      date: String(getFieldFlexible(r, "날짜") || "").slice(0,10),
+      title: String(getFieldFlexible(r, "제목") || "").trim(),
+      body: String(getFieldFlexible(r, "내용") || "").trim(),
+      important: String(getFieldFlexible(r, "중요") || "").trim() !== ""
+    }))
+    .filter(n => n.title || n.body)
+    .sort((a,b) => String(b.date).localeCompare(String(a.date)))
+    .slice(0, 5);
+  if(!list.length){ board.style.display = "none"; return; }
+  const esc = t => String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  board.innerHTML = `
+    <div class="table-wrap" style="padding:14px 18px;border-left:4px solid #C9A227;">
+      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:8px;">📢 공지사항</div>
+      ${list.map(n => `
+        <div style="padding:7px 0;border-bottom:1px dashed #EAEDF2;font-size:12px;line-height:1.6;">
+          <span style="color:#6B7280;font-size:11px;margin-right:8px;">${esc(n.date)}</span>
+          ${n.important ? '<span style="color:#E02424;font-weight:700;margin-right:4px;">📌</span>' : ''}
+          <b>${esc(n.title)}</b>
+          ${n.body ? `<span style="color:#4B5563;"> — ${esc(n.body)}</span>` : ''}
+        </div>`).join('')}
+    </div>`;
+  board.style.display = "block";
+}
+function fetchNotices(){
+  const url = getMainApiUrl();
+  if(!url) return;
+  noticeLastFetch = Date.now();
+  fetch(url + "?dataset=" + encodeURIComponent("공지"))
+    .then(r => r.json())
+    .then(res => {
+      if(res && res.success && Array.isArray(res.rows)){
+        cacheSet("erp_notice_cache", res.rows);
+        renderNotices(res.rows);
+      } else {
+        const cached = cacheGet("erp_notice_cache");
+        if(cached) renderNotices(cached);
+      }
+    })
+    .catch(() => {
+      const cached = cacheGet("erp_notice_cache");
+      if(cached) renderNotices(cached);
+    });
+}
+function refreshNoticesIfStale(){
+  if(Date.now() - noticeLastFetch > 5*60*1000) fetchNotices();
+}
+
+/* ============ 도번 이력 조회 ============ */
+let historyKeyword = "";
+function renderHistoryView(keyword){
+  const el = document.getElementById("history-content");
+  if(!el) return;
+  if(!mainData || mainData.length === 0){
+    el.innerHTML = `<div style="padding:40px;text-align:center;color:#B9C2D6;">데이터를 로드해주세요. (구글시트 연동 또는 엑셀 업로드)</div>`;
+    return;
+  }
+  const kw = String(keyword || "").trim();
+  if(!kw){
+    el.innerHTML = `<div style="padding:60px 20px;text-align:center;color:#B9C2D6;"><div style="font-size:28px;margin-bottom:12px;">🔎</div><div style="font-size:13px;font-weight:700;color:#4B5563;">도번이나 품명을 검색하면 이력이 표시됩니다.</div></div>`;
+    return;
+  }
+  // 쉼표 = OR 검색, 도번/품명 대상
+  const terms = kw.split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
+  const match = r => {
+    const d = String(r.oldDrawingNo||"").toLowerCase();
+    const p = String(r.partName||"").toLowerCase();
+    return terms.some(t => d.includes(t) || p.includes(t));
+  };
+  // 도번별 그룹
+  const groups = {};
+  const order = [];
+  mainData.filter(match).forEach(r => {
+    const key = String(r.oldDrawingNo||"").trim();
+    if(!key) return;
+    if(!groups[key]){ groups[key] = []; order.push(key); }
+    groups[key].push(r);
+  });
+  if(!order.length){
+    el.innerHTML = `<div style="padding:40px;text-align:center;color:#B9C2D6;">검색 결과가 없습니다.</div>`;
+    return;
+  }
+  const shown = order.slice(0, 10);
+  const learned = computeLearnedExtensionDays();
+  const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const chip = (label, value, color) => `<div style="background:#F6F8FB;border:1px solid #E5EAF1;border-radius:8px;padding:8px 12px;min-width:96px;text-align:center;"><div style="font-size:10.5px;color:#6B7280;margin-bottom:2px;">${label}</div><div style="font-size:15px;font-weight:700;color:${color||'#1F2A44'};">${value}</div></div>`;
+
+  el.innerHTML = shown.map(key => {
+    const rows = groups[key];
+    const pnRow = rows.find(r => String(r.partName||"").trim());
+    const partName = pnRow ? pnRow.partName : "";
+    const total = rows.length;
+    const totalQty = rows.reduce((a,r)=>a+(Number(r.qty)||0),0);
+    const done = rows.filter(r => r.shipped === "납품완료");
+    // 지연 납품: 납품일 > 최종납기
+    const lateOnes = done.map(r => {
+      const due = mgmtYmdToDate(r.dueDate), ship = mgmtYmdToDate(r.shipDate);
+      return (due && ship) ? Math.round((ship-due)/86400000) : null;
+    }).filter(d => d !== null && d > 0);
+    const avgLate = lateOnes.length ? Math.round(lateOnes.reduce((a,b)=>a+b,0)/lateOnes.length) : 0;
+    const gap = getExtensionDaysFor(key, learned);
+    // 검사 이력 (품질분석 데이터가 로드된 경우만)
+    let inspHtml = "";
+    try{
+      let iQty=0, iDef=0, has=false;
+      QUALITY_SHEETS.forEach(sheet => {
+        (qualityRawData[sheet.key]||[]).forEach(q => {
+          if(String(q.partNo||"").trim() === key){ has=true; iQty+=q.qty||0; iDef+=q.defect||0; }
+        });
+      });
+      if(has){
+        const ppm = iQty>0 ? Math.round(iDef/iQty*1000000) : 0;
+        inspHtml = chip("검사수", iQty.toLocaleString()) + chip("부적합", iDef.toLocaleString(), iDef>0?'#E02424':'#2E7D46') + chip("PPM", ppm.toLocaleString(), ppm>10000?'#E02424':'#2E7D46');
+      }
+    }catch(e){ /* 품질 데이터 미로드 */ }
+    if(!inspHtml) inspHtml = `<div style="font-size:11px;color:#B9C2D6;align-self:center;">※ 검사 이력 없음 (품질분석 메뉴에서 데이터를 불러오면 표시될 수 있습니다)</div>`;
+    // 이력 테이블 (최근 15건, 납기 최신순)
+    const hist = [...rows].sort((a,b)=>String(b.dueDate||"").localeCompare(String(a.dueDate||""))).slice(0,15);
+    return `
+    <div class="table-wrap" style="margin-bottom:16px;padding:14px 16px;border-left:4px solid #0B5CAB;">
+      <div style="font-size:14px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)} <span style="color:#4B5563;font-weight:400;">· ${esc(partName)}</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+        ${chip("총 주문", total + "건")}
+        ${chip("총 수량", totalQty.toLocaleString() + "개")}
+        ${chip("납품완료", done.length + "건")}
+        ${chip("지연 납품", lateOnes.length + "회", lateOnes.length>0?'#E02424':'#2E7D46')}
+        ${chip("평균 지연", avgLate + "일", avgLate>0?'#E02424':'#2E7D46')}
+        ${chip("학습 간격", gap.days + "일")}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">${inspHtml}</div>
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:640px;">
+          <thead><tr style="background:var(--navy);color:#fff;">
+            <th style="padding:7px;">ORDER</th><th style="padding:7px;">PRJ</th><th style="padding:7px;">고객사</th>
+            <th style="padding:7px;">수량</th><th style="padding:7px;">최종납기</th><th style="padding:7px;">납품일</th>
+            <th style="padding:7px;">지연</th><th style="padding:7px;">상태</th>
+          </tr></thead>
+          <tbody>
+            ${hist.map(r => {
+              const due = mgmtYmdToDate(r.dueDate), ship = mgmtYmdToDate(r.shipDate);
+              const late = (due && ship) ? Math.round((ship-due)/86400000) : null;
+              const st = computeProductStatus(r);
+              return `<tr style="border-bottom:1px solid #EAEDF2;text-align:center;">
+                <td style="padding:6px;">${esc(r.orderNo)}</td>
+                <td style="padding:6px;">${esc(r.vendor||'-')}</td>
+                <td style="padding:6px;">${esc(r.customer||'')}</td>
+                <td style="padding:6px;">${r.qty}</td>
+                <td style="padding:6px;">${esc(r.dueDate||'')}</td>
+                <td style="padding:6px;">${esc(r.shipDate||'-')}</td>
+                <td style="padding:6px;${late!==null && late>0 ? 'color:#E02424;font-weight:700;' : 'color:#2E7D46;'}">${late===null ? '-' : (late>0 ? '+'+late+'일' : '정시')}</td>
+                <td style="padding:6px;"><span class="badge status-${st}">${st}</span></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${rows.length > 15 ? `<div style="font-size:11px;color:#6B7280;margin-top:6px;">최근 15건만 표시 (전체 ${rows.length}건)</div>` : ''}
+    </div>`;
+  }).join('') + (order.length > 10 ? `<div style="padding:10px;text-align:center;color:#6B7280;font-size:12px;">도번 ${order.length}개 중 10개만 표시했습니다. 검색어를 더 구체적으로 입력해 주세요.</div>` : '');
+}
+
+/* ============ 주간 출하 예정 보드 ============ */
+function renderWeeklyView(){
+  const el = document.getElementById("weekly-content");
+  if(!el) return;
+  if(!mainData || mainData.length === 0){
+    el.innerHTML = `<div style="padding:40px;text-align:center;color:#B9C2D6;">데이터를 로드해주세요. (구글시트 연동 또는 엑셀 업로드)</div>`;
+    return;
+  }
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dow = (today.getDay() + 6) % 7; // 월=0 ... 일=6
+  const monThis = mgmtAddDays(today, -dow);
+  const days = ["월","화","수","목","금","토","일"];
+  const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+  const weekSection = (monday, label) => {
+    const dayCells = [];
+    let weekTotal = 0, weekOpen = 0;
+    for(let i=0;i<7;i++){
+      const d = mgmtAddDays(monday, i);
+      const dStr = mgmtFmtYMD(d);
+      const items = mainData.filter(r => String(r.dueDate||"").slice(0,10) === dStr && (Number(r.qty)||0) > 0 && String(r.oldDrawingNo||"").trim());
+      weekTotal += items.length;
+      const isToday = d.getTime() === today.getTime();
+      const cellItems = items.map(r => {
+        const st = computeProductStatus(r);
+        if(st !== "완료") weekOpen++;
+        return `<div style="background:#fff;border:1px solid #E5EAF1;border-left:3px solid ${st==="완료" ? '#2E7D46' : '#0B5CAB'};border-radius:5px;padding:6px 8px;margin-bottom:6px;font-size:11px;line-height:1.5;">
+          <div style="font-weight:700;">${esc(r.oldDrawingNo)}</div>
+          <div style="color:#4B5563;">${esc(r.partName||'')}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;gap:4px;">
+            <span style="color:#6B7280;">${esc(r.customer||'')} · ${r.qty}개</span>
+            <span class="badge status-${st}" style="font-size:9px;">${st}</span>
+          </div>
+        </div>`;
+      }).join('');
+      dayCells.push(`
+        <div style="flex:1;min-width:130px;background:${isToday ? '#FFF9E8' : '#F7F9FC'};border:1px solid ${isToday ? '#E4C441' : '#E5EAF1'};border-radius:8px;padding:8px;">
+          <div style="font-size:11.5px;font-weight:700;color:${i>=5 ? '#C0392B' : '#1F2A44'};margin-bottom:6px;text-align:center;">
+            ${days[i]} <span style="font-weight:400;color:#6B7280;">${d.getMonth()+1}/${d.getDate()}</span>${isToday ? ' <span style="color:#C9A227;">●오늘</span>' : ''}
+          </div>
+          ${cellItems || '<div style="text-align:center;color:#C6CDD8;font-size:10.5px;padding:8px 0;">-</div>'}
+        </div>`);
+    }
+    return `
+      <div class="table-wrap" style="margin-bottom:16px;padding:14px 16px;">
+        <div style="font-size:13.5px;font-weight:700;color:#1F2A44;margin-bottom:10px;">
+          ${label} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">(${mgmtFmtYMD(monday)} ~ ${mgmtFmtYMD(mgmtAddDays(monday,6))}) · 총 ${weekTotal}건 / 미완료 ${weekOpen}건</span>
+        </div>
+        <div style="display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;align-items:flex-start;">${dayCells.join('')}</div>
+      </div>`;
+  };
+
+  el.innerHTML = weekSection(monThis, "📦 이번 주 출하 예정") + weekSection(mgmtAddDays(monThis, 7), "🗓 다음 주 출하 예정");
+}
+
+/* ============ 도움말 모달 + 신규 메뉴 이벤트 ============ */
+document.addEventListener("DOMContentLoaded", () => {
+  // 도움말
+  const helpBtn = document.getElementById("helpNavBtn");
+  const helpModal = document.getElementById("help-modal");
+  if(helpBtn && helpModal){
+    helpBtn.addEventListener("click", () => { helpModal.style.display = "block"; });
+    document.getElementById("help-closeBtn").addEventListener("click", () => { helpModal.style.display = "none"; });
+    helpModal.addEventListener("click", (e) => { if(e.target === helpModal) helpModal.style.display = "none"; });
+  }
+  // 도번 이력 검색
+  const hBtn = document.getElementById("history-searchBtn");
+  const hInput = document.getElementById("history-searchInput");
+  if(hBtn && hInput){
+    const doSearch = () => {
+      historyKeyword = hInput.value;
+      runBusy(() => renderHistoryView(historyKeyword), "검색 중...");
+    };
+    hBtn.addEventListener("click", doSearch);
+    hInput.addEventListener("keydown", e => { if(e.key === "Enter") doSearch(); });
+  }
+  // 공지 최초 로드 (데이터 로드와 겹치지 않게 잠시 뒤)
+  setTimeout(fetchNotices, 2500);
+});
 </script>
 <div id="print-area" style="display:none;"></div>
+<!-- 사용법 도움말 모달 -->
+<div id="help-modal" style="display:none;position:fixed;inset:0;background:rgba(20,24,35,0.55);z-index:9998;overflow:auto;padding:24px 12px;">
+  <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:10px;padding:22px 24px;box-shadow:0 10px 40px rgba(0,0,0,0.35);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="font-size:16px;font-weight:700;color:#1F2A44;">❓ 사용법 안내</div>
+      <button id="help-closeBtn" type="button" style="border:1px solid #DDE1E8;background:#fff;border-radius:6px;padding:6px 16px;cursor:pointer;font-size:12px;">닫기 ✕</button>
+    </div>
+    <div style="font-size:12.5px;color:#2A2F3A;line-height:1.75;">
+      <div style="font-weight:700;color:#0B5CAB;margin-top:8px;">🔍 검색 문법 (모든 검색창 공통)</div>
+      쉼표(,)는 OR 검색입니다. 예: <b>M200-005, M300-011</b> → 두 도번 모두 검색.<br>
+      슬래시(/)는 AND(좁혀서) 검색입니다. 예: <b>유진/SHOWER</b> → 유진 결과 중 SHOWER 포함만.
+      <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">📋 관리항목 현황</div>
+      검색해야 내용이 표시됩니다. 도번 카드의 <b>[✕ 도번 제거]</b>로 확인 끝난 도번을 전 구역에서 제외할 수 있고,
+      <b>[🗂 제거한 도번]</b>에서 개별 복원, <b>[↩ 전체 복원]</b>으로 한 번에 되돌립니다.
+      제거 목록은 내 브라우저에만 저장됩니다 (다른 사람 화면에는 영향 없음).<br>
+      월/년 생산 계획에서 <b>월 헤더를 클릭</b>하면 그 달 납기 항목만 상세에 표시됩니다.
+      납기 연장 권고의 간격은 도번별 과거 납품 이력에서 자동 학습됩니다.
+      <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">⏰ 지연 LIST</div>
+      지연일수 많은 순으로 상위 100건씩 표시되고 <b>[▼ 더보기]</b>로 추가 표시됩니다. 인쇄·엑셀은 항상 전체 기준입니다.
+      <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">🔎 도번 이력 · 🚚 주간 출하</div>
+      도번 이력: 도번/품명 검색 → 납품 이력, 지연 횟수, 학습 간격, 검사 이력 요약.<br>
+      주간 출하: 이번 주·다음 주 최종납기 건을 요일별 보드로 표시 (아침 회의용).
+      <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">📢 공지사항 (관리자)</div>
+      구글시트에 <b>"공지" 탭</b>을 만들고 1행에 <b>날짜 | 제목 | 내용 | 중요</b> 헤더를 넣은 뒤 행을 추가하면
+      월별 현황 첫 화면 상단에 표시됩니다. (중요 열에 O를 넣으면 📌 강조)
+      <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">🔄 데이터</div>
+      상단 배너에 마지막 동기화 시각이 색으로 표시됩니다 (초록=10분 이내). 숫자가 다르면 새로고침으로 최신 데이터를 받아주세요.
+      인쇄 버튼은 남색, 검색·조회 버튼은 연노랑입니다.
+    </div>
+  </div>
+</div>
 </body>
 </html>
