@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>종합제품관리 시스템</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<!-- xlsx-js-style: 기존 SheetJS 0.18.5와 API 동일 + 셀 스타일(색/테두리/폰트) 지원 -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js" defer></script>
 <style>
   :root{
     --navy:#1F2A44;
@@ -525,9 +526,23 @@
     }
     .badge{ padding:2px 4px !important; font-size:9px !important; }
   }
+  /* ===== 진행중 표시 (버튼/박스 클릭 피드백) ===== */
+  #busy-toast{
+    display:none; position:fixed; top:14px; left:50%; transform:translateX(-50%);
+    background:#1F2A44; color:#fff; font-size:13px; font-weight:700;
+    padding:10px 22px; border-radius:24px; z-index:99999;
+    box-shadow:0 4px 14px rgba(0,0,0,0.35); pointer-events:none;
+    white-space:nowrap;
+  }
+  #busy-toast.show{ display:block; animation:busyPulse 1s ease-in-out infinite; }
+  @keyframes busyPulse{ 0%,100%{opacity:1;} 50%{opacity:0.55;} }
+  /* 버튼/메뉴가 눌린 것을 바로 알 수 있게 눌림 효과 */
+  button:active, .nav-item:active{ transform:scale(0.96); opacity:0.75; }
+  @media print{ #busy-toast{ display:none !important; } }
 </style>
 </head>
 <body>
+<div id="busy-toast">⏳ 진행중...</div>
 <div class="app-shell">
   <div class="side-nav" id="sideNav">
     <div class="brand">종합제품관리<small>ERP 웹 시스템</small></div>
@@ -1162,6 +1177,93 @@
   </div>
 </template>
 <script>
+/* ============ 진행중 표시 헬퍼 ============ */
+// 무거운 렌더링/다운로드 전에 "진행중..." 토스트를 띄워, 버튼이 눌렸다는 것을 바로 알 수 있게 합니다.
+let __busyCount = 0;
+function showBusy(msg){
+  __busyCount++;
+  const t = document.getElementById("busy-toast");
+  if(t){ t.textContent = "⏳ " + (msg || "진행중..."); t.classList.add("show"); }
+}
+function hideBusy(){
+  __busyCount = Math.max(0, __busyCount - 1);
+  if(__busyCount === 0){
+    const t = document.getElementById("busy-toast");
+    if(t) t.classList.remove("show");
+  }
+}
+// fn을 실행하기 전에 토스트를 먼저 그리게(50ms) 미룬 뒤 실행하고, 끝나면 자동으로 숨깁니다.
+function runBusy(fn, msg){
+  showBusy(msg);
+  setTimeout(()=>{
+    try{ fn(); }
+    catch(e){ console.error(e); }
+    finally{ hideBusy(); }
+  }, 50);
+}
+
+/* ============ 엑셀 스타일 헬퍼 ============ */
+// 다운로드되는 엑셀이 "디자인 깨진(스타일 없는)" 상태로 나가지 않도록,
+// 모든 셀에 맑은 고딕 + 테두리 + 가운데 정렬을 적용하고,
+// 헤더행(남색 배경/흰 글씨), 제목행(굵게), 합계행(회색 배경)을 꾸며줍니다.
+// ※ xlsx-js-style 라이브러리 필요 (API는 기존 SheetJS 0.18.5와 동일)
+function styleAoaSheet(ws, opts){
+  opts = opts || {};
+  const headerRows = new Set(opts.headerRows || []);
+  const titleRows  = new Set(opts.titleRows  || []);
+  const totalRows  = new Set(opts.totalRows  || []);
+  if(!ws || !ws['!ref']) return ws;
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  const thin = { style:"thin", color:{ rgb:"C7CDD8" } };
+  for(let R = range.s.r; R <= range.e.r; R++){
+    for(let C = range.s.c; C <= range.e.c; C++){
+      const addr = XLSX.utils.encode_cell({ r:R, c:C });
+      let cell = ws[addr];
+      // 헤더/합계 행은 빈 칸도 배경색이 이어지게 빈 셀을 만들어 줍니다.
+      if(!cell){
+        if(headerRows.has(R) || totalRows.has(R)){
+          cell = ws[addr] = { t:"s", v:"" };
+        } else {
+          continue;
+        }
+      }
+      if(titleRows.has(R)){
+        cell.s = {
+          font:{ name:"맑은 고딕", sz:12, bold:true, color:{ rgb:"1F2A44" } },
+          alignment:{ horizontal:"left", vertical:"center" }
+        };
+      } else if(headerRows.has(R)){
+        cell.s = {
+          font:{ name:"맑은 고딕", sz:10, bold:true, color:{ rgb:"FFFFFF" } },
+          fill:{ patternType:"solid", fgColor:{ rgb:"1F2A44" } },
+          alignment:{ horizontal:"center", vertical:"center", wrapText:true },
+          border:{ top:thin, bottom:thin, left:thin, right:thin }
+        };
+      } else if(totalRows.has(R)){
+        cell.s = {
+          font:{ name:"맑은 고딕", sz:10, bold:true, color:{ rgb:"1A1E27" } },
+          fill:{ patternType:"solid", fgColor:{ rgb:"EDF0F5" } },
+          alignment:{ horizontal:"center", vertical:"center" },
+          border:{ top:thin, bottom:thin, left:thin, right:thin }
+        };
+      } else {
+        cell.s = {
+          font:{ name:"맑은 고딕", sz:10, color:{ rgb:"1A1E27" } },
+          alignment:{ horizontal:"center", vertical:"center" },
+          border:{ top:thin, bottom:thin, left:thin, right:thin }
+        };
+      }
+    }
+  }
+  // 행 높이: 헤더는 살짝 높게
+  const rowsMeta = [];
+  for(let R = range.s.r; R <= range.e.r; R++){
+    rowsMeta.push(headerRows.has(R) ? { hpt: 22 } : { hpt: 18 });
+  }
+  ws['!rows'] = rowsMeta;
+  return ws;
+}
+
 /* ============ NAVIGATION ============ */
 document.getElementById("sideNavToggle").addEventListener("click", ()=>{
   const nav = document.getElementById("sideNav");
@@ -1190,22 +1292,22 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("inv-syncPanel").classList.remove("open");
     document.getElementById("quality-syncPanel").classList.remove("open");
     if(target==="summary"){
-      setTimeout(renderSummaryView, 0);
+      runBusy(renderSummaryView);
     }
     if(target==="quality" && !window.__qualityInited){
       window.__qualityInited = true;
-      setTimeout(initQualityView, 0);
+      runBusy(initQualityView);
     }
     if(target==="management"){
-      setTimeout(renderManagementAll, 0);
+      runBusy(renderManagementAll);
     }
     if(target==="overdue"){
-      setTimeout(overdueApplySearch, 0);
+      runBusy(overdueApplySearch);
     }
     if(target==="sales"){
       const rangeLabelEl = document.getElementById("sales-rangeLabel");
       if(rangeLabelEl) rangeLabelEl.textContent = "불러오는 중...";
-      setTimeout(renderSalesAll, 0);
+      runBusy(renderSalesAll);
     }
   });
 });
@@ -1627,7 +1729,7 @@ function mainGetPrintListRows(){
   });
   return filtered;
 }
-document.getElementById("main-printBtn").addEventListener("click", ()=>{
+document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
   const rowsHtml = filtered.map(r=>{
     const status = computeProductStatus(r);
@@ -1659,8 +1761,8 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>{
     </table>
   `;
   window.print();
-});
-document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>{
+}, "인쇄 준비 중..."));
+document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
   const aoa = [["제품상태","ORDER NO.","PROJECT NO.","기존도번","S/N","수량","출고날짜","최종납기","비고","납품 대기"]];
   filtered.forEach(r=>{
@@ -1670,11 +1772,13 @@ document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>{
     ]);
   });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:10},{wch:14},{wch:16},{wch:18},{wch:10},{wch:8},{wch:12},{wch:12},{wch:12},{wch:10}];
+  styleAoaSheet(ws, { headerRows:[0] });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "분출 LIST");
   const dateStr = new Date().toISOString().slice(0,10);
   XLSX.writeFile(wb, `분출LIST_${dateStr}.xlsx`);
-});
+}, "엑셀 생성 중..."));
 // 검색 버튼을 누르면 잠시 "검색 중..." 표시를 보여주고, 실제 검색(무거울 수 있는 필터링/렌더링)은
 // 화면이 그 표시를 그릴 시간을 준 다음 실행합니다.
 function withSearchIndicator(btn, fn){
@@ -1888,7 +1992,7 @@ document.getElementById("main-calNext").addEventListener("click", ()=>{
   mainCalendarDate = new Date(mainCalendarDate.getFullYear(), mainCalendarDate.getMonth()+1, 1);
   renderMainCalendar();
 });
-document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
+document.getElementById("main-calPrintBtn").addEventListener("click", ()=>runBusy(()=>{
   const monthLabel = document.getElementById("main-calMonthLabel").textContent;
   const dowHtml = document.getElementById("main-calDowRow").innerHTML;
   const gridHtml = document.getElementById("main-calendarGrid").innerHTML;
@@ -1977,8 +2081,8 @@ document.getElementById("main-calPrintBtn").addEventListener("click", ()=>{
     window.removeEventListener("afterprint", restoreOrientation);
   }
   window.addEventListener("afterprint", restoreOrientation);
-});
-document.getElementById("main-calExcelBtn").addEventListener("click", ()=>{
+}, "인쇄 준비 중..."));
+document.getElementById("main-calExcelBtn").addEventListener("click", ()=>runBusy(()=>{
   const rows = mainGetCalendarRows().filter(r=>{
     if(!r.dueDate) return false;
     const d = new Date(r.dueDate);
@@ -1987,11 +2091,13 @@ document.getElementById("main-calExcelBtn").addEventListener("click", ()=>{
   const aoa = [["최종납기","기존도번","ORDER NO.","고객사","품명","수량"]];
   rows.forEach(r=>{ aoa.push([r.dueDate||'', r.oldDrawingNo||'', r.orderNo||'', r.customer||'', r.partName||'', r.qty||0]); });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:12},{wch:18},{wch:14},{wch:12},{wch:24},{wch:8}];
+  styleAoaSheet(ws, { headerRows:[0] });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "달력");
   const monthLabel = document.getElementById("main-calMonthLabel").textContent.replace(/\s/g,"");
   XLSX.writeFile(wb, `달력_${monthLabel}.xlsx`);
-});
+}, "엑셀 생성 중..."));
 document.getElementById("main-syncToggle").addEventListener("click", ()=>document.getElementById("main-syncPanel").classList.toggle("open"));
 document.getElementById("main-resetBtn").addEventListener("click", async ()=>{
   mainData = MAIN_SAMPLE.slice();
@@ -2564,16 +2670,18 @@ function invPrintAll(){
   window.addEventListener("afterprint", restoreOrientation);
   window.print();
 }
-document.getElementById("inv-allPrintBtn").addEventListener("click", invPrintAll);
-document.getElementById("inv-allExcelBtn").addEventListener("click", ()=>{
+document.getElementById("inv-allPrintBtn").addEventListener("click", ()=>runBusy(invPrintAll, "인쇄 준비 중..."));
+document.getElementById("inv-allExcelBtn").addEventListener("click", ()=>runBusy(()=>{
   const rows = invGetAllRows(invAllYear, invAllMonth);
   const aoa = [["순번","품번","총입고","총출고","현재재고"]];
   rows.forEach((r,idx)=>{ aoa.push([idx+1, r.partNo, r.totalIn, r.totalOut, r.stock]); });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:8},{wch:20},{wch:10},{wch:10},{wch:10}];
+  styleAoaSheet(ws, { headerRows:[0] });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "전체재고현황");
   XLSX.writeFile(wb, `전체재고현황_${invAllYear}-${String(invAllMonth).padStart(2,"0")}.xlsx`);
-});
+}, "엑셀 생성 중..."));
 renderInvAllSelectors();
 /* ============ 장기 재고(AGING STOCK) LOGIC ============ */
 // 입고는 됐는데 그 수량만큼 아직 출고되지 않은 S/N을, 입고일 기준 경과일수가
@@ -3186,8 +3294,8 @@ function printQualityReport(){
   document.getElementById("print-area").innerHTML = html;
   window.print();
 }
-document.getElementById("quality-printBtn").addEventListener("click", printQualityReport);
-document.getElementById("quality-excelBtn").addEventListener("click", ()=>{
+document.getElementById("quality-printBtn").addEventListener("click", ()=>runBusy(printQualityReport, "인쇄 준비 중..."));
+document.getElementById("quality-excelBtn").addEventListener("click", ()=>runBusy(()=>{
   const wb = XLSX.utils.book_new();
   Object.keys(QUALITY_CATEGORIES).forEach(catKey=>{
     const cat = QUALITY_CATEGORIES[catKey];
@@ -3208,10 +3316,12 @@ document.getElementById("quality-excelBtn").addEventListener("click", ()=>{
     const totalPpm = totalQty>0 ? Math.round((totalDefect/totalQty)*1000000) : 0;
     aoa.push(["누적 합계", totalQty, totalGood, totalDefect, totalPpm]);
     const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:12},{wch:10},{wch:10},{wch:10},{wch:14}];
+    styleAoaSheet(ws, { headerRows:[0], totalRows:[aoa.length-1] });
     XLSX.utils.book_append_sheet(wb, ws, cat.label);
   });
   XLSX.writeFile(wb, `품질분석_${qualityYear}년_${qualityMonth}월누적.xlsx`);
-});
+}, "엑셀 생성 중..."));
 /* ============ SALES(매출현황) LOGIC ============ */
 const SALES_YEARS = QUALITY_YEARS;
 let salesYear = CURRENT_YEAR;
@@ -3709,36 +3819,37 @@ function printSalesReport(){
   window.addEventListener("afterprint", restoreOrientation);
   window.print();
 }
-document.getElementById("sales-printBtn").addEventListener("click", printSalesReport);
-document.getElementById("sales-excelBtn").addEventListener("click", ()=>{
+document.getElementById("sales-printBtn").addEventListener("click", ()=>runBusy(printSalesReport, "인쇄 준비 중..."));
+document.getElementById("sales-excelBtn").addEventListener("click", ()=>runBusy(()=>{
   const wb = XLSX.utils.book_new();
   // 1) 연간 요약
   const yearStats = computeYearSalesStats(salesYear);
   const kpiAoa = [["구분","매출(만원)","소재및외주(만원)","순이익(만원)","이익률(%)"]];
   kpiAoa.push([salesYear+"년 전체", fmtWon(yearStats.revenue), fmtWon(yearStats.cost), fmtWon(yearStats.profit), yearStats.margin+"%"]);
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(kpiAoa), "연간요약");
+  const __salesSheet = (aoa) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = aoa[0].map(()=>({wch:16})); styleAoaSheet(ws, { headerRows:[0] }); return ws; };
+  XLSX.utils.book_append_sheet(wb, __salesSheet(kpiAoa), "연간요약");
   // 2) 월별 매출
   const monthAoa = [["월","매출(만원)","소재및외주(만원)","순이익(만원)","이익률(%)"]];
   yearStats.monthly.forEach((m,i)=>{ monthAoa.push([(i+1)+"월", fmtWon(m.revenue), fmtWon(m.cost), fmtWon(m.profit), m.margin+"%"]); });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(monthAoa), "월별매출");
+  XLSX.utils.book_append_sheet(wb, __salesSheet(monthAoa), "월별매출");
   // 3) 고객사별 매출
   const custStats = computeCustomerYearStats(salesYear);
   const custOrder = ["유진테크","알파플러스","엘티케이","기타"];
   const custTotal = custOrder.reduce((s,c)=>s+custStats[c].revenue,0) || 1;
   const custAoa = [["고객사","매출액(만원)","비중(%)"]];
   custOrder.forEach(c=>{ custAoa.push([c, fmtWon(custStats[c].revenue), Math.round((custStats[c].revenue/custTotal)*1000)/10+"%"]); });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(custAoa), "고객사별매출");
+  XLSX.utils.book_append_sheet(wb, __salesSheet(custAoa), "고객사별매출");
   // 4) 연도별 비교
   const yoyAoa = [["연도","매출(만원)","순이익(만원)","이익률(%)"]];
   SALES_COMPARE_YEARS.forEach(y=>{ const s = computeYearSalesStats(y); yoyAoa.push([y+"년", fmtWon(s.revenue), fmtWon(s.profit), s.margin+"%"]); });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(yoyAoa), "연도별비교");
+  XLSX.utils.book_append_sheet(wb, __salesSheet(yoyAoa), "연도별비교");
   // 5) 예상매출
   const expStats = computeYearExpectedStats(salesYear);
   const expAoa = [["구분","예상매출(만원)","예상소재및외주(만원)","예상순이익(만원)","예상이익률(%)"]];
   expAoa.push([salesYear+"년 전체", fmtWon(expStats.revenue), fmtWon(expStats.cost), fmtWon(expStats.profit), expStats.margin+"%"]);
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(expAoa), "예상매출");
+  XLSX.utils.book_append_sheet(wb, __salesSheet(expAoa), "예상매출");
   XLSX.writeFile(wb, `매출현황_${salesYear}년.xlsx`);
-});
+}, "엑셀 생성 중..."));
 /* ============ OVERDUE(지연 LIST) LOGIC ============ */
 function overdueDaysLate(dueDate){
   const d = new Date(dueDate);
@@ -3835,7 +3946,7 @@ function overdueRenderTable(rows){
 document.getElementById("overdue-searchBtn").addEventListener("click", (e)=> withSearchIndicator(e.currentTarget, overdueApplySearch));
 document.getElementById("overdue-searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") overdueApplySearch(); });
 document.getElementById("overdue-dueDateBtn").addEventListener("click", overdueApplySearch);
-document.getElementById("overdue-printBtn").addEventListener("click", ()=>{
+document.getElementById("overdue-printBtn").addEventListener("click", ()=>runBusy(()=>{
   const rows = overdueGetFilteredRows();
   overdueRenderTable(rows);
   const rowsHtml = rows.map(r=>{
@@ -3861,8 +3972,8 @@ document.getElementById("overdue-printBtn").addEventListener("click", ()=>{
     </table>
   `;
   window.print();
-});
-document.getElementById("overdue-excelBtn").addEventListener("click", ()=>{
+}, "인쇄 준비 중..."));
+document.getElementById("overdue-excelBtn").addEventListener("click", ()=>runBusy(()=>{
   const rows = overdueGetFilteredRows();
   const aoa = [["지연일수","제품상태","ORDER NO.","고객사","PROJECT NO.","기존도번","품명","수량","최종납기"]];
   rows.forEach(r=>{
@@ -3874,11 +3985,13 @@ document.getElementById("overdue-excelBtn").addEventListener("click", ()=>{
     ]);
   });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:8},{wch:10},{wch:14},{wch:12},{wch:16},{wch:18},{wch:24},{wch:8},{wch:12}];
+  styleAoaSheet(ws, { headerRows:[0] });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "지연 LIST");
   const dateStr = new Date().toISOString().slice(0,10);
   XLSX.writeFile(wb, `지연LIST_${dateStr}.xlsx`);
-});
+}, "엑셀 생성 중..."));
 /* ============ VENDOR(거래처 관리) LOGIC ============ */
 // 단가 이력: mainData에 이미 있는 발주단가/자재비/외주업체비/집연마버/처리비(세정)를
 // 기존도번 기준으로 정리해서 보여줍니다. 검색 전에는 빈 상태로 두어(다른 화면과 동일한 UX)
@@ -4264,7 +4377,7 @@ function initSummaryTabs(){
   document.addEventListener("keydown", (e)=>{ if(e.key === "Escape" && modal.style.display === "flex") closeReport(); });
 
   // 인쇄 버튼
-  document.getElementById("summary-printBtn").addEventListener("click", ()=>{
+  document.getElementById("summary-printBtn").addEventListener("click", ()=>runBusy(()=>{
     const title = document.getElementById("summary-rangeLabel").textContent;
     const genAt = document.getElementById("summary-generatedAt").textContent;
     document.getElementById("print-area").innerHTML = `
@@ -4289,7 +4402,7 @@ function initSummaryTabs(){
       ${document.getElementById("summary-reportContent").innerHTML}
     `;
     window.print();
-  });
+  }, "인쇄 준비 중..."));
 
   // 다운로드 버튼 (브라우저 인쇄 대화상자에서 "PDF로 저장" 선택)
   document.getElementById("summary-downloadBtn").addEventListener("click", ()=>{
@@ -4472,10 +4585,19 @@ function filterManagementRows(keyword){
   }
   
   // 각 행에 productStatus 계산해서 추가
-  return data.map(r => ({
-    ...r,
-    productStatus: computeProductStatus(r)
-  }));
+  // + 수량 0 이하 제외 (수량 > 0 만 표시)
+  // + 도번(기존도번) 없는 행 제외
+  // + 상태가 계산되지 않는(빈) 행 제외
+  return data
+    .map(r => ({
+      ...r,
+      productStatus: computeProductStatus(r)
+    }))
+    .filter(r =>
+      (Number(r.qty) || 0) > 0 &&
+      String(r.oldDrawingNo || "").trim() !== "" &&
+      String(r.productStatus || "").trim() !== ""
+    );
 }
 
 // 생산대기 수량 (제품상태가 "생산"인 행의 수량)
@@ -4521,10 +4643,22 @@ function needsExtension(row){
   return days <= 3 && row.productStatus === "생산";
 }
 
-// 월 필터링 (7월/8월)
+// 납기일에서 연/월을 정확히 파싱 ("2026-08-03" → {y:2026, m:8})
+function getDueYM(dueDate){
+  const parts = String(dueDate||"").split("-");
+  if(parts.length < 2) return null;
+  const y = parseInt(parts[0]), m = parseInt(parts[1]);
+  if(isNaN(y) || isNaN(m)) return null;
+  return {y, m};
+}
+
+// 월 필터링 (올해 기준, 월 정확 매칭)
 function getMonthData(rows, month){
-  const monthStr = "-" + String(month).padStart(2,"0");
-  return rows.filter(r => String(r.dueDate||"").includes(monthStr));
+  const thisYear = new Date().getFullYear();
+  return rows.filter(r => {
+    const ym = getDueYM(r.dueDate);
+    return ym && ym.y === thisYear && ym.m === month;
+  });
 }
 
 // 종합 현황 데이터
@@ -4587,16 +4721,22 @@ function getDetailByDrawing(rows){
   }));
 }
 
-// 월별 생산 계획 (집계)
+// 월별 생산 계획 (올해 기준 집계, "최종납기일" 기준으로 월을 분류)
+// - 계획: 그 달이 최종납기인 전체 수량 (상태와 무관한 월별 생산계획 총량)
+// - 생산/검사/완료: 그 계획 수량의 현재 상태별 내역
 function getMonthlyPlan(rows){
+  const thisYear = new Date().getFullYear();
   const plan = {};
   for(let m=1; m<=12; m++){
-    const mStr = String(m).padStart(2,"0");
-    const mRows = rows.filter(r => String(r.dueDate||"").includes("-" + mStr));
+    const mRows = rows.filter(r => {
+      const ym = getDueYM(r.dueDate); // dueDate = 최종납기일
+      return ym && ym.y === thisYear && ym.m === m;
+    });
     plan[m] = {
+      planned: mRows.reduce((sum, r) => sum + (Number(r.qty) || 0), 0),
       production: mRows.reduce((sum, r) => sum + getProductionWaitQty(r), 0),
       quality: mRows.reduce((sum, r) => sum + getQualityWaitQty(r), 0),
-      completed: mRows.filter(r => r.shipped === "납품완료").reduce((sum, r) => sum + (r.qty || 0), 0)
+      completed: mRows.filter(r => r.shipped === "납품완료").reduce((sum, r) => sum + (Number(r.qty) || 0), 0)
     };
   }
   return plan;
@@ -4724,11 +4864,24 @@ function renderManagementTop10(rows){
 }
 
 // 도번/품명별 상세 렌더링
+// ※ 검색어가 없으면 전체 도번을 전부 그리느라 화면이 버벅이므로,
+//    검색어가 있을 때만 상세를 표시합니다 (검색 없을 때는 안내 문구만).
 function renderManagementDetail(rows){
-  const groups = getDetailByDrawing(rows);
   const el = document.getElementById("management-detail");
   if(!el) return;
-  
+
+  if(!managementSearchKeyword.trim()){
+    el.innerHTML = `
+      <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세</h2>
+      <div style="padding:20px;text-align:center;color:#B9C2D6;font-size:12px;">
+        🔍 도번·품명을 검색하면 상세 내역이 표시됩니다.<br>
+        <span style="font-size:11px;">(전체 항목을 한꺼번에 표시하면 화면이 느려져서, 검색 시에만 표시합니다)</span>
+      </div>`;
+    return;
+  }
+
+  const groups = getDetailByDrawing(rows);
+
   if(!groups.length){
     el.innerHTML = `<h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세</h2><div style="padding:20px;text-align:center;color:#B9C2D6;">검색 결과가 없습니다.</div>`;
     return;
@@ -4746,6 +4899,7 @@ function renderManagementDetail(rows){
             <thead>
               <tr style="background:#2A3150;color:#fff;">
                 <th style="padding:6px;text-align:center;">ORDER</th>
+                <th style="padding:6px;text-align:center;">PRJ</th>
                 <th style="padding:6px;text-align:center;">상태</th>
                 <th style="padding:6px;text-align:center;">수량</th>
                 <th style="padding:6px;text-align:center;">7월</th>
@@ -4754,10 +4908,13 @@ function renderManagementDetail(rows){
             </thead>
             <tbody>
               ${g.items.map(r => {
-                const julyHas = String(r.dueDate).includes('-07');
-                const augHas = String(r.dueDate).includes('-08');
+                const _ym = getDueYM(r.dueDate);
+                const _ty = new Date().getFullYear();
+                const julyHas = _ym && _ym.y === _ty && _ym.m === 7;
+                const augHas = _ym && _ym.y === _ty && _ym.m === 8;
                 return `<tr style="border-bottom:1px solid #DDE1E8;">
                   <td style="padding:6px;text-align:center;">${r.orderNo||''}</td>
+                  <td style="padding:6px;text-align:center;">${r.vendor||'-'}</td>
                   <td style="padding:6px;text-align:center;"><span class="badge status-${r.productStatus}">${r.productStatus}</span></td>
                   <td style="padding:6px;text-align:center;">${r.qty}</td>
                   <td style="padding:6px;text-align:center;">${julyHas ? r.qty : '-'}</td>
@@ -4779,7 +4936,7 @@ function renderManagementPlan(rows){
   if(!el) return;
   
   el.innerHTML = `
-    <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📅 월/년 생산 계획</h2>
+    <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📅 월/년 생산 계획 <span style="font-size:11px;font-weight:400;color:#4B5563;">(최종납기일 기준)</span></h2>
     <div style="overflow-x:auto;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead>
@@ -4790,6 +4947,11 @@ function renderManagementPlan(rows){
           </tr>
         </thead>
         <tbody>
+          <tr style="border-bottom:1px solid #3A3F4B;">
+            <td style="padding:8px;font-weight:700;background:#2A3150;color:#fff;">계획</td>
+            ${Array.from({length:12}, (_,i) => `<td style="padding:8px;text-align:center;font-weight:700;">${plan[i+1].planned}</td>`).join('')}
+            <td style="padding:8px;text-align:center;font-weight:700;">${Object.values(plan).reduce((sum, p) => sum + p.planned, 0)}</td>
+          </tr>
           <tr style="border-bottom:1px solid #3A3F4B;">
             <td style="padding:8px;font-weight:700;background:#2A3150;color:#fff;">생산</td>
             ${Array.from({length:12}, (_,i) => `<td style="padding:8px;text-align:center;">${plan[i+1].production}</td>`).join('')}
@@ -4849,17 +5011,27 @@ document.addEventListener("DOMContentLoaded", () => {
   const navItem = document.querySelector('[data-view="management"]');
   if(navItem){
     navItem.addEventListener("click", () => {
-      setTimeout(renderManagementAll, 100);
+      runBusy(renderManagementAll);
     });
   }
   
-  // 검색 버튼
+  // 검색 버튼 (진행중... 표시)
   const searchBtn = document.getElementById("management-searchBtn");
   if(searchBtn){
     searchBtn.addEventListener("click", () => {
       const input = document.getElementById("management-searchInput");
       managementSearchKeyword = input.value;
-      renderManagementAll();
+      runBusy(renderManagementAll, "검색 중...");
+    });
+  }
+  // 검색창에서 Enter로도 검색되게
+  const searchInputEl = document.getElementById("management-searchInput");
+  if(searchInputEl){
+    searchInputEl.addEventListener("keydown", (e) => {
+      if(e.key === "Enter"){
+        managementSearchKeyword = searchInputEl.value;
+        runBusy(renderManagementAll, "검색 중...");
+      }
     });
   }
   
@@ -4869,14 +5041,14 @@ document.addEventListener("DOMContentLoaded", () => {
     clearBtn.addEventListener("click", () => {
       managementSearchKeyword = "";
       document.getElementById("management-searchInput").value = "";
-      renderManagementAll();
+      runBusy(renderManagementAll);
     });
   }
 
   // 인쇄 버튼: 기존 인쇄 시스템(#print-area)에 내용을 복사한 뒤 인쇄
   const printBtn = document.getElementById("management-printBtn");
   if(printBtn){
-    printBtn.addEventListener("click", () => {
+    printBtn.addEventListener("click", () => runBusy(() => {
       const src = document.getElementById("management-print-page");
       const pa = document.getElementById("print-area");
       if(!src || !pa) return;
@@ -4890,28 +5062,32 @@ document.addEventListener("DOMContentLoaded", () => {
       `;
       window.print();
       setTimeout(() => { pa.innerHTML = ""; }, 500);
-    });
+    }, "인쇄 준비 중..."));
   }
 
-  // 엑셀 다운로드 버튼
+  // 엑셀 다운로드 버튼 (진행중... 표시)
   const excelBtn = document.getElementById("management-excelBtn");
   if(excelBtn){
-    excelBtn.addEventListener("click", managementDownloadExcel);
+    excelBtn.addEventListener("click", () => runBusy(managementDownloadExcel, "엑셀 생성 중..."));
   }
 });
 
-// 관리항목 현황 엑셀 다운로드
+// 관리항목 현황 엑셀 다운로드 (스타일 적용: 제목/헤더/합계 행을 기록해두고 styleAoaSheet로 꾸밈)
 function managementDownloadExcel(){
   const filtered = filterManagementRows(managementSearchKeyword);
   const aoa = [];
+  const titleRows = [], headerRows = [], totalRows = [];
   
   // 제목
-  aoa.push(["관리항목 현황 (A4 1페이지)", new Date().toLocaleDateString('ko-KR')]);
+  titleRows.push(aoa.length);
+  aoa.push(["관리항목 현황", new Date().toLocaleDateString('ko-KR')]);
   aoa.push([]);
   
   // 1. 종합 현황
   const summary = getManagementSummary(filtered);
+  titleRows.push(aoa.length);
   aoa.push(["📊 종합 현황"]);
+  headerRows.push(aoa.length);
   aoa.push(["항목", "수량/건"]);
   aoa.push(["생산 대기", summary.productWait + "개"]);
   aoa.push(["  ├ 7월 납기", summary.julyProd + "개"]);
@@ -4924,7 +5100,9 @@ function managementDownloadExcel(){
   // 2. 납기 연장 권고
   const extList = getExtensionList(filtered);
   if(extList.length){
+    titleRows.push(aoa.length);
     aoa.push(["⚠️ 납기 연장 권고"]);
+    headerRows.push(aoa.length);
     aoa.push(["도번", "품명", "상태", "수량", "남은일", "현재납기", "권고납기"]);
     extList.forEach(r => {
       aoa.push([
@@ -4943,7 +5121,9 @@ function managementDownloadExcel(){
   // 3. 우선순위 TOP 10
   const top10 = getTop10List(filtered);
   if(top10.length){
+    titleRows.push(aoa.length);
     aoa.push(["⭐ 우선순위 TOP 10"]);
+    headerRows.push(aoa.length);
     aoa.push(["순", "도번", "품명", "상태", "수량", "남은일", "진행률"]);
     top10.forEach((r, i) => {
       aoa.push([
@@ -4959,19 +5139,25 @@ function managementDownloadExcel(){
     aoa.push([]);
   }
   
-  // 4. 도번/품명별 상세
+  // 4. 도번/품명별 상세 (PRJ 포함)
   const details = getDetailByDrawing(filtered);
   if(details.length){
+    titleRows.push(aoa.length);
     aoa.push(["📋 도번/품명별 상세"]);
     details.forEach((g, gIdx) => {
       if(gIdx > 0) aoa.push([]);
+      titleRows.push(aoa.length);
       aoa.push([g.drawing + " · " + g.partName + " (합계 " + g.totalQty + "개)"]);
-      aoa.push(["ORDER", "상태", "수량", "7월", "8월"]);
+      headerRows.push(aoa.length);
+      aoa.push(["ORDER", "PRJ", "상태", "수량", "7월", "8월"]);
       g.items.forEach(r => {
-        const julyHas = String(r.dueDate).includes('-07');
-        const augHas = String(r.dueDate).includes('-08');
+        const _ym = getDueYM(r.dueDate);
+        const _ty = new Date().getFullYear();
+        const julyHas = _ym && _ym.y === _ty && _ym.m === 7;
+        const augHas = _ym && _ym.y === _ty && _ym.m === 8;
         aoa.push([
           r.orderNo||'',
+          r.vendor||'-',
           r.productStatus,
           r.qty,
           julyHas ? r.qty : '-',
@@ -4982,13 +5168,25 @@ function managementDownloadExcel(){
     aoa.push([]);
   }
   
-  // 5. 월별 생산 계획
+  // 5. 월/년 생산 계획 (최종납기일 기준)
   const plan = getMonthlyPlan(filtered);
-  aoa.push(["📅 월/년 생산 계획"]);
+  titleRows.push(aoa.length);
+  aoa.push(["📅 월/년 생산 계획 (최종납기일 기준)"]);
+  headerRows.push(aoa.length);
   const headerRow = ["월"];
   for(let m=1; m<=12; m++) headerRow.push(m + "월");
   headerRow.push("합계");
   aoa.push(headerRow);
+  
+  const planRow = ["계획"];
+  let planTotal = 0;
+  for(let m=1; m<=12; m++){
+    planRow.push(plan[m].planned);
+    planTotal += plan[m].planned;
+  }
+  planRow.push(planTotal);
+  totalRows.push(aoa.length);
+  aoa.push(planRow);
   
   const prodRow = ["생산"];
   let prodTotal = 0;
@@ -5017,13 +5215,14 @@ function managementDownloadExcel(){
   compRow.push(compTotal);
   aoa.push(compRow);
   
-  // XLSX 생성 및 다운로드
+  // XLSX 생성 및 다운로드 (스타일 적용)
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = [
-    {wch: 12}, {wch: 18}, {wch: 15}, {wch: 8}, {wch: 10},
-    {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12},
-    {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12}
+    {wch: 14}, {wch: 20}, {wch: 15}, {wch: 8}, {wch: 10},
+    {wch: 12}, {wch: 12}, {wch: 8}, {wch: 8}, {wch: 8},
+    {wch: 8}, {wch: 8}, {wch: 8}, {wch: 10}, {wch: 8}
   ];
+  styleAoaSheet(ws, { headerRows, titleRows, totalRows });
   
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "관리항목 현황");
