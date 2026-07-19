@@ -4697,16 +4697,106 @@ function getManagementSummary(rows){
   return { productWait, julyProd, qualityWait, julyQual, delayed, extendRec };
 }
 
+// ===== 날짜 헬퍼 (타임존 -1일 버그 없는 로컬 날짜 계산) =====
+function mgmtYmdToDate(s){
+  const p = String(s||"").split("-");
+  if(p.length < 3) return null;
+  const d = new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+  return isNaN(d) ? null : d;
+}
+function mgmtFmtYMD(d){ return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+function mgmtAddDays(d, n){ return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+
+// ===== 납기 연장 간격 학습 =====
+// 과거 "납품완료" 이력에서, 납기를 넘긴 건들이 실제로 며칠 늦게 납품됐는지(납품일자 - 최종납기)를
+// 도번별로 모아 중앙값을 계산합니다. 이 값이 그 도번의 "실제 소요 간격"이 되어
+// 고정 7일 대신 권고일 계산에 사용됩니다.
+//  - 해당 도번 이력이 없으면 → 전체 도번의 중앙값 사용
+//  - 전체 이력도 없으면 → 기본 7일
+//  - 극단값 방지를 위해 3~30일 사이로 제한
+function computeLearnedExtensionDays(){
+  const perDrawing = {};
+  const allDelays = [];
+  (mainData || []).forEach(r => {
+    if(r.shipped !== "납품완료") return;
+    const due = mgmtYmdToDate(r.dueDate);
+    const ship = mgmtYmdToDate(r.shipDate);
+    if(!due || !ship) return;
+    const delay = Math.round((ship - due) / 86400000);
+    if(delay <= 0) return; // 제때/조기 납품 건은 연장 간격 학습 대상이 아님
+    const key = String(r.oldDrawingNo || "").trim();
+    if(key){ (perDrawing[key] = perDrawing[key] || []).push(delay); }
+    allDelays.push(delay);
+  });
+  const median = arr => {
+    const s = [...arr].sort((a,b) => a-b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : Math.round((s[m-1] + s[m]) / 2);
+  };
+  const map = {};
+  Object.entries(perDrawing).forEach(([k, v]) => { map[k] = { days: median(v), count: v.length }; });
+  const global = allDelays.length ? { days: median(allDelays), count: allDelays.length } : null;
+  return { map, global };
+}
+function getExtensionDaysFor(drawing, learned){
+  const clamp = d => Math.min(30, Math.max(3, d));
+  const key = String(drawing || "").trim();
+  if(learned.map[key]) return { days: clamp(learned.map[key].days), src: "이력 " + learned.map[key].count + "건" };
+  if(learned.global)   return { days: clamp(learned.global.days), src: "전체 이력" };
+  return { days: 7, src: "기본값" };
+}
+
 // 납기 연장 권고 목록 (남은일≤3 AND 상태=생산, 상위 20건)
+// 권고일 계산 규칙:
+//  1) 간격은 위 학습값(그 도번의 과거 지연 중앙값)을 사용합니다. 이력 없으면 전체 중앙값 → 7일.
+//  2) 기본은 "최종납기 + 간격"이되, 이미 지난 날짜가 되지 않게 최소 "오늘 + 간격" 이후로 잡습니다.
+//  3) 같은 도번에 권고 대상이 여러 건이면, 위(납기 빠른 순) 건의 권고일 기준으로
+//     아래 건은 "이전 권고일 + 간격"으로 순차 배정합니다. (전부 같은 날짜로 몰리지 않게)
 function getExtensionList(rows){
-  return rows.filter(needsExtension)
-    .sort((a,b) => getDaysRemaining(a.dueDate) - getDaysRemaining(b.dueDate))
-    .slice(0, 20)
-    .map(r => ({
-      ...r,
-      daysRemain: getDaysRemaining(r.dueDate),
-      suggestedDate: new Date(new Date(r.dueDate).getTime() + 7*24*60*60*1000).toISOString().slice(0,10)
-    }));
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  const learned = computeLearnedExtensionDays();
+
+  const cand = rows.filter(needsExtension).map(r => ({
+    ...r,
+    daysRemain: getDaysRemaining(r.dueDate)
+  }));
+
+  // 도번별로 묶어서 납기 빠른 순으로 권고일을 연쇄 배정
+  const byDrawing = {};
+  cand.forEach(r => {
+    const key = String(r.oldDrawingNo||"").trim() || ("__row__" + r.orderNo);
+    (byDrawing[key] = byDrawing[key] || []).push(r);
+  });
+  Object.entries(byDrawing).forEach(([key, group]) => {
+    const gap = getExtensionDaysFor(key, learned);
+    group.sort((a,b) => String(a.dueDate||"9999-99-99").localeCompare(String(b.dueDate||"9999-99-99")));
+    let prevSuggested = null;
+    group.forEach(r => {
+      const due = mgmtYmdToDate(r.dueDate) || today;
+      const base = due > today ? due : today; // 납기가 이미 지났으면 오늘 기준
+      let sug = mgmtAddDays(base, gap.days);
+      if(prevSuggested){
+        const chained = mgmtAddDays(prevSuggested, gap.days); // 같은 도번 이전 권고일 + 간격
+        if(chained > sug) sug = chained;
+      }
+      r.suggestedDate = mgmtFmtYMD(sug);
+      r.extendDays = gap.days;
+      r.extendSrc = gap.src;
+      prevSuggested = sug;
+    });
+  });
+
+  // 표시는 급한 순(남은일 오름차순), 같은 급이면 도번·납기순으로 묶여서 연쇄 권고가 위→아래로 읽히게
+  return cand
+    .sort((a,b) => {
+      if(a.daysRemain !== b.daysRemain) return a.daysRemain - b.daysRemain;
+      const dn = String(a.oldDrawingNo||"").localeCompare(String(b.oldDrawingNo||""));
+      if(dn !== 0) return dn;
+      return String(a.dueDate||"").localeCompare(String(b.dueDate||""));
+    })
+    .slice(0, 20);
 }
 
 // 우선순위 TOP 10 (남은일 순, 진행률 낮은 순)
@@ -4807,7 +4897,7 @@ function renderManagementExtend(rows){
   }
   
   el.innerHTML = `
-    <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">⚠️ 납기 연장 권고</h2>
+    <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">⚠️ 납기 연장 권고 <span style="font-size:11px;font-weight:400;color:#4B5563;">(간격: 도번별 납품 이력에서 학습)</span></h2>
     <div style="overflow-x:auto;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:center;">
         <thead>
@@ -4817,6 +4907,7 @@ function renderManagementExtend(rows){
             <th style="padding:8px;text-align:center;">상태</th>
             <th style="padding:8px;text-align:center;">수량</th>
             <th style="padding:8px;text-align:center;">남은일</th>
+            <th style="padding:8px;text-align:center;">간격</th>
             <th style="padding:8px;text-align:center;">현재</th>
             <th style="padding:8px;text-align:center;">권고</th>
           </tr>
@@ -4828,6 +4919,7 @@ function renderManagementExtend(rows){
             <td style="padding:8px;text-align:center;"><span class="badge status-${r.productStatus}">${r.productStatus}</span></td>
             <td style="padding:8px;text-align:center;">${r.qty}</td>
             <td style="padding:8px;text-align:center;color:#E02424;font-weight:700;">${r.daysRemain}일</td>
+            <td style="padding:8px;text-align:center;">${r.extendDays}일<br><span style="font-size:10px;color:#6B7280;">${r.extendSrc}</span></td>
             <td style="padding:8px;text-align:center;">${r.dueDate}</td>
             <td style="padding:8px;text-align:center;color:#2E7D46;font-weight:700;">${r.suggestedDate}</td>
           </tr>`).join('')}
@@ -4995,14 +5087,50 @@ function renderManagementPlan(rows){
   `;
 }
 
+// 관리항목 화면의 5개 구역 골격 (검색 안내 화면으로 지워진 뒤 다시 복원할 때 사용)
+const MANAGEMENT_SKELETON = `
+        <!-- 종합 현황 카드 -->
+        <div class="table-wrap" id="management-summary" style="margin-bottom:16px;"></div>
+        
+        <!-- 납기 연장 권고 -->
+        <div class="table-wrap" id="management-extend" style="margin-bottom:16px;"></div>
+        
+        <!-- 우선순위 TOP 10 -->
+        <div class="table-wrap" id="management-top10" style="margin-bottom:16px;"></div>
+        
+        <!-- 도번/품명별 상세 -->
+        <div class="table-wrap" id="management-detail" style="margin-bottom:16px;"></div>
+        
+        <!-- 월/년 생산 계획 -->
+        <div class="table-wrap" id="management-plan" style="margin-bottom:16px;"></div>
+`;
+
 // 전체 렌더링 + 검색 연결
 function renderManagementAll(){
   try {
+    const page = document.getElementById("management-print-page");
     // mainData가 없으면 (데이터 로드 전) 초기 메시지 표시
     if(!mainData || mainData.length === 0){
-      const el = document.getElementById("management-print-page");
-      if(el) el.innerHTML = `<div style="padding:40px;text-align:center;color:#B9C2D6;">데이터를 로드해주세요. (구글시트 연동 또는 엑셀 업로드)</div>`;
+      if(page) page.innerHTML = `<div style="padding:40px;text-align:center;color:#B9C2D6;">데이터를 로드해주세요. (구글시트 연동 또는 엑셀 업로드)</div>`;
       return;
+    }
+    
+    // 검색어가 없으면 전체를 빈 화면(검색 안내)으로 둡니다.
+    // 전체 데이터를 다 그리면 버벅이기도 하고, 도번/품명별 상세만 비어 있으면 일관성이 없어서
+    // 검색 전에는 모든 구역을 표시하지 않습니다.
+    if(!managementSearchKeyword.trim()){
+      if(page) page.innerHTML = `
+        <div style="padding:60px 20px;text-align:center;color:#B9C2D6;">
+          <div style="font-size:28px;margin-bottom:12px;">🔍</div>
+          <div style="font-size:13px;font-weight:700;color:#4B5563;margin-bottom:6px;">도번·품명·품번·ORDER NO를 검색하면 관리항목 현황이 표시됩니다.</div>
+          <div style="font-size:11.5px;">쉼표(,)로 여러 도번을 한 번에 검색할 수 있습니다. 예: M200-005, M300-011</div>
+        </div>`;
+      return;
+    }
+    
+    // 검색 안내 화면으로 지워졌던 구역 골격을 복원
+    if(page && !document.getElementById("management-summary")){
+      page.innerHTML = MANAGEMENT_SKELETON;
     }
     
     const filtered = filterManagementRows(managementSearchKeyword);
@@ -5071,6 +5199,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const printBtn = document.getElementById("management-printBtn");
   if(printBtn){
     printBtn.addEventListener("click", () => runBusy(() => {
+      if(!managementSearchKeyword.trim()){
+        alert("검색어를 입력해 조회한 뒤 인쇄해 주세요.");
+        return;
+      }
       const src = document.getElementById("management-print-page");
       const pa = document.getElementById("print-area");
       if(!src || !pa) return;
@@ -5096,6 +5228,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // 관리항목 현황 엑셀 다운로드 (스타일 적용: 제목/헤더/합계 행을 기록해두고 styleAoaSheet로 꾸밈)
 function managementDownloadExcel(){
+  if(!managementSearchKeyword.trim()){
+    alert("검색어를 입력해 조회한 뒤 다운로드해 주세요.");
+    return;
+  }
   const filtered = filterManagementRows(managementSearchKeyword);
   const aoa = [];
   const titleRows = [], headerRows = [], totalRows = [];
@@ -5123,9 +5259,9 @@ function managementDownloadExcel(){
   const extList = getExtensionList(filtered);
   if(extList.length){
     titleRows.push(aoa.length);
-    aoa.push(["⚠️ 납기 연장 권고"]);
+    aoa.push(["⚠️ 납기 연장 권고 (간격: 도번별 납품 이력에서 학습)"]);
     headerRows.push(aoa.length);
-    aoa.push(["도번", "품명", "상태", "수량", "남은일", "현재납기", "권고납기"]);
+    aoa.push(["도번", "품명", "상태", "수량", "남은일", "간격(근거)", "현재납기", "권고납기"]);
     extList.forEach(r => {
       aoa.push([
         r.oldDrawingNo||'',
@@ -5133,6 +5269,7 @@ function managementDownloadExcel(){
         r.productStatus,
         r.qty,
         r.daysRemain + "일",
+        r.extendDays + "일 (" + r.extendSrc + ")",
         r.dueDate,
         r.suggestedDate
       ]);
