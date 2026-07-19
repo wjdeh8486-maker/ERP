@@ -466,6 +466,8 @@
     #print-area [id^="management-"] table{ font-size:8px !important; }
     #print-area [id^="management-"] th{ background:#f2f2f2 !important; color:#000 !important; }
     #print-area [id^="management-"] .badge{ border:1px solid #999; background:#fff !important; padding:1px 4px !important; font-size:7.5px !important; }
+    /* 상세의 제거(✕)/복원 버튼은 인쇄물에 나오지 않게 */
+    #print-area .mgmt-noprint{ display:none !important; }
   }
 
   /* 관리항목 현황 모바일 최적화 */
@@ -4816,10 +4818,26 @@ function getTop10List(rows){
     .slice(0, 10);
 }
 
-// 도번/품명별 상세 (같은 도번끼리 그룹, 완료 항목 제외)
+// ===== 도번/품명별 상세: 확인 완료한 항목 숨기기 =====
+// 상세 목록에서 ✕ 버튼으로 항목을 제거(숨김)할 수 있습니다.
+// 숨김 목록은 localStorage에 저장되어 새로고침해도 유지되고, [복원] 버튼으로 되돌릴 수 있습니다.
+// ※ 숨김은 "도번/품명별 상세" 화면·인쇄·엑셀에만 적용되고, 종합 현황·TOP10·월별 계획 집계에는 영향이 없습니다.
+let managementHiddenOrders = new Set();
+try{
+  managementHiddenOrders = new Set(JSON.parse(localStorage.getItem("mgmt_hidden_orders") || "[]"));
+}catch(e){ managementHiddenOrders = new Set(); }
+function saveManagementHidden(){
+  try{ localStorage.setItem("mgmt_hidden_orders", JSON.stringify([...managementHiddenOrders])); }catch(e){}
+}
+// 현재 검색 결과 중 숨김 처리되어 안 보이는 건수
+function countManagementHidden(rows){
+  return rows.filter(r => r.productStatus !== "완료" && managementHiddenOrders.has(String(r.orderNo))).length;
+}
+
+// 도번/품명별 상세 (같은 도번끼리 그룹, 완료 항목·숨김 항목 제외)
 function getDetailByDrawing(rows){
   const grouped = {};
-  rows.filter(r => r.productStatus !== "완료").forEach(r => {
+  rows.filter(r => r.productStatus !== "완료" && !managementHiddenOrders.has(String(r.orderNo))).forEach(r => {
     const key = String(r.oldDrawingNo||'');
     if(!grouped[key]) grouped[key] = [];
     grouped[key].push(r);
@@ -4995,14 +5013,18 @@ function renderManagementDetail(rows){
   }
 
   const groups = getDetailByDrawing(rows);
+  const hiddenCount = countManagementHidden(rows);
+  const restoreChip = hiddenCount > 0
+    ? `<button id="management-restoreHiddenBtn" type="button" class="mgmt-noprint" style="margin-left:10px;font-size:11px;padding:3px 12px;border-radius:12px;border:1px solid #DDE1E8;background:#FFF7DE;cursor:pointer;">↩ 숨긴 항목 ${hiddenCount}건 복원</button>`
+    : "";
 
   if(!groups.length){
-    el.innerHTML = `<h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세</h2><div style="padding:20px;text-align:center;color:#B9C2D6;">검색 결과가 없습니다.</div>`;
+    el.innerHTML = `<h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세 ${restoreChip}</h2><div style="padding:20px;text-align:center;color:#B9C2D6;">${hiddenCount > 0 ? "모든 항목을 숨겼습니다. [복원] 버튼으로 되돌릴 수 있습니다." : "검색 결과가 없습니다."}</div>`;
     return;
   }
   
   el.innerHTML = `
-    <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세</h2>
+    <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세 ${restoreChip}</h2>
     ${groups.map(g => `
       <div style="background:var(--bg-card);padding:10px;margin-bottom:10px;border-radius:6px;border-left:4px solid #0B5CAB;">
         <div style="font-weight:700;margin-bottom:8px;">
@@ -5018,6 +5040,7 @@ function renderManagementDetail(rows){
                 <th style="padding:6px;text-align:center;">수량</th>
                 <th style="padding:6px;text-align:center;">7월</th>
                 <th style="padding:6px;text-align:center;">8월</th>
+                <th class="mgmt-noprint" style="padding:6px;text-align:center;width:40px;">제거</th>
               </tr>
             </thead>
             <tbody>
@@ -5026,6 +5049,7 @@ function renderManagementDetail(rows){
                 const _ty = new Date().getFullYear();
                 const julyHas = _ym && _ym.y === _ty && _ym.m === 7;
                 const augHas = _ym && _ym.y === _ty && _ym.m === 8;
+                const _ord = String(r.orderNo||'').replace(/"/g,'&quot;');
                 return `<tr style="border-bottom:1px solid #DDE1E8;">
                   <td style="padding:6px;text-align:center;">${r.orderNo||''}</td>
                   <td style="padding:6px;text-align:center;">${r.vendor||'-'}</td>
@@ -5033,6 +5057,9 @@ function renderManagementDetail(rows){
                   <td style="padding:6px;text-align:center;">${r.qty}</td>
                   <td style="padding:6px;text-align:center;">${julyHas ? r.qty : '-'}</td>
                   <td style="padding:6px;text-align:center;">${augHas ? r.qty : '-'}</td>
+                  <td class="mgmt-noprint" style="padding:6px;text-align:center;">
+                    <button type="button" data-mgmt-remove="${_ord}" title="확인 완료 · 목록에서 제거" style="border:1px solid #DDE1E8;background:#fff;color:#E02424;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;line-height:1.2;">✕</button>
+                  </td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -5158,6 +5185,26 @@ function renderManagementAll(){
 
 // 메뉴 클릭 이벤트 연결
 document.addEventListener("DOMContentLoaded", () => {
+  // 도번/품명별 상세: 제거(✕)·복원 버튼 (재렌더링돼도 동작하도록 상위 요소에 위임)
+  const mgmtView = document.getElementById("view-management");
+  if(mgmtView){
+    mgmtView.addEventListener("click", (e) => {
+      const removeBtn = e.target.closest("[data-mgmt-remove]");
+      if(removeBtn){
+        managementHiddenOrders.add(removeBtn.getAttribute("data-mgmt-remove"));
+        saveManagementHidden();
+        // 상세 구역만 다시 그림 (다른 구역 집계는 그대로)
+        renderManagementDetail(filterManagementRows(managementSearchKeyword));
+        return;
+      }
+      if(e.target.closest("#management-restoreHiddenBtn")){
+        managementHiddenOrders.clear();
+        saveManagementHidden();
+        renderManagementDetail(filterManagementRows(managementSearchKeyword));
+      }
+    });
+  }
+
   const navItem = document.querySelector('[data-view="management"]');
   if(navItem){
     navItem.addEventListener("click", () => {
@@ -5298,11 +5345,12 @@ function managementDownloadExcel(){
     aoa.push([]);
   }
   
-  // 4. 도번/품명별 상세 (PRJ 포함)
+  // 4. 도번/품명별 상세 (PRJ 포함, 숨긴 항목 제외)
   const details = getDetailByDrawing(filtered);
+  const hiddenCnt = countManagementHidden(filtered);
   if(details.length){
     titleRows.push(aoa.length);
-    aoa.push(["📋 도번/품명별 상세"]);
+    aoa.push(["📋 도번/품명별 상세" + (hiddenCnt > 0 ? ` (숨긴 항목 ${hiddenCnt}건 제외)` : "")]);
     details.forEach((g, gIdx) => {
       if(gIdx > 0) aoa.push([]);
       titleRows.push(aoa.length);
