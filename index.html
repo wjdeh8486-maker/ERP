@@ -1741,11 +1741,12 @@ function mainRenderTable(data){
 }
 function mainRenderCards(data){
   const wrap = document.getElementById("main-cardsView");
-  const cardsHtml = data.map(r=>{
+  mainCardsData = data; // 확대 팝업에서 참조
+  const cardsHtml = data.map((r, idx)=>{
     const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
-    return `<div class="p-card">
+    return `<div class="p-card" data-cardidx="${idx}" title="탭하면 크게 보기">
       <div class="p-card-top"><span class="p-card-title">${r.orderNo} · ${r.partName}</span>${statusBadge(computeProductStatus(r))}</div>
-      <div class="p-card-sub">${r.customer}${r.vendor ? ' · PROJECT NO. '+r.vendor : ''} · 품번 ${r.partNo}${r.oldDrawingNo ? ' · 기존도번 '+r.oldDrawingNo : ''}</div>
+      <div class="p-card-sub">${r.customer}${r.vendor ? ' · PROJECT NO. '+r.vendor : ''}${r.oldDrawingNo ? ' · 기존도번 '+r.oldDrawingNo : ''}</div>
       <div class="p-card-grid">
         <div><span>수량 </span>${r.qty}</div>
         <div><span>최종납기 </span><span class="${overdue?'cell-overdue':''}">${r.dueDate||'-'}</span></div>
@@ -1759,6 +1760,48 @@ function mainRenderCards(data){
     </div>`;
   }).join("");
   wrap.innerHTML = cardsHtml;
+}
+// ===== 모바일 카드 확대 팝업 =====
+let mainCardsData = [];
+function openMainCardPopup(idx){
+  const r = mainCardsData[idx];
+  if(!r) return;
+  const modal = document.getElementById("main-cardModal");
+  const body = document.getElementById("main-cardModalBody");
+  if(!modal || !body) return;
+  const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
+  const row = (label, value, extraStyle) => `
+    <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 2px;border-bottom:1px solid #EEF1F6;font-size:14.5px;">
+      <span style="color:#6B7280;flex:none;">${label}</span>
+      <span style="font-weight:700;text-align:right;word-break:break-all;${extraStyle||''}">${value}</span>
+    </div>`;
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
+      <div>
+        <div style="font-size:17px;font-weight:700;line-height:1.4;">${esc(r.orderNo)}</div>
+        <div style="font-size:14px;color:#4B5563;">${esc(r.partName||'')}</div>
+      </div>
+      ${statusBadge(computeProductStatus(r))}
+    </div>
+    ${row("고객사", esc(r.customer||'-'))}
+    ${r.vendor ? row("PROJECT NO.", esc(r.vendor)) : ''}
+    ${r.oldDrawingNo ? row("기존도번", esc(r.oldDrawingNo)) : ''}
+    ${row("수량", (Number(r.qty)||0).toLocaleString() + "개")}
+    ${row("최종납기", esc(r.dueDate||'-'), overdue ? 'color:#E02424;' : '')}
+    ${row("납품여부", esc(r.shipped||'-'))}
+    ${r.shipDate ? row("납품일자", esc(r.shipDate)) : ''}
+    ${row("수입검사 대기", r.waitIncomingInspection)}
+    ${row("측정 대기", computeWaitMeasure(r))}
+    ${row("크린룸 대기", computeWaitClean(r))}
+    ${row("비젼 대기", computeWaitVision(r))}
+    ${row("선출고", computeStockPreShip(r))}
+  `;
+  modal.style.display = "flex";
+}
+function closeMainCardPopup(){
+  const modal = document.getElementById("main-cardModal");
+  if(modal) modal.style.display = "none";
 }
 function mainShowSearchPrompt(){
   mainListRevealed = false;
@@ -5834,8 +5877,7 @@ function managementDownloadExcel(){
     aoa.push([]);
   }
   
-  // 4. 도번/품명별 상세 (PRJ 
-  포함 · 숨긴 항목은 전 구역에서 이미 제외됨)
+  // 4. 도번/품명별 상세 (PRJ 포함 · 숨긴 항목은 전 구역에서 이미 제외됨)
   const details = getDetailByDrawing(filtered);
   if(details.length){
     titleRows.push(aoa.length);
@@ -6033,7 +6075,7 @@ function renderHistoryView(keyword){
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:640px;">
           <thead><tr style="background:var(--navy);color:#fff;">
-            <th style="padding:7px;">ORDER NO</th><th style="padding:7px;">PROJECT NO</th><th style="padding:7px;">고객사</th>
+            <th style="padding:7px;">ORDER</th><th style="padding:7px;">PRJ</th><th style="padding:7px;">고객사</th>
             <th style="padding:7px;">수량</th><th style="padding:7px;">최종납기</th><th style="padding:7px;">납품일</th>
             <th style="padding:7px;">지연</th><th style="padding:7px;">상태</th>
           </tr></thead>
@@ -6411,6 +6453,20 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("help-closeBtn").addEventListener("click", () => { helpModal.style.display = "none"; });
     helpModal.addEventListener("click", (e) => { if(e.target === helpModal) helpModal.style.display = "none"; });
   }
+  // MAIN 모바일 카드 확대 팝업
+  const cardsView = document.getElementById("main-cardsView");
+  if(cardsView){
+    cardsView.addEventListener("click", (e)=>{
+      const card = e.target.closest("[data-cardidx]");
+      if(card) openMainCardPopup(parseInt(card.dataset.cardidx));
+    });
+  }
+  const cardModal = document.getElementById("main-cardModal");
+  if(cardModal){
+    document.getElementById("main-cardModalClose").addEventListener("click", closeMainCardPopup);
+    cardModal.addEventListener("click", (e)=>{ if(e.target === cardModal) closeMainCardPopup(); });
+    document.addEventListener("keydown", (e)=>{ if(e.key === "Escape" && cardModal.style.display === "flex") closeMainCardPopup(); });
+  }
   // 검사대기현황
   const wiSync = document.getElementById("waitinsp-syncBtn");
   if(wiSync) wiSync.addEventListener("click", fetchWaitInspData);
@@ -6445,6 +6501,15 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 </script>
 <div id="print-area" style="display:none;"></div>
+<!-- MAIN 모바일 카드 확대 팝업 -->
+<div id="main-cardModal" style="display:none;position:fixed;inset:0;background:rgba(20,24,35,0.55);z-index:9997;align-items:flex-end;justify-content:center;padding:12px;" >
+  <div style="width:100%;max-width:480px;max-height:86vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#fff;border-radius:14px;padding:18px 18px 14px;box-shadow:0 10px 40px rgba(0,0,0,0.35);">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:2px;">
+      <button id="main-cardModalClose" type="button" style="border:1px solid #DDE1E8;background:#fff;border-radius:6px;padding:6px 16px;cursor:pointer;font-size:13px;">닫기 ✕</button>
+    </div>
+    <div id="main-cardModalBody"></div>
+  </div>
+</div>
 <!-- 사용법 도움말 모달 -->
 <div id="help-modal" style="display:none;position:fixed;inset:0;background:rgba(20,24,35,0.55);z-index:9998;overflow:auto;padding:24px 12px;">
   <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:10px;padding:22px 24px;box-shadow:0 10px 40px rgba(0,0,0,0.35);">
