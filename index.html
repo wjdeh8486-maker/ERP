@@ -920,7 +920,7 @@
         <button id="waitinsp-printBtn">🖨️ 인쇄</button>
         <button id="waitinsp-excelBtn" type="button" class="tb-download-btn">📥 다운로드</button>
       </div>
-      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 현재 보유 중인 검사 대기 제품을 도번 오름차순으로 표시합니다 (최종 등록일 · 수량). <span id="waitinsp-status"></span></div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 보유 중인 검사 대기 제품, 도번 오름차순 (수입=생산공정현황 계산 · 공정=측정실검사대기 · 출하=크린룸검사대기 · 비젼=비젼검사대기). <span id="waitinsp-status"></span></div>
     </div>
     <div class="view" id="view-waitinsp">
       <div class="tabs">
@@ -2273,14 +2273,14 @@ function mapRowToMain(row){
 let waitInspIndexCache = null; // { processQty: Map, inspQty: Map }
 function invalidateWaitInspIndex(){ waitInspIndexCache = null; }
 function buildWaitInspIndex(){
-  const processQtyMap = new Map();   // 도면번호 → 2026년 사상/E.P/CP 수량 합
+  const processQtyMap = new Map();   // 도면번호 → 2026년 대기공정(사상/E.P/CP/폴리싱/외주가공 종료 등) 수량 합
   const inspQtyMap = new Map();      // 도 번 → 2026년 검사수 합
   if(processData && processData.length){
     for(const p of processData){
       const regYear = String(p["등록일자"] || "").split("-")[0];
       if(regYear !== "2026") continue;
       const cp = String(p["현재진행공정"] || "");
-      if(!(cp.includes("사상") || cp.includes("E.P") || cp.includes("CP")|| cp.includes("폴리싱(빠우)")|| cp.includes("외주가공 (작업종료)")|| cp.includes("종료"))) continue;
+      if(!(cp.includes("사상") || cp.includes("E.P") || cp.includes("CP") || cp.includes("폴리싱(빠우)") || cp.includes("외주가공 (작업종료)") || cp.includes("종료"))) continue;
       const dn = String(p["도면번호"] || "").trim();
       if(!dn) continue;
       processQtyMap.set(dn, (processQtyMap.get(dn) || 0) + Number(p["수량"] || 0));
@@ -3001,7 +3001,7 @@ const QUALITY_CATEGORIES = {
 };
 const QUALITY_YEARS = [2023,2024,2025,2026];
 let qualityRawData = {};
-let qualityTargets = { process:10000, incoming:10000, shipping:10000, customer:2000 };
+let qualityTargets = { process:10000, incoming:10000, shipping:10000, customer:3000 };
 let qualityYear = 2026;
 let qualityMonth = 12;
 function parseQualityDate(v){
@@ -6169,8 +6169,13 @@ ${body}
 }
 
 /* ============ 검사대기현황 (수입/공정/출하/비젼 검사대기) ============ */
-// 각 탭은 Code.gs SOURCES의 같은 이름 데이터셋을 읽습니다.
-// 화면에는 "현재 보유 중(수량>0)"인 제품만 도번 오름차순으로, 도번별 최종 등록일과 수량 합계를 표시합니다.
+// 기존 데이터를 그대로 재사용합니다 (Code.gs 수정 불필요):
+//  - 수입검사대기: 생산공정현황 계산값 (MAIN 대시보드의 "수입검사 대기"와 동일 기준:
+//                  올해 등록 + 현재공정에 사상/E.P/CP/폴리싱(빠우)/외주가공 (작업종료)/종료 포함 수량
+//                  − 수입검사(외관)/공정검사(사내외관) 검사수)
+//  - 공정검사대기: 측정실검사대기 시트 (품번 · 측정실대기 수량)
+//  - 출하검사대기: 크린룸검사대기 시트 (품번 · 검사대기 수량)
+//  - 비젼검사대기: 비젼검사대기 시트 (구분 · 검사대기 수량)
 const WAIT_INSP_TABS = ["수입검사대기","공정검사대기","출하검사대기","비젼검사대기"];
 let waitInspData = {};      // key -> [{partNo, regDate, qty}]
 let waitInspActiveTab = "수입검사대기";
@@ -6182,35 +6187,88 @@ function waitInspGetApiUrl(){
   const m = document.getElementById("main-appsScriptUrl");
   return m ? m.value.trim() : "";
 }
-function parseWaitInspRows(rows){
-  return (rows||[]).map(row => ({
-    partNo: String(getFieldFuzzy(row, "도번") || getFieldFuzzy(row, "도면번호") || getFieldFuzzy(row, "품번") || "").trim(),
-    regDate: String(getFieldFuzzy(row, "등록일") || "").slice(0,10),
-    qty: Number(getFieldFuzzy(row, "수량")) || 0
-  })).filter(r => r.partNo && r.qty > 0); // 보유 중(수량>0)만
+// 시트 행 → {도번, 등록일, 수량} (열 이름 후보를 순서대로 탐색, 수량>0만)
+function waitInspParse(rows, keyLabels, qtyLabels){
+  return (rows||[]).map(row=>{
+    let partNo = "";
+    for(const k of keyLabels){
+      const v = getFieldFuzzy(row, k);
+      if(v !== undefined && String(v).trim() !== ""){ partNo = String(v).trim(); break; }
+    }
+    let qty = 0;
+    for(const q of qtyLabels){
+      const v = getFieldFuzzy(row, q);
+      if(v !== undefined && v !== ""){ qty = Number(v)||0; break; }
+    }
+    const regDate = String(getFieldFuzzy(row,"등록일") || getFieldFuzzy(row,"날짜") || getFieldFuzzy(row,"접수일") || getFieldFuzzy(row,"입고일") || "").slice(0,10);
+    return { partNo, regDate, qty };
+  }).filter(r => r.partNo && r.qty > 0);
+}
+// 수입검사대기: MAIN과 동일한 계산 (도면번호별 대기 수량 + 최종 등록일자)
+function computeIncomingWaitList(){
+  const yearStr = String(new Date().getFullYear());
+  const procQty = new Map(), procReg = new Map();
+  (processData||[]).forEach(p=>{
+    const regDate = String(p["등록일자"]||"").slice(0,10);
+    if(regDate.split("-")[0] !== yearStr) return;
+    const cp = String(p["현재진행공정"]||"");
+    if(!(cp.includes("사상") || cp.includes("E.P") || cp.includes("CP") || cp.includes("폴리싱(빠우)") || cp.includes("외주가공 (작업종료)") || cp.includes("종료"))) return;
+    const dn = String(p["도면번호"]||"").trim();
+    if(!dn) return;
+    procQty.set(dn, (procQty.get(dn)||0) + (Number(p["수량"])||0));
+    if(regDate > (procReg.get(dn)||"")) procReg.set(dn, regDate);
+  });
+  const inspQty = new Map();
+  const addInsp = arr => {
+    (arr||[]).forEach(i=>{
+      if(String(i["검사일"]||"").split("-")[0] !== yearStr) return;
+      const dn = String(i["도 번"]||i["도번"]||"").trim();
+      if(!dn) return;
+      inspQty.set(dn, (inspQty.get(dn)||0) + (Number(i["검사수"])||0));
+    });
+  };
+  addInsp(incomingInspectionData);
+  addInsp(inhouseInspectionData);
+  const list = [];
+  procQty.forEach((q, dn)=>{
+    const wait = Math.max(0, q - (inspQty.get(dn)||0));
+    if(wait > 0) list.push({ partNo:dn, regDate:procReg.get(dn)||"", qty:wait });
+  });
+  return list;
 }
 function fetchWaitInspData(){
   const url = waitInspGetApiUrl();
   const statusEl = document.getElementById("waitinsp-status");
   if(!url){ alert("품질분석 화면의 Apps Script 웹 앱 URL을 먼저 입력해 주세요."); return; }
   if(statusEl) statusEl.textContent = "불러오는 중...";
-  Promise.all(WAIT_INSP_TABS.map(key =>
-    fetch(url + "?dataset=" + encodeURIComponent(key)).then(r=>r.json()).catch(()=>null)
-  )).then(results=>{
+  Promise.all([
+    fetch(url + "?dataset=" + encodeURIComponent("측정실검사대기")).then(r=>r.json()).catch(()=>null),
+    fetch(url + "?dataset=" + encodeURIComponent("크린룸검사대기")).then(r=>r.json()).catch(()=>null),
+    fetch(url + "?dataset=" + encodeURIComponent("비젼검사대기")).then(r=>r.json()).catch(()=>null),
+    fetch(url + "?dataset=" + encodeURIComponent("생산공정현황")).then(r=>r.json()).catch(()=>null),
+    fetch(url + "?dataset=" + encodeURIComponent("수입검사(외관)")).then(r=>r.json()).catch(()=>null),
+    fetch(url + "?dataset=" + encodeURIComponent("공정검사(사내외관)")).then(r=>r.json()).catch(()=>null)
+  ]).then(([measureRes, cleanRes, visionRes, processRes, incomingRes, inhouseRes])=>{
     const warnings = [];
-    WAIT_INSP_TABS.forEach((key, i)=>{
-      const res = results[i];
-      if(res && res.success && Array.isArray(res.rows)){
-        waitInspData[key] = parseWaitInspRows(res.rows);
-      } else {
-        waitInspData[key] = waitInspData[key] || [];
-        warnings.push(key);
-      }
-    });
+    // 수입검사대기용 원본 데이터도 최신으로 갱신 (MAIN 대시보드와 공유)
+    if(processRes && processRes.success){ processData = processRes.rows; }
+    if(incomingRes && incomingRes.success){ incomingInspectionData = incomingRes.rows; }
+    if(inhouseRes && inhouseRes.success){ inhouseInspectionData = inhouseRes.rows; }
+    invalidateWaitInspIndex();
+    if(!(processRes && processRes.success)) warnings.push("생산공정현황");
+
+    waitInspData["수입검사대기"] = computeIncomingWaitList();
+    waitInspData["공정검사대기"] = (measureRes && measureRes.success) ? waitInspParse(measureRes.rows, ["품번","도번","도면번호"], ["측정실대기","검사대기","수량"]) : [];
+    if(!(measureRes && measureRes.success)) warnings.push("측정실검사대기");
+    waitInspData["출하검사대기"] = (cleanRes && cleanRes.success) ? waitInspParse(cleanRes.rows, ["품번","도번","도면번호"], ["검사대기","수량"]) : [];
+    if(!(cleanRes && cleanRes.success)) warnings.push("크린룸검사대기");
+    waitInspData["비젼검사대기"] = (visionRes && visionRes.success) ? waitInspParse(visionRes.rows, ["구분","품번","도번"], ["검사대기","수량"]) : [];
+    if(!(visionRes && visionRes.success)) warnings.push("비젼검사대기");
+
     waitInspLoaded = true;
     idbSet("cache_waitInspData", waitInspData);
     const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
-    if(statusEl) statusEl.textContent = "불러오기 완료 · " + nowStr + (warnings.length ? " · 데이터셋 없음: " + warnings.join(", ") + " (Code.gs SOURCES에 추가 필요)" : "");
+    if(statusEl) statusEl.textContent = "불러오기 완료 · " + nowStr + (warnings.length ? " · 읽기 실패: " + warnings.join(", ") : "");
     renderWaitInspTab();
   }).catch(()=>{ if(statusEl) statusEl.textContent = "불러오기 실패. URL과 배포 권한을 확인해 주세요."; });
 }
