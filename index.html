@@ -568,6 +568,32 @@
     }
     .badge{ padding:2px 4px !important; font-size:9px !important; }
   }
+  /* ===== 섹션형 카드 높이 제한 해제 (모바일 "종합현황만 보임" 버그 수정) =====
+     관리항목 등의 각 구역이 .table-wrap이라 화면 높이로 잘리고 내부 스크롤이 되면서,
+     모바일에서는 중첩 스크롤에 갇혀 아래 구역(연장 권고/TOP10/상세/계획)으로 내려갈 수 없었음.
+     섹션형 카드는 내용만큼 늘어나고 페이지 전체가 스크롤되도록 max-height를 해제.
+     (overflow:auto는 유지 → 넓은 표의 가로 스크롤은 그대로 동작) */
+  #management-print-page .table-wrap,
+  #weekly-content .table-wrap,
+  #history-content .table-wrap,
+  #waitinsp-content .table-wrap,
+  #view-quality .tab-panel .table-wrap{
+    max-height:none;
+  }
+
+  /* 모바일: 소메뉴/신규 화면 상단 버튼 정리 */
+  @media screen and (max-width: 860px){
+    /* 가로 메뉴에서는 소메뉴 들여쓰기 제거 (일반 항목과 같은 높이/모양) */
+    .nav-item.nav-sub{ padding:12px 10px; font-size:12px; font-weight:400; }
+    /* 주간출하/검사대기 상단 버튼: 화면 폭에 맞게 늘림 */
+    #topbar-weekly > div[style*="margin-left"],
+    #topbar-waitinsp > div[style*="margin-left"]{ margin-left:0 !important; width:100%; display:flex; gap:8px; }
+    #topbar-weekly > div[style*="margin-left"] button,
+    #topbar-waitinsp > div[style*="margin-left"] button{ flex:1 1 auto; min-height:44px; }
+    /* 도번이력 요약 칩: 모바일에서 2열 그리드로 정돈 */
+    #history-content .table-wrap > div[style*="flex-wrap"]{ display:grid !important; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); }
+  }
+
   /* ===== 진행중 표시 (버튼/박스 클릭 피드백) ===== */
   #busy-toast{
     display:none; position:fixed; top:14px; left:50%; transform:translateX(-50%);
@@ -5269,6 +5295,7 @@ function renderManagementExtend(rows){
           <tr style="background:var(--navy);color:#fff;">
             <th style="padding:8px;text-align:center;">도번</th>
             <th style="padding:8px;text-align:center;">품명</th>
+            <th style="padding:8px;text-align:center;">PROJECT NO</th>
             <th style="padding:8px;text-align:center;">상태</th>
             <th style="padding:8px;text-align:center;">수량</th>
             <th style="padding:8px;text-align:center;">남은일</th>
@@ -5281,6 +5308,7 @@ function renderManagementExtend(rows){
           ${list.map(r => `<tr style="border-bottom:1px solid #DDE1E8;">
             <td style="padding:8px;text-align:center;">${r.oldDrawingNo||''}</td>
             <td style="padding:8px;text-align:center;">${r.partName||''}</td>
+            <td style="padding:8px;text-align:center;">${r.vendor||'-'}</td>
             <td style="padding:8px;text-align:center;"><span class="badge status-${r.productStatus}">${r.productStatus}</span></td>
             <td style="padding:8px;text-align:center;">${r.qty}</td>
             <td style="padding:8px;text-align:center;color:#E02424;font-weight:700;">${r.daysRemain}일</td>
@@ -5314,6 +5342,7 @@ function renderManagementTop10(rows){
             <th style="padding:8px;text-align:center;width:35px;">순</th>
             <th style="padding:8px;text-align:center;">도번</th>
             <th style="padding:8px;text-align:center;">품명</th>
+            <th style="padding:8px;text-align:center;">PROJECT NO</th>
             <th style="padding:8px;text-align:center;">상태</th>
             <th style="padding:8px;text-align:center;">수량</th>
             <th style="padding:8px;text-align:center;">현재납기</th>
@@ -5326,6 +5355,7 @@ function renderManagementTop10(rows){
             <td style="padding:8px;text-align:center;font-weight:700;">${i+1}</td>
             <td style="padding:8px;text-align:center;">${r.oldDrawingNo||''}</td>
             <td style="padding:8px;text-align:center;">${r.partName||''}</td>
+            <td style="padding:8px;text-align:center;">${r.vendor||'-'}</td>
             <td style="padding:8px;text-align:center;"><span class="badge status-${r.productStatus}">${r.productStatus}</span></td>
             <td style="padding:8px;text-align:center;">${r.qty}</td>
             <td style="padding:8px;text-align:center;${r.daysRemain < 0 ? 'color:#E02424;font-weight:700;' : ''}">${r.dueDate||''}</td>
@@ -5417,7 +5447,7 @@ function renderManagementDetail(rows){
             <thead>
               <tr style="background:#2A3150;color:#fff;">
                 <th style="padding:6px;text-align:center;">ORDER</th>
-                <th style="padding:6px;text-align:center;">PRJ</th>
+                <th style="padding:6px;text-align:center;">PROJECT NO</th>
                 <th style="padding:6px;text-align:center;">상태</th>
                 <th style="padding:6px;text-align:center;">수량</th>
                 ${Array.from({length:12}, (_,i) => `<th style="padding:6px 4px;text-align:center;">${i+1}월</th>`).join('')}
@@ -5765,11 +5795,12 @@ function managementDownloadExcel(){
     titleRows.push(aoa.length);
     aoa.push(["⚠️ 납기 연장 권고 (간격: 도번별 납품 이력에서 학습)"]);
     headerRows.push(aoa.length);
-    aoa.push(["도번", "품명", "상태", "수량", "남은일", "간격(근거)", "현재납기", "권고납기"]);
+    aoa.push(["도번", "품명", "PROJECT NO", "상태", "수량", "남은일", "간격(근거)", "현재납기", "권고납기"]);
     extList.forEach(r => {
       aoa.push([
         r.oldDrawingNo||'',
         r.partName||'',
+        r.vendor||'-',
         r.productStatus,
         r.qty,
         r.daysRemain + "일",
@@ -5787,12 +5818,13 @@ function managementDownloadExcel(){
     titleRows.push(aoa.length);
     aoa.push(["⭐ 우선순위 TOP 10"]);
     headerRows.push(aoa.length);
-    aoa.push(["순", "도번", "품명", "상태", "수량", "남은일", "진행률"]);
+    aoa.push(["순", "도번", "품명", "PROJECT NO", "상태", "수량", "남은일", "진행률"]);
     top10.forEach((r, i) => {
       aoa.push([
         i+1,
         r.oldDrawingNo||'',
         r.partName||'',
+        r.vendor||'-',
         r.productStatus,
         r.qty,
         r.daysRemain + "일",
@@ -5812,7 +5844,7 @@ function managementDownloadExcel(){
       titleRows.push(aoa.length);
       aoa.push([g.drawing + " · " + g.partName + " (합계 " + g.totalQty + "개)"]);
       headerRows.push(aoa.length);
-      const detailHeader = ["ORDER", "PRJ", "상태", "수량"];
+      const detailHeader = ["ORDER", "PROJECT NO", "상태", "수량"];
       for(let m=1; m<=12; m++) detailHeader.push(m + "월");
       aoa.push(detailHeader);
       g.items.forEach(r => {
@@ -5974,8 +6006,9 @@ function renderHistoryView(keyword){
     // 납품완료/미완료 수량
     const doneQty = done.reduce((a,r)=>a+(Number(r.qty)||0),0);
     const undoneQty = Math.max(0, totalQty - doneQty);
-    // 이력 테이블 (최근 15건, 납기 최신순)
-    const hist = [...rows].sort((a,b)=>String(b.dueDate||"").localeCompare(String(a.dueDate||""))).slice(0,15);
+    // 이력 테이블: 완료 건 제외, 최종납기 오름차순 (미완료 우선 관리용)
+    const histSource = rows.filter(r => computeProductStatus(r) !== "완료");
+    const hist = [...histSource].sort((a,b)=>String(a.dueDate||"9999-99-99").localeCompare(String(b.dueDate||"9999-99-99"))).slice(0,15);
     return `
     <div class="table-wrap" style="margin-bottom:16px;padding:14px 16px;border-left:4px solid #0B5CAB;">
       <div style="font-size:14px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)} <span style="color:#4B5563;font-weight:400;">· ${esc(partName)}</span></div>
@@ -6004,6 +6037,7 @@ function renderHistoryView(keyword){
             <th style="padding:7px;">지연</th><th style="padding:7px;">상태</th>
           </tr></thead>
           <tbody>
+            ${hist.length === 0 ? `<tr><td colspan="8" style="padding:12px;text-align:center;color:#B9C2D6;">미완료 건이 없습니다. (완료 건은 표시하지 않습니다)</td></tr>` : ''}
             ${hist.map(r => {
               const due = mgmtYmdToDate(r.dueDate), ship = mgmtYmdToDate(r.shipDate);
               const late = (due && ship) ? Math.round((ship-due)/86400000) : null;
@@ -6022,7 +6056,7 @@ function renderHistoryView(keyword){
           </tbody>
         </table>
       </div>
-      ${rows.length > 15 ? `<div style="font-size:11px;color:#6B7280;margin-top:6px;">최근 15건만 표시 (전체 ${rows.length}건)</div>` : ''}
+      ${hist.length === 0 ? `` : ``}${histSource.length > 15 ? `<div style="font-size:11px;color:#6B7280;margin-top:6px;">납기 빠른 순 15건만 표시 (미완료 전체 ${histSource.length}건)</div>` : ''}
     </div>`;
   }).join('') + (order.length > 10 ? `<div style="padding:10px;text-align:center;color:#6B7280;font-size:12px;">도번 ${order.length}개 중 10개만 표시했습니다. 검색어를 더 구체적으로 입력해 주세요.</div>` : '');
 }
