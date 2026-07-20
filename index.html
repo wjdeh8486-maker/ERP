@@ -2335,7 +2335,7 @@ function mapRowToMain(row){
     vendorCost: Number(getFieldFlexible(row, "외주업체비"))||0,
     deburrCost: Number(getFieldFlexible(row, "집,연마,버")||getFieldFlexible(row, "집연마버"))||0,
     processCost: Number(getFieldFlexible(row, "후처리(세정)")||getFieldFlexible(row, "처리비(세정)")||getFieldFlexible(row, "후처리")||getFieldFlexible(row, "처리비")||getFieldFlexible(row, "세정처리비")||getFieldFuzzy(row, "후처리")||getFieldFuzzy(row, "세정"))||0,
-    // 수입검사 대기: MAIN 행의 수량 기준으로 계산
+    // 수입검사 대기: 도번(기존도번)별 [생산공정현황 진행수량 - 검사수량] 풀
     waitIncomingInspection: computeWaitIncomingInspection(row)
   };
   return result;
@@ -2353,14 +2353,11 @@ function buildWaitInspIndex(){
       const regYear = String(p["등록일자"] || "").split("-")[0];
       if(regYear !== "2026") continue;
       const cp = String(p["현재진행공정"] || "");
-      if(!(/E\.P|CP|사상|외주가공 \(작업완료\)/.test(cp))) continue;
+      if(!(/E\.P|CP|사상|폴리싱\(빠우\)|외주가공 \(작업완료\)/.test(cp))) continue;
       const dn = String(p["도면번호"] || "").trim();
       if(!dn) continue;
       const qty = Number(p["수량"] || 0);
       processQtyMap.set(dn, (processQtyMap.get(dn) || 0) + qty);
-      if(dn.includes("207-078-003")){
-        console.log("📋 생산공정현황 도면번호", {dn, cp, qty, cumulative: processQtyMap.get(dn)});
-      }
     }
   }
   if(incomingInspectionData && incomingInspectionData.length){
@@ -2371,9 +2368,6 @@ function buildWaitInspIndex(){
       if(!dn) continue;
       const qty = Number(i["검사수"] || 0);
       inspQtyMap.set(dn, (inspQtyMap.get(dn) || 0) + qty);
-      if(dn.includes("207-078-003")){
-        console.log("✓ 수입검사(외관) 도면번호", {dn, qty, cumulative: inspQtyMap.get(dn)});
-      }
     }
   }
   if(inhouseInspectionData && inhouseInspectionData.length){
@@ -2384,37 +2378,21 @@ function buildWaitInspIndex(){
       if(!dn) continue;
       const qty = Number(i["검사수"] || 0);
       inspQtyMap.set(dn, (inspQtyMap.get(dn) || 0) + qty);
-      if(dn.includes("207-078-003")){
-        console.log("✓ 공정검사(사내외관) 도면번호", {dn, qty, cumulative: inspQtyMap.get(dn)});
-      }
     }
   }
   waitInspIndexCache = { processQty: processQtyMap, inspQty: inspQtyMap };
 }
 function computeWaitIncomingInspection(mainRow){
-  // 기존도번(유진테크)으로 검사 수량 조회
+  // 원래 로직 (도번 취합): 기존도번(유진테크)별로
+  // 수입검사 대기 = 생산공정현황 진행수량(도면번호별 합) - 검사수량(도번별 합), 음수면 0
+  // ※ 같은 도번의 여러 행에는 같은 풀 값이 표시되고,
+  //    제품상태 배정(computeAllStatuses)에서 최종납기 빠른 순으로 차감 배정됩니다.
   const oldDrawingNo = String(mainRow["기존도번(유진테크)"]||mainRow["기존도번"]||mainRow.oldDrawingNo||"").trim();
   if(!oldDrawingNo) return 0;
   if(!waitInspIndexCache) buildWaitInspIndex();
-  
-  // MAIN 행의 수량이 최대값 (4 EA 행이라면 최대 4)
-  const mainQty = Number(mainRow["수량"]||mainRow.qty||0);
-  if(mainQty <= 0) return 0;
-  
-  // 검사 수량 (도면번호별 합계 중에서 이 행 수량만큼만)
-  const totalInspectionQty = waitInspIndexCache.inspQty.get(oldDrawingNo) || 0;
-  
-  // 대기 수량 = MAIN 행 수량 - 검사된 수량 (음수면 0)
-  const wait = Math.max(0, mainQty - totalInspectionQty);
-  
-  if(oldDrawingNo.includes("207-078-003")){
-    console.log("🔍 M207-078-003 계산:", {
-      oldDrawingNo, mainQty, totalInspectionQty, 
-      result: wait
-    });
-  }
-  
-  return wait;
+  const processQty = waitInspIndexCache.processQty.get(oldDrawingNo) || 0;
+  const inspectionQty = waitInspIndexCache.inspQty.get(oldDrawingNo) || 0;
+  return Math.max(0, processQty - inspectionQty); // 음수면 0
 }
 let mainApiUrl = "";
 const CURRENT_YEAR = new Date().getFullYear();
@@ -6284,7 +6262,7 @@ ${body}
 /* ============ 검사대기현황 (수입/공정/출하/비젼 검사대기) ============ */
 // 기존 데이터를 그대로 재사용합니다 (Code.gs 수정 불필요):
 //  - 수입검사대기: 생산공정현황 계산값 (MAIN 대시보드의 "수입검사 대기"와 동일 기준:
-//                  올해 등록 + 현재공정에 E.P/CP/사상/외주가공 (작업완료) 포함 수량
+//                  올해 등록 + 현재공정에 E.P/CP/사상/폴리싱(빠우)/외주가공 (작업완료) 포함 수량
 //                  − 수입검사(외관)/공정검사(사내외관) 검사수)
 //  - 공정검사대기: 측정실검사대기 시트 (품번 · 측정실대기 수량)
 //  - 출하검사대기: 크린룸검사대기 시트 (품번 · 검사대기 수량)
@@ -6337,7 +6315,7 @@ function computeIncomingWaitList(){
     const regDate = String(p["등록일자"]||"").slice(0,10);
     if(regDate.split("-")[0] !== yearStr) return;
     const cp = String(p["현재진행공정"]||"");
-    if(!(/E\.P|CP|사상|외주가공 \(작업완료\)/.test(cp))) return;
+    if(!(/E\.P|CP|사상|폴리싱\(빠우\)|외주가공 \(작업완료\)/.test(cp))) return;
     const dn = String(p["도면번호"]||"").trim();
     if(!dn) return;
     procQty.set(dn, (procQty.get(dn)||0) + (Number(p["수량"])||0));
