@@ -5119,15 +5119,24 @@ function getManagementSummary(rows){
   const monthProd = monthRows.reduce((sum, r) => sum + getProductionWaitQty(r), 0);
   const monthQual = monthRows.reduce((sum, r) => sum + getQualityWaitQty(r), 0);
   
-  // 전체 요약 수치
-  const totalCnt = rows.length;
-  const totalQty = rows.reduce((sum, r) => sum + (Number(r.qty)||0), 0);
-  const doneRows = rows.filter(r => r.shipped === "납품완료");
+  // 전체 요약 수치 — 해당 년도(올해) 주문만 기준
+  // 주문 연도는 ORDER NO 앞자리(예: "26-")로 판별, 형식이 다르면 최종납기 연도로 보조 판별
+  const _fullYear = new Date().getFullYear();
+  const _yy = String(_fullYear).slice(2) + "-";
+  const isThisYearOrder = r => {
+    const on = String(r.orderNo||"").trim();
+    if(/^\d{2}-/.test(on)) return on.startsWith(_yy);
+    return String(r.dueDate||"").startsWith(String(_fullYear));
+  };
+  const yearRows = rows.filter(isThisYearOrder);
+  const totalCnt = yearRows.length;
+  const totalQty = yearRows.reduce((sum, r) => sum + (Number(r.qty)||0), 0);
+  const doneRows = yearRows.filter(r => r.shipped === "납품완료");
   const doneCnt = doneRows.length;
   const doneQty = doneRows.reduce((sum, r) => sum + (Number(r.qty)||0), 0);
   const undoneQty = Math.max(0, totalQty - doneQty);
   
-  return { productWait, qualityWait, delayed, extendRec, thisMonth, monthProd, monthQual, totalCnt, totalQty, doneCnt, undoneQty };
+  return { productWait, qualityWait, delayed, extendRec, thisMonth, monthProd, monthQual, totalCnt, totalQty, doneCnt, undoneQty, summaryYear:_fullYear };
 }
 
 // ===== 날짜 헬퍼 (타임존 -1일 버그 없는 로컬 날짜 계산) =====
@@ -5408,8 +5417,8 @@ function renderManagementSummary(rows){
       ${stat("품질 대기", data.qualityWait.toLocaleString() + "개", "#0B5CAB", `${data.thisMonth}월 납기: ${data.monthQual.toLocaleString()}개`, "#0B5CAB")}
       ${stat("납기 지연", data.delayed.toLocaleString() + "건", data.delayed>0?"#E02424":"#2E7D46", "미납품 중 납기 초과", "#E02424")}
       ${stat("납기 연장 권고", data.extendRec.toLocaleString() + "건", data.extendRec>0?"#FF9800":"#2E7D46", "이력 기반 권고 대상", "#FF9800")}
-      ${stat("총 주문", data.totalCnt.toLocaleString() + "건", "#1F2A44", `총 수량 ${data.totalQty.toLocaleString()}개`, "#B9C7DC")}
-      ${stat("납품완료", data.doneCnt.toLocaleString() + "건", "#2E7D46", `미완료 수량 ${data.undoneQty.toLocaleString()}개`, "#2E7D46")}
+      ${stat(`총 주문 (${data.summaryYear}년)`, data.totalCnt.toLocaleString() + "건", "#1F2A44", `총 수량 ${data.totalQty.toLocaleString()}개`, "#B9C7DC")}
+      ${stat(`납품완료 (${data.summaryYear}년)`, data.doneCnt.toLocaleString() + "건", "#2E7D46", `미완료 수량 ${data.undoneQty.toLocaleString()}개`, "#2E7D46")}
     </div>
   `;
 }
@@ -5937,8 +5946,8 @@ function managementDownloadExcel(){
   aoa.push(["  ├ " + summary.thisMonth + "월 납기", summary.monthQual + "개"]);
   aoa.push(["납기 지연", summary.delayed + "건"]);
   aoa.push(["납기 연장 권고", summary.extendRec + "건"]);
-  aoa.push(["총 주문", summary.totalCnt + "건 / " + summary.totalQty + "개"]);
-  aoa.push(["납품완료", summary.doneCnt + "건 (미완료 수량 " + summary.undoneQty + "개)"]);
+  aoa.push(["총 주문 (" + summary.summaryYear + "년)", summary.totalCnt + "건 / " + summary.totalQty + "개"]);
+  aoa.push(["납품완료 (" + summary.summaryYear + "년)", summary.doneCnt + "건 (미완료 수량 " + summary.undoneQty + "개)"]);
   aoa.push([]);
   
   // 2. 납기 연장 권고
