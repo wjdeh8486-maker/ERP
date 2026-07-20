@@ -5888,7 +5888,6 @@ function renderHistoryView(keyword){
     return;
   }
   const shown = order.slice(0, 10);
-  const learned = computeLearnedExtensionDays();
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const chip = (label, value, color) => `<div style="background:#F6F8FB;border:1px solid #E5EAF1;border-radius:8px;padding:8px 12px;min-width:96px;text-align:center;"><div style="font-size:10.5px;color:#6B7280;margin-bottom:2px;">${label}</div><div style="font-size:15px;font-weight:700;color:${color||'#1F2A44'};">${value}</div></div>`;
 
@@ -5905,36 +5904,26 @@ function renderHistoryView(keyword){
       return (due && ship) ? Math.round((ship-due)/86400000) : null;
     }).filter(d => d !== null && d > 0);
     const avgLate = lateOnes.length ? Math.round(lateOnes.reduce((a,b)=>a+b,0)/lateOnes.length) : 0;
-    const gap = getExtensionDaysFor(key, learned);
-    // 검사 이력 (품질분석 데이터가 로드된 경우만)
-    let inspHtml = "";
+    // 검사 이력 수치 (품질분석 데이터가 없으면 0으로 표시)
+    let iQty=0, iDef=0, iPpm=0;
     try{
-      let iQty=0, iDef=0, has=false;
       QUALITY_SHEETS.forEach(sheet => {
         (qualityRawData[sheet.key]||[]).forEach(q => {
-          if(String(q.partNo||"").trim() === key){ has=true; iQty+=q.qty||0; iDef+=q.defect||0; }
+          if(String(q.partNo||"").trim() === key){ iQty+=q.qty||0; iDef+=q.defect||0; }
         });
       });
-      if(has){
-        const ppm = iQty>0 ? Math.round(iDef/iQty*1000000) : 0;
-        inspHtml = chip("검사수", iQty.toLocaleString()) + chip("부적합", iDef.toLocaleString(), iDef>0?'#E02424':'#2E7D46') + chip("PPM", ppm.toLocaleString(), ppm>10000?'#E02424':'#2E7D46');
-      }
+      iPpm = iQty>0 ? Math.round(iDef/iQty*1000000) : 0;
     }catch(e){ /* 품질 데이터 미로드 */ }
-    if(!inspHtml) inspHtml = `<div style="font-size:11px;color:#B9C2D6;align-self:center;">※ 검사 이력 없음 (품질분석 메뉴에서 데이터를 불러오면 표시될 수 있습니다)</div>`;
-    // 고객부적합 이력 (품질분석의 고객부적합관리대장 데이터)
-    let ncHtml = "";
+    // 고객부적합 수치 + 최근 내역
+    let ncCnt=0, ncQty=0, ncDev=0, ncRecentHtml="";
     try{
       const ncRows = (qualityRawData[CUSTOMER_NC_KEY]||[]).filter(q => String(q.partNo||"").trim() === key);
+      ncCnt = ncRows.length;
+      ncQty = ncRows.reduce((a,q)=>a+q.qty,0);
+      ncDev = ncRows.filter(q=>q.isDev).reduce((a,q)=>a+q.qty,0);
       if(ncRows.length){
-        const ncQty = ncRows.reduce((a,q)=>a+q.qty,0);
-        const ncDev = ncRows.filter(q=>q.isDev).reduce((a,q)=>a+q.qty,0);
         const recent = [...ncRows].sort((a,b)=>b.date-a.date).slice(0,3);
-        ncHtml = `
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
-          ${chip("고객부적합", ncRows.length+"건", '#E02424')}
-          ${chip("부적합 수량", ncQty.toLocaleString()+"개", '#E02424')}
-          ${chip("개발/양산", ncDev.toLocaleString()+" / "+(ncQty-ncDev).toLocaleString())}
-        </div>
+        ncRecentHtml = `
         <div style="background:#FDF3F3;border:1px solid #F2D3D3;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;line-height:1.8;">
           <div style="font-weight:700;color:#C0392B;margin-bottom:2px;">⚠ 고객부적합 최근 내역</div>
           ${recent.map(q=>`<div>· <span style="color:#6B7280;">${mgmtFmtYMD(q.date)}</span> <b style="color:${q.isDev?'#7C3AED':'#E02424'};">[${q.isDev?'개발':'양산'}]</b> ${esc(q.content)} <span style="color:#6B7280;">(${q.qty}개 · ${esc(q.finder)})</span></div>`).join('')}
@@ -5942,21 +5931,31 @@ function renderHistoryView(keyword){
         </div>`;
       }
     }catch(e){ /* 품질 데이터 미로드 */ }
+    // 납품완료/미완료 수량
+    const doneQty = done.reduce((a,r)=>a+(Number(r.qty)||0),0);
+    const undoneQty = Math.max(0, totalQty - doneQty);
     // 이력 테이블 (최근 15건, 납기 최신순)
     const hist = [...rows].sort((a,b)=>String(b.dueDate||"").localeCompare(String(a.dueDate||""))).slice(0,15);
     return `
     <div class="table-wrap" style="margin-bottom:16px;padding:14px 16px;border-left:4px solid #0B5CAB;">
       <div style="font-size:14px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)} <span style="color:#4B5563;font-weight:400;">· ${esc(partName)}</span></div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
         ${chip("총 주문", total + "건")}
         ${chip("총 수량", totalQty.toLocaleString() + "개")}
-        ${chip("납품완료", done.length + "건")}
         ${chip("지연 납품", lateOnes.length + "회", lateOnes.length>0?'#E02424':'#2E7D46')}
         ${chip("평균 지연", avgLate + "일", avgLate>0?'#E02424':'#2E7D46')}
-        ${chip("학습 간격", gap.days + "일")}
+        ${chip("검사수", iQty.toLocaleString())}
+        ${chip("부적합", iDef.toLocaleString(), iDef>0?'#E02424':'#2E7D46')}
+        ${chip("PPM", iPpm.toLocaleString(), iPpm>10000?'#E02424':'#2E7D46')}
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">${inspHtml}</div>
-      ${ncHtml}
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        ${chip("납품완료", done.length + "건")}
+        ${chip("납품미완료 수량", undoneQty.toLocaleString() + "개", undoneQty>0?'#E02424':'#2E7D46')}
+        ${chip("고객부적합", ncCnt + "건", ncCnt>0?'#E02424':'#2E7D46')}
+        ${chip("부적합 수량", ncQty.toLocaleString() + "개", ncQty>0?'#E02424':'#2E7D46')}
+        ${chip("개발/양산", ncDev.toLocaleString() + " / " + (ncQty-ncDev).toLocaleString())}
+      </div>
+      ${ncRecentHtml}
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:640px;">
           <thead><tr style="background:var(--navy);color:#fff;">
