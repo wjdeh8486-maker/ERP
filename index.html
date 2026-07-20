@@ -1099,7 +1099,7 @@
     <div class="sync-panel" id="quality-syncPanel">
       <input id="quality-appsScriptUrl" type="text" value="https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2Xur_FhnxfQReER1VnjFKNkwvEtezRo-93EVHlJ8uQdECpP/exec" placeholder="Apps Script 웹 앱 URL 붙여넣기">
       <button id="quality-apiSyncBtn">API로 불러오기</button>
-      <div class="sync-note">※ 공정검사(치수,BOLT,LED) · 공정검사(사내외관) · 수입검사(기능) · 수입검사(외관) · 출하검사 5개 탭을 불러옵니다.</div>
+      <div class="sync-note">※ 공정검사(치수,BOLT,LED) · 공정검사(사내외관) · 수입검사(기능) · 수입검사(외관) · 출하검사 · 고객부적합관리대장 6개 탭을 불러옵니다.</div>
       <div class="sync-note" id="quality-apiStatus"></div>
     </div>
     <div class="view" id="view-quality">
@@ -1114,10 +1114,12 @@
         <button class="tab-btn active" data-qtab="process">공정검사</button>
         <button class="tab-btn" data-qtab="incoming">수입검사</button>
         <button class="tab-btn" data-qtab="shipping">출하검사</button>
+        <button class="tab-btn" data-qtab="customer">고객부적합</button>
       </div>
       <div class="tab-panel active" id="qpanel-process"></div>
       <div class="tab-panel" id="qpanel-incoming"></div>
       <div class="tab-panel" id="qpanel-shipping"></div>
+      <div class="tab-panel" id="qpanel-customer"></div>
     </div>
     <!-- ===================== SALES(매출현황) VIEW ===================== -->
     <div id="topbar-sales" class="topbar" style="display:none;">
@@ -2966,6 +2968,8 @@ const QUALITY_SHEETS = [
   { key:"출하검사", label:"출하검사", dateField:"검사일", qtyField:"검사수", goodField:"양품수", defectField:"부적합수",
     types:{"기스":"기스","찍힘":"찍힘","얼룩":"얼룩","누락":"누락","기타":"기타"} }
 ];
+// 고객부적합관리대장 (헤더 2행: 품번 A · 접수일 B · 발견자 D · 수량 F · 접수내용 H)
+const CUSTOMER_NC_KEY = "고객부적합관리대장";
 const QUALITY_CATEGORIES = {
   process:  { label:"공정검사", sheetKeys:["공정검사(치수,BOLT,LED)","공정검사(사내외관)"] },
   incoming: { label:"수입검사", sheetKeys:["수입검사(기능)","수입검사(외관)"] },
@@ -3009,7 +3013,10 @@ function fetchQualityData(){
   statusEl.textContent = "불러오는 중...";
   return Promise.all(QUALITY_SHEETS.map(s=>
     fetch(url + "?dataset=" + encodeURIComponent(s.key)).then(r=>r.json())
-  )).then(results=>{
+  ).concat([
+    // 고객부적합관리대장 (시트가 아직 없으면 조용히 건너뜀)
+    fetch(url + "?dataset=" + encodeURIComponent(CUSTOMER_NC_KEY)).then(r=>r.json()).catch(()=>null)
+  ])).then(results=>{
     const warnings = [];
     QUALITY_SHEETS.forEach((s, i)=>{
       const res = results[i];
@@ -3030,6 +3037,25 @@ function fetchQualityData(){
       }).filter(r=>r.date);
       if(res.warnings && res.warnings.length) warnings.push(s.label+": "+res.warnings.join(" / "));
     });
+    // 고객부적합관리대장 파싱
+    // 규칙: 수량(F) > 0 인 행만 집계, 발견자(D)에 "개발" 문구가 있으면 개발부적합, 그 외 양산부적합
+    const ncRes = results[QUALITY_SHEETS.length];
+    if(ncRes && ncRes.success && Array.isArray(ncRes.rows)){
+      qualityRawData[CUSTOMER_NC_KEY] = ncRes.rows.map(row=>{
+        const finder = String(getFieldFuzzy(row, "발견자")||"").trim();
+        return {
+          date: parseQualityDate(getFieldFuzzy(row, "접수일")),
+          partNo: String(getFieldFuzzy(row, "품번")||"").trim(),
+          finder,
+          qty: Number(getFieldFuzzy(row, "수량"))||0,
+          content: String(getFieldFuzzy(row, "접수내용")||"").trim(),
+          isDev: finder.includes("개발")
+        };
+      }).filter(r=>r.date && r.qty > 0);
+    } else {
+      if(!qualityRawData[CUSTOMER_NC_KEY]) qualityRawData[CUSTOMER_NC_KEY] = [];
+      warnings.push("고객부적합관리대장 탭 없음");
+    }
     cacheSetQualityData();
     cacheSet("qualityLastSync", Date.now());
     updateSyncBanner();
@@ -3374,10 +3400,128 @@ function renderQualityAll(){
     renderCategoryDetailList(panel, catKey);
     renderCategoryTypeBreakdown(panel, catKey);
   });
+  renderCustomerNCPanel();
+}
+/* ===== 고객부적합 (출하검사와 동일한 구성: KPI → 월별 추이 그래프/표 → 주차별 → 상세 → 유형) ===== */
+function computeNCMonthStats(year, month){
+  let cnt=0, qty=0, dev=0, prod=0;
+  (qualityRawData[CUSTOMER_NC_KEY]||[]).forEach(r=>{
+    if(r.date.getFullYear()===year && (r.date.getMonth()+1)===month){
+      cnt++; qty+=r.qty;
+      if(r.isDev) dev+=r.qty; else prod+=r.qty;
+    }
+  });
+  return { cnt, qty, dev, prod };
+}
+function renderCustomerNCPanel(){
+  const panel = document.getElementById("qpanel-customer");
+  if(!panel) return;
+  const rowsAll = qualityRawData[CUSTOMER_NC_KEY]||[];
+  if(!rowsAll.length){
+    panel.innerHTML = `<div class="table-wrap" style="padding:30px;text-align:center;color:var(--text-mute);">고객부적합 데이터가 없습니다.<br><span style="font-size:12px;">구글시트에 "고객부적합관리대장" 탭을 추가하고 Code.gs에 데이터셋을 등록한 뒤 다시 불러와 주세요.</span></div>`;
+    return;
+  }
+  const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const labels = Array.from({length:qualityMonth},(_,i)=>(i+1)+"월");
+  const monthly = labels.map((_,i)=>computeNCMonthStats(qualityYear, i+1));
+  const tot = monthly.reduce((a,m)=>({cnt:a.cnt+m.cnt, qty:a.qty+m.qty, dev:a.dev+m.dev, prod:a.prod+m.prod}), {cnt:0,qty:0,dev:0,prod:0});
+  const thisM = computeNCMonthStats(qualityYear, qualityMonth);
+  let py=qualityYear, pm=qualityMonth-1; if(pm<1){ pm=12; py--; }
+  const prevM = computeNCMonthStats(py, pm);
+  const changePct = prevM.qty>0 ? Math.round(((thisM.qty-prevM.qty)/prevM.qty)*100) : (thisM.qty>0?100:0);
+  const changeSign = changePct>0 ? '+' : '';
+  // 선택 월 상세 (접수일 순)
+  const detail = rowsAll
+    .filter(r=>r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)===qualityMonth)
+    .sort((a,b)=>a.date-b.date);
+  // 주차별
+  const weekly = [1,2,3,4].map(w=>{
+    let cnt=0, qty=0;
+    rowsAll.forEach(r=>{
+      if(r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)===qualityMonth && getWeekOfMonth(r.date)===w){ cnt++; qty+=r.qty; }
+    });
+    return { week:w, cnt, qty };
+  });
+
+  panel.innerHTML = `
+    <div class="table-wrap" style="margin-bottom:18px;">
+      <table>
+        <thead><tr><th>구분</th><th>건수</th><th>부적합 수량</th><th>개발부적합</th><th>양산부적합</th></tr></thead>
+        <tbody>
+          <tr style="font-weight:700;"><td style="text-align:center;">고객부적합 (누적)</td>
+            <td>${tot.cnt.toLocaleString()}</td>
+            <td class="${tot.qty>0?'cell-defect':''}">${tot.qty.toLocaleString()}</td>
+            <td style="color:#7C3AED;font-weight:700;">${tot.dev.toLocaleString()}</td>
+            <td class="${tot.prod>0?'cell-defect':''}">${tot.prod.toLocaleString()}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="summary-row" style="margin-bottom:18px;">
+      <div class="stat-card"><div class="label" style="color:var(--text-mute);">이번달 실적</div>
+        <div style="margin-top:6px;">
+          <div class="${thisM.qty>0?'cell-defect':''}" style="font-size:22px;font-weight:700;">${thisM.qty.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">개</span> <span class="q-change-badge">변동 ${changeSign}${changePct}%</span></div>
+          <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${qualityYear}년 ${qualityMonth}월 · ${thisM.cnt}건 · 개발 ${thisM.dev.toLocaleString()} / 양산 ${thisM.prod.toLocaleString()}</div>
+        </div>
+      </div>
+      <div class="stat-card"><div class="label" style="color:var(--text-mute);">저번달 실적</div>
+        <div style="margin-top:6px;">
+          <div class="${prevM.qty>0?'cell-defect':''}" style="font-size:22px;font-weight:700;">${prevM.qty.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">개</span></div>
+          <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${py}년 ${pm}월 · ${prevM.cnt}건 · 개발 ${prevM.dev.toLocaleString()} / 양산 ${prevM.prod.toLocaleString()}</div>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+      <div class="qnc-monthly-chart"></div>
+      <div style="margin-top:14px;overflow-x:auto;">
+        <table style="min-width:820px;">
+          <thead><tr><th style="text-align:center;">항목</th>${labels.map(l=>`<th>${l}</th>`).join("")}<th>합계</th></tr></thead>
+          <tbody>
+            <tr><td style="text-align:center;">건수</td>${monthly.map(m=>`<td>${m.cnt.toLocaleString()}</td>`).join("")}<td>${tot.cnt.toLocaleString()}</td></tr>
+            <tr><td style="text-align:center;">부적합 수량</td>${monthly.map(m=>`<td class="${m.qty>0?'cell-defect':''}">${m.qty.toLocaleString()}</td>`).join("")}<td>${tot.qty.toLocaleString()}</td></tr>
+            <tr><td style="text-align:center;">개발부적합</td>${monthly.map(m=>`<td style="${m.dev>0?'color:#7C3AED;font-weight:700;':''}">${m.dev.toLocaleString()}</td>`).join("")}<td style="color:#7C3AED;font-weight:700;">${tot.dev.toLocaleString()}</td></tr>
+            <tr><td style="text-align:center;">양산부적합</td>${monthly.map(m=>`<td class="${m.prod>0?'cell-defect':''}">${m.prod.toLocaleString()}</td>`).join("")}<td class="${tot.prod>0?'cell-defect':''}">${tot.prod.toLocaleString()}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+      <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · 고객부적합 주차별 현황</div>
+      <table style="width:100%;margin-bottom:14px;">
+        <thead><tr><th>주차</th><th>건수</th><th>부적합 수량</th></tr></thead>
+        <tbody>${weekly.map(w=>`<tr><td>${w.week}주차</td><td>${w.cnt}</td><td class="${w.qty>0?'cell-defect':''}">${w.qty}</td></tr>`).join("")}</tbody>
+      </table>
+      <div class="qnc-weekly-chart"></div>
+    </div>
+    <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
+      <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · 고객부적합 상세 내역 (${detail.length}건)</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;min-width:720px;">
+          <thead><tr><th>접수일</th><th>품번</th><th>발견자</th><th>구분</th><th>수량</th><th style="text-align:left;">접수 내용</th></tr></thead>
+          <tbody>
+            ${detail.length ? detail.map(r=>`<tr>
+              <td>${mgmtFmtYMD(r.date)}</td>
+              <td>${esc(r.partNo)}</td>
+              <td>${esc(r.finder)}</td>
+              <td style="${r.isDev?'color:#7C3AED;font-weight:700;':'color:#E02424;font-weight:700;'}">${r.isDev?'개발':'양산'}</td>
+              <td class="cell-defect">${r.qty}</td>
+              <td style="text-align:left;">${esc(r.content)}</td>
+            </tr>`).join("") : `<tr><td colspan="6" style="color:var(--text-mute);">해당 월 부적합 내역이 없습니다.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="table-wrap" style="padding:16px;">
+      <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 1~${qualityMonth}월 누적 · 개발/양산 부적합 구성</div>
+      <div class="qnc-type-chart"></div>
+    </div>
+  `;
+  drawLineChart(panel.querySelector(".qnc-monthly-chart"), labels, monthly.map(m=>m.qty), qualityYear+"년 1~"+qualityMonth+"월 고객부적합 수량 추이");
+  drawLineChart(panel.querySelector(".qnc-weekly-chart"), weekly.map(w=>w.week+"주차"), weekly.map(w=>w.qty), "주차별 고객부적합 수량");
+  drawBarChart(panel.querySelector(".qnc-type-chart"), ["개발부적합","양산부적합"], [tot.dev, tot.prod], "누적 부적합 수량 (개발 vs 양산)");
 }
 function printQualityReport(){
   renderQualityAll();
-  const order = ["process","incoming","shipping"];
+  const order = ["process","incoming","shipping","customer"];
   const approvalBox = `
     <table class="q-approval-table">
       <tbody>
@@ -3392,7 +3536,7 @@ function printQualityReport(){
     </table>
   `;
   const html = order.map((key, idx)=>{
-    const cat = QUALITY_CATEGORIES[key];
+    const cat = QUALITY_CATEGORIES[key] || { label:"고객부적합" };
     const panel = document.getElementById("qpanel-"+key);
     return `
       <div class="q-report-page">
@@ -3433,6 +3577,21 @@ document.getElementById("quality-excelBtn").addEventListener("click", ()=>runBus
     styleAoaSheet(ws, { headerRows:[0], totalRows:[aoa.length-1] });
     XLSX.utils.book_append_sheet(wb, ws, cat.label);
   });
+  // 고객부적합 시트
+  if((qualityRawData[CUSTOMER_NC_KEY]||[]).length){
+    const aoa = [["월","건수","부적합 수량","개발부적합","양산부적합"]];
+    let tc=0, tq=0, td=0, tp=0;
+    for(let m=1;m<=qualityMonth;m++){
+      const st = computeNCMonthStats(qualityYear, m);
+      aoa.push([m+"월", st.cnt, st.qty, st.dev, st.prod]);
+      tc+=st.cnt; tq+=st.qty; td+=st.dev; tp+=st.prod;
+    }
+    aoa.push(["누적 합계", tc, tq, td, tp]);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:12},{wch:10},{wch:12},{wch:12},{wch:12}];
+    styleAoaSheet(ws, { headerRows:[0], totalRows:[aoa.length-1] });
+    XLSX.utils.book_append_sheet(wb, ws, "고객부적합");
+  }
   XLSX.writeFile(wb, `품질분석_${qualityYear}년_${qualityMonth}월누적.xlsx`);
 }, "엑셀 생성 중..."));
 /* ============ SALES(매출현황) LOGIC ============ */
@@ -5738,6 +5897,27 @@ function renderHistoryView(keyword){
       }
     }catch(e){ /* 품질 데이터 미로드 */ }
     if(!inspHtml) inspHtml = `<div style="font-size:11px;color:#B9C2D6;align-self:center;">※ 검사 이력 없음 (품질분석 메뉴에서 데이터를 불러오면 표시될 수 있습니다)</div>`;
+    // 고객부적합 이력 (품질분석의 고객부적합관리대장 데이터)
+    let ncHtml = "";
+    try{
+      const ncRows = (qualityRawData[CUSTOMER_NC_KEY]||[]).filter(q => String(q.partNo||"").trim() === key);
+      if(ncRows.length){
+        const ncQty = ncRows.reduce((a,q)=>a+q.qty,0);
+        const ncDev = ncRows.filter(q=>q.isDev).reduce((a,q)=>a+q.qty,0);
+        const recent = [...ncRows].sort((a,b)=>b.date-a.date).slice(0,3);
+        ncHtml = `
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+          ${chip("고객부적합", ncRows.length+"건", '#E02424')}
+          ${chip("부적합 수량", ncQty.toLocaleString()+"개", '#E02424')}
+          ${chip("개발/양산", ncDev.toLocaleString()+" / "+(ncQty-ncDev).toLocaleString())}
+        </div>
+        <div style="background:#FDF3F3;border:1px solid #F2D3D3;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;line-height:1.8;">
+          <div style="font-weight:700;color:#C0392B;margin-bottom:2px;">⚠ 고객부적합 최근 내역</div>
+          ${recent.map(q=>`<div>· <span style="color:#6B7280;">${mgmtFmtYMD(q.date)}</span> <b style="color:${q.isDev?'#7C3AED':'#E02424'};">[${q.isDev?'개발':'양산'}]</b> ${esc(q.content)} <span style="color:#6B7280;">(${q.qty}개 · ${esc(q.finder)})</span></div>`).join('')}
+          ${ncRows.length>3 ? `<div style="color:#6B7280;">외 ${ncRows.length-3}건 — 품질분석 > 고객부적합 탭에서 전체 확인</div>` : ''}
+        </div>`;
+      }
+    }catch(e){ /* 품질 데이터 미로드 */ }
     // 이력 테이블 (최근 15건, 납기 최신순)
     const hist = [...rows].sort((a,b)=>String(b.dueDate||"").localeCompare(String(a.dueDate||""))).slice(0,15);
     return `
@@ -5752,6 +5932,7 @@ function renderHistoryView(keyword){
         ${chip("학습 간격", gap.days + "일")}
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">${inspHtml}</div>
+      ${ncHtml}
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:640px;">
           <thead><tr style="background:var(--navy);color:#fff;">
