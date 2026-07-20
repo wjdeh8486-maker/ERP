@@ -946,7 +946,7 @@
         <button id="waitinsp-printBtn">🖨️ 인쇄</button>
         <button id="waitinsp-excelBtn" type="button" class="tb-download-btn">📥 다운로드</button>
       </div>
-      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 보유 중인 검사 대기 제품, 도번 오름차순 (수입=생산공정현황 계산 · 공정=측정실검사대기 · 출하=크린룸검사대기 · 비젼=비젼검사대기). <span id="waitinsp-status"></span></div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 보유 중인 검사 대기 제품, 도번 오름차순 (수입=생산공정현황 계산 <b>· 유진테크만</b> · 공정=측정실검사대기 · 출하=크린룸검사대기 · 비젼=비젼검사대기). <span id="waitinsp-status"></span></div>
     </div>
     <div class="view" id="view-waitinsp">
       <div class="tabs">
@@ -6281,7 +6281,19 @@ function waitInspParse(rows, keyLabels, qtyLabels){
     return { partNo, regDate, qty };
   }).filter(r => r.partNo && r.qty > 0);
 }
+// 유진테크 도번 집합: MAIN 데이터에서 고객사가 유진테크인 행의 기존도번(유진테크)만 수집
+function getYujinDrawingSet(){
+  const set = new Set();
+  (mainData||[]).forEach(r=>{
+    const cust = String(r.customer || r["고객사"] || "");
+    if(!cust.includes("유진")) return;
+    const dn = String(r.oldDrawingNo || r["기존도번(유진테크)"] || r["기존도번"] || "").trim();
+    if(dn) set.add(dn);
+  });
+  return set;
+}
 // 수입검사대기: MAIN과 동일한 계산 (도면번호별 대기 수량 + 최종 등록일자)
+// ※ 유진테크만 적용: MAIN 데이터의 고객사=유진테크 기존도번에 해당하는 도번만 표시
 function computeIncomingWaitList(){
   const yearStr = String(new Date().getFullYear());
   const procQty = new Map(), procReg = new Map();
@@ -6306,11 +6318,17 @@ function computeIncomingWaitList(){
   };
   addInsp(incomingInspectionData);
   addInsp(inhouseInspectionData);
+  // 유진테크 필터: MAIN 데이터가 로드되어 있으면 유진테크 도번만 통과
+  // (MAIN 데이터가 아직 없으면 필터를 건너뛰어 빈 화면이 되는 것을 방지)
+  const yujinSet = getYujinDrawingSet();
   const list = [];
   procQty.forEach((q, dn)=>{
+    if(yujinSet.size > 0 && !yujinSet.has(dn)) return;
     const wait = Math.max(0, q - (inspQty.get(dn)||0));
     if(wait > 0) list.push({ partNo:dn, regDate:procReg.get(dn)||"", qty:wait });
   });
+  // 도번 오름차순 정렬 (화면/인쇄/엑셀 공통으로 waitInspAggregate에서 재정렬되지만, 원본도 정렬 유지)
+  list.sort((a,b)=>String(a.partNo).localeCompare(String(b.partNo), "ko", {numeric:true}));
   return list;
 }
 function fetchWaitInspData(){
@@ -6343,7 +6361,7 @@ function fetchWaitInspData(){
     if(!(visionRes && visionRes.success)) warnings.push("비젼검사대기");
 
     waitInspLoaded = true;
-    idbSet("cache_waitInspData", waitInspData);
+    idbSet("cache_waitInspData_v2", waitInspData);
     const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
     if(statusEl) statusEl.textContent = "불러오기 완료 · " + nowStr + (warnings.length ? " · 읽기 실패: " + warnings.join(", ") : "");
     renderWaitInspTab();
@@ -6357,7 +6375,8 @@ function waitInspAggregate(key){
     map[r.partNo].qty += r.qty;
     if(r.regDate && r.regDate > map[r.partNo].lastReg) map[r.partNo].lastReg = r.regDate;
   });
-  return Object.values(map).sort((a,b)=>a.partNo.localeCompare(b.partNo, "ko", {numeric:true}));
+  // 도번 오름차순 정렬 (숫자 도번은 숫자 크기순, 문자 도번은 사전순)
+  return Object.values(map).sort((a,b)=>String(a.partNo).localeCompare(String(b.partNo), "ko", {numeric:true}));
 }
 function renderWaitInspTab(){
   const el = document.getElementById("waitinsp-content");
@@ -6372,7 +6391,7 @@ function renderWaitInspTab(){
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   el.innerHTML = `
     <div class="table-wrap" style="padding:14px 16px;">
-      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
+      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)}${key==="수입검사대기" ? ' <span style="font-size:11px;font-weight:600;color:#0B5CAB;background:#EAF2FB;border-radius:8px;padding:2px 8px;">유진테크</span>' : ''} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
       <div style="overflow-x:auto;">
         <table style="width:100%;max-width:640px;">
           <thead><tr><th>도번</th><th>최종 등록일</th><th>수량</th></tr></thead>
@@ -6391,7 +6410,7 @@ function renderWaitInspTab(){
 function initWaitInspView(){
   if(!waitInspLoaded){
     // 캐시가 있으면 먼저 보여주고, 없으면 안내
-    idbGet("cache_waitInspData").then(cached=>{
+    idbGet("cache_waitInspData_v2").then(cached=>{
       if(cached){ waitInspData = cached; waitInspLoaded = true; }
       renderWaitInspTab();
     });
