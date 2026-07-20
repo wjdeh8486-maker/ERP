@@ -3403,6 +3403,19 @@ function renderQualityAll(){
   renderCustomerNCPanel();
 }
 /* ===== 고객부적합 (출하검사와 동일한 구성: KPI → 월별 추이 그래프/표 → 주차별 → 상세 → 유형) ===== */
+// 해당 월의 납품완료 수량 (MAIN 데이터의 납품일자 기준) — 고객부적합 PPM 분모
+function computeDeliveredQtyMonth(year, month, week){
+  let q = 0;
+  (mainData||[]).forEach(r=>{
+    if(r.shipped !== "납품완료") return;
+    const d = mgmtYmdToDate(r.shipDate);
+    if(!d || d.getFullYear() !== year || (d.getMonth()+1) !== month) return;
+    if(week && getWeekOfMonth(d) !== week) return;
+    q += Number(r.qty)||0;
+  });
+  return q;
+}
+// PPM = (개발+양산 부적합 수량) ÷ 해당월 납품완료 수량 × 1,000,000
 function computeNCMonthStats(year, month){
   let cnt=0, qty=0, dev=0, prod=0;
   (qualityRawData[CUSTOMER_NC_KEY]||[]).forEach(r=>{
@@ -3411,7 +3424,9 @@ function computeNCMonthStats(year, month){
       if(r.isDev) dev+=r.qty; else prod+=r.qty;
     }
   });
-  return { cnt, qty, dev, prod };
+  const delivered = computeDeliveredQtyMonth(year, month);
+  const ppm = delivered>0 ? Math.round((qty/delivered)*1000000) : 0;
+  return { cnt, qty, dev, prod, delivered, ppm };
 }
 function renderCustomerNCPanel(){
   const panel = document.getElementById("qpanel-customer");
@@ -3424,11 +3439,12 @@ function renderCustomerNCPanel(){
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const labels = Array.from({length:qualityMonth},(_,i)=>(i+1)+"월");
   const monthly = labels.map((_,i)=>computeNCMonthStats(qualityYear, i+1));
-  const tot = monthly.reduce((a,m)=>({cnt:a.cnt+m.cnt, qty:a.qty+m.qty, dev:a.dev+m.dev, prod:a.prod+m.prod}), {cnt:0,qty:0,dev:0,prod:0});
+  const tot = monthly.reduce((a,m)=>({cnt:a.cnt+m.cnt, qty:a.qty+m.qty, dev:a.dev+m.dev, prod:a.prod+m.prod, delivered:a.delivered+m.delivered}), {cnt:0,qty:0,dev:0,prod:0,delivered:0});
+  tot.ppm = tot.delivered>0 ? Math.round((tot.qty/tot.delivered)*1000000) : 0;
   const thisM = computeNCMonthStats(qualityYear, qualityMonth);
   let py=qualityYear, pm=qualityMonth-1; if(pm<1){ pm=12; py--; }
   const prevM = computeNCMonthStats(py, pm);
-  const changePct = prevM.qty>0 ? Math.round(((thisM.qty-prevM.qty)/prevM.qty)*100) : (thisM.qty>0?100:0);
+  const changePct = prevM.ppm>0 ? Math.round(((thisM.ppm-prevM.ppm)/prevM.ppm)*100) : (thisM.ppm>0?100:0);
   const changeSign = changePct>0 ? '+' : '';
   // 선택 월 상세 (접수일 순)
   const detail = rowsAll
@@ -3440,33 +3456,37 @@ function renderCustomerNCPanel(){
     rowsAll.forEach(r=>{
       if(r.date.getFullYear()===qualityYear && (r.date.getMonth()+1)===qualityMonth && getWeekOfMonth(r.date)===w){ cnt++; qty+=r.qty; }
     });
-    return { week:w, cnt, qty };
+    const delivered = computeDeliveredQtyMonth(qualityYear, qualityMonth, w);
+    return { week:w, cnt, qty, delivered, ppm: delivered>0 ? Math.round((qty/delivered)*1000000) : 0 };
   });
 
   panel.innerHTML = `
     <div class="table-wrap" style="margin-bottom:18px;">
       <table>
-        <thead><tr><th>구분</th><th>건수</th><th>부적합 수량</th><th>개발부적합</th><th>양산부적합</th></tr></thead>
+        <thead><tr><th>구분</th><th>건수</th><th>부적합 수량</th><th>개발부적합</th><th>양산부적합</th><th>납품완료 수량</th><th>부적합율(ppm)</th></tr></thead>
         <tbody>
           <tr style="font-weight:700;"><td style="text-align:center;">고객부적합 (누적)</td>
             <td>${tot.cnt.toLocaleString()}</td>
             <td class="${tot.qty>0?'cell-defect':''}">${tot.qty.toLocaleString()}</td>
             <td style="color:#7C3AED;font-weight:700;">${tot.dev.toLocaleString()}</td>
-            <td class="${tot.prod>0?'cell-defect':''}">${tot.prod.toLocaleString()}</td></tr>
+            <td class="${tot.prod>0?'cell-defect':''}">${tot.prod.toLocaleString()}</td>
+            <td>${tot.delivered.toLocaleString()}</td>
+            <td class="${tot.ppm>0?'cell-defect':''}">${tot.ppm.toLocaleString()}</td></tr>
         </tbody>
       </table>
+      <div style="font-size:11px;color:var(--text-mute);margin-top:6px;">※ 부적합율(ppm) = (개발+양산 부적합 수량) ÷ 해당월 납품완료 수량 × 1,000,000 (납품완료 수량은 MAIN 데이터의 납품일자 기준)</div>
     </div>
     <div class="summary-row" style="margin-bottom:18px;">
       <div class="stat-card"><div class="label" style="color:var(--text-mute);">이번달 실적</div>
         <div style="margin-top:6px;">
-          <div class="${thisM.qty>0?'cell-defect':''}" style="font-size:22px;font-weight:700;">${thisM.qty.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">개</span> <span class="q-change-badge">변동 ${changeSign}${changePct}%</span></div>
-          <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${qualityYear}년 ${qualityMonth}월 · ${thisM.cnt}건 · 개발 ${thisM.dev.toLocaleString()} / 양산 ${thisM.prod.toLocaleString()}</div>
+          <div class="${thisM.ppm>0?'cell-defect':''}" style="font-size:22px;font-weight:700;">${thisM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span> <span class="q-change-badge">변동 ${changeSign}${changePct}%</span></div>
+          <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${qualityYear}년 ${qualityMonth}월 · 부적합 ${thisM.qty.toLocaleString()}개(${thisM.cnt}건) / 납품 ${thisM.delivered.toLocaleString()}개 · 개발 ${thisM.dev.toLocaleString()} / 양산 ${thisM.prod.toLocaleString()}</div>
         </div>
       </div>
       <div class="stat-card"><div class="label" style="color:var(--text-mute);">저번달 실적</div>
         <div style="margin-top:6px;">
-          <div class="${prevM.qty>0?'cell-defect':''}" style="font-size:22px;font-weight:700;">${prevM.qty.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">개</span></div>
-          <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${py}년 ${pm}월 · ${prevM.cnt}건 · 개발 ${prevM.dev.toLocaleString()} / 양산 ${prevM.prod.toLocaleString()}</div>
+          <div class="${prevM.ppm>0?'cell-defect':''}" style="font-size:22px;font-weight:700;">${prevM.ppm.toLocaleString()} <span style="font-size:13px;color:var(--text-mute);font-weight:400;">ppm</span></div>
+          <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${py}년 ${pm}월 · 부적합 ${prevM.qty.toLocaleString()}개(${prevM.cnt}건) / 납품 ${prevM.delivered.toLocaleString()}개 · 개발 ${prevM.dev.toLocaleString()} / 양산 ${prevM.prod.toLocaleString()}</div>
         </div>
       </div>
     </div>
@@ -3480,6 +3500,8 @@ function renderCustomerNCPanel(){
             <tr><td style="text-align:center;">부적합 수량</td>${monthly.map(m=>`<td class="${m.qty>0?'cell-defect':''}">${m.qty.toLocaleString()}</td>`).join("")}<td>${tot.qty.toLocaleString()}</td></tr>
             <tr><td style="text-align:center;">개발부적합</td>${monthly.map(m=>`<td style="${m.dev>0?'color:#7C3AED;font-weight:700;':''}">${m.dev.toLocaleString()}</td>`).join("")}<td style="color:#7C3AED;font-weight:700;">${tot.dev.toLocaleString()}</td></tr>
             <tr><td style="text-align:center;">양산부적합</td>${monthly.map(m=>`<td class="${m.prod>0?'cell-defect':''}">${m.prod.toLocaleString()}</td>`).join("")}<td class="${tot.prod>0?'cell-defect':''}">${tot.prod.toLocaleString()}</td></tr>
+            <tr><td style="text-align:center;">납품완료 수량</td>${monthly.map(m=>`<td>${m.delivered.toLocaleString()}</td>`).join("")}<td>${tot.delivered.toLocaleString()}</td></tr>
+            <tr><td style="text-align:center;">부적합율(ppm)</td>${monthly.map(m=>`<td class="${m.ppm>0?'cell-defect':''}">${m.ppm.toLocaleString()}</td>`).join("")}<td class="${tot.ppm>0?'cell-defect':''}">${tot.ppm.toLocaleString()}</td></tr>
           </tbody>
         </table>
       </div>
@@ -3487,8 +3509,8 @@ function renderCustomerNCPanel(){
     <div class="table-wrap" style="padding:16px;margin-bottom:18px;">
       <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · 고객부적합 주차별 현황</div>
       <table style="width:100%;margin-bottom:14px;">
-        <thead><tr><th>주차</th><th>건수</th><th>부적합 수량</th></tr></thead>
-        <tbody>${weekly.map(w=>`<tr><td>${w.week}주차</td><td>${w.cnt}</td><td class="${w.qty>0?'cell-defect':''}">${w.qty}</td></tr>`).join("")}</tbody>
+        <thead><tr><th>주차</th><th>건수</th><th>부적합 수량</th><th>납품완료 수량</th><th>부적합율(ppm)</th></tr></thead>
+        <tbody>${weekly.map(w=>`<tr><td>${w.week}주차</td><td>${w.cnt}</td><td class="${w.qty>0?'cell-defect':''}">${w.qty}</td><td>${w.delivered.toLocaleString()}</td><td class="${w.ppm>0?'cell-defect':''}">${w.ppm.toLocaleString()}</td></tr>`).join("")}</tbody>
       </table>
       <div class="qnc-weekly-chart"></div>
     </div>
@@ -3515,8 +3537,8 @@ function renderCustomerNCPanel(){
       <div class="qnc-type-chart"></div>
     </div>
   `;
-  drawLineChart(panel.querySelector(".qnc-monthly-chart"), labels, monthly.map(m=>m.qty), qualityYear+"년 1~"+qualityMonth+"월 고객부적합 수량 추이");
-  drawLineChart(panel.querySelector(".qnc-weekly-chart"), weekly.map(w=>w.week+"주차"), weekly.map(w=>w.qty), "주차별 고객부적합 수량");
+  drawLineChart(panel.querySelector(".qnc-monthly-chart"), labels, monthly.map(m=>m.ppm), qualityYear+"년 1~"+qualityMonth+"월 고객부적합 부적합율(ppm) 추이");
+  drawLineChart(panel.querySelector(".qnc-weekly-chart"), weekly.map(w=>w.week+"주차"), weekly.map(w=>w.ppm), "주차별 고객부적합 부적합율(ppm)");
   drawBarChart(panel.querySelector(".qnc-type-chart"), ["개발부적합","양산부적합"], [tot.dev, tot.prod], "누적 부적합 수량 (개발 vs 양산)");
 }
 function printQualityReport(){
@@ -3579,16 +3601,16 @@ document.getElementById("quality-excelBtn").addEventListener("click", ()=>runBus
   });
   // 고객부적합 시트
   if((qualityRawData[CUSTOMER_NC_KEY]||[]).length){
-    const aoa = [["월","건수","부적합 수량","개발부적합","양산부적합"]];
-    let tc=0, tq=0, td=0, tp=0;
+    const aoa = [["월","건수","부적합 수량","개발부적합","양산부적합","납품완료 수량","부적합율(ppm)"]];
+    let tc=0, tq=0, td=0, tp=0, tdel=0;
     for(let m=1;m<=qualityMonth;m++){
       const st = computeNCMonthStats(qualityYear, m);
-      aoa.push([m+"월", st.cnt, st.qty, st.dev, st.prod]);
-      tc+=st.cnt; tq+=st.qty; td+=st.dev; tp+=st.prod;
+      aoa.push([m+"월", st.cnt, st.qty, st.dev, st.prod, st.delivered, st.ppm]);
+      tc+=st.cnt; tq+=st.qty; td+=st.dev; tp+=st.prod; tdel+=st.delivered;
     }
-    aoa.push(["누적 합계", tc, tq, td, tp]);
+    aoa.push(["누적 합계", tc, tq, td, tp, tdel, tdel>0 ? Math.round((tq/tdel)*1000000) : 0]);
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{wch:12},{wch:10},{wch:12},{wch:12},{wch:12}];
+    ws['!cols'] = [{wch:12},{wch:10},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14}];
     styleAoaSheet(ws, { headerRows:[0], totalRows:[aoa.length-1] });
     XLSX.utils.book_append_sheet(wb, ws, "고객부적합");
   }
