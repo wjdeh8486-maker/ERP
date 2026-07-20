@@ -597,6 +597,7 @@
     <div class="nav-group" id="navgroup-main">
       <div class="nav-item nav-sub" data-view="history"><span class="dot"></span>🔎 도번 이력</div>
       <div class="nav-item nav-sub" data-view="management"><span class="dot"></span>관리항목 현황</div>
+      <div class="nav-item nav-sub" data-view="waitinsp"><span class="dot"></span>검사대기현황</div>
     </div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
@@ -910,6 +911,25 @@
         <div class="table-wrap" id="management-plan" style="margin-bottom:16px;"></div>
         
       </div>
+    </div>
+    <!-- ===================== WAITINSP(검사대기현황) VIEW ===================== -->
+    <div id="topbar-waitinsp" class="topbar" style="display:none;">
+      <h1>검사대기현황</h1>
+      <div style="display:flex;gap:8px;margin-left:auto;">
+        <button id="waitinsp-syncBtn" style="border:1px solid #E0C34A;background:#FFF6D6;color:#8a6d00;">🔄 불러오기</button>
+        <button id="waitinsp-printBtn">🖨️ 인쇄</button>
+        <button id="waitinsp-excelBtn" type="button" class="tb-download-btn">📥 다운로드</button>
+      </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 현재 보유 중인 검사 대기 제품을 도번 오름차순으로 표시합니다 (최종 등록일 · 수량). <span id="waitinsp-status"></span></div>
+    </div>
+    <div class="view" id="view-waitinsp">
+      <div class="tabs">
+        <button class="tab-btn active" data-wtab="수입검사대기">수입검사대기</button>
+        <button class="tab-btn" data-wtab="공정검사대기">공정검사대기</button>
+        <button class="tab-btn" data-wtab="출하검사대기">출하검사대기</button>
+        <button class="tab-btn" data-wtab="비젼검사대기">비젼검사대기</button>
+      </div>
+      <div id="waitinsp-content"></div>
     </div>
     <!-- ===================== HISTORY(도번 이력) VIEW ===================== -->
     <div id="topbar-history" class="topbar" style="display:none;">
@@ -1396,6 +1416,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("topbar-summary").style.display = target==="summary" ? "flex" : "none";
     document.getElementById("topbar-upload").style.display = target==="upload" ? "flex" : "none";
     document.getElementById("topbar-history").style.display = target==="history" ? "flex" : "none";
+    document.getElementById("topbar-waitinsp").style.display = target==="waitinsp" ? "flex" : "none";
     document.getElementById("topbar-weekly").style.display = target==="weekly" ? "flex" : "none";
     document.getElementById("main-syncPanel").classList.remove("open");
     document.getElementById("inv-syncPanel").classList.remove("open");
@@ -1405,6 +1426,9 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     }
     if(target==="weekly"){
       runBusy(renderWeeklyView);
+    }
+    if(target==="waitinsp"){
+      runBusy(initWaitInspView);
     }
     if(target==="history" && historyKeyword){
       runBusy(()=>renderHistoryView(historyKeyword));
@@ -6128,6 +6152,146 @@ ${body}
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
+/* ============ 검사대기현황 (수입/공정/출하/비젼 검사대기) ============ */
+// 각 탭은 Code.gs SOURCES의 같은 이름 데이터셋을 읽습니다.
+// 화면에는 "현재 보유 중(수량>0)"인 제품만 도번 오름차순으로, 도번별 최종 등록일과 수량 합계를 표시합니다.
+const WAIT_INSP_TABS = ["수입검사대기","공정검사대기","출하검사대기","비젼검사대기"];
+let waitInspData = {};      // key -> [{partNo, regDate, qty}]
+let waitInspActiveTab = "수입검사대기";
+let waitInspLoaded = false;
+
+function waitInspGetApiUrl(){
+  const q = document.getElementById("quality-appsScriptUrl");
+  if(q && q.value.trim()) return q.value.trim();
+  const m = document.getElementById("main-appsScriptUrl");
+  return m ? m.value.trim() : "";
+}
+function parseWaitInspRows(rows){
+  return (rows||[]).map(row => ({
+    partNo: String(getFieldFuzzy(row, "도번") || getFieldFuzzy(row, "도면번호") || getFieldFuzzy(row, "품번") || "").trim(),
+    regDate: String(getFieldFuzzy(row, "등록일") || "").slice(0,10),
+    qty: Number(getFieldFuzzy(row, "수량")) || 0
+  })).filter(r => r.partNo && r.qty > 0); // 보유 중(수량>0)만
+}
+function fetchWaitInspData(){
+  const url = waitInspGetApiUrl();
+  const statusEl = document.getElementById("waitinsp-status");
+  if(!url){ alert("품질분석 화면의 Apps Script 웹 앱 URL을 먼저 입력해 주세요."); return; }
+  if(statusEl) statusEl.textContent = "불러오는 중...";
+  Promise.all(WAIT_INSP_TABS.map(key =>
+    fetch(url + "?dataset=" + encodeURIComponent(key)).then(r=>r.json()).catch(()=>null)
+  )).then(results=>{
+    const warnings = [];
+    WAIT_INSP_TABS.forEach((key, i)=>{
+      const res = results[i];
+      if(res && res.success && Array.isArray(res.rows)){
+        waitInspData[key] = parseWaitInspRows(res.rows);
+      } else {
+        waitInspData[key] = waitInspData[key] || [];
+        warnings.push(key);
+      }
+    });
+    waitInspLoaded = true;
+    idbSet("cache_waitInspData", waitInspData);
+    const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
+    if(statusEl) statusEl.textContent = "불러오기 완료 · " + nowStr + (warnings.length ? " · 데이터셋 없음: " + warnings.join(", ") + " (Code.gs SOURCES에 추가 필요)" : "");
+    renderWaitInspTab();
+  }).catch(()=>{ if(statusEl) statusEl.textContent = "불러오기 실패. URL과 배포 권한을 확인해 주세요."; });
+}
+// 도번별 집계: 수량 합계 + 최종(가장 최근) 등록일, 도번 오름차순
+function waitInspAggregate(key){
+  const map = {};
+  (waitInspData[key]||[]).forEach(r=>{
+    if(!map[r.partNo]) map[r.partNo] = { partNo:r.partNo, qty:0, lastReg:"" };
+    map[r.partNo].qty += r.qty;
+    if(r.regDate && r.regDate > map[r.partNo].lastReg) map[r.partNo].lastReg = r.regDate;
+  });
+  return Object.values(map).sort((a,b)=>a.partNo.localeCompare(b.partNo, "ko", {numeric:true}));
+}
+function renderWaitInspTab(){
+  const el = document.getElementById("waitinsp-content");
+  if(!el) return;
+  const key = waitInspActiveTab;
+  if(!waitInspLoaded){
+    el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">상단의 [🔄 불러오기] 버튼을 눌러 검사대기 데이터를 불러와 주세요.</div>`;
+    return;
+  }
+  const list = waitInspAggregate(key);
+  const totalQty = list.reduce((a,r)=>a+r.qty,0);
+  const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  el.innerHTML = `
+    <div class="table-wrap" style="padding:14px 16px;">
+      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;max-width:640px;">
+          <thead><tr><th>도번</th><th>최종 등록일</th><th>수량</th></tr></thead>
+          <tbody>
+            ${list.length ? list.map(r=>`<tr>
+              <td style="text-align:center;">${esc(r.partNo)}</td>
+              <td style="text-align:center;">${esc(r.lastReg||'-')}</td>
+              <td style="text-align:center;">${r.qty.toLocaleString()}</td>
+            </tr>`).join("") : `<tr><td colspan="3" style="text-align:center;color:#B9C2D6;">보유 중인 대기 제품이 없습니다.</td></tr>`}
+            ${list.length ? `<tr style="font-weight:700;background:#EDF0F5;"><td style="text-align:center;">합계</td><td></td><td style="text-align:center;">${totalQty.toLocaleString()}</td></tr>` : ""}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+function initWaitInspView(){
+  if(!waitInspLoaded){
+    // 캐시가 있으면 먼저 보여주고, 없으면 안내
+    idbGet("cache_waitInspData").then(cached=>{
+      if(cached){ waitInspData = cached; waitInspLoaded = true; }
+      renderWaitInspTab();
+    });
+  } else {
+    renderWaitInspTab();
+  }
+}
+// 인쇄: 4개 탭을 각 1페이지로 (기존 품질분석 인쇄 방식과 동일)
+function waitInspPrint(){
+  if(!waitInspLoaded){ alert("먼저 [🔄 불러오기]로 데이터를 불러와 주세요."); return; }
+  const dateStr = new Date().toLocaleDateString('ko-KR');
+  const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const html = WAIT_INSP_TABS.map(key=>{
+    const list = waitInspAggregate(key);
+    const totalQty = list.reduce((a,r)=>a+r.qty,0);
+    return `
+      <div class="q-report-page">
+        <h2>검사대기현황 · ${esc(key)} (${dateStr})</h2>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr><th>도번</th><th>최종 등록일</th><th>수량</th></tr></thead>
+          <tbody>
+            ${list.map(r=>`<tr><td style="text-align:center;">${esc(r.partNo)}</td><td style="text-align:center;">${esc(r.lastReg||'-')}</td><td style="text-align:center;">${r.qty.toLocaleString()}</td></tr>`).join("")}
+            <tr style="font-weight:700;"><td style="text-align:center;">합계 (${list.length}개 도번)</td><td></td><td style="text-align:center;">${totalQty.toLocaleString()}</td></tr>
+          </tbody>
+        </table>
+      </div>`;
+  }).join("");
+  const pa = document.getElementById("print-area");
+  pa.innerHTML = html;
+  window.print();
+  setTimeout(()=>{ pa.innerHTML = ""; }, 1500);
+}
+// 다운로드: 탭별 시트 4개, 기존 엑셀 스타일(styleAoaSheet) 적용
+function waitInspExcel(){
+  if(!waitInspLoaded){ alert("먼저 [🔄 불러오기]로 데이터를 불러와 주세요."); return; }
+  const wb = XLSX.utils.book_new();
+  WAIT_INSP_TABS.forEach(key=>{
+    const list = waitInspAggregate(key);
+    const totalQty = list.reduce((a,r)=>a+r.qty,0);
+    const aoa = [["도번","최종 등록일","수량"]];
+    list.forEach(r=>aoa.push([r.partNo, r.lastReg||"-", r.qty]));
+    aoa.push(["합계 ("+list.length+"개 도번)", "", totalQty]);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:18},{wch:14},{wch:10}];
+    styleAoaSheet(ws, { headerRows:[0], totalRows:[aoa.length-1] });
+    XLSX.utils.book_append_sheet(wb, ws, key);
+  });
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `검사대기현황_${dateStr}.xlsx`);
+}
+
 /* ============ 도움말 모달 + 신규 메뉴 이벤트 ============ */
 document.addEventListener("DOMContentLoaded", () => {
   // 도움말
@@ -6138,6 +6302,21 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("help-closeBtn").addEventListener("click", () => { helpModal.style.display = "none"; });
     helpModal.addEventListener("click", (e) => { if(e.target === helpModal) helpModal.style.display = "none"; });
   }
+  // 검사대기현황
+  const wiSync = document.getElementById("waitinsp-syncBtn");
+  if(wiSync) wiSync.addEventListener("click", fetchWaitInspData);
+  const wiPrint = document.getElementById("waitinsp-printBtn");
+  if(wiPrint) wiPrint.addEventListener("click", () => runBusy(waitInspPrint, "인쇄 준비 중..."));
+  const wiExcel = document.getElementById("waitinsp-excelBtn");
+  if(wiExcel) wiExcel.addEventListener("click", () => runBusy(waitInspExcel, "엑셀 생성 중..."));
+  document.querySelectorAll('[data-wtab]').forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll('[data-wtab]').forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      waitInspActiveTab = btn.dataset.wtab;
+      renderWaitInspTab();
+    });
+  });
   // 주간 출하 인쇄/다운로드
   const wPrint = document.getElementById("weekly-printBtn");
   if(wPrint) wPrint.addEventListener("click", () => runBusy(weeklyPrint, "인쇄 준비 중..."));
