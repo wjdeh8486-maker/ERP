@@ -6061,6 +6061,15 @@ function renderHistoryView(keyword){
         </div>`;
       }
     }catch(e){ /* 품질 데이터 미로드 */ }
+    // 검사대기 보유 수량 (도번별 풀 값 · MAIN 대시보드와 동일 기준)
+    const repWait = rows.find(r => String(r.oldDrawingNo||"").trim()) || rows[0];
+    let wInc=0, wMea=0, wCle=0, wVis=0;
+    try{
+      wInc = computeWaitIncomingInspection(repWait) || 0;
+      wMea = computeWaitMeasureRaw(repWait) || 0;
+      wCle = computeWaitCleanRaw(repWait) || 0;
+      wVis = computeWaitVisionRaw(repWait) || 0;
+    }catch(e){ /* 대기 데이터 미로드 */ }
     // 납품완료/미완료 수량
     const doneQty = done.reduce((a,r)=>a+(Number(r.qty)||0),0);
     const undoneQty = Math.max(0, totalQty - doneQty);
@@ -6087,6 +6096,27 @@ function renderHistoryView(keyword){
         ${chip("개발/양산", ncDev.toLocaleString() + " / " + (ncQty-ncDev).toLocaleString())}
       </div>
       ${ncRecentHtml}
+      <div style="margin-bottom:10px;">
+        <div style="font-size:11.5px;font-weight:700;color:#4B5563;margin-bottom:4px;">🔎 검사 대기 보유 현황</div>
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+          <table style="border-collapse:collapse;font-size:11.5px;min-width:420px;">
+            <thead><tr style="background:var(--navy);color:#fff;">
+              <th style="padding:6px 14px;">수입검사대기</th>
+              <th style="padding:6px 14px;">측정실검사대기</th>
+              <th style="padding:6px 14px;">크린룸검사대기</th>
+              <th style="padding:6px 14px;">비젼검사대기</th>
+              <th style="padding:6px 14px;">합계</th>
+            </tr></thead>
+            <tbody><tr style="text-align:center;border-bottom:1px solid #EAEDF2;">
+              <td style="padding:6px;${wInc>0?'color:#0B5CAB;font-weight:700;':'color:#6B7280;'}">${wInc.toLocaleString()}개</td>
+              <td style="padding:6px;${wMea>0?'color:#0B5CAB;font-weight:700;':'color:#6B7280;'}">${wMea.toLocaleString()}개</td>
+              <td style="padding:6px;${wCle>0?'color:#0B5CAB;font-weight:700;':'color:#6B7280;'}">${wCle.toLocaleString()}개</td>
+              <td style="padding:6px;${wVis>0?'color:#0B5CAB;font-weight:700;':'color:#6B7280;'}">${wVis.toLocaleString()}개</td>
+              <td style="padding:6px;font-weight:700;${(wInc+wMea+wCle+wVis)>0?'color:#0B5CAB;':'color:#6B7280;'}">${(wInc+wMea+wCle+wVis).toLocaleString()}개</td>
+            </tr></tbody>
+          </table>
+        </div>
+      </div>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:640px;">
           <thead><tr style="background:var(--navy);color:#fff;">
