@@ -2353,7 +2353,8 @@ function buildWaitInspIndex(){
       const regYear = String(p["등록일자"] || "").split("-")[0];
       if(regYear !== "2026") continue;
       const cp = String(p["현재진행공정"] || "");
-      if(!(/E\.P|CP|사상|폴리싱\(빠우\)|외주가공 \(작업완료\)/.test(cp))) continue;
+      // 종료는 "종료" 단독 표기만 인식 (MCT-01 (작업종료) 같은 공정이 "종료"로 잡히지 않도록)
+      if(!(/EP|CP|사상|폴리싱\(빠우\)|외주가공 \(작업완료\)/.test(cp) || cp.trim() === "종료")) continue;
       const dn = String(p["도면번호"] || "").trim();
       if(!dn) continue;
       const qty = Number(p["수량"] || 0);
@@ -6262,7 +6263,7 @@ ${body}
 /* ============ 검사대기현황 (수입/공정/출하/비젼 검사대기) ============ */
 // 기존 데이터를 그대로 재사용합니다 (Code.gs 수정 불필요):
 //  - 수입검사대기: 생산공정현황 계산값 (MAIN 대시보드의 "수입검사 대기"와 동일 기준:
-//                  올해 등록 + 현재공정에 E.P/CP/사상/폴리싱(빠우)/외주가공 (작업완료) 포함 수량
+//                  올해 등록 + 현재공정에 EP/CP/사상/폴리싱(빠우)/외주가공 (작업완료)/종료(단독) 포함 수량
 //                  − 수입검사(외관)/공정검사(사내외관) 검사수)
 //  - 공정검사대기: 측정실검사대기 시트 (품번 · 측정실대기 수량)
 //  - 출하검사대기: 크린룸검사대기 시트 (품번 · 검사대기 수량)
@@ -6315,7 +6316,8 @@ function computeIncomingWaitList(){
     const regDate = String(p["등록일자"]||"").slice(0,10);
     if(regDate.split("-")[0] !== yearStr) return;
     const cp = String(p["현재진행공정"]||"");
-    if(!(/E\.P|CP|사상|폴리싱\(빠우\)|외주가공 \(작업완료\)/.test(cp))) return;
+    // 종료는 "종료" 단독 표기만 인식 (MCT-01 (작업종료) 같은 공정이 "종료"로 잡히지 않도록)
+    if(!(/EP|CP|사상|폴리싱\(빠우\)|외주가공 \(작업완료\)/.test(cp) || cp.trim() === "종료")) return;
     const dn = String(p["도면번호"]||"").trim();
     if(!dn) return;
     procQty.set(dn, (procQty.get(dn)||0) + (Number(p["수량"])||0));
