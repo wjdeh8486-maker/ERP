@@ -5113,11 +5113,21 @@ function getManagementSummary(rows){
   const delayed = rows.filter(r => getDaysRemaining(r.dueDate) < 0 && r.shipped !== "납품완료").length;
   const extendRec = rows.filter(needsExtension).length;
   
-  const julyRows = getMonthData(rows, 7);
-  const julyProd = julyRows.reduce((sum, r) => sum + getProductionWaitQty(r), 0);
-  const julyQual = julyRows.reduce((sum, r) => sum + getQualityWaitQty(r), 0);
+  // 이번 달 기준 (하드코딩 7월 → 현재 월)
+  const thisMonth = new Date().getMonth() + 1;
+  const monthRows = getMonthData(rows, thisMonth);
+  const monthProd = monthRows.reduce((sum, r) => sum + getProductionWaitQty(r), 0);
+  const monthQual = monthRows.reduce((sum, r) => sum + getQualityWaitQty(r), 0);
   
-  return { productWait, julyProd, qualityWait, julyQual, delayed, extendRec };
+  // 전체 요약 수치
+  const totalCnt = rows.length;
+  const totalQty = rows.reduce((sum, r) => sum + (Number(r.qty)||0), 0);
+  const doneRows = rows.filter(r => r.shipped === "납품완료");
+  const doneCnt = doneRows.length;
+  const doneQty = doneRows.reduce((sum, r) => sum + (Number(r.qty)||0), 0);
+  const undoneQty = Math.max(0, totalQty - doneQty);
+  
+  return { productWait, qualityWait, delayed, extendRec, thisMonth, monthProd, monthQual, totalCnt, totalQty, doneCnt, undoneQty };
 }
 
 // ===== 날짜 헬퍼 (타임존 -1일 버그 없는 로컬 날짜 계산) =====
@@ -5383,27 +5393,23 @@ function renderManagementSummary(rows){
   const el = document.getElementById("management-summary");
   if(!el) return;
   
+  // 폭만 넓고 내용이 비어 보이지 않도록: 작은 스탯 셀을 촘촘하게 배치하고 핵심 수치를 함께 표시
+  const stat = (label, value, color, sub, accent) => `
+    <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:3px solid ${accent||'#B9C7DC'};border-radius:6px;padding:8px 10px;min-width:0;">
+      <div style="font-size:11px;color:#4B5563;font-weight:700;margin-bottom:2px;white-space:nowrap;">${label}</div>
+      <div style="font-size:19px;font-weight:700;color:${color||'#1F2A44'};line-height:1.2;">${value}</div>
+      ${sub ? `<div style="font-size:10.5px;color:#6B7280;margin-top:1px;white-space:nowrap;">${sub}</div>` : ``}
+    </div>`;
+  
   el.innerHTML = `
-    <h2 style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1A1E27;">📊 종합 현황</h2>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
-      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #E02424;padding:12px;border-radius:6px;">
-        <div style="font-size:12.5px;color:#1A1E27;margin-bottom:8px;font-weight:700;">생산 대기</div>
-        <div style="font-size:24px;font-weight:700;color:#E02424;margin-bottom:4px;">${data.productWait}</div>
-        <div style="font-size:11px;color:#4B5563;font-weight:700;">7월: ${data.julyProd}개</div>
-      </div>
-      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #0B5CAB;padding:12px;border-radius:6px;">
-        <div style="font-size:12.5px;color:#1A1E27;margin-bottom:8px;font-weight:700;">품질 대기</div>
-        <div style="font-size:24px;font-weight:700;color:#0B5CAB;margin-bottom:4px;">${data.qualityWait}</div>
-        <div style="font-size:11px;color:#4B5563;font-weight:700;">7월: ${data.julyQual}개</div>
-      </div>
-      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #E02424;padding:12px;border-radius:6px;">
-        <div style="font-size:12.5px;color:#1A1E27;margin-bottom:8px;font-weight:700;">납기 지연</div>
-        <div style="font-size:24px;font-weight:700;color:#E02424;margin-bottom:4px;">${data.delayed}</div>
-      </div>
-      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #FF9800;padding:12px;border-radius:6px;">
-        <div style="font-size:12.5px;color:#1A1E27;margin-bottom:8px;font-weight:700;">납기 연장 권고</div>
-        <div style="font-size:24px;font-weight:700;color:#FF9800;margin-bottom:4px;">${data.extendRec}</div>
-      </div>
+    <h2 style="font-size:13px;font-weight:700;margin-bottom:10px;color:#1A1E27;">📊 종합 현황</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:8px;">
+      ${stat("생산 대기", data.productWait.toLocaleString() + "개", "#E02424", `${data.thisMonth}월 납기: ${data.monthProd.toLocaleString()}개`, "#E02424")}
+      ${stat("품질 대기", data.qualityWait.toLocaleString() + "개", "#0B5CAB", `${data.thisMonth}월 납기: ${data.monthQual.toLocaleString()}개`, "#0B5CAB")}
+      ${stat("납기 지연", data.delayed.toLocaleString() + "건", data.delayed>0?"#E02424":"#2E7D46", "미납품 중 납기 초과", "#E02424")}
+      ${stat("납기 연장 권고", data.extendRec.toLocaleString() + "건", data.extendRec>0?"#FF9800":"#2E7D46", "이력 기반 권고 대상", "#FF9800")}
+      ${stat("총 주문", data.totalCnt.toLocaleString() + "건", "#1F2A44", `총 수량 ${data.totalQty.toLocaleString()}개`, "#B9C7DC")}
+      ${stat("납품완료", data.doneCnt.toLocaleString() + "건", "#2E7D46", `미완료 수량 ${data.undoneQty.toLocaleString()}개`, "#2E7D46")}
     </div>
   `;
 }
@@ -5926,11 +5932,13 @@ function managementDownloadExcel(){
   headerRows.push(aoa.length);
   aoa.push(["항목", "수량/건"]);
   aoa.push(["생산 대기", summary.productWait + "개"]);
-  aoa.push(["  ├ 7월 납기", summary.julyProd + "개"]);
+  aoa.push(["  ├ " + summary.thisMonth + "월 납기", summary.monthProd + "개"]);
   aoa.push(["품질 대기", summary.qualityWait + "개"]);
-  aoa.push(["  ├ 7월 납기", summary.julyQual + "개"]);
+  aoa.push(["  ├ " + summary.thisMonth + "월 납기", summary.monthQual + "개"]);
   aoa.push(["납기 지연", summary.delayed + "건"]);
   aoa.push(["납기 연장 권고", summary.extendRec + "건"]);
+  aoa.push(["총 주문", summary.totalCnt + "건 / " + summary.totalQty + "개"]);
+  aoa.push(["납품완료", summary.doneCnt + "건 (미완료 수량 " + summary.undoneQty + "개)"]);
   aoa.push([]);
   
   // 2. 납기 연장 권고
