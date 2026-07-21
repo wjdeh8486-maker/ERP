@@ -608,12 +608,14 @@
   /* 버튼/메뉴가 눌린 것을 바로 알 수 있게 눌림 효과 */
   button:active, .nav-item:active{ transform:scale(0.96); opacity:0.75; }
   @media print {
-    * { margin:0 !important; padding:0 !important; }
+    * { margin:0 !important; padding:0 !important; box-sizing:border-box !important; }
     html, body{ 
       height:100% !important; 
       width:100% !important;
       background:white !important;
       color:black !important;
+      font-size:11pt !important;
+      line-height:1.4 !important;
     }
     #busy-toast{ display:none !important; }
     .side-nav{ display:none !important; width:0 !important; }
@@ -630,8 +632,9 @@
       width:100% !important;
       margin:0 !important;
       padding:0 !important;
+      background:white !important;
     }
-    .view { display:none !important; }
+    .view { display:none !important; visibility:hidden !important; }
     #view-history{ 
       display:block !important;
       visibility:visible !important; 
@@ -640,6 +643,7 @@
       width:100% !important;
       margin:0 !important;
       background:white !important;
+      color:black !important;
     }
     #history-content{ 
       display:block !important;
@@ -651,13 +655,34 @@
       background:white !important;
       color:black !important;
     }
-    #history-content .table-wrap{ 
-      page-break-inside:avoid !important; 
-      break-inside:avoid !important;
-      margin-bottom:12px !important;
+    #history-content * {
       display:block !important;
       visibility:visible !important;
+      opacity:1 !important;
+      margin:4pt 0 !important;
+      background:white !important;
+      color:black !important;
     }
+    #history-content div.table-wrap { 
+      page-break-inside:avoid !important;
+      break-inside:avoid !important;
+      margin-bottom:10pt !important;
+    }
+    #history-content table, 
+    #history-content table * { 
+      display:table !important;
+      border-collapse:collapse !important;
+      page-break-inside:avoid !important;
+      break-inside:avoid !important;
+    }
+    #history-content table tr { display:table-row !important; }
+    #history-content table td, 
+    #history-content table th { 
+      display:table-cell !important;
+      border:1px solid #333 !important;
+      padding:3pt !important;
+    }
+    #history-content table thead tr { display:table-header-group !important; }
     @page{ size:A4 landscape; margin:10mm; }
   }
 </style>
@@ -6807,9 +6832,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const historySearchInput = document.getElementById("history-searchInput");
       const sideNav = document.querySelector(".side-nav");
       const topbar = document.getElementById("topbar-history");
+      const appShell = document.querySelector(".app-shell");
       
       if(!viewHistory || !historyContent) {
         alert("도번 이력 데이터가 준비되지 않았습니다.");
+        return;
+      }
+      
+      const keyword = historySearchInput ? historySearchInput.value.trim() : "";
+      if(!keyword) {
+        alert("도번을 검색해주세요.");
         return;
       }
       
@@ -6817,39 +6849,40 @@ document.addEventListener("DOMContentLoaded", () => {
       const originalViewDisplay = viewHistory.style.display;
       const originalViewClass = viewHistory.className;
       const originalContentDisplay = historyContent.style.display;
+      const originalContentVisibility = historyContent.style.visibility;
       const originalSideNavDisplay = sideNav ? sideNav.style.display : "";
       const originalTopbarDisplay = topbar ? topbar.style.display : "";
       
-      // 검색이 안 되어있으면 현재 input 값으로 렌더링
-      if(!historyContent.innerHTML || historyContent.innerHTML.includes("검색하세요")) {
-        const keyword = historySearchInput ? historySearchInput.value : "";
-        if(keyword.trim()) {
-          renderHistoryView(keyword.trim());
-        }
-      }
+      // 강제로 렌더링
+      renderHistoryView(keyword);
       
-      // 인쇄 모드로 전환
-      viewHistory.style.display = "block";
-      viewHistory.classList.add("active");
-      historyContent.style.display = "block";
-      historyContent.style.visibility = "visible";
-      historyContent.style.opacity = "1";
-      if(sideNav) sideNav.style.display = "none";
-      if(topbar) topbar.style.display = "none";
-      
-      // 브라우저가 렌더링할 시간 제공
+      // 렌더링 후 인쇄 모드로 전환
       setTimeout(() => {
-        window.print();
+        viewHistory.style.display = "block";
+        viewHistory.classList.add("active");
+        historyContent.style.display = "block";
+        historyContent.style.visibility = "visible";
+        historyContent.style.opacity = "1";
         
-        // 인쇄 후 원래 상태 복원
+        if(sideNav) sideNav.style.display = "none";
+        if(topbar) topbar.style.display = "none";
+        if(appShell) appShell.style.display = "flex";
+        
+        // 충분한 딜레이 후 인쇄
         setTimeout(() => {
-          viewHistory.style.display = originalViewDisplay;
-          viewHistory.className = originalViewClass;
-          historyContent.style.display = originalContentDisplay;
-          if(sideNav) sideNav.style.display = originalSideNavDisplay;
-          if(topbar) topbar.style.display = originalTopbarDisplay;
+          window.print();
+          
+          // 인쇄 후 원래 상태 복원
+          setTimeout(() => {
+            viewHistory.style.display = originalViewDisplay;
+            viewHistory.className = originalViewClass;
+            historyContent.style.display = originalContentDisplay;
+            historyContent.style.visibility = originalContentVisibility;
+            if(sideNav) sideNav.style.display = originalSideNavDisplay;
+            if(topbar) topbar.style.display = originalTopbarDisplay;
+          }, 500);
         }, 500);
-      }, 200);
+      }, 100);
     });
   }
   // 도번 이력 다운로드
