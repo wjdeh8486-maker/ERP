@@ -473,11 +473,7 @@
     }
     #print-area [id^="management-"]{ margin-bottom:3mm !important; box-shadow:none !important; border:none !important; padding:0 !important; }
     /* 한 페이지보다 긴 구역(상세 등)은 페이지 나눔 허용 — 통째로 avoid 걸면 다음 구역과 겹쳐 인쇄됨 */
-    /* 겹침 방지: 한 페이지보다 긴 구역(계획 등)은 페이지 나눔을 허용하고, 행 단위로만 나눔 방지 */
-    #print-area #management-summary{ break-inside:avoid; }
-    #print-area #management-extend, #print-area #management-top10, #print-area #management-plan, #print-area #management-waitinsp{ break-inside:auto !important; }
-    #print-area [id^="management-"] tr{ break-inside:avoid; page-break-inside:avoid; }
-    #print-area [id^="management-"] thead{ display:table-header-group; }
+    #print-area #management-summary, #print-area #management-extend, #print-area #management-top10, #print-area #management-plan{ break-inside:avoid; }
     #print-area #management-detail{ break-inside:auto !important; }
     #print-area #management-detail > div{ break-inside:avoid; page-break-inside:avoid; }
     #print-area [id^="management-"] tr{ break-inside:avoid; }
@@ -655,7 +651,7 @@
         <div class="search-box">
           <span id="main-syncBanner" class="sync-banner">⚪ 동기화 확인 중...</span>
           <span id="main-processStatus" class="sync-banner" style="display:none;"></span>
-          <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO, 외주발주 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
+          <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
           <button id="main-searchBtn">🔍 검색</button>
         </div>
         <div class="search-hint-text" style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ <span class="hint-comma" style="color:#FFD400;font-weight:700;">쉼표(,)</span>로 구분하면 여러 개 중 하나라도 맞으면 검색되고, <span class="hint-slash" style="color:#FF6B81;font-weight:700;">슬래시(/)</span>로 구분하면 그 단어를 모두 포함하는 항목만 좁혀서 검색합니다. (예: "26-171<span class="hint-slash" style="color:#FF6B81;font-weight:700;">/</span>SHOWERHEAD<span class="hint-comma" style="color:#FFD400;font-weight:700;">,</span> BLOCK PLATE" → 26-171이면서 SHOWERHEAD이거나, BLOCK PLATE)</div>
@@ -835,8 +831,6 @@
       <div class="calendar-toolbar-row" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
         <div class="status-multiselect" id="main-statusMultiselect">
           <button type="button" id="main-statusToggle" class="status-toggle-btn">전체 상태 ▾</button>
-          <button type="button" id="main-prodOnlyBtn" class="btn-plain" style="font-size:12.5px;padding:6px 12px;background:#FFE8D6;color:#D97706;border:1px solid #FBBF24;border-radius:4px;cursor:pointer;font-weight:600;">🔵 생산만</button>
-          <button type="button" id="main-statusAllBtn" class="btn-plain" style="font-size:12.5px;padding:6px 12px;background:#E0E7FF;color:#4F46E5;border:1px solid #818CF8;border-radius:4px;cursor:pointer;font-weight:600;">⚪ 전체</button>
           <div class="status-dropdown" id="main-statusDropdown">
             <button type="button" id="main-statusRestoreBtn" style="width:100%;margin-bottom:6px;padding:6px;border-radius:4px;border:1px solid var(--border);background:#F0F4FA;color:var(--navy);font-weight:700;font-size:12.5px;cursor:pointer;">↺ 전체 복원</button>
             <label><input type="checkbox" value="생산" checked> 생산</label>
@@ -916,7 +910,7 @@
     <div id="topbar-management" class="topbar" style="display:none;">
       <h1>관리항목 현황</h1>
       <div class="search-box">
-        <input id="management-searchInput" type="text" placeholder="도번·품명·품번·ORDER NO·PROJECT NO·외주발주 검색 (쉼표=OR, 공백=AND · 예: M200-005 SHOWERHEAD)">
+        <input id="management-searchInput" type="text" placeholder="도번·품명·품번·ORDER NO 검색 (쉼표=OR, 공백=AND · 예: M200-005 SHOWERHEAD)">
         <button id="management-searchBtn">🔍 검색</button>
         <button id="management-printBtn">🖨️ 인쇄</button>
         <button id="management-excelBtn" type="button" class="tb-download-btn">📥 다운로드</button>
@@ -929,9 +923,6 @@
         
         <!-- 종합 현황 카드 -->
         <div class="table-wrap" id="management-summary" style="margin-bottom:16px;"></div>
-        
-        <!-- 검사 대기 보유 현황 (도번별 전체 리스트) -->
-        <div class="table-wrap" id="management-waitinsp" style="margin-bottom:16px;"></div>
         
         <!-- 납기 연장 권고 -->
         <div class="table-wrap" id="management-extend" style="margin-bottom:16px;"></div>
@@ -955,7 +946,7 @@
         <button id="waitinsp-printBtn">🖨️ 인쇄</button>
         <button id="waitinsp-excelBtn" type="button" class="tb-download-btn">📥 다운로드</button>
       </div>
-      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 보유 중인 검사 대기 제품, 도번 오름차순 (수입=생산공정현황 계산 <b>· 유진테크만</b> · 공정=측정실검사대기 · 출하=크린룸검사대기 · 비젼=비젼검사대기). <span id="waitinsp-status"></span></div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 보유 중인 검사 대기 제품, 도번 오름차순 (수입=생산공정현황 계산 · 공정=측정실검사대기 · 출하=크린룸검사대기 · 비젼=비젼검사대기). <span id="waitinsp-status"></span></div>
     </div>
     <div class="view" id="view-waitinsp">
       <div class="tabs">
@@ -1838,10 +1829,10 @@ function mainGetFilteredBase(){
     // 포함해야 하는 AND(좁혀서 검색)로 동작합니다.
     // 예: "26-171/SHOWERHEAD, BLOCK PLATE"
     //   → ("26-171"과 "SHOWERHEAD"를 모두 포함) 이거나, "BLOCK PLATE"를 포함
-    const orGroups = keyword.trim().split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim().toLowerCase()).filter(Boolean));
+    const orGroups = raw.split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim()).filter(Boolean));
     if(orGroups.length){
       filtered = filtered.filter(r=>{
-        const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.vendorName,r.oldDrawingNo].join(" ").toLowerCase();
+        const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.oldDrawingNo].join(" ").toLowerCase();
         return orGroups.some(andTerms => andTerms.every(t=>haystack.includes(t)));
       });
     }
@@ -1912,22 +1903,6 @@ document.querySelectorAll("#main-statusDropdown input[type=checkbox]").forEach(c
 });
 document.getElementById("main-statusRestoreBtn").addEventListener("click", (e)=>{
   e.stopPropagation();
-  document.querySelectorAll("#main-statusDropdown input[type=checkbox]").forEach(cb=>{ cb.checked = true; });
-  mainSelectedStatuses = ALL_MAIN_STATUSES.slice();
-  mainUpdateStatusToggleLabel();
-  mainApplySearch();
-});
-
-// 빠른 토글: 생산만
-document.getElementById("main-prodOnlyBtn").addEventListener("click", ()=>{
-  document.querySelectorAll("#main-statusDropdown input[type=checkbox]").forEach(cb=>{ cb.checked = cb.value === "생산"; });
-  mainSelectedStatuses = ["생산"];
-  mainUpdateStatusToggleLabel();
-  mainApplySearch();
-});
-
-// 빠른 토글: 전체
-document.getElementById("main-statusAllBtn").addEventListener("click", ()=>{
   document.querySelectorAll("#main-statusDropdown input[type=checkbox]").forEach(cb=>{ cb.checked = true; });
   mainSelectedStatuses = ALL_MAIN_STATUSES.slice();
   mainUpdateStatusToggleLabel();
@@ -2348,7 +2323,6 @@ function mapRowToMain(row){
     dueDate:row["최종납기"]||"",
     vendor: getFieldFlexible(row, "PROJECT NO.") || getFieldFlexible(row, "PROJECT NO") || getFieldFlexible(row, "프로젝트번호") || "",
     shipDate:row["납품일자"]||"",
-    vendorName: getFieldFlexible(row, "외주발주(납품처)") || getFieldFlexible(row, "외주발주") || getFieldFlexible(row, "납품처") || getFieldFlexible(row, "외주업체") || "",
     oldDrawingNo:row["기존도번(유진테크)"]||row["기존도번"]||"",
     shipped:row["납품여부"]||"", stockPreShip:Number(row["재고선출고"]||row["재고\n선출고"]||0), waitDeliver:Number(row["납품대기"]||0), waitMeasure:Number(row["측정실검사대기"]||0),
     waitClean:Number(row["크린룸검사대기"]||0), waitVision:Number(row["비젼검사대기"]||0),
@@ -2357,7 +2331,7 @@ function mapRowToMain(row){
     vendorCost: Number(getFieldFlexible(row, "외주업체비"))||0,
     deburrCost: Number(getFieldFlexible(row, "집,연마,버")||getFieldFlexible(row, "집연마버"))||0,
     processCost: Number(getFieldFlexible(row, "후처리(세정)")||getFieldFlexible(row, "처리비(세정)")||getFieldFlexible(row, "후처리")||getFieldFlexible(row, "처리비")||getFieldFlexible(row, "세정처리비")||getFieldFuzzy(row, "후처리")||getFieldFuzzy(row, "세정"))||0,
-    // 수입검사 대기: 도번(기존도번)별 [생산공정현황 진행수량 - 검사수량] 풀
+    // 수입검사 대기: 등록일자 2026년부터, 생산공정현황 - 수입검사(외관) = 대기 (음수면 0)
     waitIncomingInspection: computeWaitIncomingInspection(row)
   };
   return result;
@@ -2368,19 +2342,17 @@ function mapRowToMain(row){
 let waitInspIndexCache = null; // { processQty: Map, inspQty: Map }
 function invalidateWaitInspIndex(){ waitInspIndexCache = null; }
 function buildWaitInspIndex(){
-  const processQtyMap = new Map();   // 도면번호 → 2026년 대기공정 수량
-  const inspQtyMap = new Map();      // 도면번호 → 2026년 검사수 합
+  const processQtyMap = new Map();   // 도면번호 → 2026년 대기공정(사상/E.P/CP/폴리싱/외주가공 종료 등) 수량 합
+  const inspQtyMap = new Map();      // 도 번 → 2026년 검사수 합
   if(processData && processData.length){
     for(const p of processData){
       const regYear = String(p["등록일자"] || "").split("-")[0];
       if(regYear !== "2026") continue;
       const cp = String(p["현재진행공정"] || "");
-      // 종료는 "종료" 단독 표기만 인식 (MCT-01 (작업종료) 같은 공정이 "종료"로 잡히지 않도록)
-      if(!(/EP|CP|사상|외주가공 \(작업완료\)/.test(cp) || /폴리싱\(빠우\)-\d+\s*\(작업종료\)/.test(cp) || cp.trim() === "종료")) continue;
+      if(!(cp.includes("사상") || cp.includes("E.P") || cp.includes("CP") || cp.includes("폴리싱(빠우)") || cp.includes("외주가공 (작업종료)") || cp.includes("종료"))) continue;
       const dn = String(p["도면번호"] || "").trim();
       if(!dn) continue;
-      const qty = Number(p["수량"] || 0);
-      processQtyMap.set(dn, (processQtyMap.get(dn) || 0) + qty);
+      processQtyMap.set(dn, (processQtyMap.get(dn) || 0) + Number(p["수량"] || 0));
     }
   }
   if(incomingInspectionData && incomingInspectionData.length){
@@ -2389,27 +2361,23 @@ function buildWaitInspIndex(){
       if(inspectYear !== "2026") continue;
       const dn = String(i["도 번"] || i["도번"] || "").trim();
       if(!dn) continue;
-      const qty = Number(i["검사수"] || 0);
-      inspQtyMap.set(dn, (inspQtyMap.get(dn) || 0) + qty);
+      inspQtyMap.set(dn, (inspQtyMap.get(dn) || 0) + Number(i["검사수"] || 0));
     }
   }
+  // 공정검사(사내외관)도 수입검사와 동일 기준으로 차감 (도 번 + 검사일 2026 → 검사수 합)
   if(inhouseInspectionData && inhouseInspectionData.length){
     for(const i of inhouseInspectionData){
       const inspectYear = String(i["검사일"] || "").split("-")[0];
       if(inspectYear !== "2026") continue;
       const dn = String(i["도 번"] || i["도번"] || "").trim();
       if(!dn) continue;
-      const qty = Number(i["검사수"] || 0);
-      inspQtyMap.set(dn, (inspQtyMap.get(dn) || 0) + qty);
+      inspQtyMap.set(dn, (inspQtyMap.get(dn) || 0) + Number(i["검사수"] || 0));
     }
   }
   waitInspIndexCache = { processQty: processQtyMap, inspQty: inspQtyMap };
 }
 function computeWaitIncomingInspection(mainRow){
-  // 원래 로직 (도번 취합): 기존도번(유진테크)별로
-  // 수입검사 대기 = 생산공정현황 진행수량(도면번호별 합) - 검사수량(도번별 합), 음수면 0
-  // ※ 같은 도번의 여러 행에는 같은 풀 값이 표시되고,
-  //    제품상태 배정(computeAllStatuses)에서 최종납기 빠른 순으로 차감 배정됩니다.
+  // 원본 행(기존도번(유진테크))과 변환된 행(oldDrawingNo) 모두 지원
   const oldDrawingNo = String(mainRow["기존도번(유진테크)"]||mainRow["기존도번"]||mainRow.oldDrawingNo||"").trim();
   if(!oldDrawingNo) return 0;
   if(!waitInspIndexCache) buildWaitInspIndex();
@@ -5032,9 +5000,7 @@ function filterManagementRows(keyword){
           String(row.oldDrawingNo||''),
           String(row.partName||''),
           String(row.partNo||''),
-          String(row.orderNo||''),
-          String(row.vendor||''),
-          String(row.vendorName||'')
+          String(row.orderNo||'')
         ].join(" ").toUpperCase();
         // OR 그룹 중 하나라도, 그 그룹의 모든 단어가 포함되면 매칭
         return orGroups.some(andTerms => andTerms.every(t => haystack.includes(t)));
@@ -5133,30 +5099,11 @@ function getManagementSummary(rows){
   const delayed = rows.filter(r => getDaysRemaining(r.dueDate) < 0 && r.shipped !== "납품완료").length;
   const extendRec = rows.filter(needsExtension).length;
   
-  // 이번 달 기준 (하드코딩 7월 → 현재 월)
-  const thisMonth = new Date().getMonth() + 1;
-  const monthRows = getMonthData(rows, thisMonth);
-  const monthProd = monthRows.reduce((sum, r) => sum + getProductionWaitQty(r), 0);
-  const monthQual = monthRows.reduce((sum, r) => sum + getQualityWaitQty(r), 0);
+  const julyRows = getMonthData(rows, 7);
+  const julyProd = julyRows.reduce((sum, r) => sum + getProductionWaitQty(r), 0);
+  const julyQual = julyRows.reduce((sum, r) => sum + getQualityWaitQty(r), 0);
   
-  // 전체 요약 수치 — 해당 년도(올해) 주문만 기준
-  // 주문 연도는 ORDER NO 앞자리(예: "26-")로 판별, 형식이 다르면 최종납기 연도로 보조 판별
-  const _fullYear = new Date().getFullYear();
-  const _yy = String(_fullYear).slice(2) + "-";
-  const isThisYearOrder = r => {
-    const on = String(r.orderNo||"").trim();
-    if(/^\d{2}-/.test(on)) return on.startsWith(_yy);
-    return String(r.dueDate||"").startsWith(String(_fullYear));
-  };
-  const yearRows = rows.filter(isThisYearOrder);
-  const totalCnt = yearRows.length;
-  const totalQty = yearRows.reduce((sum, r) => sum + (Number(r.qty)||0), 0);
-  const doneRows = yearRows.filter(r => r.shipped === "납품완료");
-  const doneCnt = doneRows.length;
-  const doneQty = doneRows.reduce((sum, r) => sum + (Number(r.qty)||0), 0);
-  const undoneQty = Math.max(0, totalQty - doneQty);
-  
-  return { productWait, qualityWait, delayed, extendRec, thisMonth, monthProd, monthQual, totalCnt, totalQty, doneCnt, undoneQty, summaryYear:_fullYear };
+  return { productWait, julyProd, qualityWait, julyQual, delayed, extendRec };
 }
 
 // ===== 날짜 헬퍼 (타임존 -1일 버그 없는 로컬 날짜 계산) =====
@@ -5341,104 +5288,33 @@ function getMonthlyPlan(rows){
   return plan;
 }
 
-// 검사 대기 보유 현황 렌더링
-// ※ 도번/품명별 상세와 동일한 품목만 표시: 같은 필터(월 선택·완료 제외·도번 제거)를 그대로 사용
-// 값은 MAIN 대시보드와 동일 기준의 도번별 풀 값입니다.
-function renderManagementWaitInsp(rows){
-  const el = document.getElementById("management-waitinsp");
-  if(!el) return;
-  const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-
-  // 도번/품명별 상세와 동일한 대상 산출 (월 필터 → 완료 제외 도번 그룹)
-  let targetRows = rows;
-  const _tyW = new Date().getFullYear();
-  if(managementMonthFilter){
-    targetRows = rows.filter(r => {
-      const ym = getDueYM(r.dueDate);
-      return ym && ym.y === _tyW && ym.m === managementMonthFilter;
-    });
-  }
-  const groups = getDetailByDrawing(targetRows)
-    .filter(g => String(g.drawing||"").trim())
-    .sort((a,b)=>String(a.drawing).localeCompare(String(b.drawing), "ko", {numeric:true}));
-
-  if(!groups.length){
-    el.innerHTML = `
-      <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">🔎 검사 대기 보유 현황</h2>
-      <div style="padding:14px;text-align:center;color:#B9C2D6;font-size:12px;">표시할 도번이 없습니다. (도번/품명별 상세와 동일한 품목 기준)</div>`;
-    return;
-  }
-
-  let sumInc=0, sumMea=0, sumCle=0, sumVis=0;
-  const bodyRows = groups.map(g => {
-    const rep = g.items[0];
-    let wInc=0, wMea=0, wCle=0, wVis=0;
-    try{
-      wInc = computeWaitIncomingInspection(rep) || 0;
-      wMea = computeWaitMeasureRaw(rep) || 0;
-      wCle = computeWaitCleanRaw(rep) || 0;
-      wVis = computeWaitVisionRaw(rep) || 0;
-    }catch(e){ /* 대기 데이터 미로드 */ }
-    sumInc+=wInc; sumMea+=wMea; sumCle+=wCle; sumVis+=wVis;
-    const tot = wInc+wMea+wCle+wVis;
-    const cell = v => `<td style="padding:6px;text-align:center;${v>0?'color:#0B5CAB;font-weight:700;':'color:#6B7280;'}">${v.toLocaleString()}</td>`;
-    return `<tr style="border-bottom:1px solid #EAEDF2;">
-      <td style="padding:6px;text-align:center;">${esc(g.drawing)}</td>
-      <td style="padding:6px;text-align:center;">${esc(g.partName||'')}</td>
-      ${cell(wInc)}${cell(wMea)}${cell(wCle)}${cell(wVis)}
-      <td style="padding:6px;text-align:center;font-weight:700;${tot>0?'color:#0B5CAB;':'color:#6B7280;'}">${tot.toLocaleString()}</td>
-    </tr>`;
-  }).join('');
-  const sumTot = sumInc+sumMea+sumCle+sumVis;
-  const sumCell = v => `<td style="padding:6px;text-align:center;font-weight:700;">${v.toLocaleString()}</td>`;
-
-  el.innerHTML = `
-    <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">🔎 검사 대기 보유 현황 <span style="font-size:11px;font-weight:400;color:#6B7280;">(도번/품명별 상세와 동일 품목 · 도번 ${groups.length}개 · 보유 수량 기준${managementMonthFilter ? ` · ${managementMonthFilter}월 납기` : ''})</span></h2>
-    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-      <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:640px;">
-        <thead><tr style="background:var(--navy);color:#fff;">
-          <th style="padding:7px;">도번</th>
-          <th style="padding:7px;">품명</th>
-          <th style="padding:7px;">수입검사대기</th>
-          <th style="padding:7px;">측정실검사대기</th>
-          <th style="padding:7px;">크린룸검사대기</th>
-          <th style="padding:7px;">비젼검사대기</th>
-          <th style="padding:7px;">합계</th>
-        </tr></thead>
-        <tbody>
-          ${bodyRows}
-          <tr style="background:#F0F4FA;border-top:2px solid #B9C7DC;">
-            <td colspan="2" style="padding:6px;text-align:center;font-weight:700;">합계</td>
-            ${sumCell(sumInc)}${sumCell(sumMea)}${sumCell(sumCle)}${sumCell(sumVis)}${sumCell(sumTot)}
-          </tr>
-        </tbody>
-      </table>
-    </div>`;
-}
-
 // 종합 현황 렌더링
 function renderManagementSummary(rows){
   const data = getManagementSummary(rows);
   const el = document.getElementById("management-summary");
   if(!el) return;
   
-  // 폭만 넓고 내용이 비어 보이지 않도록: 작은 스탯 셀을 촘촘하게 배치하고 핵심 수치를 함께 표시
-  const stat = (label, value, color, sub, accent) => `
-    <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:3px solid ${accent||'#B9C7DC'};border-radius:6px;padding:8px 10px;min-width:0;">
-      <div style="font-size:11px;color:#4B5563;font-weight:700;margin-bottom:2px;white-space:nowrap;">${label}</div>
-      <div style="font-size:19px;font-weight:700;color:${color||'#1F2A44'};line-height:1.2;">${value}</div>
-      ${sub ? `<div style="font-size:10.5px;color:#6B7280;margin-top:1px;white-space:nowrap;">${sub}</div>` : ``}
-    </div>`;
-  
   el.innerHTML = `
-    <h2 style="font-size:13px;font-weight:700;margin-bottom:10px;color:#1A1E27;">📊 종합 현황</h2>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:8px;">
-      ${stat("생산 대기", data.productWait.toLocaleString() + "개", "#E02424", `${data.thisMonth}월 납기: ${data.monthProd.toLocaleString()}개`, "#E02424")}
-      ${stat("품질 대기", data.qualityWait.toLocaleString() + "개", "#0B5CAB", `${data.thisMonth}월 납기: ${data.monthQual.toLocaleString()}개`, "#0B5CAB")}
-      ${stat("납기 지연", data.delayed.toLocaleString() + "건", data.delayed>0?"#E02424":"#2E7D46", "미납품 중 납기 초과", "#E02424")}
-      ${stat("납기 연장 권고", data.extendRec.toLocaleString() + "건", data.extendRec>0?"#FF9800":"#2E7D46", "이력 기반 권고 대상", "#FF9800")}
-      ${stat(`총 주문 (${data.summaryYear}년)`, data.totalCnt.toLocaleString() + "건", "#1F2A44", `총 수량 ${data.totalQty.toLocaleString()}개`, "#B9C7DC")}
-      ${stat(`납품완료 (${data.summaryYear}년)`, data.doneCnt.toLocaleString() + "건", "#2E7D46", `미완료 수량 ${data.undoneQty.toLocaleString()}개`, "#2E7D46")}
+    <h2 style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1A1E27;">📊 종합 현황</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #E02424;padding:12px;border-radius:6px;">
+        <div style="font-size:12.5px;color:#1A1E27;margin-bottom:8px;font-weight:700;">생산 대기</div>
+        <div style="font-size:24px;font-weight:700;color:#E02424;margin-bottom:4px;">${data.productWait}</div>
+        <div style="font-size:11px;color:#4B5563;font-weight:700;">7월: ${data.julyProd}개</div>
+      </div>
+      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #0B5CAB;padding:12px;border-radius:6px;">
+        <div style="font-size:12.5px;color:#1A1E27;margin-bottom:8px;font-weight:700;">품질 대기</div>
+        <div style="font-size:24px;font-weight:700;color:#0B5CAB;margin-bottom:4px;">${data.qualityWait}</div>
+        <div style="font-size:11px;color:#4B5563;font-weight:700;">7월: ${data.julyQual}개</div>
+      </div>
+      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #E02424;padding:12px;border-radius:6px;">
+        <div style="font-size:12.5px;color:#1A1E27;margin-bottom:8px;font-weight:700;">납기 지연</div>
+        <div style="font-size:24px;font-weight:700;color:#E02424;margin-bottom:4px;">${data.delayed}</div>
+      </div>
+      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid #FF9800;padding:12px;border-radius:6px;">
+        <div style="font-size:12.5px;color:#1A1E27;margin-bottom:8px;font-weight:700;">납기 연장 권고</div>
+        <div style="font-size:24px;font-weight:700;color:#FF9800;margin-bottom:4px;">${data.extendRec}</div>
+      </div>
     </div>
   `;
 }
@@ -5696,9 +5572,6 @@ const MANAGEMENT_SKELETON = `
         <!-- 종합 현황 카드 -->
         <div class="table-wrap" id="management-summary" style="margin-bottom:16px;"></div>
         
-        <!-- 검사 대기 보유 현황 (도번별 전체 리스트) -->
-        <div class="table-wrap" id="management-waitinsp" style="margin-bottom:16px;"></div>
-        
         <!-- 납기 연장 권고 -->
         <div class="table-wrap" id="management-extend" style="margin-bottom:16px;"></div>
         
@@ -5729,7 +5602,7 @@ function renderManagementAll(){
       if(page) page.innerHTML = `
         <div style="padding:60px 20px;text-align:center;color:#B9C2D6;">
           <div style="font-size:28px;margin-bottom:12px;">🔍</div>
-          <div style="font-size:13px;font-weight:700;color:#4B5563;margin-bottom:6px;">도번·품명·품번·ORDER NO·PROJECT NO·외주발주를 검색하면 관리항목 현황이 표시됩니다.</div>
+          <div style="font-size:13px;font-weight:700;color:#4B5563;margin-bottom:6px;">도번·품명·품번·ORDER NO를 검색하면 관리항목 현황이 표시됩니다.</div>
           <div style="font-size:11.5px;">쉼표(,)로 여러 도번을 한 번에 검색할 수 있습니다. 예: M200-005, M300-011</div>
         </div>`;
       return;
@@ -5745,9 +5618,6 @@ function renderManagementAll(){
     
     renderManagementSummary(filtered);
     console.log("✓ 종합 현황 렌더링 완료");
-    
-    renderManagementWaitInsp(filtered);
-    console.log("✓ 검사 대기 보유 현황 렌더링 완료");
     
     renderManagementExtend(filtered);
     console.log("✓ 납기 연장 렌더링 완료");
@@ -5809,7 +5679,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const m = parseInt(monthTh.getAttribute("data-mgmt-month"));
         managementMonthFilter = (managementMonthFilter === m) ? null : m; // 같은 월 다시 클릭 = 해제
         const fr = filterManagementRows(managementSearchKeyword);
-        renderManagementWaitInsp(fr); // 상세와 동일 품목 유지
         renderManagementDetail(fr);
         renderManagementPlan(fr); // 선택된 월 표시 갱신
         if(managementMonthFilter){
@@ -5822,7 +5691,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if(e.target.closest("#management-monthFilterClear")){
         managementMonthFilter = null;
         const fr = filterManagementRows(managementSearchKeyword);
-        renderManagementWaitInsp(fr); // 상세와 동일 품목 유지
         renderManagementDetail(fr);
         renderManagementPlan(fr);
         return;
@@ -5908,16 +5776,12 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         #print-area [id^="management-"] .badge{ font-size:6.5px !important; padding:0 2px !important; }
         #print-area .mgmt-noprint{ display:none !important; }
-        /* 겹침 방지: 한 페이지보다 긴 구역(계획 등)은 페이지 나눔 허용, 행/카드 단위로만 나눔 방지 */
+        /* 겹침 방지: 긴 구역은 페이지 나눔 허용, 카드/행 단위로만 나눔 방지 */
         #print-area #management-detail{ break-inside:auto !important; }
         #print-area #management-detail > div{ break-inside:avoid !important; page-break-inside:avoid !important; }
-        #print-area #management-summary{ break-inside:avoid !important; }
-        #print-area #management-extend, #print-area #management-top10, #print-area #management-plan, #print-area #management-waitinsp{ break-inside:auto !important; page-break-inside:auto !important; }
-        #print-area [id^="management-"] tr{ break-inside:avoid !important; page-break-inside:avoid !important; }
-        #print-area [id^="management-"] thead{ display:table-header-group !important; }
-        /* 스크롤 영역을 모두 펼쳐서 잘림/겹침 방지 */
-        #print-area [id^="management-"], #print-area [id^="management-"] div{ height:auto !important; max-height:none !important; }
-        #print-area *{ position:static !important; float:none !important; transform:none !important; }
+        #print-area #management-summary, #print-area #management-extend, #print-area #management-top10, #print-area #management-plan{ break-inside:avoid !important; }
+        #print-area [id^="management-"] tr{ break-inside:avoid !important; }
+        #print-area *{ position:static !important; float:none !important; }
       `;
       document.head.appendChild(orientationStyle);
       const cleanupMgmtPrint = () => {
@@ -5961,13 +5825,11 @@ function managementDownloadExcel(){
   headerRows.push(aoa.length);
   aoa.push(["항목", "수량/건"]);
   aoa.push(["생산 대기", summary.productWait + "개"]);
-  aoa.push(["  ├ " + summary.thisMonth + "월 납기", summary.monthProd + "개"]);
+  aoa.push(["  ├ 7월 납기", summary.julyProd + "개"]);
   aoa.push(["품질 대기", summary.qualityWait + "개"]);
-  aoa.push(["  ├ " + summary.thisMonth + "월 납기", summary.monthQual + "개"]);
+  aoa.push(["  ├ 7월 납기", summary.julyQual + "개"]);
   aoa.push(["납기 지연", summary.delayed + "건"]);
   aoa.push(["납기 연장 권고", summary.extendRec + "건"]);
-  aoa.push(["총 주문 (" + summary.summaryYear + "년)", summary.totalCnt + "건 / " + summary.totalQty + "개"]);
-  aoa.push(["납품완료 (" + summary.summaryYear + "년)", summary.doneCnt + "건 (미완료 수량 " + summary.undoneQty + "개)"]);
   aoa.push([]);
   
   // 2. 납기 연장 권고
@@ -6184,15 +6046,6 @@ function renderHistoryView(keyword){
         </div>`;
       }
     }catch(e){ /* 품질 데이터 미로드 */ }
-    // 검사대기 보유 수량 (도번별 풀 값 · MAIN 대시보드와 동일 기준)
-    const repWait = rows.find(r => String(r.oldDrawingNo||"").trim()) || rows[0];
-    let wInc=0, wMea=0, wCle=0, wVis=0;
-    try{
-      wInc = computeWaitIncomingInspection(repWait) || 0;
-      wMea = computeWaitMeasureRaw(repWait) || 0;
-      wCle = computeWaitCleanRaw(repWait) || 0;
-      wVis = computeWaitVisionRaw(repWait) || 0;
-    }catch(e){ /* 대기 데이터 미로드 */ }
     // 납품완료/미완료 수량
     const doneQty = done.reduce((a,r)=>a+(Number(r.qty)||0),0);
     const undoneQty = Math.max(0, totalQty - doneQty);
@@ -6219,27 +6072,6 @@ function renderHistoryView(keyword){
         ${chip("개발/양산", ncDev.toLocaleString() + " / " + (ncQty-ncDev).toLocaleString())}
       </div>
       ${ncRecentHtml}
-      <div style="margin-bottom:10px;">
-        <div style="font-size:11.5px;font-weight:700;color:#4B5563;margin-bottom:4px;">🔎 검사 대기 보유 현황</div>
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
-          <table style="border-collapse:collapse;font-size:11.5px;min-width:420px;">
-            <thead><tr style="background:var(--navy);color:#fff;">
-              <th style="padding:6px 14px;">수입검사대기</th>
-              <th style="padding:6px 14px;">측정실검사대기</th>
-              <th style="padding:6px 14px;">크린룸검사대기</th>
-              <th style="padding:6px 14px;">비젼검사대기</th>
-              <th style="padding:6px 14px;">합계</th>
-            </tr></thead>
-            <tbody><tr style="text-align:center;border-bottom:1px solid #EAEDF2;">
-              <td style="padding:6px;${wInc>0?'color:#0B5CAB;font-weight:700;':'color:#6B7280;'}">${wInc.toLocaleString()}개</td>
-              <td style="padding:6px;${wMea>0?'color:#0B5CAB;font-weight:700;':'color:#6B7280;'}">${wMea.toLocaleString()}개</td>
-              <td style="padding:6px;${wCle>0?'color:#0B5CAB;font-weight:700;':'color:#6B7280;'}">${wCle.toLocaleString()}개</td>
-              <td style="padding:6px;${wVis>0?'color:#0B5CAB;font-weight:700;':'color:#6B7280;'}">${wVis.toLocaleString()}개</td>
-              <td style="padding:6px;font-weight:700;${(wInc+wMea+wCle+wVis)>0?'color:#0B5CAB;':'color:#6B7280;'}">${(wInc+wMea+wCle+wVis).toLocaleString()}개</td>
-            </tr></tbody>
-          </table>
-        </div>
-      </div>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:640px;">
           <thead><tr style="background:var(--navy);color:#fff;">
@@ -6416,7 +6248,7 @@ ${body}
 /* ============ 검사대기현황 (수입/공정/출하/비젼 검사대기) ============ */
 // 기존 데이터를 그대로 재사용합니다 (Code.gs 수정 불필요):
 //  - 수입검사대기: 생산공정현황 계산값 (MAIN 대시보드의 "수입검사 대기"와 동일 기준:
-//                  올해 등록 + 현재공정에 EP/CP/사상/폴리싱(빠우)-01(작업종료)/외주가공 (작업완료)/종료(단독) 포함 수량
+//                  올해 등록 + 현재공정에 사상/E.P/CP/폴리싱(빠우)/외주가공 (작업종료)/종료 포함 수량
 //                  − 수입검사(외관)/공정검사(사내외관) 검사수)
 //  - 공정검사대기: 측정실검사대기 시트 (품번 · 측정실대기 수량)
 //  - 출하검사대기: 크린룸검사대기 시트 (품번 · 검사대기 수량)
@@ -6449,19 +6281,7 @@ function waitInspParse(rows, keyLabels, qtyLabels){
     return { partNo, regDate, qty };
   }).filter(r => r.partNo && r.qty > 0);
 }
-// 유진테크 도번 집합: MAIN 데이터에서 고객사가 유진테크인 행의 기존도번(유진테크)만 수집
-function getYujinDrawingSet(){
-  const set = new Set();
-  (mainData||[]).forEach(r=>{
-    const cust = String(r.customer || r["고객사"] || "");
-    if(!cust.includes("유진")) return;
-    const dn = String(r.oldDrawingNo || r["기존도번(유진테크)"] || r["기존도번"] || "").trim();
-    if(dn) set.add(dn);
-  });
-  return set;
-}
 // 수입검사대기: MAIN과 동일한 계산 (도면번호별 대기 수량 + 최종 등록일자)
-// ※ 유진테크만 적용: MAIN 데이터의 고객사=유진테크 기존도번에 해당하는 도번만 표시
 function computeIncomingWaitList(){
   const yearStr = String(new Date().getFullYear());
   const procQty = new Map(), procReg = new Map();
@@ -6469,8 +6289,7 @@ function computeIncomingWaitList(){
     const regDate = String(p["등록일자"]||"").slice(0,10);
     if(regDate.split("-")[0] !== yearStr) return;
     const cp = String(p["현재진행공정"]||"");
-    // 종료는 "종료" 단독 표기만 인식 (MCT-01 (작업종료) 같은 공정이 "종료"로 잡히지 않도록)
-    if(!(/EP|CP|사상|외주가공 \(작업완료\)/.test(cp) || /폴리싱\(빠우\)-\d+\s*\(작업종료\)/.test(cp) || cp.trim() === "종료")) return;
+    if(!(cp.includes("사상") || cp.includes("E.P") || cp.includes("CP") || cp.includes("폴리싱(빠우)") || cp.includes("외주가공 (작업종료)") || cp.includes("종료"))) return;
     const dn = String(p["도면번호"]||"").trim();
     if(!dn) return;
     procQty.set(dn, (procQty.get(dn)||0) + (Number(p["수량"])||0));
@@ -6487,18 +6306,11 @@ function computeIncomingWaitList(){
   };
   addInsp(incomingInspectionData);
   addInsp(inhouseInspectionData);
-  // 유진테크 필터 (필수): MAIN 데이터가 없으면 유진테크 도번을 알 수 없으므로 빈 리스트 반환
-  const yujinSet = getYujinDrawingSet();
-  if(yujinSet.size === 0) return [];
-  
   const list = [];
   procQty.forEach((q, dn)=>{
-    if(!yujinSet.has(dn)) return;  // 유진테크 도번만 통과
     const wait = Math.max(0, q - (inspQty.get(dn)||0));
     if(wait > 0) list.push({ partNo:dn, regDate:procReg.get(dn)||"", qty:wait });
   });
-  // 도번 오름차순 정렬 (화면/인쇄/엑셀 공통으로 waitInspAggregate에서 재정렬되지만, 원본도 정렬 유지)
-  list.sort((a,b)=>String(a.partNo).localeCompare(String(b.partNo), "ko", {numeric:true}));
   return list;
 }
 function fetchWaitInspData(){
@@ -6512,13 +6324,10 @@ function fetchWaitInspData(){
     fetch(url + "?dataset=" + encodeURIComponent("비젼검사대기")).then(r=>r.json()).catch(()=>null),
     fetch(url + "?dataset=" + encodeURIComponent("생산공정현황")).then(r=>r.json()).catch(()=>null),
     fetch(url + "?dataset=" + encodeURIComponent("수입검사(외관)")).then(r=>r.json()).catch(()=>null),
-    fetch(url + "?dataset=" + encodeURIComponent("공정검사(사내외관)")).then(r=>r.json()).catch(()=>null),
-    fetch(url + "?dataset=" + encodeURIComponent("QC제품관리 2023-2026")).then(r=>r.json()).catch(()=>null)  // MAIN 데이터도 함께 로드
-  ]).then(([measureRes, cleanRes, visionRes, processRes, incomingRes, inhouseRes, mainRes])=>{
+    fetch(url + "?dataset=" + encodeURIComponent("공정검사(사내외관)")).then(r=>r.json()).catch(()=>null)
+  ]).then(([measureRes, cleanRes, visionRes, processRes, incomingRes, inhouseRes])=>{
     const warnings = [];
-    // 수입검사대기용 원본 데이터 + MAIN 데이터 갱신 (유진테크 필터링을 위해 MAIN 필수)
-    if(mainRes && mainRes.success){ mainData = mainRes.rows.map(mapRowToMain); }
-    if(!(mainRes && mainRes.success)) warnings.push("QC제품관리");
+    // 수입검사대기용 원본 데이터도 최신으로 갱신 (MAIN 대시보드와 공유)
     if(processRes && processRes.success){ processData = processRes.rows; }
     if(incomingRes && incomingRes.success){ incomingInspectionData = incomingRes.rows; }
     if(inhouseRes && inhouseRes.success){ inhouseInspectionData = inhouseRes.rows; }
@@ -6534,7 +6343,7 @@ function fetchWaitInspData(){
     if(!(visionRes && visionRes.success)) warnings.push("비젼검사대기");
 
     waitInspLoaded = true;
-    idbSet("cache_waitInspData_v2", waitInspData);
+    idbSet("cache_waitInspData", waitInspData);
     const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
     if(statusEl) statusEl.textContent = "불러오기 완료 · " + nowStr + (warnings.length ? " · 읽기 실패: " + warnings.join(", ") : "");
     renderWaitInspTab();
@@ -6548,8 +6357,7 @@ function waitInspAggregate(key){
     map[r.partNo].qty += r.qty;
     if(r.regDate && r.regDate > map[r.partNo].lastReg) map[r.partNo].lastReg = r.regDate;
   });
-  // 도번 오름차순 정렬 (숫자 도번은 숫자 크기순, 문자 도번은 사전순)
-  return Object.values(map).sort((a,b)=>String(a.partNo).localeCompare(String(b.partNo), "ko", {numeric:true}));
+  return Object.values(map).sort((a,b)=>a.partNo.localeCompare(b.partNo, "ko", {numeric:true}));
 }
 function renderWaitInspTab(){
   const el = document.getElementById("waitinsp-content");
@@ -6564,7 +6372,7 @@ function renderWaitInspTab(){
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   el.innerHTML = `
     <div class="table-wrap" style="padding:14px 16px;">
-      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)}${key==="수입검사대기" ? ' <span style="font-size:11px;font-weight:600;color:#0B5CAB;background:#EAF2FB;border-radius:8px;padding:2px 8px;">유진테크</span>' : ''} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
+      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
       <div style="overflow-x:auto;">
         <table style="width:100%;max-width:640px;">
           <thead><tr><th>도번</th><th>최종 등록일</th><th>수량</th></tr></thead>
@@ -6583,7 +6391,7 @@ function renderWaitInspTab(){
 function initWaitInspView(){
   if(!waitInspLoaded){
     // 캐시가 있으면 먼저 보여주고, 없으면 안내
-    idbGet("cache_waitInspData_v2").then(cached=>{
+    idbGet("cache_waitInspData").then(cached=>{
       if(cached){ waitInspData = cached; waitInspLoaded = true; }
       renderWaitInspTab();
     });
@@ -6637,6 +6445,34 @@ function waitInspExcel(){
 
 /* ============ 도움말 모달 + 신규 메뉴 이벤트 ============ */
 document.addEventListener("DOMContentLoaded", () => {
+  // 네비게이션 메뉴 클릭 처리
+  document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const view = item.dataset.view;
+      if(!view) return;
+      
+      // 모든 뷰 숨기기
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      
+      // 해당 뷰 표시
+      const targetView = document.getElementById('view-' + view);
+      if(targetView) targetView.classList.add('active');
+      
+      // 모든 nav 비활성화
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      
+      // 현재 nav 활성화
+      item.classList.add('active');
+      
+      // topbar 전환
+      document.querySelectorAll('[id^="topbar-"]').forEach(tb => tb.style.display = 'none');
+      const topbar = document.getElementById('topbar-' + view);
+      if(topbar) topbar.style.display = 'block';
+    });
+  });
+  
   // 도움말
   const helpBtn = document.getElementById("helpNavBtn");
   const helpModal = document.getElementById("help-modal");
