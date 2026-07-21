@@ -6814,39 +6814,55 @@ function renderWaitInspTab(){
   const el = document.getElementById("waitinsp-content");
   if(!el) return;
   const key = waitInspActiveTab;
-  if(!waitInspLoaded){
-    el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">상단의 [🔄 불러오기] 버튼을 눌러 검사대기 데이터를 불러와 주세요.</div>`;
+  
+  // MAIN 데이터에서 직접 계산
+  if(!mainData || mainData.length === 0){
+    el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">데이터를 불러와 주세요.</div>`;
     return;
   }
-  let list = waitInspAggregate(key);
-  // 수입검사대기는 유진테크만 필터링
-  if(key === "수입검사대기" && mainData){
-    const juginPartNos = new Set();
-    mainData.forEach(r => {
-      if(r.customer === "유진테크") juginPartNos.add(r.partNo);
-    });
-    list = list.filter(r => juginPartNos.has(r.partNo));
-  }
-  const totalQty = list.reduce((a,r)=>a+r.qty,0);
+  
+  const statusMap = {"수입검사대기": "수입", "공정검사대기": "측정", "출하검사대기": "외관", "비젼검사대기": "비젼"};
+  const targetStatus = statusMap[key];
+  const grouped = {};
+  const order = [];
+  
+  mainData.forEach(r => {
+    const status = computeProductStatus(r);
+    if(status !== targetStatus) return;
+    const partNo = String(r.partNo || "").trim();
+    if(!partNo) return;
+    if(!grouped[partNo]) {
+      grouped[partNo] = { partNo, qty: 0, lastReg: "" };
+      order.push(partNo);
+    }
+    grouped[partNo].qty += Number(r.qty) || 0;
+    const regDate = String(r.regDate || "").slice(0, 10);
+    if(regDate > grouped[partNo].lastReg) {
+      grouped[partNo].lastReg = regDate;
+    }
+  });
+  
+  const list = order.map(k => grouped[k]);
+  const totalQty = list.reduce((a, r) => a + r.qty, 0);
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  
   el.innerHTML = `
     <div class="table-wrap" style="padding:14px 16px;">
-      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)}${key === "수입검사대기" ? " <span style=\"color:#E02424;\">(유진테크만)</span>" : ""} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
+      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${key} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
       <div style="overflow-x:auto;">
         <table style="width:100%;max-width:640px;">
           <thead><tr><th>도번</th><th>최종 등록일</th><th>수량</th></tr></thead>
           <tbody>
-            ${list.length ? list.map(r=>`<tr>
-              <td style="text-align:center;">${esc(r.partNo)}</td>
-              <td style="text-align:center;">${esc(r.lastReg||'-')}</td>
-              <td style="text-align:center;">${r.qty.toLocaleString()}</td>
-            </tr>`).join("") : `<tr><td colspan="3" style="text-align:center;color:#B9C2D6;">보유 중인 대기 제품이 없습니다.</td></tr>`}
+            ${list.length ? list.map(r=>`<tr><td style="text-align:center;">${esc(r.partNo)}</td><td style="text-align:center;">${esc(r.lastReg||'-')}</td><td style="text-align:center;">${r.qty.toLocaleString()}</td></tr>`).join("") : `<tr><td colspan="3" style="text-align:center;color:#B9C2D6;">해당하는 대기 제품이 없습니다.</td></tr>`}
             ${list.length ? `<tr style="font-weight:700;background:#EDF0F5;"><td style="text-align:center;">합계</td><td></td><td style="text-align:center;">${totalQty.toLocaleString()}</td></tr>` : ""}
           </tbody>
         </table>
       </div>
     </div>`;
 }
+
+
+
 function initWaitInspView(){
   if(!waitInspLoaded){
     // 캐시가 있으면 먼저 보여주고, 없으면 안내
@@ -6931,6 +6947,18 @@ document.addEventListener("DOMContentLoaded", () => {
       if(topbar) topbar.style.display = 'flex';
     });
   });
+  
+  // 초기 활성 뷰: MAIN 대시보드
+  const mainNavItem = document.querySelector('.nav-item[data-view="main"]');
+  if(mainNavItem) {
+    const mainView = document.getElementById('view-main');
+    if(mainView) {
+      mainView.classList.add('active');
+      mainNavItem.classList.add('active');
+      const mainTopbar = document.getElementById('topbar-main');
+      if(mainTopbar) mainTopbar.style.display = 'flex';
+    }
+  }
   
   // 도움말
   const helpBtn = document.getElementById("helpNavBtn");
