@@ -655,7 +655,7 @@
         <div class="search-box">
           <span id="main-syncBanner" class="sync-banner">⚪ 동기화 확인 중...</span>
           <span id="main-processStatus" class="sync-banner" style="display:none;"></span>
-          <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
+          <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO, 외주발주 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
           <button id="main-searchBtn">🔍 검색</button>
         </div>
         <div class="search-hint-text" style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ <span class="hint-comma" style="color:#FFD400;font-weight:700;">쉼표(,)</span>로 구분하면 여러 개 중 하나라도 맞으면 검색되고, <span class="hint-slash" style="color:#FF6B81;font-weight:700;">슬래시(/)</span>로 구분하면 그 단어를 모두 포함하는 항목만 좁혀서 검색합니다. (예: "26-171<span class="hint-slash" style="color:#FF6B81;font-weight:700;">/</span>SHOWERHEAD<span class="hint-comma" style="color:#FFD400;font-weight:700;">,</span> BLOCK PLATE" → 26-171이면서 SHOWERHEAD이거나, BLOCK PLATE)</div>
@@ -914,7 +914,7 @@
     <div id="topbar-management" class="topbar" style="display:none;">
       <h1>관리항목 현황</h1>
       <div class="search-box">
-        <input id="management-searchInput" type="text" placeholder="도번·품명·품번·ORDER NO·PROJECT NO 검색 (쉼표=OR, 공백=AND · 예: M200-005 SHOWERHEAD)">
+        <input id="management-searchInput" type="text" placeholder="도번·품명·품번·ORDER NO·PROJECT NO·외주발주 검색 (쉼표=OR, 공백=AND · 예: M200-005 SHOWERHEAD)">
         <button id="management-searchBtn">🔍 검색</button>
         <button id="management-printBtn">🖨️ 인쇄</button>
         <button id="management-excelBtn" type="button" class="tb-download-btn">📥 다운로드</button>
@@ -1839,7 +1839,7 @@ function mainGetFilteredBase(){
     const orGroups = raw.split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim()).filter(Boolean));
     if(orGroups.length){
       filtered = filtered.filter(r=>{
-        const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.oldDrawingNo].join(" ").toLowerCase();
+        const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.vendorName,r.oldDrawingNo].join(" ").toLowerCase();
         return orGroups.some(andTerms => andTerms.every(t=>haystack.includes(t)));
       });
     }
@@ -2330,6 +2330,7 @@ function mapRowToMain(row){
     dueDate:row["최종납기"]||"",
     vendor: getFieldFlexible(row, "PROJECT NO.") || getFieldFlexible(row, "PROJECT NO") || getFieldFlexible(row, "프로젝트번호") || "",
     shipDate:row["납품일자"]||"",
+    vendorName: getFieldFlexible(row, "외주발주(납품처)") || getFieldFlexible(row, "외주발주") || getFieldFlexible(row, "납품처") || getFieldFlexible(row, "외주업체") || "",
     oldDrawingNo:row["기존도번(유진테크)"]||row["기존도번"]||"",
     shipped:row["납품여부"]||"", stockPreShip:Number(row["재고선출고"]||row["재고\n선출고"]||0), waitDeliver:Number(row["납품대기"]||0), waitMeasure:Number(row["측정실검사대기"]||0),
     waitClean:Number(row["크린룸검사대기"]||0), waitVision:Number(row["비젼검사대기"]||0),
@@ -2357,7 +2358,7 @@ function buildWaitInspIndex(){
       if(regYear !== "2026") continue;
       const cp = String(p["현재진행공정"] || "");
       // 종료는 "종료" 단독 표기만 인식 (MCT-01 (작업종료) 같은 공정이 "종료"로 잡히지 않도록)
-      if(!(/EP|CP|사상|폴리싱\(빠우\)|외주가공 \(작업완료\)/.test(cp) || cp.trim() === "종료")) continue;
+      if(!(/EP|CP|사상|외주가공 \(작업완료\)/.test(cp) || /폴리싱\(빠우\)-\d+\s*\(작업종료\)/.test(cp) || cp.trim() === "종료")) continue;
       const dn = String(p["도면번호"] || "").trim();
       if(!dn) continue;
       const qty = Number(p["수량"] || 0);
@@ -5014,7 +5015,8 @@ function filterManagementRows(keyword){
           String(row.partName||''),
           String(row.partNo||''),
           String(row.orderNo||''),
-          String(row.vendor||'')   // PROJECT NO. (mapRowToMain에서 vendor로 저장)
+          String(row.vendor||''),   // PROJECT NO.
+          String(row.vendorName||'')  // 외주발주(납품처)
         ].join(" ").toUpperCase();
         // OR 그룹 중 하나라도, 그 그룹의 모든 단어가 포함되면 매칭
         return orGroups.some(andTerms => andTerms.every(t => haystack.includes(t)));
@@ -5709,7 +5711,7 @@ function renderManagementAll(){
       if(page) page.innerHTML = `
         <div style="padding:60px 20px;text-align:center;color:#B9C2D6;">
           <div style="font-size:28px;margin-bottom:12px;">🔍</div>
-          <div style="font-size:13px;font-weight:700;color:#4B5563;margin-bottom:6px;">도번·품명·품번·ORDER NO·PROJECT NO를 검색하면 관리항목 현황이 표시됩니다.</div>
+          <div style="font-size:13px;font-weight:700;color:#4B5563;margin-bottom:6px;">도번·품명·품번·ORDER NO·PROJECT NO·외주발주를 검색하면 관리항목 현황이 표시됩니다.</div>
           <div style="font-size:11.5px;">쉼표(,)로 여러 도번을 한 번에 검색할 수 있습니다. 예: M200-005, M300-011</div>
         </div>`;
       return;
@@ -6396,7 +6398,7 @@ ${body}
 /* ============ 검사대기현황 (수입/공정/출하/비젼 검사대기) ============ */
 // 기존 데이터를 그대로 재사용합니다 (Code.gs 수정 불필요):
 //  - 수입검사대기: 생산공정현황 계산값 (MAIN 대시보드의 "수입검사 대기"와 동일 기준:
-//                  올해 등록 + 현재공정에 EP/CP/사상/폴리싱(빠우)/외주가공 (작업완료)/종료(단독) 포함 수량
+//                  올해 등록 + 현재공정에 EP/CP/사상/폴리싱(빠우)-01(작업종료)/외주가공 (작업완료)/종료(단독) 포함 수량
 //                  − 수입검사(외관)/공정검사(사내외관) 검사수)
 //  - 공정검사대기: 측정실검사대기 시트 (품번 · 측정실대기 수량)
 //  - 출하검사대기: 크린룸검사대기 시트 (품번 · 검사대기 수량)
@@ -6450,7 +6452,7 @@ function computeIncomingWaitList(){
     if(regDate.split("-")[0] !== yearStr) return;
     const cp = String(p["현재진행공정"]||"");
     // 종료는 "종료" 단독 표기만 인식 (MCT-01 (작업종료) 같은 공정이 "종료"로 잡히지 않도록)
-    if(!(/EP|CP|사상|폴리싱\(빠우\)|외주가공 \(작업완료\)/.test(cp) || cp.trim() === "종료")) return;
+    if(!(/EP|CP|사상|외주가공 \(작업완료\)/.test(cp) || /폴리싱\(빠우\)-\d+\s*\(작업종료\)/.test(cp) || cp.trim() === "종료")) return;
     const dn = String(p["도면번호"]||"").trim();
     if(!dn) return;
     procQty.set(dn, (procQty.get(dn)||0) + (Number(p["수량"])||0));
