@@ -609,33 +609,56 @@
   button:active, .nav-item:active{ transform:scale(0.96); opacity:0.75; }
   @media print {
     * { margin:0 !important; padding:0 !important; }
-    html, body{ height:100% !important; }
+    html, body{ 
+      height:100% !important; 
+      width:100% !important;
+      background:white !important;
+      color:black !important;
+    }
     #busy-toast{ display:none !important; }
-    .side-nav{ display:none !important; }
+    .side-nav{ display:none !important; width:0 !important; }
     .side-nav-toggle{ display:none !important; }
     .topbar{ display:none !important; }
-    .app-shell{ display:flex !important; flex-direction:row !important; }
-    .main-content{ flex:1 !important; display:block !important; }
-    .view{ display:none !important; }
-    #view-history{ 
-      display:block !important; 
-      padding:16px !important; 
+    .app-shell{ 
+      display:flex !important; 
+      flex-direction:row !important;
+      width:100% !important;
+    }
+    .main-content{ 
+      flex:1 !important; 
+      display:block !important;
       width:100% !important;
       margin:0 !important;
+      padding:0 !important;
+    }
+    .view { display:none !important; }
+    #view-history{ 
+      display:block !important;
+      visibility:visible !important; 
+      opacity:1 !important;
+      padding:10mm !important; 
+      width:100% !important;
+      margin:0 !important;
+      background:white !important;
     }
     #history-content{ 
       display:block !important;
       visibility:visible !important;
-      padding:8px !important;
+      opacity:1 !important;
+      padding:0 !important;
+      margin:0 !important;
+      width:100% !important;
       background:white !important;
+      color:black !important;
     }
     #history-content .table-wrap{ 
       page-break-inside:avoid !important; 
       break-inside:avoid !important;
       margin-bottom:12px !important;
+      display:block !important;
+      visibility:visible !important;
     }
     @page{ size:A4 landscape; margin:10mm; }
-    body{ background:white !important; }
   }
 </style>
 </head>
@@ -6741,28 +6764,44 @@ document.addEventListener("DOMContentLoaded", () => {
   const hPrintBtn = document.getElementById("history-printBtn");
   if(hPrintBtn){
     hPrintBtn.addEventListener("click", () => {
+      // 강제로 view-history를 보이게 함
+      const viewHistory = document.getElementById("view-history");
+      const historyContent = document.getElementById("history-content");
       const sideNav = document.querySelector(".side-nav");
       const topbar = document.getElementById("topbar-history");
-      const historyContent = document.getElementById("history-content");
       
-      // 인쇄 전 상태 저장
+      if(!viewHistory || !historyContent) {
+        alert("도번 이력 데이터가 준비되지 않았습니다.");
+        return;
+      }
+      
+      // 원래 상태 저장
+      const originalViewDisplay = viewHistory.style.display;
+      const originalViewClass = viewHistory.className;
+      const originalContentDisplay = historyContent.style.display;
       const originalSideNavDisplay = sideNav ? sideNav.style.display : "";
       const originalTopbarDisplay = topbar ? topbar.style.display : "";
       
-      // 인쇄를 위해 임시로 표시
+      // 인쇄 모드로 전환
+      viewHistory.style.display = "block";
+      viewHistory.classList.add("active");
+      historyContent.style.display = "block";
+      historyContent.style.visibility = "visible";
       if(sideNav) sideNav.style.display = "none";
       if(topbar) topbar.style.display = "none";
-      if(historyContent) historyContent.style.visibility = "visible";
       
-      // 짧은 딜레이 후 인쇄 (CSS 적용 대기)
+      // 브라우저가 스타일을 처리할 시간 제공
       setTimeout(() => {
         window.print();
         
-        // 인쇄 대화가 닫힌 후 원래 상태로 복원
+        // 인쇄 후 원래 상태 복원
         setTimeout(() => {
+          viewHistory.style.display = originalViewDisplay;
+          viewHistory.className = originalViewClass;
+          historyContent.style.display = originalContentDisplay;
           if(sideNav) sideNav.style.display = originalSideNavDisplay;
           if(topbar) topbar.style.display = originalTopbarDisplay;
-        }, 100);
+        }, 500);
       }, 100);
     });
   }
