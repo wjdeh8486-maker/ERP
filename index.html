@@ -606,7 +606,12 @@
   @keyframes busyPulse{ 0%,100%{opacity:1;} 50%{opacity:0.55;} }
   /* 버튼/메뉴가 눌린 것을 바로 알 수 있게 눌림 효과 */
   button:active, .nav-item:active{ transform:scale(0.96); opacity:0.75; }
-  @media print{ #busy-toast{ display:none !important; } }
+  @media print {
+    #busy-toast{ display:none !important; }
+    #topbar-history{ display:none !important; }
+    #history-content{ padding:0 !important; }
+    @page{ size: A4 landscape; margin: 8mm; }
+  }
 </style>
 </head>
 <body>
@@ -959,10 +964,13 @@
     </div>
     <!-- ===================== HISTORY(도번 이력) VIEW ===================== -->
     <div id="topbar-history" class="topbar" style="display:none;">
-      <h1>도번 이력</h1>
+      <h1>🔎 도번 이력</h1>
       <div class="search-box">
         <input id="history-searchInput" type="text" placeholder="도번 또는 품명 검색 (쉼표로 여러 개)">
         <button id="history-searchBtn">🔍 검색</button>
+        <button id="history-printBtn">🖨️ 인쇄</button>
+        <button id="history-downloadBtn" type="button" class="tb-download-btn">📥 다운로드</button>
+        <button id="history-resetBtn" style="margin-left:8px;">초기화</button>
       </div>
       <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 도번별 과거 납품 이력, 지연 횟수, 학습된 소요 간격, 검사 이력을 한눈에 확인합니다.</div>
     </div>
@@ -6497,6 +6505,51 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     hBtn.addEventListener("click", doSearch);
     hInput.addEventListener("keydown", e => { if(e.key === "Enter") doSearch(); });
+  }
+  // 도번 이력 초기화
+  const hResetBtn = document.getElementById("history-resetBtn");
+  if(hResetBtn){
+    hResetBtn.addEventListener("click", () => {
+      historyKeyword = "";
+      hInput.value = "";
+      renderHistoryView("");
+    });
+  }
+  // 도번 이력 인쇄
+  const hPrintBtn = document.getElementById("history-printBtn");
+  if(hPrintBtn){
+    hPrintBtn.addEventListener("click", () => {
+      window.print();
+    });
+  }
+  // 도번 이력 다운로드
+  const hDownloadBtn = document.getElementById("history-downloadBtn");
+  if(hDownloadBtn){
+    hDownloadBtn.addEventListener("click", () => {
+      const content = document.getElementById("history-content");
+      if(!content) return;
+      const aoa = [];
+      const date = new Date().toLocaleDateString('ko-KR');
+      aoa.push(['도번 이력 조회', date]);
+      aoa.push([]);
+      aoa.push(['도번', '품명', '발주건수', '총수량', '납품완료', '평균지연일']);
+      const cards = content.querySelectorAll('div[style*="border-left"]');
+      cards.forEach(card => {
+        const h3 = card.querySelector('h3');
+        if(h3){
+          const title = h3.textContent;
+          const drawing = title.split('·')[0].trim();
+          const partName = title.split('·')[1]?.trim() || '';
+          aoa.push([drawing, partName, '', '', '', '']);
+        }
+      });
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = [{wch:14}, {wch:18}, {wch:10}, {wch:10}, {wch:10}, {wch:12}];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '도번이력');
+      const dateStr = date.replace(/\//g, '');
+      XLSX.writeFile(wb, `도번이력_${dateStr}.xlsx`);
+    });
   }
 });
 </script>
