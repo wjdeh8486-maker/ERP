@@ -6270,11 +6270,11 @@ function renderHistoryView(keyword){
         </div>`;
       }
     }catch(e){ /* 품질 데이터 미로드 */ }
-    // 검사대기 수량 합계
-    const waitIncoming = rows.reduce((a,r)=>a+(Number(r.waitIncomingInspection)||0),0);
-    const waitMeasure = rows.reduce((a,r)=>a+(Number(r.waitMeasure)||0),0);
-    const waitClean = rows.reduce((a,r)=>a+(Number(r.waitClean)||0),0);
-    const waitVision = rows.reduce((a,r)=>a+(Number(r.waitVision)||0),0);
+    // 검사대기 수량 합계 (계산된 대기값 사용)
+    const waitIncoming = rows.reduce((a,r)=>a+(Number(computeWaitIncomingInspection(r))||0),0);
+    const waitMeasure = rows.reduce((a,r)=>a+(Number(computeWaitMeasureRaw(r))||0),0);
+    const waitClean = rows.reduce((a,r)=>a+(Number(computeWaitCleanRaw(r))||0),0);
+    const waitVision = rows.reduce((a,r)=>a+(Number(computeWaitVisionRaw(r))||0),0);
     const totalWait = waitIncoming + waitMeasure + waitClean + waitVision;
     // 납품완료/미완료 수량
     const doneQty = done.reduce((a,r)=>a+(Number(r.qty)||0),0);
@@ -6802,9 +6802,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const hPrintBtn = document.getElementById("history-printBtn");
   if(hPrintBtn){
     hPrintBtn.addEventListener("click", () => {
-      // 강제로 view-history를 보이게 함
       const viewHistory = document.getElementById("view-history");
       const historyContent = document.getElementById("history-content");
+      const historySearchInput = document.getElementById("history-searchInput");
       const sideNav = document.querySelector(".side-nav");
       const topbar = document.getElementById("topbar-history");
       
@@ -6820,15 +6820,24 @@ document.addEventListener("DOMContentLoaded", () => {
       const originalSideNavDisplay = sideNav ? sideNav.style.display : "";
       const originalTopbarDisplay = topbar ? topbar.style.display : "";
       
+      // 검색이 안 되어있으면 현재 input 값으로 렌더링
+      if(!historyContent.innerHTML || historyContent.innerHTML.includes("검색하세요")) {
+        const keyword = historySearchInput ? historySearchInput.value : "";
+        if(keyword.trim()) {
+          renderHistoryView(keyword.trim());
+        }
+      }
+      
       // 인쇄 모드로 전환
       viewHistory.style.display = "block";
       viewHistory.classList.add("active");
       historyContent.style.display = "block";
       historyContent.style.visibility = "visible";
+      historyContent.style.opacity = "1";
       if(sideNav) sideNav.style.display = "none";
       if(topbar) topbar.style.display = "none";
       
-      // 브라우저가 스타일을 처리할 시간 제공
+      // 브라우저가 렌더링할 시간 제공
       setTimeout(() => {
         window.print();
         
@@ -6840,7 +6849,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if(sideNav) sideNav.style.display = originalSideNavDisplay;
           if(topbar) topbar.style.display = originalTopbarDisplay;
         }, 500);
-      }, 100);
+      }, 200);
     });
   }
   // 도번 이력 다운로드
