@@ -5539,12 +5539,24 @@ function renderManagementDetail(rows){
   el.innerHTML = `
     <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세 ${hiddenChips}${monthChip}</h2>
     ${hiddenPanel}
-    ${groups.map(g => `
+    ${groups.map(g => {
+      const waitIncoming = g.items.reduce((a,r)=>a+(Number(r.waitIncomingInspection)||0),0);
+      const waitMeasure = g.items.reduce((a,r)=>a+(Number(r.waitMeasure)||0),0);
+      const waitClean = g.items.reduce((a,r)=>a+(Number(r.waitClean)||0),0);
+      const waitVision = g.items.reduce((a,r)=>a+(Number(r.waitVision)||0),0);
+      const hasWait = waitIncoming > 0 || waitMeasure > 0 || waitClean > 0 || waitVision > 0;
+      return `
       <div style="background:var(--bg-card);padding:10px;margin-bottom:10px;border-radius:6px;border-left:4px solid #0B5CAB;">
         <div style="font-weight:700;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
           <span>${g.drawing} · ${g.partName} (합계 ${g.totalQty}개)</span>
           <button type="button" class="mgmt-noprint" data-mgmt-remove-group="${String(g.drawing||'').replace(/"/g,'&quot;')}" title="확인 완료 · 이 도번 전체를 목록에서 제거" style="border:1px solid #DDE1E8;background:#fff;color:#E02424;border-radius:4px;padding:3px 12px;cursor:pointer;font-size:11px;font-weight:700;">✕ 도번 제거</button>
         </div>
+        ${hasWait ? `<div style="background:#FEF3F3;border:1px solid #F2D3D3;border-radius:4px;padding:6px 8px;margin-bottom:8px;font-size:11px;display:flex;gap:12px;flex-wrap:wrap;">
+          ${waitIncoming > 0 ? `<span><span style="color:#6B7280;">수입검사대기</span> <b style="color:#E02424;">${waitIncoming}개</b></span>` : ''}
+          ${waitMeasure > 0 ? `<span><span style="color:#6B7280;">측정실검사대기</span> <b style="color:#E02424;">${waitMeasure}개</b></span>` : ''}
+          ${waitClean > 0 ? `<span><span style="color:#6B7280;">크린룸검사대기</span> <b style="color:#E02424;">${waitClean}개</b></span>` : ''}
+          ${waitVision > 0 ? `<span><span style="color:#6B7280;">비젼검사대기</span> <b style="color:#E02424;">${waitVision}개</b></span>` : ''}
+        </div>` : ''}
         <div style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
             <thead>
@@ -5576,7 +5588,7 @@ function renderManagementDetail(rows){
           </table>
         </div>
       </div>
-    `).join('')}
+    `; }).join('')}
   `;
 }
 
@@ -6106,6 +6118,11 @@ function renderHistoryView(keyword){
         </div>`;
       }
     }catch(e){ /* 품질 데이터 미로드 */ }
+    // 검사대기 수량 합계
+    const waitIncoming = rows.reduce((a,r)=>a+(Number(r.waitIncomingInspection)||0),0);
+    const waitMeasure = rows.reduce((a,r)=>a+(Number(r.waitMeasure)||0),0);
+    const waitClean = rows.reduce((a,r)=>a+(Number(r.waitClean)||0),0);
+    const waitVision = rows.reduce((a,r)=>a+(Number(r.waitVision)||0),0);
     // 납품완료/미완료 수량
     const doneQty = done.reduce((a,r)=>a+(Number(r.qty)||0),0);
     const undoneQty = Math.max(0, totalQty - doneQty);
@@ -6127,6 +6144,12 @@ function renderHistoryView(keyword){
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
         ${chip("납품완료", done.length + "건")}
         ${chip("납품미완료 수량", undoneQty.toLocaleString() + "개", undoneQty>0?'#E02424':'#2E7D46')}
+        ${chip("수입검사대기", waitIncoming + "개", waitIncoming>0?'#E02424':'#2E7D46')}
+        ${chip("측정실검사대기", waitMeasure + "개", waitMeasure>0?'#E02424':'#2E7D46')}
+        ${chip("크린룸검사대기", waitClean + "개", waitClean>0?'#E02424':'#2E7D46')}
+        ${chip("비젼검사대기", waitVision + "개", waitVision>0?'#E02424':'#2E7D46')}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
         ${chip("고객부적합", ncCnt + "건", ncCnt>0?'#E02424':'#2E7D46')}
         ${chip("부적합 수량", ncQty.toLocaleString() + "개", ncQty>0?'#E02424':'#2E7D46')}
         ${chip("개발/양산", ncDev.toLocaleString() + " / " + (ncQty-ncDev).toLocaleString())}
