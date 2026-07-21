@@ -1841,10 +1841,15 @@ function mainGetFilteredBase(){
     // 예: "26-171/SHOWERHEAD, BLOCK PLATE"
     //   → ("26-171"과 "SHOWERHEAD"를 모두 포함) 이거나, "BLOCK PLATE"를 포함
     const orGroups = raw.split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim()).filter(Boolean));
+    const removeDots = s => String(s||"").replace(/\./g, "");
     if(orGroups.length){
       filtered = filtered.filter(r=>{
         const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.vendorName,r.oldDrawingNo].join(" ").toLowerCase();
-        return orGroups.some(andTerms => andTerms.every(t=>haystack.includes(t)));
+        const haystackNoDots = removeDots(haystack);
+        return orGroups.some(andTerms => andTerms.every(t=>{
+          const tNoDots = removeDots(t);
+          return haystackNoDots.includes(tNoDots) || haystack.includes(t);
+        }));
       });
     }
   }
