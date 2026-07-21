@@ -835,6 +835,8 @@
       <div class="calendar-toolbar-row" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
         <div class="status-multiselect" id="main-statusMultiselect">
           <button type="button" id="main-statusToggle" class="status-toggle-btn">전체 상태 ▾</button>
+          <button type="button" id="main-prodOnlyBtn" class="btn-plain" style="font-size:12.5px;padding:6px 12px;background:#FFE8D6;color:#D97706;border:1px solid #FBBF24;border-radius:4px;cursor:pointer;font-weight:600;">🔵 생산만</button>
+          <button type="button" id="main-statusAllBtn" class="btn-plain" style="font-size:12.5px;padding:6px 12px;background:#E0E7FF;color:#4F46E5;border:1px solid #818CF8;border-radius:4px;cursor:pointer;font-weight:600;">⚪ 전체</button>
           <div class="status-dropdown" id="main-statusDropdown">
             <button type="button" id="main-statusRestoreBtn" style="width:100%;margin-bottom:6px;padding:6px;border-radius:4px;border:1px solid var(--border);background:#F0F4FA;color:var(--navy);font-weight:700;font-size:12.5px;cursor:pointer;">↺ 전체 복원</button>
             <label><input type="checkbox" value="생산" checked> 생산</label>
@@ -1836,7 +1838,7 @@ function mainGetFilteredBase(){
     // 포함해야 하는 AND(좁혀서 검색)로 동작합니다.
     // 예: "26-171/SHOWERHEAD, BLOCK PLATE"
     //   → ("26-171"과 "SHOWERHEAD"를 모두 포함) 이거나, "BLOCK PLATE"를 포함
-    const orGroups = raw.split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim()).filter(Boolean));
+    const orGroups = keyword.trim().split(",").map(g=>g.trim()).filter(Boolean).map(g=>g.split("/").map(t=>t.trim().toLowerCase()).filter(Boolean));
     if(orGroups.length){
       filtered = filtered.filter(r=>{
         const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.vendorName,r.oldDrawingNo].join(" ").toLowerCase();
@@ -1910,6 +1912,22 @@ document.querySelectorAll("#main-statusDropdown input[type=checkbox]").forEach(c
 });
 document.getElementById("main-statusRestoreBtn").addEventListener("click", (e)=>{
   e.stopPropagation();
+  document.querySelectorAll("#main-statusDropdown input[type=checkbox]").forEach(cb=>{ cb.checked = true; });
+  mainSelectedStatuses = ALL_MAIN_STATUSES.slice();
+  mainUpdateStatusToggleLabel();
+  mainApplySearch();
+});
+
+// 빠른 토글: 생산만
+document.getElementById("main-prodOnlyBtn").addEventListener("click", ()=>{
+  document.querySelectorAll("#main-statusDropdown input[type=checkbox]").forEach(cb=>{ cb.checked = cb.value === "생산"; });
+  mainSelectedStatuses = ["생산"];
+  mainUpdateStatusToggleLabel();
+  mainApplySearch();
+});
+
+// 빠른 토글: 전체
+document.getElementById("main-statusAllBtn").addEventListener("click", ()=>{
   document.querySelectorAll("#main-statusDropdown input[type=checkbox]").forEach(cb=>{ cb.checked = true; });
   mainSelectedStatuses = ALL_MAIN_STATUSES.slice();
   mainUpdateStatusToggleLabel();
@@ -5015,8 +5033,8 @@ function filterManagementRows(keyword){
           String(row.partName||''),
           String(row.partNo||''),
           String(row.orderNo||''),
-          String(row.vendor||''),   // PROJECT NO.
-          String(row.vendorName||'')  // 외주발주(납품처)
+          String(row.vendor||''),
+          String(row.vendorName||'')
         ].join(" ").toUpperCase();
         // OR 그룹 중 하나라도, 그 그룹의 모든 단어가 포함되면 매칭
         return orGroups.some(andTerms => andTerms.every(t => haystack.includes(t)));
