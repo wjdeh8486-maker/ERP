@@ -5556,11 +5556,27 @@ function renderManagementDetail(rows){
           <span>${g.drawing} · ${g.partName} (합계 ${g.totalQty}개)</span>
           <button type="button" class="mgmt-noprint" data-mgmt-remove-group="${String(g.drawing||'').replace(/"/g,'&quot;')}" title="확인 완료 · 이 도번 전체를 목록에서 제거" style="border:1px solid #DDE1E8;background:#fff;color:#E02424;border-radius:4px;padding:3px 12px;cursor:pointer;font-size:11px;font-weight:700;">✕ 도번 제거</button>
         </div>
-        ${hasWait ? `<div style="background:#FEF3F3;border:1px solid #F2D3D3;border-radius:4px;padding:6px 8px;margin-bottom:8px;font-size:11px;display:flex;gap:12px;flex-wrap:wrap;">
-          ${waitIncoming > 0 ? `<span><span style="color:#6B7280;">수입검사대기</span> <b style="color:#E02424;">${waitIncoming}개</b></span>` : ''}
-          ${waitMeasure > 0 ? `<span><span style="color:#6B7280;">측정실검사대기</span> <b style="color:#E02424;">${waitMeasure}개</b></span>` : ''}
-          ${waitClean > 0 ? `<span><span style="color:#6B7280;">크린룸검사대기</span> <b style="color:#E02424;">${waitClean}개</b></span>` : ''}
-          ${waitVision > 0 ? `<span><span style="color:#6B7280;">비젼검사대기</span> <b style="color:#E02424;">${waitVision}개</b></span>` : ''}
+        ${hasWait ? `<div style="margin-bottom:8px;">
+          <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;overflow:hidden;">
+            <thead>
+              <tr style="background:#F4F5F7;border-bottom:1px solid #DDE1E8;">
+                <th style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;">수입검사대기</th>
+                <th style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;">측정실검사대기</th>
+                <th style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;">크린룸검사대기</th>
+                <th style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;">비젼검사대기</th>
+                <th style="padding:6px;text-align:center;font-weight:700;color:#0B5CAB;">합계</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;color:${waitIncoming>0?'#E02424':'#1F2A44'};font-weight:${waitIncoming>0?'700':'400'}">${waitIncoming}</td>
+                <td style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;color:${waitMeasure>0?'#E02424':'#1F2A44'};font-weight:${waitMeasure>0?'700':'400'}">${waitMeasure}</td>
+                <td style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;color:${waitClean>0?'#E02424':'#1F2A44'};font-weight:${waitClean>0?'700':'400'}">${waitClean}</td>
+                <td style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;color:${waitVision>0?'#E02424':'#1F2A44'};font-weight:${waitVision>0?'700':'400'}">${waitVision}</td>
+                <td style="padding:6px;text-align:center;color:#0B5CAB;font-weight:700;background:#F0F7FF;">${waitIncoming+waitMeasure+waitClean+waitVision}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>` : ''}
         <div style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
@@ -6128,6 +6144,7 @@ function renderHistoryView(keyword){
     const waitMeasure = rows.reduce((a,r)=>a+(Number(r.waitMeasure)||0),0);
     const waitClean = rows.reduce((a,r)=>a+(Number(r.waitClean)||0),0);
     const waitVision = rows.reduce((a,r)=>a+(Number(r.waitVision)||0),0);
+    const totalWait = waitIncoming + waitMeasure + waitClean + waitVision;
     // 납품완료/미완료 수량
     const doneQty = done.reduce((a,r)=>a+(Number(r.qty)||0),0);
     const undoneQty = Math.max(0, totalQty - doneQty);
@@ -6149,10 +6166,29 @@ function renderHistoryView(keyword){
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
         ${chip("납품완료", done.length + "건")}
         ${chip("납품미완료 수량", undoneQty.toLocaleString() + "개", undoneQty>0?'#E02424':'#2E7D46')}
-        ${chip("수입검사대기", waitIncoming + "개", waitIncoming>0?'#E02424':'#2E7D46')}
-        ${chip("측정실검사대기", waitMeasure + "개", waitMeasure>0?'#E02424':'#2E7D46')}
-        ${chip("크린룸검사대기", waitClean + "개", waitClean>0?'#E02424':'#2E7D46')}
-        ${chip("비젼검사대기", waitVision + "개", waitVision>0?'#E02424':'#2E7D46')}
+      </div>
+      <div style="margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;color:#1F2A44;margin-bottom:6px;">🔍 검사대기 현황</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;overflow:hidden;">
+          <thead>
+            <tr style="background:#F4F5F7;border-bottom:1px solid #DDE1E8;">
+              <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">수입검사대기</th>
+              <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">측정실검사대기</th>
+              <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">크린룸검사대기</th>
+              <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">비젼검사대기</th>
+              <th style="padding:8px;text-align:center;font-weight:700;color:#0B5CAB;">합계</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid #DDE1E8;">
+              <td style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;color:${waitIncoming>0?'#E02424':'#1F2A44'};font-weight:${waitIncoming>0?'700':'400'}">${waitIncoming}<span style="font-size:10px;color:#6B7280;">개</span></td>
+              <td style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;color:${waitMeasure>0?'#E02424':'#1F2A44'};font-weight:${waitMeasure>0?'700':'400'}">${waitMeasure}<span style="font-size:10px;color:#6B7280;">개</span></td>
+              <td style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;color:${waitClean>0?'#E02424':'#1F2A44'};font-weight:${waitClean>0?'700':'400'}">${waitClean}<span style="font-size:10px;color:#6B7280;">개</span></td>
+              <td style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;color:${waitVision>0?'#E02424':'#1F2A44'};font-weight:${waitVision>0?'700':'400'}">${waitVision}<span style="font-size:10px;color:#6B7280;">개</span></td>
+              <td style="padding:8px;text-align:center;color:#0B5CAB;font-weight:700;background:#F0F7FF;">${totalWait}<span style="font-size:10px;">개</span></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
         ${chip("고객부적합", ncCnt + "건", ncCnt>0?'#E02424':'#2E7D46')}
