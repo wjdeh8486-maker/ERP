@@ -931,10 +931,10 @@
         <!-- 종합 현황 카드 -->
         <div class="table-wrap" id="management-summary" style="margin-bottom:16px;"></div>
         
-        <!-- 납기 연장 권고 -->
         <!-- 검사대기 현황 -->
         <div class="table-wrap" id="management-waitinsp" style="margin-bottom:16px;"></div>
 
+        <!-- 납기 연장 권고 -->
         <div class="table-wrap" id="management-extend" style="margin-bottom:16px;"></div>
         
         <!-- 우선순위 TOP 10 -->
@@ -6534,12 +6534,20 @@ function renderWaitInspTab(){
     el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">상단의 [🔄 불러오기] 버튼을 눌러 검사대기 데이터를 불러와 주세요.</div>`;
     return;
   }
-  const list = waitInspAggregate(key);
+  let list = waitInspAggregate(key);
+  // 수입검사대기는 유진테크만 필터링
+  if(key === "수입검사대기" && mainData){
+    const juginPartNos = new Set();
+    mainData.forEach(r => {
+      if(r.customer === "유진테크") juginPartNos.add(r.partNo);
+    });
+    list = list.filter(r => juginPartNos.has(r.partNo));
+  }
   const totalQty = list.reduce((a,r)=>a+r.qty,0);
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   el.innerHTML = `
     <div class="table-wrap" style="padding:14px 16px;">
-      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
+      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)}${key === "수입검사대기" ? " <span style=\"color:#E02424;\">(유진테크만)</span>" : ""} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
       <div style="overflow-x:auto;">
         <table style="width:100%;max-width:640px;">
           <thead><tr><th>도번</th><th>최종 등록일</th><th>수량</th></tr></thead>
