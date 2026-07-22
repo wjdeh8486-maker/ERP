@@ -2403,18 +2403,19 @@ function mapRowToMain(row){
 }
 
 // 수입검사 대기 대상 공정 판정
-// 폴리싱(빠우)는 "폴리싱(빠우)-01 (작업종료)" 만 집계 (다른 호기/작업시작 제외).
-// 폴리싱 외 조건은 기존과 동일하게 유지한다.
+// 집계 대상: 사상 / E.P / CP / 외주가공 (작업종료) / 폴리싱(빠우)-01 (작업종료) / 값이 "종료" 단독인 행
+// ※ "종료"는 정확히 일치할 때만 인정한다. 부분일치로 두면 MCT-01 (작업종료) 등이 전부 딸려 들어온다.
 function isWaitTargetProcess(cp){
   const raw = String(cp || "");
   const s = raw.replace(/\s+/g, "");
-  // 폴리싱은 아래 일반 조건(특히 "종료")에 걸리지 않도록 여기서 단독 판정
-  if(s.indexOf("폴리싱(빠우)") >= 0) return s.indexOf("폴리싱(빠우)-01(작업종료)") >= 0;
+  if(!s) return false;
+  // 폴리싱은 지정 호기 + 작업종료만 (다른 조건에 걸리지 않도록 단독 판정)
+  if(s.indexOf("폴리싱(빠우)") >= 0) return s === "폴리싱(빠우)-01(작업종료)";
+  if(s === "종료") return true;
+  if(s === "외주가공(작업종료)") return true;
   return raw.includes("사상")
       || raw.includes("E.P")
-      || raw.includes("CP")
-      || raw.includes("외주가공 (작업종료)")
-      || raw.includes("종료");
+      || raw.includes("CP");
 }
 // 수입검사 대기 수량 계산
 // ===== 수입검사 대기: 도면번호별 합계를 1회만 인덱싱해 캐싱 (성능 최적화) =====
