@@ -512,8 +512,15 @@
   /* 관리항목 현황 모바일 최적화 (screen 전용: 인쇄에 영향 없음) */
   @media screen and (max-width: 860px){
     #management-print-page{ padding:8px !important; }
-    #management-summary{ grid-template-columns:1fr !important; }
-    #management-summary > div{ border-left-width:3px !important; }
+    /* 그리드는 #management-summary 자신이 아니라 내부 컨테이너에 걸려 있다 */
+    #management-summary .mgmt-summary-grid{ grid-template-columns:repeat(2,1fr) !important; gap:8px !important; }
+    #management-summary .mgmt-summary-card{ border-left-width:3px !important; padding:7px 9px !important; }
+    #management-summary .mgmt-summary-value{ font-size:18px !important; }
+    /* 검사대기 표: 열이 6개라 좁은 화면에서는 가로 스크롤로 넘김 */
+    #management-waitinsp .mgmt-waitinsp-scroll{ overflow-x:auto !important; -webkit-overflow-scrolling:touch !important; }
+    #management-waitinsp table{ min-width:600px !important; font-size:12px !important; }
+    #management-waitinsp th, #management-waitinsp td{ padding:8px 6px !important; }
+    #management-waitinsp th:first-child, #management-waitinsp td:first-child{ min-width:130px !important; font-size:11.5px !important; }
     #management-extend table,
     #management-top10 table,
     #management-detail table,
@@ -539,13 +546,17 @@
   
   @media screen and (max-width: 420px){
     #management-print-page{ padding:4px !important; }
-    #management-summary > div{ 
+    #management-summary .mgmt-summary-grid{ grid-template-columns:1fr !important; }
+    #management-waitinsp table{ min-width:560px !important; font-size:11.5px !important; }
+    #management-waitinsp th, #management-waitinsp td{ padding:7px 5px !important; }
+    #management-summary .mgmt-summary-card{ 
       border-left:3px solid currentColor !important;
       padding:8px !important;
       font-size:11px !important;
     }
-    #management-summary > div > div:first-child{ font-size:10px !important; }
-    #management-summary > div > div:nth-child(2){ font-size:16px !important; }
+    #management-summary .mgmt-summary-label{ font-size:10.5px !important; }
+    #management-summary .mgmt-summary-value{ font-size:17px !important; }
+    #management-summary .mgmt-summary-sub{ font-size:10px !important; }
     #management-extend,
     #management-top10,
     #management-detail,
@@ -5413,17 +5424,17 @@ function renderManagementSummary(rows){
   const thisMonth = new Date().getMonth() + 1;
   // 값과 부가정보를 한 줄로 합쳐 카드 높이를 줄인다
   const card = (label, value, color, sub) => `
-      <div style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid ${color};padding:7px 10px;border-radius:6px;">
-        <div style="font-size:11.5px;color:#1A1E27;margin-bottom:3px;font-weight:700;">${label}</div>
+      <div class="mgmt-summary-card" style="background:#FFFFFF;border:1px solid #DDE1E8;border-left:4px solid ${color};padding:7px 10px;border-radius:6px;">
+        <div class="mgmt-summary-label" style="font-size:11.5px;color:#1A1E27;margin-bottom:3px;font-weight:700;">${label}</div>
         <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;">
-          <span style="font-size:19px;font-weight:700;color:${color};line-height:1.1;">${value}</span>
-          ${sub ? `<span style="font-size:10.5px;color:#4B5563;font-weight:700;">(${sub})</span>` : ""}
+          <span class="mgmt-summary-value" style="font-size:19px;font-weight:700;color:${color};line-height:1.1;">${value}</span>
+          ${sub ? `<span class="mgmt-summary-sub" style="font-size:10.5px;color:#4B5563;font-weight:700;">(${sub})</span>` : ""}
         </div>
       </div>`;
 
   el.innerHTML = `
     <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;color:#1A1E27;">📊 종합 현황</h2>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+    <div class="mgmt-summary-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
       ${card("생산 대기", data.productWait, "#E02424", thisMonth + "월: " + data.julyProd + "개")}
       ${card("품질 대기", data.qualityWait, "#0B5CAB", thisMonth + "월: " + data.julyQual + "개")}
       ${card("납기 지연", data.delayed, "#E02424", "")}
@@ -5471,7 +5482,8 @@ function renderManagementWaitInspection(rows){
 
   el.innerHTML = `
     <h2 style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1A1E27;">🔍 검사대기 현황</h2>
-    <table style="width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;overflow:hidden;">
+    <div class="mgmt-waitinsp-scroll" style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <table style="width:100%;min-width:640px;border-collapse:collapse;font-size:13.5px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;">
       <thead>
         <tr style="background:#F4F5F7;border-bottom:1px solid #DDE1E8;">
           <th style="padding:12px 10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;min-width:170px;">도번/품명</th>
@@ -5504,6 +5516,7 @@ function renderManagementWaitInspection(rows){
         </tr>
       </tbody>
     </table>
+    </div>
   `;
 }
 
@@ -6311,7 +6324,8 @@ function renderHistoryView(keyword){
       </div>
       <div style="margin-bottom:10px;">
         <div style="font-size:12px;font-weight:700;color:#1F2A44;margin-bottom:6px;">🔍 검사대기 현황</div>
-        <table style="width:100%;border-collapse:collapse;font-size:11.5px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;overflow:hidden;">
+        <div class="hist-waitinsp-scroll" style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <table style="width:100%;min-width:520px;border-collapse:collapse;font-size:11.5px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;">
           <thead>
             <tr style="background:#F4F5F7;border-bottom:1px solid #DDE1E8;">
               <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">수입검사대기</th>
@@ -6331,6 +6345,7 @@ function renderHistoryView(keyword){
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
         ${chip("고객부적합", ncCnt + "건", ncCnt>0?'#E02424':'#2E7D46')}
