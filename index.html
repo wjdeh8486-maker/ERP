@@ -2427,7 +2427,20 @@ function excelSerialToDateStr(serial){
 // 시리얼로 인정할 범위: 20000(1954년) ~ 110000(2201년).
 // 이보다 작은 숫자는 날짜가 아닌 값(수량 등)일 가능성이 커서 변환하지 않는다.
 const DATE_SERIAL_MIN = 20000, DATE_SERIAL_MAX = 110000;
-function normalizeDateValue(v){
+/* 월/일만 적힌 납기의 연도 추정
+   기준 연도는 ORDER NO 앞 2자리(예: 26- → 2026). 없으면 올해.
+   기준 연도가 올해인데 적힌 달이 이미 지난 달이면, 아직 납품 안 된 건이므로 내년 납기로 본다.
+     오늘이 2026-07-22 일 때
+       "7/15"  → 7월은 지나지 않음 → 2026-07-15
+       "1/15"  → 1월은 지남        → 2027-01-15
+   기준 연도가 과거(예: 25- 주문)면 지난 이력이므로 그대로 둔다. */
+function resolveMonthDayYear(month, hintYear){
+  const now = new Date();
+  const base = Number(hintYear) || now.getFullYear();
+  if(base === now.getFullYear() && month < (now.getMonth() + 1)) return base + 1;
+  return base;
+}
+function normalizeDateValue(v, hintYear){
   if(v === null || v === undefined || v === "") return "";
   // Date 객체 (cellDates:true 로 읽히거나 다른 경로로 들어온 경우)
   // instanceof 는 실행 컨텍스트가 다르면 실패할 수 있어 메서드 존재 여부로 판별한다
@@ -2443,31 +2456,46 @@ function normalizeDateValue(v){
   }
   const s = String(v).trim();
   if(!s) return "";
-  // 숫자만 있는 문자열도 시리얼로 간주 (예: "46412")
+  const p2 = x => String(x).padStart(2, "0");
+  // ① 연도가 있는 형태: 2027-01-25 / 2027.01.25 / 2027/1/25
+  const m = s.match(/^(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})/);
+  if(m) return m[1] + "-" + p2(m[2]) + "-" + p2(m[3]);
+  // ② 연도 없이 월/일만 적힌 텍스트 (예: "7/15", "7.15", "7/15 포인트", "7월 15일 추가건")
+  //    "7.15" 는 소수처럼 보이므로 아래 시리얼 판정보다 먼저 확인해야 한다.
+  const md = s.match(/^\s*(\d{1,2})\s*(?:[/.\-]|월\s*)\s*(\d{1,2})\s*(?:일)?(?![0-9])/);
+  if(md){
+    const mo = Number(md[1]), da = Number(md[2]);
+    if(mo >= 1 && mo <= 12 && da >= 1 && da <= 31){
+      return resolveMonthDayYear(mo, hintYear) + "-" + p2(mo) + "-" + p2(da);
+    }
+  }
+  // ③ 숫자만 있는 문자열은 엑셀 시리얼로 간주 (예: "46412")
   if(/^\d+(\.\d+)?$/.test(s)){
     const n = Number(s);
     if(n >= DATE_SERIAL_MIN && n < DATE_SERIAL_MAX) return excelSerialToDateStr(n);
     return s;
   }
-  // 2027-01-25 / 2027.01.25 / 2027/1/25 → 통일
-  const m = s.match(/^(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})/);
-  if(m){
-    const p = x => String(x).padStart(2, "0");
-    return m[1] + "-" + p(m[2]) + "-" + p(m[3]);
-  }
-  return s;   // 발주대기 등 텍스트는 그대로
+  return s;   // 발주대기 등 그 밖의 텍스트는 그대로
+}
+// ORDER NO 앞 2자리에서 연도 추정 (예: "26-497-1" → 2026). 없으면 null
+function orderNoToYear(orderNo){
+  const m = String(orderNo || "").trim().match(/^(\d{2})\s*-/);
+  if(!m) return null;
+  return 2000 + Number(m[1]);
 }
 function mapRowToMain(row){
   const baseOrderNo = row["ORDER NO."] || "";
   const orderSeq = row["발주번호"];
   const combinedOrderNo = (baseOrderNo && (orderSeq || orderSeq===0)) ? (baseOrderNo + "-" + orderSeq) : baseOrderNo;
+  // 월/일만 적힌 납기("7/15 포인트" 등)의 연도 추정 기준
+  const orderYear = orderNoToYear(baseOrderNo) || orderNoToYear(combinedOrderNo);
   const result = {
     status:row["제품상태"]||"", orderNo:combinedOrderNo, customer:row["고객사"]||"",
     partNo:row["품 번"]||row["품번"]||"", partName:row["품 명"]||row["품명"]||"", qty:Number(row["수량"]||0),
-    dueDate:normalizeDateValue(row["최종납기"]),
+    dueDate:normalizeDateValue(row["최종납기"], orderYear),
     vendor: getFieldFlexible(row, "PROJECT NO.") || getFieldFlexible(row, "PROJECT NO") || getFieldFlexible(row, "프로젝트번호") || "",
     vendorName: getFieldFlexible(row, "외주발주(납품처)") || getFieldFlexible(row, "외주발주") || getFieldFlexible(row, "납품처") || "",
-    shipDate:normalizeDateValue(row["납품일자"]),
+    shipDate:normalizeDateValue(row["납품일자"], orderYear),
     oldDrawingNo:row["기존도번(유진테크)"]||row["기존도번"]||"",
     shipped:row["납품여부"]||"", stockPreShip:Number(row["재고선출고"]||row["재고\n선출고"]||0), waitDeliver:Number(row["납품대기"]||0), waitMeasure:Number(row["측정실검사대기"]||0),
     waitClean:Number(row["크린룸검사대기"]||0), waitVision:Number(row["비젼검사대기"]||0),
