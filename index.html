@@ -2424,6 +2424,7 @@ function invalidateWaitInspIndex(){ waitInspIndexCache = null; }
 function buildWaitInspIndex(){
   const processQtyMap = new Map();   // 도면번호 → 2026년 대기공정(사상/E.P/CP/폴리싱/외주가공 종료 등) 수량 합
   const inspQtyMap = new Map();      // 도 번 → 2026년 검사수 합
+  const lastRegMap = new Map();      // 도면번호 → 최종 등록일자
   if(processData && processData.length){
     for(const p of processData){
       const regYear = String(p["등록일자"] || "").split("-")[0];
@@ -2433,6 +2434,8 @@ function buildWaitInspIndex(){
       const dn = String(p["도면번호"] || "").trim();
       if(!dn) continue;
       processQtyMap.set(dn, (processQtyMap.get(dn) || 0) + Number(p["수량"] || 0));
+      const rd = String(p["등록일자"] || "").slice(0, 10);
+      if(rd && rd > (lastRegMap.get(dn) || "")) lastRegMap.set(dn, rd);
     }
   }
   if(incomingInspectionData && incomingInspectionData.length){
@@ -2454,7 +2457,7 @@ function buildWaitInspIndex(){
       inspQtyMap.set(dn, (inspQtyMap.get(dn) || 0) + Number(i["검사수"] || 0));
     }
   }
-  waitInspIndexCache = { processQty: processQtyMap, inspQty: inspQtyMap };
+  waitInspIndexCache = { processQty: processQtyMap, inspQty: inspQtyMap, lastReg: lastRegMap };
 }
 function computeWaitIncomingInspection(mainRow){
   // 원본 행(기존도번(유진테크))과 변환된 행(oldDrawingNo) 모두 지원
@@ -5428,39 +5431,39 @@ function renderManagementSummary(rows){
 function renderManagementWaitInspection(rows){
   const el = document.getElementById("management-waitinsp");
   if(!el) return;
-  
-  // 기존도번 또는 도번으로 그룹화
-  const grouped = {};
-  rows.forEach(r => {
-    // 기존도번이 있으면 기존도번, 없으면 품번으로 키 설정
-    const key = String(r.oldDrawingNo || r.partNo || "미분류").trim();
-    if(!grouped[key]) grouped[key] = [];
-    grouped[key].push(r);
-  });
-  
-  // 기존도번/도번별 집계 (계산된 대기값 사용)
-  const dataByPart = [];
-  Object.keys(grouped).sort().forEach(key => {
-    const rows = grouped[key];
-    const waitIncoming = groupWaitIncoming(rows);
-    const waitMeasure = groupWaitMeasure(rows);
-    const waitClean = groupWaitClean(rows);
-    const waitVision = groupWaitVision(rows);
-    const totalWait = waitIncoming + waitMeasure + waitClean + waitVision;
-    
-    // 첫 행의 품명 참조
-    const displayName = rows[0].partName ? `${key} (${rows[0].partName})` : key;
-    
-    dataByPart.push({ key, displayName, waitIncoming, waitMeasure, waitClean, waitVision, totalWait });
-  });
-  
-  // 전체 합계
+
+  // 도번/품명별 상세와 같은 대상만 표시한다.
+  // (상세는 완료 건을 빼고, 선택된 월이 있으면 그 달 납기만 본다)
+  let src = rows;
+  if(managementMonthFilter){
+    const ty = new Date().getFullYear();
+    src = rows.filter(r => {
+      const ym = getDueYM(r.dueDate);
+      return ym && ym.y === ty && ym.m === managementMonthFilter;
+    });
+  }
+  const groups = getDetailByDrawing(src);
+
+  const dataByPart = groups.map(g => {
+    const waitIncoming = groupWaitIncoming(g.items);
+    const waitMeasure  = groupWaitMeasure(g.items);
+    const waitClean    = groupWaitClean(g.items);
+    const waitVision   = groupWaitVision(g.items);
+    const key = String(g.drawing || "").trim() || "미분류";
+    return {
+      key,
+      displayName: g.partName ? `${key} (${g.partName})` : key,
+      waitIncoming, waitMeasure, waitClean, waitVision,
+      totalWait: waitIncoming + waitMeasure + waitClean + waitVision
+    };
+  }).sort((a,b) => a.key.localeCompare(b.key));
+
   const totalIncoming = dataByPart.reduce((a,d)=>a+d.waitIncoming,0);
-  const totalMeasure = dataByPart.reduce((a,d)=>a+d.waitMeasure,0);
-  const totalClean = dataByPart.reduce((a,d)=>a+d.waitClean,0);
-  const totalVision = dataByPart.reduce((a,d)=>a+d.waitVision,0);
-  const grandTotal = totalIncoming + totalMeasure + totalClean + totalVision;
-  
+  const totalMeasure  = dataByPart.reduce((a,d)=>a+d.waitMeasure,0);
+  const totalClean    = dataByPart.reduce((a,d)=>a+d.waitClean,0);
+  const totalVision   = dataByPart.reduce((a,d)=>a+d.waitVision,0);
+  const grandTotal    = totalIncoming + totalMeasure + totalClean + totalVision;
+
   el.innerHTML = `
     <h2 style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1A1E27;">🔍 검사대기 현황</h2>
     <table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;overflow:hidden;">
@@ -5471,10 +5474,11 @@ function renderManagementWaitInspection(rows){
           <th style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;">측정실검사대기</th>
           <th style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;">크린룸검사대기</th>
           <th style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;">비젼검사대기</th>
-          <th style="padding:10px;text-align:center;font-weight:700;color:#fff !important;background:#E02424;">합계</th>
+          <th style="padding:10px;text-align:center;font-weight:700;">합계</th>
         </tr>
       </thead>
       <tbody>
+        ${dataByPart.length === 0 ? `<tr><td colspan="6" style="padding:16px;text-align:center;color:#B9C2D6;">표시할 항목이 없습니다.</td></tr>` : ""}
         ${dataByPart.map(d => `
         <tr style="border-bottom:1px solid #DDE1E8;">
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;color:#0B5CAB;font-size:11px;">${d.displayName}</td>
@@ -5482,7 +5486,7 @@ function renderManagementWaitInspection(rows){
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${d.waitMeasure>0?'#E02424':'#1F2A44'};font-weight:${d.waitMeasure>0?'700':'400'};">${d.waitMeasure}</td>
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${d.waitClean>0?'#E02424':'#1F2A44'};font-weight:${d.waitClean>0?'700':'400'};">${d.waitClean}</td>
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${d.waitVision>0?'#E02424':'#1F2A44'};font-weight:${d.waitVision>0?'700':'400'};">${d.waitVision}</td>
-          <td style="padding:10px;text-align:center;color:${d.totalWait>0?'#fff':'#1F2A44'};font-weight:700;background:${d.totalWait>0?'#E02424':'#EDF0F5'};">${d.totalWait}</td>
+          <td style="padding:10px;text-align:center;font-weight:700;color:${d.totalWait>0?'#E02424':'#1F2A44'};">${d.totalWait}</td>
         </tr>
         `).join("")}
         <tr style="background:#EDF0F5;font-weight:700;border-top:2px solid #DDE1E8;">
@@ -5491,7 +5495,7 @@ function renderManagementWaitInspection(rows){
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${totalMeasure>0?'#E02424':'#1F2A44'};">${totalMeasure}</td>
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${totalClean>0?'#E02424':'#1F2A44'};">${totalClean}</td>
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${totalVision>0?'#E02424':'#1F2A44'};">${totalVision}</td>
-          <td style="padding:10px;text-align:center;color:#fff;background:#E02424;">${grandTotal}</td>
+          <td style="padding:10px;text-align:center;color:${grandTotal>0?'#E02424':'#1F2A44'};">${grandTotal}</td>
         </tr>
       </tbody>
     </table>
@@ -5659,39 +5663,12 @@ function renderManagementDetail(rows){
     <h2 style="font-size:13px;font-weight:700;margin-bottom:8px;">📋 도번/품명별 상세 ${hiddenChips}${monthChip}</h2>
     ${hiddenPanel}
     ${groups.map(g => {
-      const waitIncoming = groupWaitIncoming(g.items);
-      const waitMeasure = groupWaitMeasure(g.items);
-      const waitClean = groupWaitClean(g.items);
-      const waitVision = groupWaitVision(g.items);
-      const hasWait = waitIncoming > 0 || waitMeasure > 0 || waitClean > 0 || waitVision > 0;
       return `
       <div style="background:var(--bg-card);padding:10px;margin-bottom:10px;border-radius:6px;border-left:4px solid #0B5CAB;">
         <div style="font-weight:700;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
           <span>${g.drawing} · ${g.partName} (합계 ${g.totalQty}개)</span>
           <button type="button" class="mgmt-noprint" data-mgmt-remove-group="${String(g.drawing||'').replace(/"/g,'&quot;')}" title="확인 완료 · 이 도번 전체를 목록에서 제거" style="border:1px solid #DDE1E8;background:#fff;color:#E02424;border-radius:4px;padding:3px 12px;cursor:pointer;font-size:11px;font-weight:700;">✕ 도번 제거</button>
         </div>
-        ${hasWait ? `<div style="margin-bottom:8px;">
-          <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;overflow:hidden;">
-            <thead>
-              <tr style="background:#F4F5F7;border-bottom:1px solid #DDE1E8;">
-                <th style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;">수입검사대기</th>
-                <th style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;">측정실검사대기</th>
-                <th style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;">크린룸검사대기</th>
-                <th style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;">비젼검사대기</th>
-                <th style="padding:6px;text-align:center;font-weight:700;color:#fff !important;background:#E02424;">합계</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;color:${waitIncoming>0?'#E02424':'#1F2A44'};font-weight:${waitIncoming>0?'700':'400'}">${waitIncoming}</td>
-                <td style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;color:${waitMeasure>0?'#E02424':'#1F2A44'};font-weight:${waitMeasure>0?'700':'400'}">${waitMeasure}</td>
-                <td style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;color:${waitClean>0?'#E02424':'#1F2A44'};font-weight:${waitClean>0?'700':'400'}">${waitClean}</td>
-                <td style="padding:6px;text-align:center;border-right:1px solid #DDE1E8;color:${waitVision>0?'#E02424':'#1F2A44'};font-weight:${waitVision>0?'700':'400'}">${waitVision}</td>
-                <td style="padding:6px;text-align:center;color:#fff !important;font-weight:700;background:#E02424;">${waitIncoming+waitMeasure+waitClean+waitVision}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>` : ''}
         <div style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
             <thead>
@@ -6328,7 +6305,7 @@ function renderHistoryView(keyword){
               <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">측정실검사대기</th>
               <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">크린룸검사대기</th>
               <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">비젼검사대기</th>
-              <th style="padding:8px;text-align:center;font-weight:700;color:#fff !important;background:#E02424;">합계</th>
+              <th style="padding:8px;text-align:center;font-weight:700;">합계</th>
             </tr>
           </thead>
           <tbody>
@@ -6337,7 +6314,7 @@ function renderHistoryView(keyword){
               <td style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;color:${waitMeasure>0?'#E02424':'#1F2A44'};font-weight:${waitMeasure>0?'700':'400'}">${waitMeasure}<span style="font-size:10px;color:#6B7280;">개</span></td>
               <td style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;color:${waitClean>0?'#E02424':'#1F2A44'};font-weight:${waitClean>0?'700':'400'}">${waitClean}<span style="font-size:10px;color:#6B7280;">개</span></td>
               <td style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;color:${waitVision>0?'#E02424':'#1F2A44'};font-weight:${waitVision>0?'700':'400'}">${waitVision}<span style="font-size:10px;color:#6B7280;">개</span></td>
-              <td style="padding:8px;text-align:center;color:#fff !important;font-weight:700;background:#E02424;border-right:1px solid #DDE1E8;">${totalWait}<span style="font-size:10px;">개</span></td>
+              <td style="padding:8px;text-align:center;font-weight:700;color:${totalWait>0?'#E02424':'#1F2A44'};border-right:1px solid #DDE1E8;">${totalWait}<span style="font-size:10px;color:#6B7280;">개</span></td>
             </tr>
           </tbody>
         </table>
@@ -6635,28 +6612,38 @@ function waitInspAggregate(key){
   });
   return Object.values(map).sort((a,b)=>a.partNo.localeCompare(b.partNo, "ko", {numeric:true}));
 }
+// 수입검사대기 목록: MAIN 대시보드와 같은 계산 사용
+// (도면번호별 진행공정 수량 합 − 검사수 합, 양수인 도번만)
+function waitInspIncomingList(){
+  if(!waitInspIndexCache) buildWaitInspIndex();
+  const idx = waitInspIndexCache;
+  const out = [];
+  idx.processQty.forEach((pq, dn) => {
+    const qty = Math.max(0, pq - (idx.inspQty.get(dn) || 0));
+    if(qty > 0) out.push({ partNo: dn, qty: qty, lastReg: idx.lastReg.get(dn) || "" });
+  });
+  return out.sort((a,b)=>a.partNo.localeCompare(b.partNo, "ko", {numeric:true}));
+}
 function renderWaitInspTab(){
   const el = document.getElementById("waitinsp-content");
   if(!el) return;
   const key = waitInspActiveTab;
-  if(!waitInspLoaded){
+  const isIncoming = (key === "수입검사대기");
+  if(isIncoming){
+    if(!processData || !processData.length){
+      el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">생산공정현황 데이터를 불러온 뒤 표시됩니다.</div>`;
+      return;
+    }
+  } else if(!waitInspLoaded){
     el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">상단의 [🔄 불러오기] 버튼을 눌러 검사대기 데이터를 불러와 주세요.</div>`;
     return;
   }
-  let list = waitInspAggregate(key);
-  // 수입검사대기는 유진테크만 필터링
-  if(key === "수입검사대기" && mainData){
-    const juginPartNos = new Set();
-    mainData.forEach(r => {
-      if(r.customer === "유진테크") juginPartNos.add(r.partNo);
-    });
-    list = list.filter(r => juginPartNos.has(r.partNo));
-  }
+  const list = isIncoming ? waitInspIncomingList() : waitInspAggregate(key);
   const totalQty = list.reduce((a,r)=>a+r.qty,0);
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   el.innerHTML = `
     <div class="table-wrap" style="padding:14px 16px;">
-      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)}${key === "수입검사대기" ? " <span style=\"color:#E02424;\">(유진테크만)</span>" : ""} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
+      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
       <div style="overflow-x:auto;">
         <table style="width:100%;max-width:640px;">
           <thead><tr><th>도번</th><th>최종 등록일</th><th>수량</th></tr></thead>
@@ -6689,7 +6676,7 @@ function waitInspPrint(){
   const dateStr = new Date().toLocaleDateString('ko-KR');
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const html = WAIT_INSP_TABS.map(key=>{
-    const list = waitInspAggregate(key);
+    const list = (key === "수입검사대기") ? waitInspIncomingList() : waitInspAggregate(key);
     const totalQty = list.reduce((a,r)=>a+r.qty,0);
     return `
       <div class="q-report-page">
@@ -6713,7 +6700,7 @@ function waitInspExcel(){
   if(!waitInspLoaded){ alert("먼저 [🔄 불러오기]로 데이터를 불러와 주세요."); return; }
   const wb = XLSX.utils.book_new();
   WAIT_INSP_TABS.forEach(key=>{
-    const list = waitInspAggregate(key);
+    const list = (key === "수입검사대기") ? waitInspIncomingList() : waitInspAggregate(key);
     const totalQty = list.reduce((a,r)=>a+r.qty,0);
     const aoa = [["도번","최종 등록일","수량"]];
     list.forEach(r=>aoa.push([r.partNo, r.lastReg||"-", r.qty]));
