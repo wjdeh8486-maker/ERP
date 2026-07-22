@@ -2409,6 +2409,54 @@ document.getElementById("main-resetBtn").addEventListener("click", async ()=>{
   await saveMainData();
   mainInitialRender(mainData);
 });
+/* ===== 엑셀 날짜 정규화 =====
+   엑셀에서 날짜 셀은 내부적으로 "1900-01-01 이후 경과일수"(시리얼 값)로 저장된다.
+   XLSX 로 읽을 때 raw 값이 그대로 넘어오면 2027-01-25 가 46412 처럼 숫자로 보인다.
+   Date 객체로 변환하면 시간대(UTC/로컬) 차이로 하루가 밀릴 수 있으므로,
+   시간대 개입 없이 UTC 기준 산술로만 계산한다. */
+function excelSerialToDateStr(serial){
+  let n = Math.floor(Number(serial));
+  if(!isFinite(n) || n <= 0) return "";
+  // 엑셀은 존재하지 않는 1900-02-29 를 날짜로 세는 버그가 있어 60 이상은 1일 보정
+  if(n >= 60) n -= 1;
+  const d = new Date(Date.UTC(1899, 11, 31) + n * 86400000);
+  const p = x => String(x).padStart(2, "0");
+  return d.getUTCFullYear() + "-" + p(d.getUTCMonth() + 1) + "-" + p(d.getUTCDate());
+}
+// 어떤 형태로 들어오든 "YYYY-MM-DD" 로 통일 (빈 값/해석 불가면 원본 문자열 유지)
+// 시리얼로 인정할 범위: 20000(1954년) ~ 110000(2201년).
+// 이보다 작은 숫자는 날짜가 아닌 값(수량 등)일 가능성이 커서 변환하지 않는다.
+const DATE_SERIAL_MIN = 20000, DATE_SERIAL_MAX = 110000;
+function normalizeDateValue(v){
+  if(v === null || v === undefined || v === "") return "";
+  // Date 객체 (cellDates:true 로 읽히거나 다른 경로로 들어온 경우)
+  // instanceof 는 실행 컨텍스트가 다르면 실패할 수 있어 메서드 존재 여부로 판별한다
+  if(typeof v === "object" && typeof v.getFullYear === "function" && typeof v.getTime === "function"){
+    if(isNaN(v.getTime())) return "";
+    const p = x => String(x).padStart(2, "0");
+    return v.getFullYear() + "-" + p(v.getMonth() + 1) + "-" + p(v.getDate());
+  }
+  // 엑셀 시리얼 숫자
+  if(typeof v === "number"){
+    if(v === 0) return "";
+    return (v >= DATE_SERIAL_MIN && v < DATE_SERIAL_MAX) ? excelSerialToDateStr(v) : String(v);
+  }
+  const s = String(v).trim();
+  if(!s) return "";
+  // 숫자만 있는 문자열도 시리얼로 간주 (예: "46412")
+  if(/^\d+(\.\d+)?$/.test(s)){
+    const n = Number(s);
+    if(n >= DATE_SERIAL_MIN && n < DATE_SERIAL_MAX) return excelSerialToDateStr(n);
+    return s;
+  }
+  // 2027-01-25 / 2027.01.25 / 2027/1/25 → 통일
+  const m = s.match(/^(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})/);
+  if(m){
+    const p = x => String(x).padStart(2, "0");
+    return m[1] + "-" + p(m[2]) + "-" + p(m[3]);
+  }
+  return s;   // 발주대기 등 텍스트는 그대로
+}
 function mapRowToMain(row){
   const baseOrderNo = row["ORDER NO."] || "";
   const orderSeq = row["발주번호"];
@@ -2416,10 +2464,10 @@ function mapRowToMain(row){
   const result = {
     status:row["제품상태"]||"", orderNo:combinedOrderNo, customer:row["고객사"]||"",
     partNo:row["품 번"]||row["품번"]||"", partName:row["품 명"]||row["품명"]||"", qty:Number(row["수량"]||0),
-    dueDate:row["최종납기"]||"",
+    dueDate:normalizeDateValue(row["최종납기"]),
     vendor: getFieldFlexible(row, "PROJECT NO.") || getFieldFlexible(row, "PROJECT NO") || getFieldFlexible(row, "프로젝트번호") || "",
     vendorName: getFieldFlexible(row, "외주발주(납품처)") || getFieldFlexible(row, "외주발주") || getFieldFlexible(row, "납품처") || "",
-    shipDate:row["납품일자"]||"",
+    shipDate:normalizeDateValue(row["납품일자"]),
     oldDrawingNo:row["기존도번(유진테크)"]||row["기존도번"]||"",
     shipped:row["납품여부"]||"", stockPreShip:Number(row["재고선출고"]||row["재고\n선출고"]||0), waitDeliver:Number(row["납품대기"]||0), waitMeasure:Number(row["측정실검사대기"]||0),
     waitClean:Number(row["크린룸검사대기"]||0), waitVision:Number(row["비젼검사대기"]||0),
@@ -3086,8 +3134,8 @@ document.getElementById("inv-syncToggle").addEventListener("click", ()=>document
 document.getElementById("inv-resetBtn").addEventListener("click", ()=>{ invData = INV_SAMPLE.slice(); markMainStatusDirty(); invRenderCheck(""); invRenderAll(); });
 function mapRowToInv(row){
   return {
-    partNo:row["품 번"]||row["품번"]||"", inDate:row["입고 일자"]||row["입고일자"]||"", sn:row["S/N"]||"",
-    inQty:Number(row["입고 수량"]||row["입고수량"]||0), outDate:row["출고 일자"]||row["출고일자"]||"",
+    partNo:row["품 번"]||row["품번"]||"", inDate:normalizeDateValue(row["입고 일자"]||row["입고일자"]), sn:row["S/N"]||"",
+    inQty:Number(row["입고 수량"]||row["입고수량"]||0), outDate:normalizeDateValue(row["출고 일자"]||row["출고일자"]),
     outQty:Number(row["출고 수량"]||row["출고수량"]||0)||"", ctrlNo:row["관리번호"]||"", note:row["비 고"]||row["비고"]||""
   };
 }
@@ -4846,6 +4894,41 @@ async function uploadReplaceTab(apiUrl, fileId, sheetName, aoa, onProgress){
   return rows.length;
 }
 
+/* 시트 → 2차원 배열 변환 (날짜 셀을 문자열로 복원)
+   raw:true 로 뽑으면 날짜가 엑셀 시리얼 숫자(예: 46412)로 넘어가 구글시트에 숫자로 기록된다.
+   셀의 표시서식(z)이 날짜인 경우에만 YYYY-MM-DD 로 바꾼다. 수량·단가 등 일반 숫자는 건드리지 않는다. */
+function uploadSheetToAoa(ws){
+  if(!ws || !ws["!ref"]) return [];
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+  const isDateFmt = z => {
+    try{ return !!(z && XLSX.SSF && XLSX.SSF.is_date(z)); }catch(e){ return false; }
+  };
+  const aoa = [];
+  for(let R = range.s.r; R <= range.e.r; R++){
+    const row = [];
+    for(let C = range.s.c; C <= range.e.c; C++){
+      const cell = ws[XLSX.utils.encode_cell({ r:R, c:C })];
+      if(!cell || cell.v === undefined || cell.v === null){ row.push(""); continue; }
+      if(cell.t === "d"){
+        row.push(normalizeDateValue(cell.v));
+      }else if(cell.t === "n" && isDateFmt(cell.z || cell.w)){
+        const ds = excelSerialToDateStr(cell.v);
+        const frac = Number(cell.v) - Math.floor(Number(cell.v));
+        if(ds && frac > 0){
+          const secs = Math.round(frac * 86400);
+          const p = x => String(x).padStart(2, "0");
+          row.push(ds + " " + p(Math.floor(secs/3600)) + ":" + p(Math.floor(secs%3600/60)) + ":" + p(secs%60));
+        }else{
+          row.push(ds || cell.v);
+        }
+      }else{
+        row.push(cell.v);
+      }
+    }
+    aoa.push(row);
+  }
+  return aoa;
+}
 async function uploadHandleFile(target, file, statusEl){
   const apiUrl = uploadGetApiUrl();
   if(!apiUrl){ statusEl.innerHTML = '<span style="color:#FF6B6B;">Apps Script URL이 비어있습니다 (MAIN 동기화 패널 확인)</span>'; return; }
@@ -4855,7 +4938,7 @@ async function uploadHandleFile(target, file, statusEl){
     let wb;
     try{
       const buf = await file.arrayBuffer();
-      wb = XLSX.read(buf, { type:"array", cellDates:false });
+      wb = XLSX.read(buf, { type:"array", cellDates:false, cellNF:true });  // cellNF: 셀 표시서식(.z) 보존 → 날짜 판별에 필요
     }catch(e){
       statusEl.innerHTML = '<span style="color:#FF6B6B;">엑셀 파일을 읽을 수 없습니다</span>';
       return;
@@ -4866,7 +4949,7 @@ async function uploadHandleFile(target, file, statusEl){
       let wsName = wb.SheetNames.find(n => uploadNormTab(n) === uploadNormTab(tab));
       if(!wsName && target.tabs.length===1 && wb.SheetNames.length===1) wsName = wb.SheetNames[0];
       if(!wsName){ results.push(`⏭️ ${tab}: 엑셀에 해당 탭 없음(건너뜀)`); continue; }
-      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wsName], { header:1, defval:"", raw:true });
+      const aoa = uploadSheetToAoa(wb.Sheets[wsName]);   // 날짜 셀은 YYYY-MM-DD 로 변환
       try{
         statusEl.textContent = `${tab} 업로드 중... 0/${aoa.length}행`;
         const written = await uploadReplaceTab(apiUrl, target.fileId, tab, aoa,
