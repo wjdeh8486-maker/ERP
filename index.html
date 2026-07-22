@@ -6642,11 +6642,24 @@ function waitInspAggregate(key){
 }
 // 수입검사대기 목록: MAIN 대시보드와 같은 계산 사용
 // (도면번호별 진행공정 수량 합 − 검사수 합, 양수인 도번만)
+// ※ 고객사 "유진테크" 도번만 집계한다. 생산공정현황의 도면번호는
+//    MAIN 의 기존도번(유진테크)과 대응하므로, MAIN 에서 유진테크 도번 집합을 만들어 걸러낸다.
+function juginDrawingSet(){
+  const set = new Set();
+  (mainData || []).forEach(r => {
+    if(String(r.customer || "").trim() !== "유진테크") return;
+    const dn = String(r["기존도번(유진테크)"] || r["기존도번"] || r.oldDrawingNo || "").trim();
+    if(dn) set.add(dn);
+  });
+  return set;
+}
 function waitInspIncomingList(){
   if(!waitInspIndexCache) buildWaitInspIndex();
   const idx = waitInspIndexCache;
+  const jugin = juginDrawingSet();
   const out = [];
   idx.processQty.forEach((pq, dn) => {
+    if(!jugin.has(dn)) return;               // 유진테크 도번만
     const qty = Math.max(0, pq - (idx.inspQty.get(dn) || 0));
     if(qty > 0) out.push({ partNo: dn, qty: qty, lastReg: idx.lastReg.get(dn) || "" });
   });
@@ -6662,6 +6675,10 @@ function renderWaitInspTab(){
       el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">생산공정현황 데이터를 불러온 뒤 표시됩니다.</div>`;
       return;
     }
+    if(!mainData || !mainData.length){
+      el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">고객사(유진테크) 판별에 MAIN 데이터가 필요합니다. 먼저 동기화해 주세요.</div>`;
+      return;
+    }
   } else if(!waitInspLoaded){
     el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">상단의 [🔄 불러오기] 버튼을 눌러 검사대기 데이터를 불러와 주세요.</div>`;
     return;
@@ -6671,7 +6688,7 @@ function renderWaitInspTab(){
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   el.innerHTML = `
     <div class="table-wrap" style="padding:14px 16px;">
-      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
+      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)}${isIncoming ? ` <span style="font-size:11.5px;font-weight:700;color:#0B5CAB;">(고객사: 유진테크)</span>` : ""} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
       <div style="overflow-x:auto;">
         <table style="width:100%;max-width:640px;">
           <thead><tr><th>도번</th><th>최종 등록일</th><th>수량</th></tr></thead>
@@ -6708,7 +6725,7 @@ function waitInspPrint(){
     const totalQty = list.reduce((a,r)=>a+r.qty,0);
     return `
       <div class="q-report-page">
-        <h2>검사대기현황 · ${esc(key)} (${dateStr})</h2>
+        <h2>검사대기현황 · ${esc(key)}${key === "수입검사대기" ? " (고객사: 유진테크)" : ""} (${dateStr})</h2>
         <table style="width:100%;border-collapse:collapse;">
           <thead><tr><th>도번</th><th>최종 등록일</th><th>수량</th></tr></thead>
           <tbody>
