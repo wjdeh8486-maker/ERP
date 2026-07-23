@@ -1425,7 +1425,15 @@ function dwgLink(no){
       const q = inp.value.trim();
       if(!q){ e.preventDefault(); alert("도번을 입력하세요."); return; }
       sync();
-      if(IS_MOBILE && typeof showBusy === "function") showBusy("도면 서버 연결 중... 잠시만 기다려주세요");
+      if(IS_MOBILE && typeof showBusy === "function"){
+        showBusy("도면 서버 연결 중... 잠시만 기다려주세요");
+        // 일정 시간이 지나도 페이지가 안 넘어가면 실패로 안내
+        setTimeout(function(){
+          if(document.visibilityState === "hidden") return; // 이동 성공
+          if(typeof hideBusy === "function") hideBusy();
+          alert("도면 서버에 연결되지 않습니다.\n\n· 휴대폰이 사내 Wi-Fi에 연결되어 있는지 확인해 주세요.\n  (LTE/5G, 게스트 Wi-Fi에서는 조회할 수 없습니다)\n· 크롬 설정 > 개인 정보 보호 및 보안 >\n  '항상 보안 연결 사용'이 켜져 있으면 꺼주세요.");
+        }, 10000);
+      }
       // preventDefault 하지 않음 → 브라우저 기본 링크 이동 (HTTP 폴백 보장)
     });
     inp.addEventListener("keydown", function(e){
