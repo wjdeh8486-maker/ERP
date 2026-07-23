@@ -195,8 +195,8 @@
   .stat-card.dwg{flex:1 1 250px;min-width:220px;}
   .stat-card.dwg .label{color:var(--navy);}
   .stat-card.dwg input{flex:1;min-width:0;padding:7px 10px;font-size:14px;border:1px solid var(--border);border-radius:6px;}
-  .stat-card.dwg button{padding:7px 12px;font-size:13px;font-weight:700;border:0;border-radius:6px;background:var(--navy);color:#fff;cursor:pointer;white-space:nowrap;}
-  .stat-card.dwg button:hover{opacity:.88;}
+  .stat-card.dwg a#main-dwgBtn{display:inline-flex;align-items:center;padding:7px 12px;font-size:13px;font-weight:700;border-radius:6px;background:var(--navy);color:#fff;text-decoration:none;white-space:nowrap;cursor:pointer;}
+  .stat-card.dwg a#main-dwgBtn:hover{opacity:.88;}
   /* 테이블 도번 링크: 화면에서는 클릭 가능, 인쇄 시 일반 텍스트 */
   a.dwg-a{color:#1a4fbd;text-decoration:underline;text-underline-offset:2px;cursor:pointer;}
   a.dwg-a:hover{color:#2f6fed;}
@@ -874,7 +874,7 @@
           <div class="label">도면 조회</div>
           <div style="display:flex;gap:6px;margin-top:6px;">
             <input type="text" id="main-dwgSearch" placeholder="도번 입력 후 Enter" autocomplete="off">
-            <button type="button" id="main-dwgBtn">PDF 확인</button>
+            <a id="main-dwgBtn" href="#" role="button">PDF 확인</a>
           </div>
           <div style="font-size:11px;color:var(--text-mute);margin-top:5px;">사내 네트워크(Wi-Fi)에서만 조회됩니다</div>
         </div>
@@ -1371,45 +1371,65 @@
    서버 PC의 IP가 바뀌면 아래 DRAWING_SERVER 값만 수정하면 됩니다.        */
 const DRAWING_SERVER = "http://192.168.0.186:8000";
 
+const IS_MOBILE = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+
+function dwgSearchUrl(no){
+  return DRAWING_SERVER + "/search?q=" + encodeURIComponent(String(no || "").trim());
+}
+
+// 프로그램 방식 이동 (테이블 링크 폴백 등에서 사용)
 function openDrawing(no){
   const q = String(no || "").trim();
   if(!q){ alert("도번을 입력하세요."); return; }
-  const url = DRAWING_SERVER + "/search?q=" + encodeURIComponent(q);
-  // 모바일: HTTPS→HTTP 새 탭은 첫 로딩이 차단되므로 현재 탭에서 이동 (뒤로가기로 복귀)
-  if(/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)){
-    // 이동 대기 중에도 화면이 그대로 남아 멈춘 것처럼 보이므로 즉시 안내를 띄운다
+  const url = dwgSearchUrl(q);
+  if(IS_MOBILE){
     if(typeof showBusy === "function") showBusy("도면 서버 연결 중... 잠시만 기다려주세요");
     location.href = url;
-    // 일정 시간이 지나도 페이지가 안 넘어가면 연결 실패로 안내
     setTimeout(function(){
-      if(document.visibilityState === "hidden") return; // 이미 이동됨
+      if(document.visibilityState === "hidden") return;
       if(typeof hideBusy === "function") hideBusy();
       alert("도면 서버에 연결되지 않습니다.\n\n· 사내 Wi-Fi에 연결되어 있는지 확인해 주세요.\n  (LTE/5G에서는 조회할 수 없습니다)\n· 서버 PC가 켜져 있는지 확인해 주세요.");
-    }, 8000);
+    }, 10000);
     return;
   }
   window.open(url, "_blank");
 }
 
-// 테이블 셀용 도번 링크 (도번이 없으면 빈 문자열)
+// 테이블 셀용 도번 링크: 실제 <a href>로 만들어 브라우저가
+// 사용자 클릭 이동으로 처리하게 한다 (모바일 크롬의 HTTPS 강제 승격 회피)
 function dwgLink(no){
   const v = String(no || "").trim();
   if(!v) return "";
   const safe = v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  const arg  = v.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
-  return '<a href="#" class="dwg-a" onclick="openDrawing(\'' + arg + '\');return false;" title="도면 PDF 열기">' + safe + '</a>';
+  const href = dwgSearchUrl(v).replace(/"/g,"&quot;");
+  const target = IS_MOBILE ? "_self" : "_blank";
+  return '<a href="' + href + '" target="' + target + '" rel="noopener" class="dwg-a" title="도면 PDF 열기">' + safe + '</a>';
 }
 
-// MAIN 대시보드 "도면 조회" 카드 이벤트 연결
+// MAIN 대시보드 "도면 조회" 카드: 입력할 때마다 링크 href를 갱신해
+// 클릭 시 순수 링크 이동이 되도록 한다
 (function(){
   function bindDwgSearch(){
     const inp = document.getElementById("main-dwgSearch");
     const btn = document.getElementById("main-dwgBtn");
     if(!inp || !btn) return;
-    const go = function(){ openDrawing(inp.value); };
-    btn.addEventListener("click", go);
+    btn.target = IS_MOBILE ? "_self" : "_blank";
+    btn.rel = "noopener";
+    function sync(){
+      const q = inp.value.trim();
+      btn.href = q ? dwgSearchUrl(q) : "#";
+    }
+    inp.addEventListener("input", sync);
+    sync();
+    btn.addEventListener("click", function(e){
+      const q = inp.value.trim();
+      if(!q){ e.preventDefault(); alert("도번을 입력하세요."); return; }
+      sync();
+      if(IS_MOBILE && typeof showBusy === "function") showBusy("도면 서버 연결 중... 잠시만 기다려주세요");
+      // preventDefault 하지 않음 → 브라우저 기본 링크 이동 (HTTP 폴백 보장)
+    });
     inp.addEventListener("keydown", function(e){
-      if(e.key === "Enter"){ e.preventDefault(); go(); }
+      if(e.key === "Enter"){ e.preventDefault(); sync(); btn.click(); }
     });
   }
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindDwgSearch);
