@@ -1445,18 +1445,27 @@ function checkDwgServer(){
       sync();
       if(!IS_MOBILE) return; // PC: 순수 링크 새 탭 이동
 
-      // 모바일/태블릿: 서버 응답을 먼저 확인해 최초 사용자에게 안내 후 새 탭으로 연다
+      // 모바일/태블릿: 클릭 "즉시" 새 탭을 확보해둔다.
+      // (비동기 확인 후에 window.open을 하면 팝업 차단에 걸릴 수 있음)
       e.preventDefault();
       const url = dwgSearchUrl(q);
+      let w = null;
+      try { w = window.open("", "_blank"); } catch(_){ }
       if(typeof showBusy === "function") showBusy("도면 서버 연결 중...");
       checkDwgServer().then(function(ok){
         if(typeof hideBusy === "function") hideBusy();
         if(!ok){
+          if(w){ try{ w.close(); }catch(_){ } }
           alert("도면 서버 최초 연결 안내\n\n다음 화면에 보안 경고가 나오면:\n① [고급] 버튼을 누르고\n② 아래쪽 [192.168.0.186(안전하지 않음)(으)로 이동]\n   파란 글씨를 눌러주세요. (기기당 최초 1회)\n\n※ 경고 대신 '연결할 수 없음'이 나오면\n   사내 Wi-Fi 연결을 확인해 주세요. (LTE/5G 불가)\n\n※ 이 안내가 계속 반복되면 브라우저 주소창에\n   https://192.168.0.186:8443 을 직접 입력해\n   승인 후 다시 시도해 주세요.");
+          location.href = url;
+          return;
         }
-        // 새 탭 시도, 팝업 차단 시 현재 탭으로 폴백
-        const w = window.open(url, "_blank");
-        if(!w) location.href = url;
+        if(w && !w.closed){
+          try { w.location.href = url; w.focus(); }
+          catch(_){ location.href = url; }
+        } else {
+          location.href = url;
+        }
       });
     });
     inp.addEventListener("keydown", function(e){
@@ -1465,6 +1474,17 @@ function checkDwgServer(){
   }
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindDwgSearch);
   else bindDwgSearch();
+
+  // 앱 전환·뒤로가기 등으로 페이지가 복원될 때 잔류 상태 정리
+  // (절전 복원 시 "연결 중..." 토스트가 남아 화면을 가리는 것을 방지)
+  window.addEventListener("pageshow", function(ev){
+    if(!ev.persisted) return;
+    try {
+      if(typeof __busyCount !== "undefined") __busyCount = 0;
+      const t = document.getElementById("busy-toast");
+      if(t) t.classList.remove("show");
+    } catch(_){ }
+  });
 })();
 
 /* ============ 진행중 표시 헬퍼 ============ */
