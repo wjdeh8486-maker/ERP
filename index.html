@@ -876,6 +876,7 @@
             <input type="text" id="main-dwgSearch" placeholder="도번 입력 후 Enter" autocomplete="off">
             <button type="button" id="main-dwgBtn">PDF 확인</button>
           </div>
+          <div style="font-size:11px;color:var(--text-mute);margin-top:5px;">사내 네트워크(Wi-Fi)에서만 조회됩니다</div>
         </div>
       </div>
       <div id="main-searchGroupSlotBottom" style="margin:-6px 0 12px;"></div>
@@ -1376,7 +1377,15 @@ function openDrawing(no){
   const url = DRAWING_SERVER + "/search?q=" + encodeURIComponent(q);
   // 모바일: HTTPS→HTTP 새 탭은 첫 로딩이 차단되므로 현재 탭에서 이동 (뒤로가기로 복귀)
   if(/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)){
+    // 이동 대기 중에도 화면이 그대로 남아 멈춘 것처럼 보이므로 즉시 안내를 띄운다
+    if(typeof showBusy === "function") showBusy("도면 서버 연결 중... 잠시만 기다려주세요");
     location.href = url;
+    // 일정 시간이 지나도 페이지가 안 넘어가면 연결 실패로 안내
+    setTimeout(function(){
+      if(document.visibilityState === "hidden") return; // 이미 이동됨
+      if(typeof hideBusy === "function") hideBusy();
+      alert("도면 서버에 연결되지 않습니다.\n\n· 사내 Wi-Fi에 연결되어 있는지 확인해 주세요.\n  (LTE/5G에서는 조회할 수 없습니다)\n· 서버 PC가 켜져 있는지 확인해 주세요.");
+    }, 8000);
     return;
   }
   window.open(url, "_blank");
