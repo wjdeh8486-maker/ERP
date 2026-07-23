@@ -189,6 +189,14 @@
   .stat-card.done .label,.stat-card.done .value{color:var(--purple);}
   .stat-card.overdue .label,.stat-card.overdue .value{color:#D9534F;}
   .stat-card.prod,.stat-card.qc,.stat-card.done,.stat-card.overdue{text-align:center;}
+  /* ===== 도면 조회 카드 확보를 위해 숫자 카드 4종 폭 축소 ===== */
+  .stat-card.prod,.stat-card.qc,.stat-card.done,.stat-card.overdue{flex:0 1 108px;min-width:92px;padding:10px 8px;}
+  .stat-card.prod .value,.stat-card.qc .value,.stat-card.done .value,.stat-card.overdue .value{font-size:21px;}
+  .stat-card.dwg{flex:1 1 250px;min-width:220px;}
+  .stat-card.dwg .label{color:var(--navy);}
+  .stat-card.dwg input{flex:1;min-width:0;padding:7px 10px;font-size:14px;border:1px solid var(--border);border-radius:6px;}
+  .stat-card.dwg button{padding:7px 12px;font-size:13px;font-weight:700;border:0;border-radius:6px;background:var(--navy);color:#fff;cursor:pointer;white-space:nowrap;}
+  .stat-card.dwg button:hover{opacity:.88;}
   .stat-card.progress{flex:2;min-width:220px;}
   .stat-card.progress .label{color:var(--red);}
   .progress-bar-track{margin-top:10px;background:#EEE;border-radius:20px;height:14px;overflow:hidden;}
@@ -443,6 +451,10 @@
     .stat-card.prod, .stat-card.qc, .stat-card.done{ flex:1 1 calc(33.333% - 6px); min-width:0; padding:10px 6px; }
     .stat-card.overdue{ flex:0 1 calc(34% - 4px); min-width:0; }
     .stat-card.progress{ flex:1 1 calc(66% - 4px); min-width:0; }
+    .stat-card.prod, .stat-card.qc, .stat-card.done, .stat-card.overdue{ flex:1 1 calc(25% - 6px); min-width:0; padding:10px 4px; }
+    .stat-card.dwg{ flex:1 1 100%; min-width:0; }
+    .stat-card.dwg input{ min-height:40px; }
+    .stat-card.dwg button{ min-height:40px; }
     .summary-row{ align-items:stretch; }
     .stat-card .value{ font-size:21px; }
     #view-main > .table-wrap{ display:none; }
@@ -852,6 +864,13 @@
           <div style="display:flex;align-items:center;gap:10px;">
             <div class="value" id="main-statProgress" style="flex:none;">0%</div>
             <div class="progress-bar-track" style="flex:1;margin-top:0;"><div class="progress-bar-fill" id="main-progressFill" style="width:0%"></div></div>
+          </div>
+        </div>
+        <div class="stat-card dwg">
+          <div class="label">도면 조회</div>
+          <div style="display:flex;gap:6px;margin-top:6px;">
+            <input type="text" id="main-dwgSearch" placeholder="도번 입력 후 Enter" autocomplete="off">
+            <button type="button" id="main-dwgBtn">PDF 확인</button>
           </div>
         </div>
       </div>
@@ -1342,6 +1361,43 @@
   </div>
 </template>
 <script>
+/* ============ 도면 서버 연동 ============
+   사내 도면 서버(Python http 서버)에서 도번으로 PDF를 찾아 새 탭으로 엽니다.
+   서버 PC의 IP가 바뀌면 아래 DRAWING_SERVER 값만 수정하면 됩니다.        */
+const DRAWING_SERVER = "http://192.168.0.186:8000";
+
+function openDrawing(no){
+  const q = String(no || "").trim();
+  if(!q){ alert("도번을 입력하세요."); return; }
+  window.open(DRAWING_SERVER + "/search?q=" + encodeURIComponent(q), "_blank");
+}
+
+// 테이블 셀용 도번 링크 (도번이 없으면 빈 문자열)
+function dwgLink(no){
+  const v = String(no || "").trim();
+  if(!v) return "";
+  const safe = v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const arg  = v.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+  return '<a href="#" onclick="openDrawing(\'' + arg + '\');return false;" ' +
+         'style="color:#1a4fbd;text-decoration:underline;cursor:pointer;" title="도면 PDF 열기">' + safe + '</a>';
+}
+
+// MAIN 대시보드 "도면 조회" 카드 이벤트 연결
+(function(){
+  function bindDwgSearch(){
+    const inp = document.getElementById("main-dwgSearch");
+    const btn = document.getElementById("main-dwgBtn");
+    if(!inp || !btn) return;
+    const go = function(){ openDrawing(inp.value); };
+    btn.addEventListener("click", go);
+    inp.addEventListener("keydown", function(e){
+      if(e.key === "Enter"){ e.preventDefault(); go(); }
+    });
+  }
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindDwgSearch);
+  else bindDwgSearch();
+})();
+
 /* ============ 진행중 표시 헬퍼 ============ */
 // 무거운 렌더링/다운로드 전에 "진행중..." 토스트를 띄워, 버튼이 눌렸다는 것을 바로 알 수 있게 합니다.
 let __busyCount = 0;
