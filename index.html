@@ -197,6 +197,10 @@
   .stat-card.dwg input{flex:1;min-width:0;padding:7px 10px;font-size:14px;border:1px solid var(--border);border-radius:6px;}
   .stat-card.dwg button{padding:7px 12px;font-size:13px;font-weight:700;border:0;border-radius:6px;background:var(--navy);color:#fff;cursor:pointer;white-space:nowrap;}
   .stat-card.dwg button:hover{opacity:.88;}
+  /* 테이블 도번 링크: 화면에서는 클릭 가능, 인쇄 시 일반 텍스트 */
+  a.dwg-a{color:#1a4fbd;text-decoration:underline;text-underline-offset:2px;cursor:pointer;}
+  a.dwg-a:hover{color:#2f6fed;}
+  @media print{ a.dwg-a{color:inherit !important;text-decoration:none !important;} }
   .stat-card.progress{flex:1 1 300px;min-width:275px;}
   .stat-card.progress .label{color:var(--red);}
   .progress-bar-track{margin-top:10px;background:#EEE;border-radius:20px;height:14px;overflow:hidden;}
@@ -1384,8 +1388,7 @@ function dwgLink(no){
   if(!v) return "";
   const safe = v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const arg  = v.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
-  return '<a href="#" onclick="openDrawing(\'' + arg + '\');return false;" ' +
-         'style="color:#1a4fbd;text-decoration:underline;cursor:pointer;" title="도면 PDF 열기">' + safe + '</a>';
+  return '<a href="#" class="dwg-a" onclick="openDrawing(\'' + arg + '\');return false;" title="도면 PDF 열기">' + safe + '</a>';
 }
 
 // MAIN 대시보드 "도면 조회" 카드 이벤트 연결
@@ -1854,7 +1857,7 @@ function mainRenderTable(data){
     return `<tr class="${rowClass}">
       <td>${statusBadge(_status)}</td><td>${r.orderNo}</td><td>${r.customer}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
-      <td>${r.oldDrawingNo||''}</td>
+      <td>${dwgLink(r.oldDrawingNo)}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
       <td class="${overdue?'cell-overdue':''}">${r.dueDate||''}</td>
       <td>${r.shipDate||''}</td><td>${r.shipped||''}</td><td>${getCurrentProcess(r.orderNo)}</td>
@@ -1915,7 +1918,7 @@ function openMainCardPopup(idx){
     </div>
     ${row("고객사", esc(r.customer||'-'))}
     ${r.vendor ? row("PROJECT NO.", esc(r.vendor)) : ''}
-    ${r.oldDrawingNo ? row("기존도번", esc(r.oldDrawingNo)) : ''}
+    ${r.oldDrawingNo ? row("기존도번", dwgLink(r.oldDrawingNo)) : ''}
     ${row("수량", (Number(r.qty)||0).toLocaleString() + "개")}
     ${row("최종납기", esc(r.dueDate||'-'), overdue ? 'color:#E02424;' : '')}
     ${row("납품여부", esc(r.shipped||'-'))}
@@ -2102,7 +2105,7 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
     return `<tr>
       <td style="color:${mainStatusTextColor(status)};font-weight:700;">${status}</td><td>${r.orderNo}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
-      <td>${r.oldDrawingNo||''}</td>
+      <td>${dwgLink(r.oldDrawingNo)}</td>
       <td></td>
       <td>${r.qty}</td>
       <td></td>
@@ -4623,7 +4626,7 @@ function overdueRenderTable(rows){
       <td>${statusBadge(status)}</td>
       <td>${r.orderNo}</td><td>${r.customer}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
-      <td>${r.oldDrawingNo||''}</td>
+      <td>${dwgLink(r.oldDrawingNo)}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
       <td>${getCurrentProcess(r.orderNo)}</td>
       <td class="cell-overdue">${r.dueDate||''}</td>
@@ -4655,7 +4658,7 @@ document.getElementById("overdue-printBtn").addEventListener("click", ()=>runBus
     return `<tr>
       <td>${days}일</td><td style="color:${mainStatusTextColor(status)};font-weight:700;">${status}</td><td>${r.orderNo}</td><td>${r.customer}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
-      <td>${r.oldDrawingNo||''}</td>
+      <td>${dwgLink(r.oldDrawingNo)}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
       <td>${getCurrentProcess(r.orderNo)}</td>
       <td>${r.dueDate||''}</td>
@@ -4744,7 +4747,7 @@ function vendorRenderTable(rows){
     const processClass = changeClass(key, prevKey, prevProcess, processCost);
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${r.oldDrawingNo||''}</td>
+      <td>${dwgLink(r.oldDrawingNo)}</td>
       <td class="${materialClass}">${materialCost.toLocaleString()}</td>
       <td class="${vendorCostClass}">${vendorCost.toLocaleString()}</td>
       <td class="${processClass}">${processCost.toLocaleString()}</td>
@@ -4824,7 +4827,7 @@ function renderSummaryView(){
   document.getElementById("summary-statOverdue").textContent = overdueRows.length;
   const overdueTop5 = overdueRows.slice(0,10);
   document.getElementById("summary-overdueList").innerHTML = overdueTop5.length ? overdueTop5.map(r=>
-    `<tr><td style="text-align:center;">${r.orderNo}</td><td style="text-align:center;">${r.vendor||''}</td><td style="text-align:center;">${r.oldDrawingNo||''}</td><td style="text-align:center;">${r.partName}</td><td style="text-align:center;">${getCurrentProcess(r.orderNo)||''}</td><td>${r.qty}</td><td class="cell-overdue">${overdueDaysLate(r.dueDate)}일</td></tr>`
+    `<tr><td style="text-align:center;">${r.orderNo}</td><td style="text-align:center;">${r.vendor||''}</td><td style="text-align:center;">${dwgLink(r.oldDrawingNo)}</td><td style="text-align:center;">${r.partName}</td><td style="text-align:center;">${getCurrentProcess(r.orderNo)||''}</td><td>${r.qty}</td><td class="cell-overdue">${overdueDaysLate(r.dueDate)}일</td></tr>`
   ).join("") : `<tr><td colspan="7" style="padding:16px;color:var(--text-mute);">지연 건이 없습니다.</td></tr>`;
 
   // 이번달 매출(현재까지) vs 저번달 매출 비교
@@ -5736,7 +5739,7 @@ function renderManagementExtend(rows){
         </thead>
         <tbody>
           ${list.map(r => `<tr style="border-bottom:1px solid #DDE1E8;">
-            <td style="padding:8px;text-align:center;">${r.oldDrawingNo||''}</td>
+            <td style="padding:8px;text-align:center;">${dwgLink(r.oldDrawingNo)}</td>
             <td style="padding:8px;text-align:center;">${r.partName||''}</td>
             <td style="padding:8px;text-align:center;">${r.vendor||'-'}</td>
             <td style="padding:8px;text-align:center;"><span class="badge status-${r.productStatus}">${r.productStatus}</span></td>
@@ -5783,7 +5786,7 @@ function renderManagementTop10(rows){
         <tbody>
           ${list.map((r, i) => `<tr style="border-bottom:1px solid #DDE1E8;">
             <td style="padding:8px;text-align:center;font-weight:700;">${i+1}</td>
-            <td style="padding:8px;text-align:center;">${r.oldDrawingNo||''}</td>
+            <td style="padding:8px;text-align:center;">${dwgLink(r.oldDrawingNo)}</td>
             <td style="padding:8px;text-align:center;">${r.partName||''}</td>
             <td style="padding:8px;text-align:center;">${r.vendor||'-'}</td>
             <td style="padding:8px;text-align:center;"><span class="badge status-${r.productStatus}">${r.productStatus}</span></td>
