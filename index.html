@@ -1508,17 +1508,9 @@ function openDrawing(no){
   const q = String(no || "").trim();
   if(!q){ alert("도번을 입력하세요."); return; }
   const url = dwgSearchUrl(q);
-  if(IS_MOBILE){
-    if(typeof showBusy === "function") showBusy("도면 서버 연결 중... 잠시만 기다려주세요");
-    location.href = url;
-    setTimeout(function(){
-      if(document.visibilityState === "hidden") return;
-      if(typeof hideBusy === "function") hideBusy();
-      alert("도면 서버에 연결되지 않습니다.\n\n· 사내 Wi-Fi에 연결되어 있는지 확인해 주세요.\n  (LTE/5G에서는 조회할 수 없습니다)\n· 서버 PC가 켜져 있는지 확인해 주세요.");
-    }, 10000);
-    return;
-  }
-  window.open(url, "_blank");
+  // 새 탭으로 연다. 도면을 닫으면 보던 화면(통합검색 팝업 포함)이 그대로 남는다.
+  const w = window.open(url, "_blank");
+  if(!w) location.href = url;   // 팝업 차단 시에만 현재 탭 이동
 }
 
 // 테이블 셀용 도번 링크: 실제 <a href>로 만들어 브라우저가
@@ -1900,13 +1892,30 @@ function gsRender(keyword){
     html += '<div class="gs-row" style="flex-wrap:wrap;">' +
             '<div class="gs-ico">📐</div><div class="gs-name">도면</div>' +
             '<div class="gs-val hit">' + d.dwgList.length + '개</div>' +
+            '<button class="gs-btn" id="gs-printAll">🖨 전체 인쇄</button>' +
             '<div class="gs-chips">' + chips + more + '</div></div>';
   }
   body.innerHTML = html;
 
+  const pa = document.getElementById("gs-printAll");
+  if(pa){
+    pa.addEventListener("click", function(){
+      const list = d.dwgList;
+      if(!list.length) return;
+      if(list.length > 40){
+        alert("한 번에 인쇄할 수 있는 도면은 최대 40개입니다.\n검색 범위를 좁혀 주세요. (현재 " + list.length + "개)");
+        return;
+      }
+      if(!confirm(list.length + "개 도면을 하나의 PDF로 합쳐서 엽니다.\n용량에 따라 시간이 걸릴 수 있습니다.\n\n계속할까요?")) return;
+      const url = DRAWING_SERVER + "/merge?q=" + encodeURIComponent(list.join(","));
+      const w = window.open(url, "_blank");
+      if(!w) location.href = url;
+    });
+  }
+
   body.querySelectorAll("[data-gsdwg]").forEach(function(c){
     c.addEventListener("click", function(){
-      gsClose();
+      // 팝업은 닫지 않는다. 도면을 새 탭에서 확인하고 돌아오면 목록이 그대로 있다.
       if(typeof openDrawing === "function") openDrawing(c.dataset.gsdwg);
     });
   });
@@ -1914,7 +1923,7 @@ function gsRender(keyword){
   body.querySelectorAll("[data-gsact]").forEach(function(b){
     b.addEventListener("click", function(){
       const act = b.dataset.gsact;
-      if(act === "dwg"){ gsClose(); if(typeof openDrawing === "function") openDrawing(d.dwgNo); return; }
+      if(act === "dwg"){ if(typeof openDrawing === "function") openDrawing(d.dwgNo); return; }
       if(act === "history"){ gsGoto("management", kw, "history"); return; }
       // 고객부적합은 도번상세내역에 "고객부적합 최근 내역"으로 표시되므로 그쪽으로 보낸다
       if(act === "nc"){ gsGoto("management", kw, "history"); return; }
