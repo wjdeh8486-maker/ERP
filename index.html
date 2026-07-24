@@ -331,6 +331,9 @@
   #gs-go{padding:10px 18px;font-size:14px;font-weight:700;border:0;border-radius:7px;background:#152046;
     color:#fff;cursor:pointer;white-space:nowrap;}
   #gs-go:hover{background:#22315e;}
+  #gs-reset{padding:10px 14px;font-size:13px;font-weight:700;border:1px solid #ccd3e0;border-radius:7px;
+    background:#f7f9fc;color:#4b5563;cursor:pointer;white-space:nowrap;}
+  #gs-reset:hover{background:#eef2f8;}
   #gs-body{padding:10px 16px 16px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;}
   .gs-row{display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid #f0f2f6;}
   .gs-row:last-child{border-bottom:0;}
@@ -351,9 +354,10 @@
     #gs-hint{right:14px;bottom:calc(76px + env(safe-area-inset-bottom));max-width:calc(100vw - 40px);}
     #gs-overlay{padding:12px 10px calc(12px + env(safe-area-inset-bottom));align-items:center;}
     #gs-modal{max-height:calc(100vh - 24px);}
-    #gs-searchRow{padding:12px;}
-    #gs-input{font-size:16px;min-height:44px;}   /* 16px: iOS 자동 확대 방지 */
-    #gs-go{min-height:44px;padding:10px 16px;}
+    #gs-searchRow{padding:12px;flex-wrap:wrap;gap:6px;}
+    #gs-input{font-size:16px;min-height:44px;flex:1 1 100%;}   /* 16px: iOS 자동 확대 방지 */
+    #gs-go{min-height:44px;padding:10px 16px;flex:1 1 0;}
+    #gs-reset{min-height:44px;padding:10px 16px;flex:1 1 0;}
     #gs-body{padding:8px 12px 14px;}
     /* 값이 길어 이름·버튼을 밀어내지 않도록 값만 아랫줄로 */
     .gs-row{flex-wrap:wrap;padding:12px 2px;}
@@ -740,8 +744,9 @@
   <div id="gs-modal">
     <div id="gs-head"><b>🔍 통합검색</b><button id="gs-close" type="button" title="닫기">&#10005;</button></div>
     <div id="gs-searchRow">
-      <input id="gs-input" type="text" placeholder="도번 · 품번 · 품명 입력" autocomplete="off">
+      <input id="gs-input" type="text" placeholder="도번 · 품번 · ORDER NO 입력" autocomplete="off">
       <button id="gs-go" type="button">검색</button>
+      <button id="gs-reset" type="button" title="검색어와 결과를 지웁니다">초기화</button>
     </div>
     <div id="gs-body">
       <div class="gs-empty">도번을 입력하면 전체 메뉴에서 한 번에 찾아드립니다.</div>
@@ -1718,7 +1723,8 @@ document.querySelectorAll(".nav-caret").forEach(caret => {
    도번 하나로 8개 영역을 한 번에 조회하고, 해당 메뉴로 이동시킨다.
    각 영역의 계산 규칙은 원래 화면과 동일한 기준을 사용한다. */
 function gsMatch(r, kw){
-  const hay = [r.oldDrawingNo, r.partNo, r.partName, r.orderNo, r.customer].map(v=>String(v||"")).join(" ").toLowerCase();
+  // 품명은 제외한다 (같은 품명이 여러 도번에 걸쳐 있어 결과가 뭉뚱그려지는 것을 방지)
+  const hay = [r.oldDrawingNo, r.partNo, r.orderNo, r.customer].map(v=>String(v||"")).join(" ").toLowerCase();
   return hay.includes(kw);
 }
 
@@ -1777,9 +1783,15 @@ function gsCollect(keyword){
   let dwgNo = "";
   for(const r of rows){ if(String(r.oldDrawingNo||"").trim()){ dwgNo = String(r.oldDrawingNo).trim(); break; } }
 
+  // 도번상세내역·납기/생산계획은 도번·품번 기준으로 그려진다.
+  // ORDER NO나 고객사로만 찾은 경우에는 그 화면이 비므로 MAIN 대시보드로 안내한다.
+  const byDrawing = rows.some(r =>
+    String(r.oldDrawingNo||"").toLowerCase().includes(kw) ||
+    String(r.partNo||"").toLowerCase().includes(kw));
+
   return {
     total: rows.length, live: live.length, wait, overdue: overdue.length, maxLate,
-    weekly, nc, ncLast, stock, stockRows, dwgNo
+    weekly, nc, ncLast, stock, stockRows, dwgNo, byDrawing
   };
 }
 
@@ -1792,6 +1804,8 @@ function gsGoto(view, keyword, tab){
     if(typeof managementSearchKeyword !== "undefined") managementSearchKeyword = keyword;
     if(typeof historyKeyword !== "undefined") historyKeyword = keyword;
     if(tab && typeof dwgActiveTab !== "undefined") dwgActiveTab = tab;
+  } else if(view === "main"){
+    setVal("main-searchInput");
   } else if(view === "overdue"){
     setVal("overdue-searchInput");
   } else if(view === "inventory"){
@@ -1802,6 +1816,7 @@ function gsGoto(view, keyword, tab){
   // 메뉴 전환 후 검색 반영
   setTimeout(function(){
     try{
+      if(view === "main" && typeof mainApplySearch === "function") mainApplySearch();
       if(view === "overdue" && typeof overdueApplySearch === "function") overdueApplySearch();
       if(view === "management" && typeof switchDwgTab === "function") switchDwgTab(dwgActiveTab, {skipSync:true});
     }catch(_){ }
@@ -1835,12 +1850,21 @@ function gsRender(keyword){
   }
 
   let html = '<div class="gs-sum">전체 ' + d.total + '건 · 진행중 ' + d.live + '건</div>';
-  html += row("📄", "도번상세내역", d.total + "건", d.total>0, "history", d.total===0);
-  html += row("📅", "납기/생산계획", "진행중 " + d.live + "건", d.live>0, "management", d.live===0);
+  html += row("📋", "MAIN 대시보드", d.total + "건", d.total>0, "main", d.total===0);
+  if(d.byDrawing){
+    html += row("📄", "도번상세내역", d.total + "건", d.total>0, "history", d.total===0);
+    html += row("📅", "납기/생산계획", "진행중 " + d.live + "건", d.live>0, "management", d.live===0);
+  } else {
+    // ORDER NO·고객사로만 찾은 경우: 도번 기준 화면은 결과가 비어 있어 이동해도 소용없다
+    html += '<div class="gs-row"><div class="gs-ico">📄</div>' +
+            '<div class="gs-name">도번상세내역 · 납기/생산계획</div>' +
+            '<div class="gs-val zero">도번·품번으로 검색 시 조회</div>' +
+            '<button class="gs-btn" disabled>없음</button></div>';
+  }
   html += row("🔍", "검사대기현황", d.wait > 0 ? d.wait + "개" : "0개", d.wait>0, "waitinsp", d.wait===0);
   html += row("⏰", "지연 LIST", d.overdue > 0 ? d.overdue + "건 (최대 " + d.maxLate + "일)" : "0건", d.overdue>0, "overdue", d.overdue===0);
   html += row("🚚", "주간 출하", d.weekly > 0 ? d.weekly + "건" : "0건", d.weekly>0, "weekly", d.weekly===0);
-  html += row("⚠️", "고객 부적합", d.nc > 0 ? d.nc + "건 (최근 " + (d.ncLast||"-") + ")" : "0건", d.nc>0, "quality", d.nc===0);
+  html += row("⚠️", "고객 부적합", d.nc > 0 ? d.nc + "건 (최근 " + (d.ncLast||"-") + ")" : "0건", d.nc>0, "nc", d.nc===0);
   html += row("📦", "재고", d.stockRows > 0 ? d.stock + " EA" : "기록 없음", d.stockRows>0, "inventory", d.stockRows===0);
   html += row("📐", "도면", d.dwgNo ? d.dwgNo : "도번 없음", !!d.dwgNo, "dwg", !d.dwgNo);
   body.innerHTML = html;
@@ -1850,6 +1874,8 @@ function gsRender(keyword){
       const act = b.dataset.gsact;
       if(act === "dwg"){ gsClose(); if(typeof openDrawing === "function") openDrawing(d.dwgNo); return; }
       if(act === "history"){ gsGoto("management", kw, "history"); return; }
+      // 고객부적합은 도번상세내역에 "고객부적합 최근 내역"으로 표시되므로 그쪽으로 보낸다
+      if(act === "nc"){ gsGoto("management", kw, "history"); return; }
       if(act === "management"){ gsGoto("management", kw, "management"); return; }
       gsGoto(act, kw);
     });
@@ -1901,6 +1927,11 @@ function gsClose(){
     document.addEventListener("keydown", function(e){ if(e.key === "Escape") gsClose(); });
     const run = function(){ gsRender(inp ? inp.value : ""); };
     if(go) go.addEventListener("click", run);
+    const rs = document.getElementById("gs-reset");
+    if(rs) rs.addEventListener("click", function(){
+      if(inp){ inp.value = ""; inp.focus(); }
+      gsRender("");   // 결과 영역을 안내 문구로 되돌린다
+    });
     if(inp) inp.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); run(); } });
   }
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindGs);
