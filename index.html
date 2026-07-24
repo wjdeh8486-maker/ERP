@@ -1975,6 +1975,9 @@ function gsHintHide(){
   try { localStorage.setItem("gsHintSeen", "1"); } catch(_){ }
 }
 
+/* 통합검색 초기화 대기 플래그: 초기화 후 아직 갱신되지 않은 화면 표시 */
+let gsPendingReset = null;
+
 /* 통합검색 초기화: 각 메뉴의 검색창과 검색 상태까지 모두 비운다. */
 function gsResetAll(){
   const clear = function(id){ const el = document.getElementById(id); if(el) el.value = ""; };
@@ -1994,24 +1997,51 @@ function gsResetAll(){
   try{ if(typeof waitInspKeyword !== "undefined") waitInspKeyword = ""; }catch(_){ }
   try{ if(typeof managementMonthFilter !== "undefined") managementMonthFilter = null; }catch(_){ }
 
-  // 모든 화면을 다시 그린다.
-  // (현재 보이는 화면만 갱신하면, 다른 메뉴로 갔을 때 이전 검색 결과가 그대로 남아 있다)
-  const redraw = function(fn){ try{ if(typeof fn === "function") fn(); }catch(_){ } };
-  // MAIN은 전체 목록을 그리면 느리다. 원래 초기 상태(검색 안내)로 되돌린다.
-  redraw(function(){
-    if(typeof mainRenderStats === "function" && typeof mainData !== "undefined" && mainData){
-      mainRenderStats(mainData.filter(r => (Number(r.qty)||0) > 0));
+  // 성능: 모든 화면을 한꺼번에 다시 그리면 버벅인다.
+  // → 지금 보고 있는 화면 하나만 즉시 갱신하고,
+  //   나머지는 "다음에 그 메뉴로 들어갈 때" 갱신되도록 플래그만 세운다.
+  gsPendingReset = {
+    main:true, overdue:true, vendor:true,
+    waitinsp:true, management:true, history:true, inventory:true
+  };
+
+  const active = document.querySelector(".view.active");
+  const id = active ? active.id : "";
+  const done = function(key){ if(gsPendingReset) gsPendingReset[key] = false; };
+  try{
+    if(id === "view-main"){
+      if(typeof mainRenderStats === "function" && mainData) mainRenderStats(mainData.filter(r=>(Number(r.qty)||0)>0));
+      if(typeof mainShowSearchPrompt === "function") mainShowSearchPrompt();
+      else if(typeof mainApplySearch === "function") mainApplySearch();
+      done("main");
+    } else if(id === "view-overdue"){ if(typeof overdueApplySearch==="function") overdueApplySearch(); done("overdue"); }
+    else if(id === "view-vendor"){ if(typeof vendorApplySearch==="function") vendorApplySearch(); done("vendor"); }
+    else if(id === "view-waitinsp"){ if(typeof renderWaitInspTab==="function") renderWaitInspTab(); done("waitinsp"); }
+    else if(id === "view-management"){ if(typeof renderManagementAll==="function") renderManagementAll(); done("management"); }
+    else if(id === "view-history"){ if(typeof renderHistoryView==="function") renderHistoryView(""); done("history"); }
+    else if(id === "view-inventory"){
+      if(typeof invRenderCheck==="function" && typeof getInvCheckCriteria==="function") invRenderCheck(getInvCheckCriteria());
+      done("inventory");
     }
-    if(typeof mainShowSearchPrompt === "function") mainShowSearchPrompt();
-    else if(typeof mainApplySearch === "function") mainApplySearch();
-  });
-  redraw(typeof overdueApplySearch === "function" ? overdueApplySearch : null);
-  redraw(typeof vendorApplySearch === "function" ? vendorApplySearch : null);
-  redraw(typeof renderWaitInspTab === "function" ? renderWaitInspTab : null);
-  redraw(typeof renderManagementAll === "function" ? renderManagementAll : null);
-  redraw(typeof renderHistoryView === "function" ? function(){ renderHistoryView(""); } : null);
-  redraw((typeof invRenderCheck === "function" && typeof getInvCheckCriteria === "function")
-    ? function(){ invRenderCheck(getInvCheckCriteria()); } : null);
+  }catch(_){ }
+}
+
+// 메뉴 진입 시 초기화 대기 중인 화면이면 그때 갱신한다 (지연 렌더)
+function gsFlushPending(view){
+  if(!gsPendingReset || !gsPendingReset[view]) return;
+  gsPendingReset[view] = false;
+  try{
+    if(view === "main"){
+      if(typeof mainRenderStats === "function" && mainData) mainRenderStats(mainData.filter(r=>(Number(r.qty)||0)>0));
+      if(typeof mainShowSearchPrompt === "function") mainShowSearchPrompt();
+    }
+    else if(view === "overdue" && typeof overdueApplySearch==="function") overdueApplySearch();
+    else if(view === "vendor" && typeof vendorApplySearch==="function") vendorApplySearch();
+    else if(view === "waitinsp" && typeof renderWaitInspTab==="function") renderWaitInspTab();
+    else if(view === "management" && typeof renderManagementAll==="function") renderManagementAll();
+    else if(view === "history" && typeof renderHistoryView==="function") renderHistoryView("");
+    else if(view === "inventory" && typeof invRenderCheck==="function" && typeof getInvCheckCriteria==="function") invRenderCheck(getInvCheckCriteria());
+  }catch(_){ }
 }
 
 function gsOpen(){
@@ -2117,6 +2147,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     const target = item.dataset.view;
     document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
     document.getElementById("view-"+target).classList.add("active");
+    if(typeof gsFlushPending === "function") gsFlushPending(target);   // 초기화 후 첫 진입이면 이때 갱신
     document.getElementById("topbar-main").style.display = target==="main" ? "flex" : "none";
     document.getElementById("topbar-management").style.display = target==="management" ? "flex" : "none";
     document.getElementById("topbar-inventory").style.display = target==="inventory" ? "flex" : "none";
