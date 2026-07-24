@@ -1751,18 +1751,22 @@ function gsCollect(keyword){
   const rows = (typeof mainData !== "undefined" && mainData) ? mainData.filter(r=>gsMatch(r, kw)) : [];
   const live = rows.filter(r=> (Number(r.qty)||0) > 0 && r.shipped !== "납품완료");
 
-  // 검사대기: 다른 화면(도번상세내역·납기/생산계획)과 동일한 집계 함수를 쓴다.
-  // MAIN 시트 컬럼만 더하면 측정실·크린룸 시트에서 온 값이 빠져 0으로 나온다.
-  let wIn = 0, wMe = 0, wCl = 0, wVi = 0;
+  // 검사대기: 검사대기현황 화면과 "같은 함수·같은 데이터"로 계산해 숫자가 어긋나지 않게 한다.
+  // (MAIN 시트 컬럼이나 측정실/크린룸 맵을 쓰면 화면과 값이 달라진다)
+  let wIn = 0, wMe = 0, wCl = 0, wVi = 0, waitLoaded = false;
   try{
-    wIn = (typeof groupWaitIncoming === "function") ? groupWaitIncoming(rows)
-        : rows.reduce((a,r)=>a+(Number(r.waitIncomingInspection)||0),0);
-    wMe = (typeof groupWaitMeasure === "function") ? groupWaitMeasure(rows)
-        : rows.reduce((a,r)=>a+(Number(r.waitMeasure)||0),0);
-    wCl = (typeof groupWaitClean === "function") ? groupWaitClean(rows)
-        : rows.reduce((a,r)=>a+(Number(r.waitClean)||0),0);
-    wVi = (typeof groupWaitVision === "function") ? groupWaitVision(rows)
-        : rows.reduce((a,r)=>a+(Number(r.waitVision)||0),0);
+    const sum = function(list){ return (list||[]).reduce(function(a,r){ return a + (Number(r.qty)||0); }, 0); };
+    if(typeof waitInspFilter === "function"){
+      if(typeof waitInspIncomingList === "function"){
+        wIn = sum(waitInspFilter(waitInspIncomingList(), kw));
+      }
+      if(typeof waitInspAggregate === "function" && typeof waitInspLoaded !== "undefined" && waitInspLoaded){
+        wMe = sum(waitInspFilter(waitInspAggregate("공정검사대기"), kw));
+        wCl = sum(waitInspFilter(waitInspAggregate("출하검사대기"), kw));
+        wVi = sum(waitInspFilter(waitInspAggregate("비젼검사대기"), kw));
+        waitLoaded = true;
+      }
+    }
   }catch(_){ }
   const wait = wIn + wMe + wCl + wVi;
 
@@ -1825,7 +1829,7 @@ function gsCollect(keyword){
   return {
     total: rows.length, live: live.length, wait, overdue: overdue.length, maxLate,
     weekly, nc, ncLast, stock, stockRows, dwgNo, dwgList: dwgSet, byDrawing,
-    waitIn: wIn, waitMe: wMe, waitCl: wCl, waitVi: wVi
+    waitIn: wIn, waitMe: wMe, waitCl: wCl, waitVi: wVi, waitLoaded
   };
 }
 
@@ -1912,6 +1916,7 @@ function gsRender(keyword){
     if(d.waitMe) parts.push("공정 " + d.waitMe);
     if(d.waitCl) parts.push("출하 " + d.waitCl);
     if(d.waitVi) parts.push("비젼 " + d.waitVi);
+    if(!d.waitLoaded) parts.push('<span style="color:#C0392B;">공정·출하·비젼은 [🔄 불러오기] 필요</span>');
     html += '<div class="gs-row" style="flex-wrap:wrap;">' +
             '<div class="gs-ico">🔍</div><div class="gs-name">검사대기현황</div>' +
             '<div class="gs-val hit">' + d.wait + '개</div>' +
@@ -7470,8 +7475,9 @@ function waitInspIncomingList(){
    MAIN 데이터에서 해당하는 도번을 찾아 그 도번들만 남긴다. */
 let waitInspKeyword = "";
 
-function waitInspFilter(list){
-  const kw = String(waitInspKeyword||"").trim().toLowerCase();
+function waitInspFilter(list, kwOverride){
+  const kw = String((kwOverride !== undefined && kwOverride !== null) ? kwOverride : waitInspKeyword)
+    .trim().toLowerCase();
   if(!kw) return list;
   // 도번 직접 일치
   const direct = list.filter(r => String(r.partNo||"").toLowerCase().includes(kw));
