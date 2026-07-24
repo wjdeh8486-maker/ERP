@@ -1975,6 +1975,40 @@ function gsHintHide(){
   try { localStorage.setItem("gsHintSeen", "1"); } catch(_){ }
 }
 
+/* 모바일/태블릿용 인쇄: 별도 창에 완성된 HTML을 담아 인쇄한다.
+   (모바일 브라우저는 window.print()로 @media print 규칙을 제대로 반영하지 못해
+   본문이 비어 보이는 문제가 있어, 인쇄 대상만 담은 문서를 새로 만든다.) */
+function openPrintWindow(bodyHTML, extraCSS, title){
+  const w = window.open("", "_blank");
+  if(!w){
+    alert("팝업이 차단되어 인쇄창을 열 수 없습니다.\n브라우저에서 이 사이트의 팝업을 허용해 주세요.");
+    return;
+  }
+  const baseCSS = `
+    *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; box-sizing:border-box; }
+    body{ margin:0; padding:8px; font-family:'맑은 고딕',Malgun Gothic,sans-serif; color:#1A1E27; }
+    h2{ font-size:14px; margin:0 0 8px; }
+    table{ width:100%; border-collapse:collapse; }
+    th,td{ border:1px solid #999; padding:3px 4px; text-align:center; }
+    .mgmt-noprint,.dwg-tabs,button,input{ display:none !important; }
+    @media print{ .print-toolbar{ display:none !important; } }
+  `;
+  w.document.open();
+  w.document.write(
+    '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>' + (title||"인쇄") + '</title>' +
+    '<style>' + baseCSS + (extraCSS||"") + '</style></head><body>' +
+    '<div class="print-toolbar" style="position:sticky;top:0;background:#152046;padding:10px;text-align:center;">' +
+      '<button onclick="window.print()" style="padding:8px 20px;font-size:14px;font-weight:700;border:0;border-radius:6px;background:#fff;color:#152046;">🖨 인쇄하기</button>' +
+    '</div>' +
+    bodyHTML +
+    '<scr' + 'ipt>window.addEventListener("load",function(){setTimeout(function(){window.print();},400);});</scr' + 'ipt>' +
+    '</body></html>'
+  );
+  w.document.close();
+}
+
 /* 통합검색 초기화 대기 플래그: 초기화 후 아직 갱신되지 않은 화면 표시 */
 let gsPendingReset = null;
 
@@ -6787,6 +6821,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // 인쇄 버튼: 기존 인쇄 시스템(#print-area)에 내용을 복사한 뒤 인쇄
   const printBtn = document.getElementById("management-printBtn");
   if(printBtn){
+    // (유틸은 아래 정의를 사용)
     printBtn.addEventListener("click", () => runBusy(() => {
       if(!managementSearchKeyword.trim()){
         alert("검색어를 입력해 조회한 뒤 인쇄해 주세요.");
@@ -6834,6 +6869,13 @@ document.addEventListener("DOMContentLoaded", () => {
         #print-area [id^="management-"] h2{ break-after:avoid !important; page-break-after:avoid !important; }
         #print-area *{ position:static !important; float:none !important; }
       `;
+      // 모바일·태블릿: window.print()가 @media print를 제대로 반영하지 못해
+      // 빈 화면이 나오므로, 인쇄 전용 새 창에 완성된 내용만 담아 인쇄한다.
+      if(IS_MOBILE){
+        openPrintWindow(pa.innerHTML, orientationStyle.textContent, "납기/생산계획");
+        pa.innerHTML = "";
+        return;
+      }
       document.head.appendChild(orientationStyle);
       const cleanupMgmtPrint = () => {
         const st = document.getElementById("mgmt-print-orientation");
@@ -7749,6 +7791,11 @@ document.addEventListener("DOMContentLoaded", () => {
         #print-area th, #print-area td{ padding:2px 1px !important; word-break:break-all; overflow-wrap:anywhere; white-space:normal !important; }
         #print-area tr{ break-inside:avoid; }
       `;
+      if(IS_MOBILE){
+        openPrintWindow(pa.innerHTML, st.textContent, "도번상세내역");
+        pa.innerHTML = "";
+        return;
+      }
       document.head.appendChild(st);
       window.print();
       setTimeout(() => {
