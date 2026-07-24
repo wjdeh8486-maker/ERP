@@ -1106,6 +1106,11 @@
     <!-- ===================== WAITINSP(검사대기현황) VIEW ===================== -->
     <div id="topbar-waitinsp" class="topbar" style="display:none;">
       <h1>검사대기현황</h1>
+      <div class="search-box">
+        <input id="waitinsp-searchInput" type="text" placeholder="도번 · ORDER NO · 고객사 검색">
+        <button id="waitinsp-searchBtn">🔍 검색</button>
+        <button id="waitinsp-clearBtn">초기화</button>
+      </div>
       <div style="display:flex;gap:8px;margin-left:auto;">
         <button id="waitinsp-syncBtn" style="border:1px solid #E0C34A;background:#FFF6D6;color:#8a6d00;">🔄 불러오기</button>
         <button id="waitinsp-printBtn">🖨️ 인쇄</button>
@@ -1817,6 +1822,9 @@ function gsGoto(view, keyword, tab){
     if(tab && typeof dwgActiveTab !== "undefined") dwgActiveTab = tab;
   } else if(view === "main"){
     setVal("main-searchInput");
+  } else if(view === "waitinsp"){
+    setVal("waitinsp-searchInput");
+    if(typeof waitInspKeyword !== "undefined") waitInspKeyword = keyword;
   } else if(view === "overdue"){
     setVal("overdue-searchInput");
   } else if(view === "inventory"){
@@ -1828,6 +1836,7 @@ function gsGoto(view, keyword, tab){
   setTimeout(function(){
     try{
       if(view === "main" && typeof mainApplySearch === "function") mainApplySearch();
+      if(view === "waitinsp" && typeof renderWaitInspTab === "function") renderWaitInspTab();
       if(view === "overdue" && typeof overdueApplySearch === "function") overdueApplySearch();
       if(view === "management" && typeof switchDwgTab === "function") switchDwgTab(dwgActiveTab, {skipSync:true});
     }catch(_){ }
@@ -7350,6 +7359,29 @@ function waitInspIncomingList(){
   });
   return out.sort((a,b)=>a.partNo.localeCompare(b.partNo, "ko", {numeric:true}));
 }
+/* 검사대기 검색: 목록은 도번 기준이므로, ORDER NO·고객사로 검색하면
+   MAIN 데이터에서 해당하는 도번을 찾아 그 도번들만 남긴다. */
+let waitInspKeyword = "";
+
+function waitInspFilter(list){
+  const kw = String(waitInspKeyword||"").trim().toLowerCase();
+  if(!kw) return list;
+  // 도번 직접 일치
+  const direct = list.filter(r => String(r.partNo||"").toLowerCase().includes(kw));
+  if(direct.length) return direct;
+  // ORDER NO·고객사·품번으로 검색한 경우 → 해당 도번 집합으로 변환
+  const dwgs = new Set();
+  (mainData||[]).forEach(r=>{
+    const hay = [r.orderNo, r.customer, r.partNo, r.oldDrawingNo].map(v=>String(v||"")).join(" ").toLowerCase();
+    if(hay.includes(kw)){
+      const d = String(r.oldDrawingNo||"").trim();
+      if(d) dwgs.add(d.toLowerCase());
+    }
+  });
+  if(!dwgs.size) return [];
+  return list.filter(r => dwgs.has(String(r.partNo||"").trim().toLowerCase()));
+}
+
 function renderWaitInspTab(){
   const el = document.getElementById("waitinsp-content");
   if(!el) return;
@@ -7368,12 +7400,12 @@ function renderWaitInspTab(){
     el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">상단의 [🔄 불러오기] 버튼을 눌러 검사대기 데이터를 불러와 주세요.</div>`;
     return;
   }
-  const list = isIncoming ? waitInspIncomingList() : waitInspAggregate(key);
+  const list = waitInspFilter(isIncoming ? waitInspIncomingList() : waitInspAggregate(key));
   const totalQty = list.reduce((a,r)=>a+r.qty,0);
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   el.innerHTML = `
     <div class="table-wrap waitinsp-wrap" style="padding:14px 16px;">
-      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)}${isIncoming ? ` <span style="font-size:11.5px;font-weight:700;color:#0B5CAB;">(고객사: 유진테크)</span>` : ""} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개</span></div>
+      <div style="font-size:13px;font-weight:700;color:#1F2A44;margin-bottom:10px;">${esc(key)}${isIncoming ? ` <span style="font-size:11.5px;font-weight:700;color:#0B5CAB;">(고객사: 유진테크)</span>` : ""} <span style="font-size:11.5px;font-weight:400;color:#6B7280;">· 보유 도번 ${list.length}개 / 총 ${totalQty.toLocaleString()}개${waitInspKeyword ? ` · 검색: ${esc(waitInspKeyword)}` : ""}</span></div>
       <div class="waitinsp-scroll">
         <table style="width:100%;max-width:640px;">
           <thead><tr><th>도번</th><th>최종 등록일</th><th>수량</th></tr></thead>
@@ -7382,7 +7414,7 @@ function renderWaitInspTab(){
               <td style="text-align:center;">${esc(r.partNo)}</td>
               <td style="text-align:center;">${esc(r.lastReg||'-')}</td>
               <td style="text-align:center;">${r.qty.toLocaleString()}</td>
-            </tr>`).join("") : `<tr><td colspan="3" style="text-align:center;color:#B9C2D6;">보유 중인 대기 제품이 없습니다.</td></tr>`}
+            </tr>`).join("") : `<tr><td colspan="3" style="text-align:center;color:#B9C2D6;">${waitInspKeyword ? "검색 결과가 없습니다." : "보유 중인 대기 제품이 없습니다."}</td></tr>`}
             ${list.length ? `<tr style="font-weight:700;background:#EDF0F5;"><td style="text-align:center;">합계</td><td></td><td style="text-align:center;">${totalQty.toLocaleString()}</td></tr>` : ""}
           </tbody>
         </table>
@@ -7406,7 +7438,7 @@ function waitInspPrint(){
   const dateStr = new Date().toLocaleDateString('ko-KR');
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const html = WAIT_INSP_TABS.map(key=>{
-    const list = (key === "수입검사대기") ? waitInspIncomingList() : waitInspAggregate(key);
+    const list = waitInspFilter((key === "수입검사대기") ? waitInspIncomingList() : waitInspAggregate(key));
     const totalQty = list.reduce((a,r)=>a+r.qty,0);
     return `
       <div class="q-report-page">
@@ -7430,7 +7462,7 @@ function waitInspExcel(){
   if(!waitInspLoaded){ alert("먼저 [🔄 불러오기]로 데이터를 불러와 주세요."); return; }
   const wb = XLSX.utils.book_new();
   WAIT_INSP_TABS.forEach(key=>{
-    const list = (key === "수입검사대기") ? waitInspIncomingList() : waitInspAggregate(key);
+    const list = waitInspFilter((key === "수입검사대기") ? waitInspIncomingList() : waitInspAggregate(key));
     const totalQty = list.reduce((a,r)=>a+r.qty,0);
     const aoa = [["도번","최종 등록일","수량"]];
     list.forEach(r=>aoa.push([r.partNo, r.lastReg||"-", r.qty]));
@@ -7475,6 +7507,23 @@ document.addEventListener("DOMContentLoaded", () => {
   const wiSync = document.getElementById("waitinsp-syncBtn");
   if(wiSync) wiSync.addEventListener("click", fetchWaitInspData);
   const wiPrint = document.getElementById("waitinsp-printBtn");
+  // 검사대기 검색
+  const wiIn = document.getElementById("waitinsp-searchInput");
+  const wiBtn = document.getElementById("waitinsp-searchBtn");
+  const wiClr = document.getElementById("waitinsp-clearBtn");
+  if(wiIn && wiBtn){
+    const doWiSearch = () => {
+      waitInspKeyword = wiIn.value;
+      runBusy(renderWaitInspTab, "검색 중...");
+    };
+    wiBtn.addEventListener("click", doWiSearch);
+    wiIn.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); doWiSearch(); } });
+  }
+  if(wiClr) wiClr.addEventListener("click", () => {
+    waitInspKeyword = "";
+    if(wiIn) wiIn.value = "";
+    renderWaitInspTab();
+  });
   if(wiPrint) wiPrint.addEventListener("click", () => runBusy(waitInspPrint, "인쇄 준비 중..."));
   const wiExcel = document.getElementById("waitinsp-excelBtn");
   if(wiExcel) wiExcel.addEventListener("click", () => runBusy(waitInspExcel, "엑셀 생성 중..."));
