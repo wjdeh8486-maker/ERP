@@ -346,6 +346,11 @@
     background:#fff;color:#2f6fed;cursor:pointer;}
   .gs-btn:hover{background:#eef4ff;}
   .gs-btn[disabled]{border-color:#d8dde6;color:#b6bdc9;background:#fafbfc;cursor:default;}
+  .gs-chips{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;padding-left:36px;}
+  .gs-chip{padding:6px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #2f6fed;
+    background:#fff;color:#2f6fed;cursor:pointer;white-space:nowrap;}
+  .gs-chip:hover{background:#eef4ff;}
+  .gs-chipmore{align-self:center;font-size:11.5px;color:#9aa3b2;}
   .gs-empty{padding:34px 10px;text-align:center;color:#9aa3b2;font-size:13px;line-height:1.7;}
   .gs-sum{padding:10px 4px 6px;font-size:12px;color:#6b7280;}
   @media (max-width:768px){
@@ -364,6 +369,8 @@
     .gs-name{font-size:13px;}
     .gs-btn{min-height:36px;padding:6px 14px;}
     .gs-val{order:3;flex:1 1 100%;text-align:left;padding-left:36px;margin-top:3px;font-size:12px;}
+    .gs-chips{order:4;padding-left:36px;gap:5px;}
+    .gs-chip{padding:7px 10px;font-size:11.5px;min-height:34px;}
   }
   @media print{ #gs-fab,#gs-overlay,#gs-hint{display:none !important;} }
   /* 도번 조회: 관리항목/이력 탭 */
@@ -1779,9 +1786,13 @@ function gsCollect(keyword){
     });
   }catch(_){ }
 
-  // 대표 도번 (도면 조회용)
-  let dwgNo = "";
-  for(const r of rows){ if(String(r.oldDrawingNo||"").trim()){ dwgNo = String(r.oldDrawingNo).trim(); break; } }
+  // 도면 조회용 도번 목록 (중복 제거, 등장 순서 유지)
+  const dwgSet = [];
+  rows.forEach(r=>{
+    const v = String(r.oldDrawingNo||"").trim();
+    if(v && dwgSet.indexOf(v) === -1) dwgSet.push(v);
+  });
+  const dwgNo = dwgSet[0] || "";
 
   // 도번상세내역·납기/생산계획은 도번·품번 기준으로 그려진다.
   // ORDER NO나 고객사로만 찾은 경우에는 그 화면이 비므로 MAIN 대시보드로 안내한다.
@@ -1791,7 +1802,7 @@ function gsCollect(keyword){
 
   return {
     total: rows.length, live: live.length, wait, overdue: overdue.length, maxLate,
-    weekly, nc, ncLast, stock, stockRows, dwgNo, byDrawing
+    weekly, nc, ncLast, stock, stockRows, dwgNo, dwgList: dwgSet, byDrawing
   };
 }
 
@@ -1866,8 +1877,30 @@ function gsRender(keyword){
   html += row("🚚", "주간 출하", d.weekly > 0 ? d.weekly + "건" : "0건", d.weekly>0, "weekly", d.weekly===0);
   html += row("⚠️", "고객 부적합", d.nc > 0 ? d.nc + "건 (최근 " + (d.ncLast||"-") + ")" : "0건", d.nc>0, "nc", d.nc===0);
   html += row("📦", "재고", d.stockRows > 0 ? d.stock + " EA" : "기록 없음", d.stockRows>0, "inventory", d.stockRows===0);
-  html += row("📐", "도면", d.dwgNo ? d.dwgNo : "도번 없음", !!d.dwgNo, "dwg", !d.dwgNo);
+  if(d.dwgList.length <= 1){
+    html += row("📐", "도면", d.dwgNo ? d.dwgNo : "도번 없음", !!d.dwgNo, "dwg", !d.dwgNo);
+  } else {
+    // 도번이 여러 개면 전부 나열해서 각각 열 수 있게 한다
+    const shown = d.dwgList.slice(0, 12);
+    const chips = shown.map(function(no){
+      return '<button class="gs-chip" data-gsdwg="' + no.replace(/"/g,"&quot;") + '">📐 ' +
+             no.replace(/&/g,"&amp;").replace(/</g,"&lt;") + '</button>';
+    }).join("");
+    const more = d.dwgList.length > shown.length
+      ? '<div class="gs-chipmore">외 ' + (d.dwgList.length - shown.length) + '개</div>' : '';
+    html += '<div class="gs-row" style="flex-wrap:wrap;">' +
+            '<div class="gs-ico">📐</div><div class="gs-name">도면</div>' +
+            '<div class="gs-val hit">' + d.dwgList.length + '개</div>' +
+            '<div class="gs-chips">' + chips + more + '</div></div>';
+  }
   body.innerHTML = html;
+
+  body.querySelectorAll("[data-gsdwg]").forEach(function(c){
+    c.addEventListener("click", function(){
+      gsClose();
+      if(typeof openDrawing === "function") openDrawing(c.dataset.gsdwg);
+    });
+  });
 
   body.querySelectorAll("[data-gsact]").forEach(function(b){
     b.addEventListener("click", function(){
