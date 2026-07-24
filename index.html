@@ -1751,14 +1751,19 @@ function gsCollect(keyword){
   const rows = (typeof mainData !== "undefined" && mainData) ? mainData.filter(r=>gsMatch(r, kw)) : [];
   const live = rows.filter(r=> (Number(r.qty)||0) > 0 && r.shipped !== "납품완료");
 
-  // 검사대기: 공정별로 나눠서 집계 (합계만 보면 어느 공정 것인지 알 수 없음)
+  // 검사대기: 다른 화면(도번상세내역·납기/생산계획)과 동일한 집계 함수를 쓴다.
+  // MAIN 시트 컬럼만 더하면 측정실·크린룸 시트에서 온 값이 빠져 0으로 나온다.
   let wIn = 0, wMe = 0, wCl = 0, wVi = 0;
-  live.forEach(r=>{
-    wIn += Number(r.waitIncomingInspection)||0;   // 수입
-    wMe += Number(r.waitMeasure)||0;              // 공정(측정실)
-    wCl += Number(r.waitClean)||0;                // 출하(크린룸)
-    wVi += Number(r.waitVision)||0;               // 비젼
-  });
+  try{
+    wIn = (typeof groupWaitIncoming === "function") ? groupWaitIncoming(rows)
+        : rows.reduce((a,r)=>a+(Number(r.waitIncomingInspection)||0),0);
+    wMe = (typeof groupWaitMeasure === "function") ? groupWaitMeasure(rows)
+        : rows.reduce((a,r)=>a+(Number(r.waitMeasure)||0),0);
+    wCl = (typeof groupWaitClean === "function") ? groupWaitClean(rows)
+        : rows.reduce((a,r)=>a+(Number(r.waitClean)||0),0);
+    wVi = (typeof groupWaitVision === "function") ? groupWaitVision(rows)
+        : rows.reduce((a,r)=>a+(Number(r.waitVision)||0),0);
+  }catch(_){ }
   const wait = wIn + wMe + wCl + wVi;
 
   // 지연: 지연 LIST와 동일 기준
