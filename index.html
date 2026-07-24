@@ -1985,7 +1985,14 @@ function gsResetAll(){
   // 모든 화면을 다시 그린다.
   // (현재 보이는 화면만 갱신하면, 다른 메뉴로 갔을 때 이전 검색 결과가 그대로 남아 있다)
   const redraw = function(fn){ try{ if(typeof fn === "function") fn(); }catch(_){ } };
-  redraw(typeof mainApplySearch === "function" ? mainApplySearch : null);
+  // MAIN은 전체 목록을 그리면 느리다. 원래 초기 상태(검색 안내)로 되돌린다.
+  redraw(function(){
+    if(typeof mainRenderStats === "function" && typeof mainData !== "undefined" && mainData){
+      mainRenderStats(mainData.filter(r => (Number(r.qty)||0) > 0));
+    }
+    if(typeof mainShowSearchPrompt === "function") mainShowSearchPrompt();
+    else if(typeof mainApplySearch === "function") mainApplySearch();
+  });
   redraw(typeof overdueApplySearch === "function" ? overdueApplySearch : null);
   redraw(typeof vendorApplySearch === "function" ? vendorApplySearch : null);
   redraw(typeof renderWaitInspTab === "function" ? renderWaitInspTab : null);
