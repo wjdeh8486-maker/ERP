@@ -751,7 +751,7 @@
   <div id="gs-modal">
     <div id="gs-head"><b>🔍 통합검색</b><button id="gs-close" type="button" title="닫기">&#10005;</button></div>
     <div id="gs-searchRow">
-      <input id="gs-input" type="text" placeholder="도번 · 품번 · ORDER NO 입력" autocomplete="off">
+      <input id="gs-input" type="text" placeholder="도번 · 품번 · ORDER NO · PROJECT NO 입력" autocomplete="off">
       <button id="gs-go" type="button">검색</button>
       <button id="gs-reset" type="button" title="통합검색과 모든 메뉴의 검색창을 지웁니다">초기화</button>
     </div>
@@ -1068,7 +1068,7 @@
     <div id="topbar-management" class="topbar" style="display:none;">
       <h1>🔎 도번 조회</h1>
       <div class="search-box">
-        <input id="management-searchInput" type="text" placeholder="도번·품명·품번·ORDER NO 검색 (쉼표=OR, 공백=AND · 예: M200-005 SHOWERHEAD)">
+        <input id="management-searchInput" type="text" placeholder="도번·품명·품번·ORDER NO·PROJECT NO·고객사 검색 (쉼표=OR, 공백=AND)">
         <button id="management-searchBtn">🔍 검색</button>
         <button id="management-printBtn">🖨️ 인쇄</button>
         <button id="management-excelBtn" type="button" class="tb-download-btn">📥 다운로드</button>
@@ -1107,7 +1107,7 @@
     <div id="topbar-waitinsp" class="topbar" style="display:none;">
       <h1>검사대기현황</h1>
       <div class="search-box">
-        <input id="waitinsp-searchInput" type="text" placeholder="도번 · ORDER NO · 고객사 검색">
+        <input id="waitinsp-searchInput" type="text" placeholder="도번 · ORDER NO · PROJECT NO · 고객사 검색">
         <button id="waitinsp-searchBtn">🔍 검색</button>
         <button id="waitinsp-clearBtn">초기화</button>
       </div>
@@ -1131,7 +1131,7 @@
     <div id="topbar-history" class="topbar" style="display:none;">
       <h1>🔎 도번 조회</h1>
       <div class="search-box">
-        <input id="history-searchInput" type="text" placeholder="도번 또는 품명 검색 (쉼표로 여러 개)">
+        <input id="history-searchInput" type="text" placeholder="도번·품명·품번·ORDER NO·PROJECT NO 검색 (쉼표로 여러 개)">
         <button id="history-searchBtn">🔍 검색</button>
         <button id="history-printBtn">🖨️ 인쇄</button>
         <button id="history-downloadBtn" type="button" class="tb-download-btn">📥 다운로드</button>
@@ -1147,7 +1147,7 @@
       <div id="history-content">
         <div style="padding:60px 20px;text-align:center;color:#B9C2D6;">
           <div style="font-size:28px;margin-bottom:12px;">🔎</div>
-          <div style="font-size:13px;font-weight:700;color:#4B5563;">도번이나 품명을 검색하면 이력이 표시됩니다.</div>
+          <div style="font-size:13px;font-weight:700;color:#4B5563;">도번·품번·ORDER NO·PROJECT NO를 검색하면 상세내역이 표시됩니다.</div>
         </div>
       </div>
     </div>
@@ -1728,7 +1728,8 @@ document.querySelectorAll(".nav-caret").forEach(caret => {
    각 영역의 계산 규칙은 원래 화면과 동일한 기준을 사용한다. */
 function gsMatch(r, kw){
   // 품명은 제외한다 (같은 품명이 여러 도번에 걸쳐 있어 결과가 뭉뚱그려지는 것을 방지)
-  const hay = [r.oldDrawingNo, r.partNo, r.orderNo, r.customer].map(v=>String(v||"")).join(" ").toLowerCase();
+  const hay = [r.oldDrawingNo, r.partNo, r.orderNo, r.customer, r.vendor, r.vendorName]
+    .map(v=>String(v||"")).join(" ").toLowerCase();
   return hay.includes(kw);
 }
 
@@ -5868,7 +5869,10 @@ function filterManagementRows(keyword){
           String(row.oldDrawingNo||''),
           String(row.partName||''),
           String(row.partNo||''),
-          String(row.orderNo||'')
+          String(row.orderNo||''),
+          String(row.vendor||''),      // PROJECT NO.
+          String(row.vendorName||''),  // 외주발주(납품처)
+          String(row.customer||'')
         ].join(" ").toUpperCase();
         // OR 그룹 중 하나라도, 그 그룹의 모든 단어가 포함되면 매칭
         return orGroups.some(andTerms => andTerms.every(t => haystack.includes(t)));
@@ -6962,15 +6966,15 @@ function renderHistoryView(keyword){
   }
   const kw = String(keyword || "").trim();
   if(!kw){
-    el.innerHTML = `<div style="padding:60px 20px;text-align:center;color:#B9C2D6;"><div style="font-size:28px;margin-bottom:12px;">🔎</div><div style="font-size:13px;font-weight:700;color:#4B5563;">도번이나 품명을 검색하면 이력이 표시됩니다.</div></div>`;
+    el.innerHTML = `<div style="padding:60px 20px;text-align:center;color:#B9C2D6;"><div style="font-size:28px;margin-bottom:12px;">🔎</div><div style="font-size:13px;font-weight:700;color:#4B5563;">도번·품번·ORDER NO·PROJECT NO를 검색하면 상세내역이 표시됩니다.</div></div>`;
     return;
   }
-  // 쉼표 = OR 검색, 도번/품명 대상
+  // 쉼표 = OR 검색. 도번·품명 외에 품번·ORDER NO·PROJECT NO·고객사도 대상으로 한다.
   const terms = kw.split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
   const match = r => {
-    const d = String(r.oldDrawingNo||"").toLowerCase();
-    const p = String(r.partName||"").toLowerCase();
-    return terms.some(t => d.includes(t) || p.includes(t));
+    const hay = [r.oldDrawingNo, r.partName, r.partNo, r.orderNo, r.vendor, r.vendorName, r.customer]
+      .map(v => String(v||"")).join(" ").toLowerCase();
+    return terms.some(t => hay.includes(t));
   };
   // 도번별 그룹
   const groups = {};
@@ -7433,7 +7437,8 @@ function waitInspFilter(list){
   // ORDER NO·고객사·품번으로 검색한 경우 → 해당 도번 집합으로 변환
   const dwgs = new Set();
   (mainData||[]).forEach(r=>{
-    const hay = [r.orderNo, r.customer, r.partNo, r.oldDrawingNo].map(v=>String(v||"")).join(" ").toLowerCase();
+    const hay = [r.orderNo, r.customer, r.partNo, r.oldDrawingNo, r.vendor, r.vendorName]
+      .map(v=>String(v||"")).join(" ").toLowerCase();
     if(hay.includes(kw)){
       const d = String(r.oldDrawingNo||"").trim();
       if(d) dwgs.add(d.toLowerCase());
