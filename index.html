@@ -295,6 +295,60 @@
   .tb-download-btn:hover{background:#2C3A5E;}
   #overdue-excelBtn{background:var(--navy) !important;color:#fff !important;border:1px solid #9AA3B2 !important;}
   #overdue-excelBtn:hover{background:#2C3A5E !important;}
+  /* ===== 통합검색 (플로팅 버튼 + 팝업) ===== */
+  /* 버튼 위치: 상단은 topbar(sticky, 인쇄·다운로드·구글시트 연동 버튼)와 겹치므로 우측 하단 고정 */
+  #gs-fab{position:fixed;right:20px;bottom:24px;z-index:900;width:48px;height:48px;border-radius:50%;
+    border:0;background:#152046;color:#fff;font-size:20px;cursor:pointer;opacity:.94;
+    box-shadow:0 4px 14px rgba(0,0,0,.32);transition:opacity .15s ease,transform .15s ease,background .15s ease;
+    display:flex;align-items:center;justify-content:center;}
+  #gs-fab:hover{opacity:1;background:#22315e;transform:translateY(-2px);}
+  #gs-fab:active{transform:translateY(0);}
+  #gs-overlay{position:fixed;inset:0;z-index:950;background:rgba(15,20,38,.55);display:none;
+    align-items:flex-start;justify-content:center;padding:56px 16px 24px;overflow-y:auto;}
+  #gs-overlay.open{display:flex;}
+  #gs-modal{background:#fff;border-radius:12px;width:100%;max-width:640px;box-shadow:0 12px 40px rgba(0,0,0,.3);
+    overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 80px);}
+  #gs-head{background:#152046;color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px;flex:none;}
+  #gs-head b{font-size:15px;flex:1;}
+  #gs-close{background:transparent;border:0;color:#fff;font-size:20px;cursor:pointer;line-height:1;
+    padding:0;width:32px;height:32px;border-radius:6px;}
+  #gs-close:hover{background:rgba(255,255,255,.14);}
+  #gs-searchRow{display:flex;gap:6px;padding:14px 16px;border-bottom:1px solid #e5e8ef;flex:none;}
+  #gs-input{flex:1;min-width:0;padding:10px 12px;font-size:15px;border:1px solid #ccd3e0;border-radius:7px;}
+  #gs-input:focus{outline:none;border-color:#2f6fed;box-shadow:0 0 0 3px rgba(47,111,237,.12);}
+  #gs-go{padding:10px 18px;font-size:14px;font-weight:700;border:0;border-radius:7px;background:#152046;
+    color:#fff;cursor:pointer;white-space:nowrap;}
+  #gs-go:hover{background:#22315e;}
+  #gs-body{padding:10px 16px 16px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;}
+  .gs-row{display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid #f0f2f6;}
+  .gs-row:last-child{border-bottom:0;}
+  .gs-ico{width:26px;text-align:center;font-size:15px;flex:none;}
+  .gs-name{flex:1;font-size:13.5px;font-weight:700;color:#243046;}
+  .gs-val{font-size:13px;color:#4B5563;text-align:right;white-space:nowrap;}
+  .gs-val.hit{color:#1a4fbd;font-weight:700;}
+  .gs-val.zero{color:#9aa3b2;}
+  .gs-btn{flex:none;padding:6px 13px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #2f6fed;
+    background:#fff;color:#2f6fed;cursor:pointer;}
+  .gs-btn:hover{background:#eef4ff;}
+  .gs-btn[disabled]{border-color:#d8dde6;color:#b6bdc9;background:#fafbfc;cursor:default;}
+  .gs-empty{padding:34px 10px;text-align:center;color:#9aa3b2;font-size:13px;line-height:1.7;}
+  .gs-sum{padding:10px 4px 6px;font-size:12px;color:#6b7280;}
+  @media (max-width:768px){
+    /* 모바일: 엄지 닿는 우측 하단 + 홈 인디케이터 영역 회피 */
+    #gs-fab{right:14px;bottom:calc(18px + env(safe-area-inset-bottom));width:54px;height:54px;font-size:22px;}
+    #gs-overlay{padding:12px 10px calc(12px + env(safe-area-inset-bottom));align-items:center;}
+    #gs-modal{max-height:calc(100vh - 24px);}
+    #gs-searchRow{padding:12px;}
+    #gs-input{font-size:16px;min-height:44px;}   /* 16px: iOS 자동 확대 방지 */
+    #gs-go{min-height:44px;padding:10px 16px;}
+    #gs-body{padding:8px 12px 14px;}
+    /* 값이 길어 이름·버튼을 밀어내지 않도록 값만 아랫줄로 */
+    .gs-row{flex-wrap:wrap;padding:12px 2px;}
+    .gs-name{font-size:13px;}
+    .gs-btn{min-height:36px;padding:6px 14px;}
+    .gs-val{order:3;flex:1 1 100%;text-align:left;padding-left:36px;margin-top:3px;font-size:12px;}
+  }
+  @media print{ #gs-fab,#gs-overlay{display:none !important;} }
   /* 도번 조회: 관리항목/이력 탭 */
   .dwg-tabs{display:flex;gap:6px;width:100%;margin-top:8px;}
   .dwg-tabs button{padding:7px 16px;font-size:12.5px;font-weight:700;border-radius:6px 6px 0 0;
@@ -664,6 +718,19 @@
 </head>
 <body>
 <div id="busy-toast">⏳ 진행중...</div>
+<button id="gs-fab" type="button" title="통합검색 (도번으로 전체 조회)" aria-label="통합검색">🔍</button>
+<div id="gs-overlay">
+  <div id="gs-modal">
+    <div id="gs-head"><b>🔍 통합검색</b><button id="gs-close" type="button" title="닫기">&#10005;</button></div>
+    <div id="gs-searchRow">
+      <input id="gs-input" type="text" placeholder="도번 · 품번 · 품명 입력" autocomplete="off">
+      <button id="gs-go" type="button">검색</button>
+    </div>
+    <div id="gs-body">
+      <div class="gs-empty">도번을 입력하면 전체 메뉴에서 한 번에 찾아드립니다.</div>
+    </div>
+  </div>
+</div>
 <div class="app-shell">
   <div class="side-nav" id="sideNav">
     <div class="brand">종합제품관리<small>ERP 웹 시스템</small></div>
@@ -1630,6 +1697,180 @@ document.querySelectorAll(".nav-caret").forEach(caret => {
     setNavGroup(name, group.classList.contains("closed"));
   });
 });
+/* ============ 통합검색 ============
+   도번 하나로 8개 영역을 한 번에 조회하고, 해당 메뉴로 이동시킨다.
+   각 영역의 계산 규칙은 원래 화면과 동일한 기준을 사용한다. */
+function gsMatch(r, kw){
+  const hay = [r.oldDrawingNo, r.partNo, r.partName, r.orderNo, r.customer].map(v=>String(v||"")).join(" ").toLowerCase();
+  return hay.includes(kw);
+}
+
+function gsCollect(keyword){
+  const kw = String(keyword||"").trim().toLowerCase();
+  const rows = (typeof mainData !== "undefined" && mainData) ? mainData.filter(r=>gsMatch(r, kw)) : [];
+  const live = rows.filter(r=> (Number(r.qty)||0) > 0 && r.shipped !== "납품완료");
+
+  // 검사대기: 각 공정 대기 수량 합
+  let wait = 0;
+  live.forEach(r=>{
+    wait += (Number(r.waitIncomingInspection)||0) + (Number(r.waitMeasure)||0)
+          + (Number(r.waitClean)||0) + (Number(r.waitVision)||0);
+  });
+
+  // 지연: 지연 LIST와 동일 기준
+  const overdue = rows.filter(r=> (Number(r.qty)||0) > 0 && !(r.shipped === "납품완료") &&
+                                  (typeof isOverdue === "function" && isOverdue(r.dueDate)));
+  let maxLate = 0;
+  if(typeof overdueDaysLate === "function"){
+    overdue.forEach(r=>{ const d = Number(overdueDaysLate(r.dueDate))||0; if(d>maxLate) maxLate=d; });
+  }
+
+  // 주간 출하: 이번 주 월요일 ~ 다음 주 일요일 사이 최종납기
+  let weekly = 0;
+  try{
+    if(typeof weeklyMonday === "function" && typeof mgmtAddDays === "function"){
+      const { monday } = weeklyMonday();
+      const from = monday, to = mgmtAddDays(monday, 13);
+      const fs = mgmtFmtYMD(from), ts = mgmtFmtYMD(to);
+      weekly = live.filter(r=> r.dueDate && r.dueDate >= fs && r.dueDate <= ts).length;
+    }
+  }catch(_){ }
+
+  // 고객 부적합
+  let nc = 0, ncLast = "";
+  try{
+    const list = (typeof qualityRawData !== "undefined" && qualityRawData[CUSTOMER_NC_KEY]) || [];
+    const hit = list.filter(r=> String(r.partNo||"").toLowerCase().includes(kw));
+    nc = hit.length;
+    hit.forEach(r=>{ const d = String(r.date||""); if(d > ncLast) ncLast = d; });
+  }catch(_){ }
+
+  // 재고: 입고 - 출고
+  let stock = 0, stockRows = 0;
+  try{
+    const list = (typeof invData !== "undefined" && invData) || [];
+    list.forEach(r=>{
+      if(!String(r.partNo||"").toLowerCase().includes(kw)) return;
+      stockRows++;
+      stock += (Number(r.inQty)||0) - (Number(r.outQty)||0);
+    });
+  }catch(_){ }
+
+  // 대표 도번 (도면 조회용)
+  let dwgNo = "";
+  for(const r of rows){ if(String(r.oldDrawingNo||"").trim()){ dwgNo = String(r.oldDrawingNo).trim(); break; } }
+
+  return {
+    total: rows.length, live: live.length, wait, overdue: overdue.length, maxLate,
+    weekly, nc, ncLast, stock, stockRows, dwgNo
+  };
+}
+
+// 메뉴로 이동하면서 그 화면의 검색어까지 채워 넣는다
+function gsGoto(view, keyword, tab){
+  const nav = document.querySelector('.nav-item[data-view="' + view + '"]');
+  const setVal = (id) => { const el = document.getElementById(id); if(el) el.value = keyword; };
+  if(view === "management"){
+    setVal("management-searchInput"); setVal("history-searchInput");
+    if(typeof managementSearchKeyword !== "undefined") managementSearchKeyword = keyword;
+    if(typeof historyKeyword !== "undefined") historyKeyword = keyword;
+    if(tab && typeof dwgActiveTab !== "undefined") dwgActiveTab = tab;
+  } else if(view === "overdue"){
+    setVal("overdue-searchInput");
+  } else if(view === "inventory"){
+    setVal("inv-checkPartNo");   // 재고 화면의 품번 조회 입력창
+  }
+  gsClose();
+  if(nav) nav.click();
+  // 메뉴 전환 후 검색 반영
+  setTimeout(function(){
+    try{
+      if(view === "overdue" && typeof overdueApplySearch === "function") overdueApplySearch();
+      if(view === "management" && typeof switchDwgTab === "function") switchDwgTab(dwgActiveTab, {skipSync:true});
+    }catch(_){ }
+  }, 60);
+}
+
+function gsRender(keyword){
+  const body = document.getElementById("gs-body");
+  if(!body) return;
+  const kw = String(keyword||"").trim();
+  if(!kw){
+    body.innerHTML = '<div class="gs-empty">도번을 입력하면 전체 메뉴에서 한 번에 찾아드립니다.</div>';
+    return;
+  }
+  if(typeof mainData === "undefined" || !mainData || mainData.length === 0){
+    body.innerHTML = '<div class="gs-empty">데이터를 먼저 로드해 주세요.<br>(구글시트 연동 또는 엑셀 업로드)</div>';
+    return;
+  }
+  const d = gsCollect(kw);
+  if(d.total === 0 && d.stockRows === 0 && d.nc === 0){
+    body.innerHTML = '<div class="gs-empty"><b>' + kw.replace(/</g,"&lt;") + '</b> 검색 결과가 없습니다.<br>도번 일부만 입력해서 다시 검색해 보세요.</div>';
+    return;
+  }
+
+  function row(ico, name, val, isHit, onClick, disabled){
+    return '<div class="gs-row"><div class="gs-ico">' + ico + '</div>' +
+      '<div class="gs-name">' + name + '</div>' +
+      '<div class="gs-val ' + (isHit ? 'hit' : 'zero') + '">' + val + '</div>' +
+      '<button class="gs-btn" ' + (disabled ? 'disabled' : 'data-gsact="' + onClick + '"') + '>' +
+      (disabled ? '없음' : (onClick === 'dwg' ? '열기' : '보기')) + '</button></div>';
+  }
+
+  let html = '<div class="gs-sum">전체 ' + d.total + '건 · 진행중 ' + d.live + '건</div>';
+  html += row("📄", "도번상세내역", d.total + "건", d.total>0, "history", d.total===0);
+  html += row("📅", "납기/생산계획", "진행중 " + d.live + "건", d.live>0, "management", d.live===0);
+  html += row("🔍", "검사대기현황", d.wait > 0 ? d.wait + "개" : "0개", d.wait>0, "waitinsp", d.wait===0);
+  html += row("⏰", "지연 LIST", d.overdue > 0 ? d.overdue + "건 (최대 " + d.maxLate + "일)" : "0건", d.overdue>0, "overdue", d.overdue===0);
+  html += row("🚚", "주간 출하", d.weekly > 0 ? d.weekly + "건" : "0건", d.weekly>0, "weekly", d.weekly===0);
+  html += row("⚠️", "고객 부적합", d.nc > 0 ? d.nc + "건 (최근 " + (d.ncLast||"-") + ")" : "0건", d.nc>0, "quality", d.nc===0);
+  html += row("📦", "재고", d.stockRows > 0 ? d.stock + " EA" : "기록 없음", d.stockRows>0, "inventory", d.stockRows===0);
+  html += row("📐", "도면", d.dwgNo ? d.dwgNo : "도번 없음", !!d.dwgNo, "dwg", !d.dwgNo);
+  body.innerHTML = html;
+
+  body.querySelectorAll("[data-gsact]").forEach(function(b){
+    b.addEventListener("click", function(){
+      const act = b.dataset.gsact;
+      if(act === "dwg"){ gsClose(); if(typeof openDrawing === "function") openDrawing(d.dwgNo); return; }
+      if(act === "history"){ gsGoto("management", kw, "history"); return; }
+      if(act === "management"){ gsGoto("management", kw, "management"); return; }
+      gsGoto(act, kw);
+    });
+  });
+}
+
+function gsOpen(){
+  const ov = document.getElementById("gs-overlay");
+  if(!ov) return;
+  ov.classList.add("open");
+  const inp = document.getElementById("gs-input");
+  if(inp) setTimeout(function(){ inp.focus(); inp.select(); }, 60);
+}
+function gsClose(){
+  const ov = document.getElementById("gs-overlay");
+  if(ov) ov.classList.remove("open");
+}
+
+(function(){
+  function bindGs(){
+    const fab = document.getElementById("gs-fab");
+    const ov = document.getElementById("gs-overlay");
+    const inp = document.getElementById("gs-input");
+    const go = document.getElementById("gs-go");
+    const cl = document.getElementById("gs-close");
+    if(!fab || !ov) return;
+    fab.addEventListener("click", gsOpen);
+    if(cl) cl.addEventListener("click", gsClose);
+    ov.addEventListener("click", function(e){ if(e.target === ov) gsClose(); });
+    document.addEventListener("keydown", function(e){ if(e.key === "Escape") gsClose(); });
+    const run = function(){ gsRender(inp ? inp.value : ""); };
+    if(go) go.addEventListener("click", run);
+    if(inp) inp.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); run(); } });
+  }
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindGs);
+  else bindGs();
+})();
+
 /* ============ 도번 조회: 관리항목 현황 / 도번 이력 탭 ============
    두 화면은 같은 검색어로 동작하므로 하나의 메뉴에서 탭으로 오간다.
    인쇄·다운로드 버튼이 서로 다르므로 상단바도 탭에 맞춰 교체한다. */
