@@ -1772,14 +1772,17 @@ function gsCollect(keyword){
     hit.forEach(r=>{ const d = String(r.date||""); if(d > ncLast) ncLast = d; });
   }catch(_){ }
 
-  // 재고: 입고 - 출고
+  // 재고: 재고 화면과 동일한 계산(invComputeStock)을 품번 단위로 합산
   let stock = 0, stockRows = 0;
   try{
     const list = (typeof invData !== "undefined" && invData) || [];
+    const parts = new Set();
     list.forEach(r=>{
-      if(!String(r.partNo||"").toLowerCase().includes(kw)) return;
-      stockRows++;
-      stock += (Number(r.inQty)||0) - (Number(r.outQty)||0);
+      const pn = String(r.partNo||"");
+      if(pn && pn.toLowerCase().includes(kw)){ parts.add(pn); stockRows++; }
+    });
+    parts.forEach(function(pn){
+      if(typeof invComputeStock === "function") stock += invComputeStock(pn).stock;
     });
   }catch(_){ }
 
@@ -1821,6 +1824,10 @@ function gsGoto(view, keyword, tab){
     setVal("overdue-searchInput");
   } else if(view === "inventory"){
     setVal("inv-checkPartNo");   // 재고 화면의 품번 조회 입력창
+    // 이전 검색의 S/N·관리번호 조건이 남아 있으면 결과가 안 나오므로 비운다
+    ["inv-checkSN","inv-checkCtrlNo"].forEach(function(id){
+      const el = document.getElementById(id); if(el) el.value = "";
+    });
   }
   gsClose();
   if(nav) nav.click();
@@ -1828,6 +1835,9 @@ function gsGoto(view, keyword, tab){
   setTimeout(function(){
     try{
       if(view === "main" && typeof mainApplySearch === "function") mainApplySearch();
+      if(view === "inventory" && typeof invRenderCheck === "function" && typeof getInvCheckCriteria === "function"){
+        invRenderCheck(getInvCheckCriteria());   // 이동 후 실제 검색까지 수행
+      }
       if(view === "waitinsp" && typeof renderWaitInspTab === "function") renderWaitInspTab();
       if(view === "overdue" && typeof overdueApplySearch === "function") overdueApplySearch();
       if(view === "management" && typeof switchDwgTab === "function") switchDwgTab(dwgActiveTab, {skipSync:true});
