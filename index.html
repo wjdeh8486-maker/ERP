@@ -1253,9 +1253,9 @@
           <input id="inv-checkSN" type="text" placeholder="S/N (예: 140)">
           <input id="inv-checkCtrlNo" type="text" placeholder="관리번호 (예: 26-234-1)">
           <select id="inv-checkSort">
-            <option value="">정렬 없음</option>
+            <option value="sn-desc" selected>S/N 내림차순</option>
             <option value="sn-asc">S/N 오름차순</option>
-            <option value="sn-desc">S/N 내림차순</option>
+            <option value="">정렬 없음</option>
             <option value="outdate-asc">출고일자 빠른순</option>
             <option value="outdate-desc">출고일자 늦은순</option>
           </select>
@@ -1952,20 +1952,17 @@ function gsResetAll(){
   try{ if(typeof waitInspKeyword !== "undefined") waitInspKeyword = ""; }catch(_){ }
   try{ if(typeof managementMonthFilter !== "undefined") managementMonthFilter = null; }catch(_){ }
 
-  // 열려 있는 화면을 다시 그려 초기화 상태를 반영
-  try{
-    const active = document.querySelector(".view.active");
-    const id = active ? active.id : "";
-    if(id === "view-main" && typeof mainApplySearch === "function") mainApplySearch();
-    else if(id === "view-overdue" && typeof overdueApplySearch === "function") overdueApplySearch();
-    else if(id === "view-vendor" && typeof vendorApplySearch === "function") vendorApplySearch();
-    else if(id === "view-waitinsp" && typeof renderWaitInspTab === "function") renderWaitInspTab();
-    else if(id === "view-management" && typeof renderManagementAll === "function") renderManagementAll();
-    else if(id === "view-history" && typeof renderHistoryView === "function") renderHistoryView("");
-    else if(id === "view-inventory" && typeof invRenderCheck === "function" && typeof getInvCheckCriteria === "function"){
-      invRenderCheck(getInvCheckCriteria());
-    }
-  }catch(_){ }
+  // 모든 화면을 다시 그린다.
+  // (현재 보이는 화면만 갱신하면, 다른 메뉴로 갔을 때 이전 검색 결과가 그대로 남아 있다)
+  const redraw = function(fn){ try{ if(typeof fn === "function") fn(); }catch(_){ } };
+  redraw(typeof mainApplySearch === "function" ? mainApplySearch : null);
+  redraw(typeof overdueApplySearch === "function" ? overdueApplySearch : null);
+  redraw(typeof vendorApplySearch === "function" ? vendorApplySearch : null);
+  redraw(typeof renderWaitInspTab === "function" ? renderWaitInspTab : null);
+  redraw(typeof renderManagementAll === "function" ? renderManagementAll : null);
+  redraw(typeof renderHistoryView === "function" ? function(){ renderHistoryView(""); } : null);
+  redraw((typeof invRenderCheck === "function" && typeof getInvCheckCriteria === "function")
+    ? function(){ invRenderCheck(getInvCheckCriteria()); } : null);
 }
 
 function gsOpen(){
@@ -3565,7 +3562,10 @@ function invRenderCheck(criteria){
   );
   if(rows.length===0){ empty.textContent = "해당 조건의 이력이 없습니다."; empty.style.display="block"; summary.style.display="none"; return; }
   empty.style.display="none"; summary.style.display="flex";
-  const sortMode = document.getElementById("inv-checkSort").value;
+  // 지정이 없으면 S/N 내림차순(최신 S/N 우선)을 기본으로 한다
+  const sortEl = document.getElementById("inv-checkSort");
+  const sortMode = (sortEl && sortEl.value !== null && sortEl.value !== undefined && sortEl.value !== "")
+    ? sortEl.value : "sn-desc";
   if(sortMode==="sn-asc") rows.sort((a,b)=> String(a.sn||"").localeCompare(String(b.sn||""), undefined, {numeric:true}));
   else if(sortMode==="sn-desc") rows.sort((a,b)=> String(b.sn||"").localeCompare(String(a.sn||""), undefined, {numeric:true}));
   else if(sortMode==="outdate-asc") rows.sort((a,b)=> String(a.outDate||"9999-99-99").localeCompare(String(b.outDate||"9999-99-99")));
