@@ -346,6 +346,7 @@
     background:#fff;color:#2f6fed;cursor:pointer;}
   .gs-btn:hover{background:#eef4ff;}
   .gs-btn[disabled]{border-color:#d8dde6;color:#b6bdc9;background:#fafbfc;cursor:default;}
+  .gs-sub{flex:1 1 100%;padding-left:36px;margin-top:4px;font-size:11.5px;color:#6b7280;}
   .gs-chips{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;padding-left:36px;}
   .gs-chip{padding:6px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #2f6fed;
     background:#fff;color:#2f6fed;cursor:pointer;white-space:nowrap;}
@@ -369,7 +370,8 @@
     .gs-name{font-size:13px;}
     .gs-btn{min-height:36px;padding:6px 14px;}
     .gs-val{order:3;flex:1 1 100%;text-align:left;padding-left:36px;margin-top:3px;font-size:12px;}
-    .gs-chips{order:4;padding-left:36px;gap:5px;}
+    .gs-sub{order:4;padding-left:36px;}
+    .gs-chips{order:5;padding-left:36px;gap:5px;}
     .gs-chip{padding:7px 10px;font-size:11.5px;min-height:34px;}
   }
   @media print{ #gs-fab,#gs-overlay,#gs-hint{display:none !important;} }
@@ -577,6 +579,7 @@
     .gs-btn{ padding:6px 11px; font-size:11.5px; }
     .gs-chip{ font-size:11px; padding:6px 9px; }
     .gs-chips{ padding-left:0; }
+    .gs-sub{ padding-left:0; }
     .gs-val{ padding-left:0; }
     #gs-fab{ height:46px; padding:0 14px; font-size:13px; }
     .dwg-tabs button{ font-size:11.5px; padding:9px 2px; }
@@ -1748,12 +1751,15 @@ function gsCollect(keyword){
   const rows = (typeof mainData !== "undefined" && mainData) ? mainData.filter(r=>gsMatch(r, kw)) : [];
   const live = rows.filter(r=> (Number(r.qty)||0) > 0 && r.shipped !== "납품완료");
 
-  // 검사대기: 각 공정 대기 수량 합
-  let wait = 0;
+  // 검사대기: 공정별로 나눠서 집계 (합계만 보면 어느 공정 것인지 알 수 없음)
+  let wIn = 0, wMe = 0, wCl = 0, wVi = 0;
   live.forEach(r=>{
-    wait += (Number(r.waitIncomingInspection)||0) + (Number(r.waitMeasure)||0)
-          + (Number(r.waitClean)||0) + (Number(r.waitVision)||0);
+    wIn += Number(r.waitIncomingInspection)||0;   // 수입
+    wMe += Number(r.waitMeasure)||0;              // 공정(측정실)
+    wCl += Number(r.waitClean)||0;                // 출하(크린룸)
+    wVi += Number(r.waitVision)||0;               // 비젼
   });
+  const wait = wIn + wMe + wCl + wVi;
 
   // 지연: 지연 LIST와 동일 기준
   const overdue = rows.filter(r=> (Number(r.qty)||0) > 0 && !(r.shipped === "납품완료") &&
@@ -1813,7 +1819,8 @@ function gsCollect(keyword){
 
   return {
     total: rows.length, live: live.length, wait, overdue: overdue.length, maxLate,
-    weekly, nc, ncLast, stock, stockRows, dwgNo, dwgList: dwgSet, byDrawing
+    weekly, nc, ncLast, stock, stockRows, dwgNo, dwgList: dwgSet, byDrawing,
+    waitIn: wIn, waitMe: wMe, waitCl: wCl, waitVi: wVi
   };
 }
 
@@ -1894,7 +1901,20 @@ function gsRender(keyword){
             '<div class="gs-val zero">도번·품번으로 검색 시 조회</div>' +
             '<button class="gs-btn" disabled>없음</button></div>';
   }
-  html += row("🔍", "검사대기현황", d.wait > 0 ? d.wait + "개" : "0개", d.wait>0, "waitinsp", d.wait===0);
+  if(d.wait > 0){
+    const parts = [];
+    if(d.waitIn) parts.push("수입 " + d.waitIn);
+    if(d.waitMe) parts.push("공정 " + d.waitMe);
+    if(d.waitCl) parts.push("출하 " + d.waitCl);
+    if(d.waitVi) parts.push("비젼 " + d.waitVi);
+    html += '<div class="gs-row" style="flex-wrap:wrap;">' +
+            '<div class="gs-ico">🔍</div><div class="gs-name">검사대기현황</div>' +
+            '<div class="gs-val hit">' + d.wait + '개</div>' +
+            '<button class="gs-btn" data-gsact="waitinsp">보기</button>' +
+            '<div class="gs-sub">' + parts.join(" · ") + '</div></div>';
+  } else {
+    html += row("🔍", "검사대기현황", "0개", false, "waitinsp", true);
+  }
   html += row("⏰", "지연 LIST", d.overdue > 0 ? d.overdue + "건 (최대 " + d.maxLate + "일)" : "0건", d.overdue>0, "overdue", d.overdue===0);
   html += row("🚚", "주간 출하", d.weekly > 0 ? d.weekly + "건" : "0건", d.weekly>0, "weekly", d.weekly===0);
   html += row("⚠️", "고객 부적합", d.nc > 0 ? d.nc + "건 (최근 " + (d.ncLast||"-") + ")" : "0건", d.nc>0, "nc", d.nc===0);
