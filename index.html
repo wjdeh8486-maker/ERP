@@ -295,6 +295,13 @@
   .tb-download-btn:hover{background:#2C3A5E;}
   #overdue-excelBtn{background:var(--navy) !important;color:#fff !important;border:1px solid #9AA3B2 !important;}
   #overdue-excelBtn:hover{background:#2C3A5E !important;}
+  /* 도번 조회: 관리항목/이력 탭 */
+  .dwg-tabs{display:flex;gap:6px;width:100%;margin-top:8px;}
+  .dwg-tabs button{padding:7px 16px;font-size:12.5px;font-weight:700;border-radius:6px 6px 0 0;
+    border:1px solid #3A4A6B;border-bottom:none;background:#1B2540;color:#B9C2D6;cursor:pointer;}
+  .dwg-tabs button:hover{background:#243055;color:#fff;}
+  .dwg-tabs button.active{background:#fff;color:#152046;border-color:#fff;}
+  @media print{ .dwg-tabs{display:none !important;} }
   .quick-links a.ql-hole{background:#5E3333;border-color:#5E3333;}
   .quick-links a.ql-hole:hover{background:#4F2B2B;}
   .quick-links a.ql-checklist{background:#33475E;border-color:#33475E;}
@@ -667,8 +674,7 @@
     </div>
     <div class="nav-item" data-view="main" data-navgroup="main"><span class="dot"></span>MAIN 대시보드<span class="nav-caret" data-caret="main">▾</span></div>
     <div class="nav-group" id="navgroup-main">
-      <div class="nav-item nav-sub" data-view="history"><span class="dot"></span>🔎 도번 이력</div>
-      <div class="nav-item nav-sub" data-view="management"><span class="dot"></span>관리항목 현황</div>
+      <div class="nav-item nav-sub" data-view="management"><span class="dot"></span>🔎 도번 조회</div>
       <div class="nav-item nav-sub" data-view="waitinsp"><span class="dot"></span>검사대기현황</div>
     </div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
@@ -964,7 +970,7 @@
     </div>
     <!-- ===================== MANAGEMENT(관리항목 현황) VIEW ===================== -->
     <div id="topbar-management" class="topbar" style="display:none;">
-      <h1>관리항목 현황</h1>
+      <h1>🔎 도번 조회</h1>
       <div class="search-box">
         <input id="management-searchInput" type="text" placeholder="도번·품명·품번·ORDER NO 검색 (쉼표=OR, 공백=AND · 예: M200-005 SHOWERHEAD)">
         <button id="management-searchBtn">🔍 검색</button>
@@ -973,6 +979,10 @@
         <button id="management-clearBtn" style="margin-left:8px;">초기화</button>
       </div>
       <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 생산 및 품질 현황을 월별·상태별로 분석하여 우선순위와 납기 연장 항목을 관리합니다.</div>
+      <div class="dwg-tabs">
+        <button type="button" data-dtab="history">📄 도번상세내역</button>
+        <button type="button" data-dtab="management" class="active">📅 납기/생산계획</button>
+      </div>
     </div>
     <div class="view" id="view-management" style="padding:0;">
       <div id="management-print-page" style="padding:16px;">
@@ -1018,7 +1028,7 @@
     </div>
     <!-- ===================== HISTORY(도번 이력) VIEW ===================== -->
     <div id="topbar-history" class="topbar" style="display:none;">
-      <h1>🔎 도번 이력</h1>
+      <h1>🔎 도번 조회</h1>
       <div class="search-box">
         <input id="history-searchInput" type="text" placeholder="도번 또는 품명 검색 (쉼표로 여러 개)">
         <button id="history-searchBtn">🔍 검색</button>
@@ -1027,6 +1037,10 @@
         <button id="history-resetBtn" style="margin-left:8px;">초기화</button>
       </div>
       <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 도번별 과거 납품 이력, 지연 횟수, 학습된 소요 간격, 검사 이력을 한눈에 확인합니다.</div>
+      <div class="dwg-tabs">
+        <button type="button" data-dtab="history" class="active">📄 도번상세내역</button>
+        <button type="button" data-dtab="management">📅 납기/생산계획</button>
+      </div>
     </div>
     <div class="view" id="view-history">
       <div id="history-content">
@@ -1616,6 +1630,49 @@ document.querySelectorAll(".nav-caret").forEach(caret => {
     setNavGroup(name, group.classList.contains("closed"));
   });
 });
+/* ============ 도번 조회: 관리항목 현황 / 도번 이력 탭 ============
+   두 화면은 같은 검색어로 동작하므로 하나의 메뉴에서 탭으로 오간다.
+   인쇄·다운로드 버튼이 서로 다르므로 상단바도 탭에 맞춰 교체한다. */
+let dwgActiveTab = "history";   // 기본 진입 탭 (도번상세내역)
+
+function switchDwgTab(tab, opts){
+  opts = opts || {};
+  dwgActiveTab = tab;
+
+  // 검색어를 반대편 입력창에서 가져와 동기화
+  const mIn = document.getElementById("management-searchInput");
+  const hIn = document.getElementById("history-searchInput");
+  if(!opts.skipSync && mIn && hIn){
+    const kw = (tab === "history") ? mIn.value : hIn.value;
+    if(kw && kw.trim()){
+      if(tab === "history"){ hIn.value = kw; historyKeyword = kw; }
+      else { mIn.value = kw; managementSearchKeyword = kw; }
+    }
+  }
+
+  // 화면·상단바 교체
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.getElementById(tab === "history" ? "view-history" : "view-management").classList.add("active");
+  document.getElementById("topbar-management").style.display = (tab === "management") ? "flex" : "none";
+  document.getElementById("topbar-history").style.display    = (tab === "history")    ? "flex" : "none";
+
+  // 탭 버튼 활성 표시 (두 상단바 모두)
+  document.querySelectorAll(".dwg-tabs button").forEach(b=>{
+    b.classList.toggle("active", b.dataset.dtab === tab);
+  });
+
+  // 렌더링
+  if(tab === "history"){
+    if(historyKeyword) runBusy(()=>renderHistoryView(historyKeyword), "검색 중...");
+  } else {
+    runBusy(renderManagementAll, "검색 중...");
+  }
+}
+
+document.querySelectorAll(".dwg-tabs button").forEach(b=>{
+  b.addEventListener("click", ()=> switchDwgTab(b.dataset.dtab));
+});
+
 document.querySelectorAll(".nav-item").forEach(item=>{
   item.addEventListener("click", ()=>{
     if(!item.dataset.view) return; // 사용법(❓) 등 화면 전환이 아닌 메뉴는 제외
@@ -1649,15 +1706,13 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="waitinsp"){
       runBusy(initWaitInspView);
     }
-    if(target==="history" && historyKeyword){
-      runBusy(()=>renderHistoryView(historyKeyword));
-    }
     if(target==="quality" && !window.__qualityInited){
       window.__qualityInited = true;
       runBusy(initQualityView);
     }
     if(target==="management"){
-      runBusy(renderManagementAll);
+      // 도번 조회 메뉴: 마지막으로 보던 탭으로 복원
+      switchDwgTab(dwgActiveTab, {skipSync:true});
     }
     if(target==="overdue"){
       runBusy(overdueApplySearch);
@@ -6090,7 +6145,7 @@ function renderManagementAll(){
       if(page) page.innerHTML = `
         <div style="padding:60px 20px;text-align:center;color:#B9C2D6;">
           <div style="font-size:28px;margin-bottom:12px;">🔍</div>
-          <div style="font-size:13px;font-weight:700;color:#4B5563;margin-bottom:6px;">도번·품명·품번·ORDER NO를 검색하면 관리항목 현황이 표시됩니다.</div>
+          <div style="font-size:13px;font-weight:700;color:#4B5563;margin-bottom:6px;">도번·품명·품번·ORDER NO를 검색하면 납기/생산계획이 표시됩니다.</div>
           <div style="font-size:11.5px;">쉼표(,)로 여러 도번을 한 번에 검색할 수 있습니다. 예: M200-005, M300-011</div>
         </div>`;
       return;
@@ -6122,7 +6177,7 @@ function renderManagementAll(){
     renderManagementPlan(filtered);
     console.log("✓ 월별 계획 렌더링 완료");
   } catch(err) {
-    console.error("관리항목 현황 렌더링 에러:", err);
+    console.error("납기/생산계획 렌더링 에러:", err);
     alert("렌더링 에러 발생: " + err.message);
   }
 }
@@ -6204,6 +6259,8 @@ document.addEventListener("DOMContentLoaded", () => {
     searchBtn.addEventListener("click", () => {
       const input = document.getElementById("management-searchInput");
       managementSearchKeyword = input.value;
+      const hIn = document.getElementById("history-searchInput");
+      if(hIn){ hIn.value = input.value; historyKeyword = input.value; }
       managementMonthFilter = null; managementHiddenPanelOpen = false;
       runBusy(renderManagementAll, "검색 중...");
     });
@@ -6214,6 +6271,8 @@ document.addEventListener("DOMContentLoaded", () => {
     searchInputEl.addEventListener("keydown", (e) => {
       if(e.key === "Enter"){
         managementSearchKeyword = searchInputEl.value;
+        const hIn2 = document.getElementById("history-searchInput");
+        if(hIn2){ hIn2.value = searchInputEl.value; historyKeyword = searchInputEl.value; }
         managementMonthFilter = null; managementHiddenPanelOpen = false;
         runBusy(renderManagementAll, "검색 중...");
       }
@@ -6227,6 +6286,8 @@ document.addEventListener("DOMContentLoaded", () => {
       managementSearchKeyword = "";
       managementMonthFilter = null; managementHiddenPanelOpen = false;
       document.getElementById("management-searchInput").value = "";
+      const hIn3 = document.getElementById("history-searchInput");
+      if(hIn3){ hIn3.value = ""; historyKeyword = ""; }
       runBusy(renderManagementAll);
     });
   }
@@ -6246,7 +6307,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const kw = managementSearchKeyword ? ` · 검색: ${managementSearchKeyword}` : '';
       pa.innerHTML = `
         <div class="q-report-page">
-          <h2>관리항목 현황 (${dateStr}${kw})</h2>
+          <h2>납기/생산계획 (${dateStr}${kw})</h2>
           ${src.innerHTML}
         </div>
       `;
@@ -6313,7 +6374,7 @@ function managementDownloadExcel(){
   
   // 제목 (숨긴 항목이 있으면 전 구역이 남은 항목 기준임을 표기)
   titleRows.push(aoa.length);
-  aoa.push(["관리항목 현황" + (managementLastHiddenCount > 0 ? ` (제거한 도번 ${managementHiddenDrawings.size}개 · ${managementLastHiddenCount}건 제외)` : ""), new Date().toLocaleDateString('ko-KR')]);
+  aoa.push(["납기/생산계획" + (managementLastHiddenCount > 0 ? ` (제거한 도번 ${managementHiddenDrawings.size}개 · ${managementLastHiddenCount}건 제외)` : ""), new Date().toLocaleDateString('ko-KR')]);
   aoa.push([]);
   
   // 1. 종합 현황
@@ -6459,11 +6520,11 @@ function managementDownloadExcel(){
   styleAoaSheet(ws, { headerRows, titleRows, totalRows });
   
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "관리항목 현황");
+  XLSX.utils.book_append_sheet(wb, ws, "납기생산계획");
   
   const dateStr = new Date().toISOString().slice(0,10);
   const keyword = managementSearchKeyword ? "_" + managementSearchKeyword.replace(/\s+/g,'_') : "";
-  XLSX.writeFile(wb, `관리항목현황${keyword}_${dateStr}.xlsx`);
+  XLSX.writeFile(wb, `납기생산계획${keyword}_${dateStr}.xlsx`);
 }
 
 /* ============ 도번 이력 조회 ============ */
@@ -7095,6 +7156,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if(hBtn && hInput){
     const doSearch = () => {
       historyKeyword = hInput.value;
+      const mIn = document.getElementById("management-searchInput");
+      if(mIn){ mIn.value = hInput.value; managementSearchKeyword = hInput.value; }
       runBusy(() => renderHistoryView(historyKeyword), "검색 중...");
     };
     hBtn.addEventListener("click", doSearch);
@@ -7106,6 +7169,8 @@ document.addEventListener("DOMContentLoaded", () => {
     hResetBtn.addEventListener("click", () => {
       historyKeyword = "";
       hInput.value = "";
+      const mIn4 = document.getElementById("management-searchInput");
+      if(mIn4){ mIn4.value = ""; managementSearchKeyword = ""; }
       renderHistoryView("");
     });
   }
@@ -7131,7 +7196,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const dateStr = new Date().toLocaleDateString('ko-KR');
       pa.innerHTML = `
         <div class="q-report-page">
-          <h2>도번 이력 (${dateStr} · 검색: ${keyword})</h2>
+          <h2>도번상세내역 (${dateStr} · 검색: ${keyword})</h2>
           ${body}
         </div>`;
 
@@ -7169,7 +7234,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const yr = historySummaryCache[0].year;
       const date = new Date().toLocaleDateString('ko-KR');
       const aoa = [];
-      aoa.push(['도번 이력 조회', date]);
+      aoa.push(['도번상세내역', date]);
       aoa.push([]);
       aoa.push([
         '도번', '품명',
@@ -7195,10 +7260,10 @@ document.addEventListener("DOMContentLoaded", () => {
       ws['!cols'] = [{wch:16},{wch:24},{wch:15},{wch:16},{wch:10},{wch:15},{wch:12},{wch:12},{wch:10},{wch:9},{wch:10},{wch:13},{wch:15},{wch:15},{wch:13},{wch:14},{wch:14},{wch:14}];
       try{ styleAoaSheet(ws, { headerRows:[2] }); }catch(e){ /* 스타일 미적용 */ }
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, '도번이력');
+      XLSX.utils.book_append_sheet(wb, ws, '도번상세내역');
       const d = new Date();
       const dateStr = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-      XLSX.writeFile(wb, `도번이력_${dateStr}.xlsx`);
+      XLSX.writeFile(wb, `도번상세내역_${dateStr}.xlsx`);
     });
   }
 });
@@ -7224,7 +7289,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div style="font-weight:700;color:#0B5CAB;margin-top:8px;">🔍 검색 문법 (모든 검색창 공통)</div>
       쉼표(,)는 OR 검색입니다. 예: <b>M200-005, M300-011</b> → 두 도번 모두 검색.<br>
       슬래시(/)는 AND(좁혀서) 검색입니다. 예: <b>유진/SHOWER</b> → 유진 결과 중 SHOWER 포함만.
-      <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">📋 관리항목 현황</div>
+      <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">📅 납기/생산계획</div>
       검색해야 내용이 표시됩니다. 도번 카드의 <b>[✕ 도번 제거]</b>로 확인 끝난 도번을 전 구역에서 제외할 수 있고,
       <b>[🗂 제거한 도번]</b>에서 개별 복원, <b>[↩ 전체 복원]</b>으로 한 번에 되돌립니다.
       제거 목록은 내 브라우저에만 저장됩니다 (다른 사람 화면에는 영향 없음).<br>
@@ -7232,8 +7297,8 @@ document.addEventListener("DOMContentLoaded", () => {
       납기 연장 권고의 간격은 도번별 과거 납품 이력에서 자동 학습됩니다.
       <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">⏰ 지연 LIST</div>
       지연일수 많은 순으로 상위 100건씩 표시되고 <b>[▼ 더보기]</b>로 추가 표시됩니다. 인쇄·엑셀은 항상 전체 기준입니다.
-      <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">🔎 도번 이력 · 🚚 주간 출하</div>
-      도번 이력: 도번/품명 검색 → 납품 이력, 지연 횟수, 학습 간격, 검사 이력 요약.<br>
+      <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">📄 도번상세내역 · 🚚 주간 출하</div>
+      도번상세내역: 도번/품명 검색 → 납품 이력, 지연 횟수, 학습 간격, 검사 이력 요약.<br>
       주간 출하: 이번 주·다음 주 최종납기 건을 요일별 보드로 표시 (아침 회의용).
       <div style="font-weight:700;color:#0B5CAB;margin-top:12px;">🔄 데이터</div>
       상단 배너에 마지막 동기화 시각이 색으로 표시됩니다 (초록=10분 이내). 숫자가 다르면 새로고침으로 최신 데이터를 받아주세요.
