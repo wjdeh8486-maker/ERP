@@ -753,7 +753,7 @@
     <div id="gs-searchRow">
       <input id="gs-input" type="text" placeholder="도번 · 품번 · ORDER NO 입력" autocomplete="off">
       <button id="gs-go" type="button">검색</button>
-      <button id="gs-reset" type="button" title="검색어와 결과를 지웁니다">초기화</button>
+      <button id="gs-reset" type="button" title="통합검색과 모든 메뉴의 검색창을 지웁니다">초기화</button>
     </div>
     <div id="gs-body">
       <div class="gs-empty">도번을 입력하면 전체 메뉴에서 한 번에 찾아드립니다.</div>
@@ -1932,6 +1932,41 @@ function gsHintHide(){
   try { localStorage.setItem("gsHintSeen", "1"); } catch(_){ }
 }
 
+/* 통합검색 초기화: 각 메뉴의 검색창과 검색 상태까지 모두 비운다. */
+function gsResetAll(){
+  const clear = function(id){ const el = document.getElementById(id); if(el) el.value = ""; };
+  [
+    "gs-input",
+    "main-searchInput",
+    "management-searchInput", "history-searchInput",
+    "waitinsp-searchInput",
+    "overdue-searchInput",
+    "vendor-searchInput",
+    "inv-checkPartNo", "inv-checkSN", "inv-checkCtrlNo"
+  ].forEach(clear);
+
+  // 각 화면이 기억하고 있는 검색어 변수도 함께 초기화
+  try{ if(typeof managementSearchKeyword !== "undefined") managementSearchKeyword = ""; }catch(_){ }
+  try{ if(typeof historyKeyword !== "undefined") historyKeyword = ""; }catch(_){ }
+  try{ if(typeof waitInspKeyword !== "undefined") waitInspKeyword = ""; }catch(_){ }
+  try{ if(typeof managementMonthFilter !== "undefined") managementMonthFilter = null; }catch(_){ }
+
+  // 열려 있는 화면을 다시 그려 초기화 상태를 반영
+  try{
+    const active = document.querySelector(".view.active");
+    const id = active ? active.id : "";
+    if(id === "view-main" && typeof mainApplySearch === "function") mainApplySearch();
+    else if(id === "view-overdue" && typeof overdueApplySearch === "function") overdueApplySearch();
+    else if(id === "view-vendor" && typeof vendorApplySearch === "function") vendorApplySearch();
+    else if(id === "view-waitinsp" && typeof renderWaitInspTab === "function") renderWaitInspTab();
+    else if(id === "view-management" && typeof renderManagementAll === "function") renderManagementAll();
+    else if(id === "view-history" && typeof renderHistoryView === "function") renderHistoryView("");
+    else if(id === "view-inventory" && typeof invRenderCheck === "function" && typeof getInvCheckCriteria === "function"){
+      invRenderCheck(getInvCheckCriteria());
+    }
+  }catch(_){ }
+}
+
 function gsOpen(){
   const ov = document.getElementById("gs-overlay");
   if(!ov) return;
@@ -1973,8 +2008,9 @@ function gsClose(){
     if(go) go.addEventListener("click", run);
     const rs = document.getElementById("gs-reset");
     if(rs) rs.addEventListener("click", function(){
-      if(inp){ inp.value = ""; inp.focus(); }
-      gsRender("");   // 결과 영역을 안내 문구로 되돌린다
+      gsResetAll();               // 모든 메뉴의 검색창까지 초기화
+      gsRender("");               // 결과 영역을 안내 문구로 되돌린다
+      if(inp) inp.focus();
     });
     if(inp) inp.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); run(); } });
   }
