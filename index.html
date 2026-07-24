@@ -2153,6 +2153,21 @@ function groupWaitFromMap(rows, map, fallbackField){
 function groupWaitMeasure(rows){ return groupWaitFromMap(rows, measureWaitMap, "waitMeasure"); }
 function groupWaitClean(rows){ return groupWaitFromMap(rows, cleanWaitMap, "waitClean"); }
 function groupWaitVision(rows){ return groupWaitFromMap(rows, visionWaitMap, "waitVision"); }
+/* 재고(납품대기) 그룹 집계.
+   상태 "재고"는 납품대기 수량이 발주수량 이상일 때 표시되므로,
+   실제 보유 수량을 보여주기 위해 도번 단위로 중복 없이 합산한다. */
+function groupWaitDeliver(rows){
+  const seen = new Set();
+  let total = 0;
+  (rows || []).forEach(r => {
+    const k = [String(r.oldDrawingNo||"").trim(), String(r.partNo||"").trim()].filter(Boolean).join("|");
+    if(!k || seen.has(k)) return;
+    seen.add(k);
+    total += computeWaitDeliverRaw(r);
+  });
+  return total;
+}
+
 function groupWaitIncoming(rows){
   const seen = new Set();
   let total = 0;
@@ -6145,11 +6160,12 @@ function renderManagementWaitInspection(rows){
     const waitMeasure  = groupWaitMeasure(g.items);
     const waitClean    = groupWaitClean(g.items);
     const waitVision   = groupWaitVision(g.items);
+    const stockQty     = groupWaitDeliver(g.items);   // 재고(납품대기) 보유 수량
     const key = String(g.drawing || "").trim() || "미분류";
     return {
       key,
       displayName: g.partName ? `${key} (${g.partName})` : key,
-      waitIncoming, waitMeasure, waitClean, waitVision,
+      waitIncoming, waitMeasure, waitClean, waitVision, stockQty,
       totalWait: waitIncoming + waitMeasure + waitClean + waitVision
     };
   }).sort((a,b) => a.key.localeCompare(b.key));
@@ -6158,12 +6174,13 @@ function renderManagementWaitInspection(rows){
   const totalMeasure  = dataByPart.reduce((a,d)=>a+d.waitMeasure,0);
   const totalClean    = dataByPart.reduce((a,d)=>a+d.waitClean,0);
   const totalVision   = dataByPart.reduce((a,d)=>a+d.waitVision,0);
+  const totalStock    = dataByPart.reduce((a,d)=>a+d.stockQty,0);
   const grandTotal    = totalIncoming + totalMeasure + totalClean + totalVision;
 
   el.innerHTML = `
     <h2 style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1A1E27;">🔍 검사대기 현황</h2>
     <div class="mgmt-waitinsp-scroll" style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-    <table style="width:100%;min-width:640px;border-collapse:collapse;font-size:13.5px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;">
+    <table style="width:100%;min-width:730px;border-collapse:collapse;font-size:13.5px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;">
       <thead>
         <tr style="background:#F4F5F7;border-bottom:1px solid #DDE1E8;">
           <th style="padding:12px 10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;min-width:170px;">도번/품명</th>
@@ -6171,11 +6188,12 @@ function renderManagementWaitInspection(rows){
           <th style="padding:12px 10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;">측정실검사대기</th>
           <th style="padding:12px 10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;">크린룸검사대기</th>
           <th style="padding:12px 10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;">비젼검사대기</th>
-          <th style="padding:12px 10px;text-align:center;font-weight:700;">합계</th>
+          <th style="padding:12px 10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;">합계</th>
+          <th style="padding:12px 10px;text-align:center;font-weight:700;background:#EAF3EC;">재고 보유</th>
         </tr>
       </thead>
       <tbody>
-        ${dataByPart.length === 0 ? `<tr><td colspan="6" style="padding:16px;text-align:center;color:#B9C2D6;">표시할 항목이 없습니다.</td></tr>` : ""}
+        ${dataByPart.length === 0 ? `<tr><td colspan="7" style="padding:16px;text-align:center;color:#B9C2D6;">표시할 항목이 없습니다.</td></tr>` : ""}
         ${dataByPart.map(d => `
         <tr style="border-bottom:1px solid #DDE1E8;">
           <td style="padding:11px 10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;color:#0B5CAB;font-size:12.5px;">${d.displayName}</td>
@@ -6183,7 +6201,8 @@ function renderManagementWaitInspection(rows){
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${d.waitMeasure>0?'#E02424':'#1F2A44'};font-weight:${d.waitMeasure>0?'700':'400'};">${d.waitMeasure}</td>
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${d.waitClean>0?'#E02424':'#1F2A44'};font-weight:${d.waitClean>0?'700':'400'};">${d.waitClean}</td>
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${d.waitVision>0?'#E02424':'#1F2A44'};font-weight:${d.waitVision>0?'700':'400'};">${d.waitVision}</td>
-          <td style="padding:10px;text-align:center;font-weight:700;color:${d.totalWait>0?'#E02424':'#1F2A44'};">${d.totalWait}</td>
+          <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;color:${d.totalWait>0?'#E02424':'#1F2A44'};">${d.totalWait}</td>
+          <td style="padding:10px;text-align:center;font-weight:${d.stockQty>0?'700':'400'};color:${d.stockQty>0?'#2E7D46':'#1F2A44'};background:#F6FBF7;">${d.stockQty}</td>
         </tr>
         `).join("")}
         <tr style="background:#EDF0F5;font-weight:700;border-top:2px solid #DDE1E8;">
@@ -6192,7 +6211,8 @@ function renderManagementWaitInspection(rows){
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${totalMeasure>0?'#E02424':'#1F2A44'};">${totalMeasure}</td>
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${totalClean>0?'#E02424':'#1F2A44'};">${totalClean}</td>
           <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${totalVision>0?'#E02424':'#1F2A44'};">${totalVision}</td>
-          <td style="padding:10px;text-align:center;color:${grandTotal>0?'#E02424':'#1F2A44'};">${grandTotal}</td>
+          <td style="padding:10px;text-align:center;border-right:1px solid #DDE1E8;color:${grandTotal>0?'#E02424':'#1F2A44'};">${grandTotal}</td>
+          <td style="padding:10px;text-align:center;color:${totalStock>0?'#2E7D46':'#1F2A44'};background:#EAF3EC;">${totalStock}</td>
         </tr>
       </tbody>
     </table>
@@ -6973,6 +6993,7 @@ function renderHistoryView(keyword){
     const waitMeasure = groupWaitMeasure(rows);
     const waitClean = groupWaitClean(rows);
     const waitVision = groupWaitVision(rows);
+    const stockQty = groupWaitDeliver(rows);   // 재고(납품대기) 보유 수량
     const totalWait = waitIncoming + waitMeasure + waitClean + waitVision;
     // 납품완료/미완료 수량
     const doneQty = done.reduce((a,r)=>a+(Number(r.qty)||0),0);
@@ -6987,7 +7008,7 @@ function renderHistoryView(keyword){
       totalYear: totalYear, totalAll: total, totalQty: totalQty,
       doneYear: doneYear, doneAll: done.length, undoneQty: undoneQty,
       lateCnt: lateOnes.length, avgLate: avgLate,
-      iQty: iQty, iDef: iDef, iPpm: iPpm,
+      iQty: iQty, iDef: iDef, iPpm: iPpm, stockQty: stockQty,
       waitIncoming: waitIncoming, waitMeasure: waitMeasure,
       waitClean: waitClean, waitVision: waitVision, totalWait: totalWait,
       ncCnt: ncCnt, ncQty: ncQty
@@ -7011,14 +7032,15 @@ function renderHistoryView(keyword){
       <div style="margin-bottom:10px;">
         <div style="font-size:12px;font-weight:700;color:#1F2A44;margin-bottom:6px;">🔍 검사대기 현황</div>
         <div class="hist-waitinsp-scroll" style="width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-        <table style="width:100%;min-width:520px;border-collapse:collapse;font-size:11.5px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;">
+        <table style="width:100%;min-width:620px;border-collapse:collapse;font-size:11.5px;background:#fff;border:1px solid #DDE1E8;border-radius:4px;">
           <thead>
             <tr style="background:#F4F5F7;border-bottom:1px solid #DDE1E8;">
               <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">수입검사대기</th>
               <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">측정실검사대기</th>
               <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">크린룸검사대기</th>
               <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;">비젼검사대기</th>
-              <th style="padding:8px;text-align:center;font-weight:700;">합계</th>
+              <th style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;font-weight:700;">합계</th>
+              <th style="padding:8px;text-align:center;font-weight:700;background:#EAF3EC;">재고 보유</th>
             </tr>
           </thead>
           <tbody>
@@ -7028,6 +7050,7 @@ function renderHistoryView(keyword){
               <td style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;color:${waitClean>0?'#E02424':'#1F2A44'};font-weight:${waitClean>0?'700':'400'}">${waitClean}<span style="font-size:10px;color:#6B7280;">개</span></td>
               <td style="padding:8px;text-align:center;border-right:1px solid #DDE1E8;color:${waitVision>0?'#E02424':'#1F2A44'};font-weight:${waitVision>0?'700':'400'}">${waitVision}<span style="font-size:10px;color:#6B7280;">개</span></td>
               <td style="padding:8px;text-align:center;font-weight:700;color:${totalWait>0?'#E02424':'#1F2A44'};border-right:1px solid #DDE1E8;">${totalWait}<span style="font-size:10px;color:#6B7280;">개</span></td>
+              <td style="padding:8px;text-align:center;font-weight:${stockQty>0?'700':'400'};color:${stockQty>0?'#2E7D46':'#1F2A44'};background:#F6FBF7;">${stockQty}<span style="font-size:10px;color:#6B7280;">개</span></td>
             </tr>
           </tbody>
         </table>
@@ -7625,6 +7648,7 @@ document.addEventListener("DOMContentLoaded", () => {
         '지연 납품(회)', '평균 지연(일)',
         '검사수', '부적합', 'PPM',
         '수입검사대기', '측정실검사대기', '크린룸검사대기', '비젼검사대기', '검사대기 합계',
+        '재고 보유',
         '고객부적합(건)', '고객부적합(개)'
       ]);
       historySummaryCache.forEach(s => {
@@ -7635,11 +7659,12 @@ document.addEventListener("DOMContentLoaded", () => {
           s.lateCnt, s.avgLate,
           s.iQty, s.iDef, s.iPpm,
           s.waitIncoming, s.waitMeasure, s.waitClean, s.waitVision, s.totalWait,
+          s.stockQty || 0,
           s.ncCnt, s.ncQty
         ]);
       });
       const ws = XLSX.utils.aoa_to_sheet(aoa);
-      ws['!cols'] = [{wch:16},{wch:24},{wch:15},{wch:16},{wch:10},{wch:15},{wch:12},{wch:12},{wch:10},{wch:9},{wch:10},{wch:13},{wch:15},{wch:15},{wch:13},{wch:14},{wch:14},{wch:14}];
+      ws['!cols'] = [{wch:16},{wch:24},{wch:15},{wch:16},{wch:10},{wch:15},{wch:12},{wch:12},{wch:10},{wch:9},{wch:10},{wch:13},{wch:15},{wch:15},{wch:13},{wch:14},{wch:11},{wch:14},{wch:14}];
       try{ styleAoaSheet(ws, { headerRows:[2] }); }catch(e){ /* 스타일 미적용 */ }
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '도번상세내역');
