@@ -2561,6 +2561,26 @@ let mainStatusMapDirty = true;
 // 데이터가 갱신되면 markMainStatusDirty()에서 false로 되돌려 다시 그리게 한다.
 let __viewRendered = { summary:false, weekly:false };
 function markMainStatusDirty(){ mainStatusMapDirty = true; stockPreShipMap = null; invStockMap = null; __viewRendered.summary = false; __viewRendered.weekly = false; }
+
+// 데이터가 (뒤늦게라도) 도착한 뒤, 지금 보고 있는 화면을 최신값으로 다시 그린다.
+// 스플래시 타임아웃으로 캐시 상태(예: 지연건수 109)로 시작했더라도,
+// 실제 fetch가 끝나면 이 함수가 최신값(79)으로 화면을 교정한다.
+function refreshActiveViewAfterData(){
+  try{
+    markMainStatusDirty();
+    if(typeof mainStatusMap !== "undefined" && typeof computeAllStatuses === "function" && typeof mainData !== "undefined" && mainData){
+      mainStatusMap = computeAllStatuses(mainData);
+      mainStatusMapDirty = false;
+    }
+    const active = document.querySelector(".view.active");
+    const id = active ? active.id : "";
+    if(id === "view-summary" && typeof renderSummaryView === "function"){ renderSummaryView(); __viewRendered.summary = true; }
+    else if(id === "view-weekly" && typeof renderWeeklyView === "function"){ renderWeeklyView(); __viewRendered.weekly = true; }
+    else if(id === "view-waitinsp" && typeof renderWaitInspTab === "function"){ renderWaitInspTab(); }
+    else if(id === "view-overdue" && typeof overdueApplySearch === "function"){ overdueApplySearch(); }
+    else if(id === "view-main" && typeof mainInitialRender === "function" && mainData){ mainInitialRender(mainData); }
+  }catch(_){ }
+}
 function computeAllStatuses(data){
   const result = {};
   const groups = {};
@@ -5686,7 +5706,13 @@ window.__qualityInited = true;
     { key:"main",    label:"MAIN·생산 데이터",  run:()=> {
         // MAIN 캐시(IndexedDB)가 있으면 먼저 반영해 화면을 즉시 띄우고, 최신은 뒤이어 fetch.
         // 데이터 용량이 커도 캐시 덕에 대기 체감이 짧아진다.
-        const doFetch = ()=> (typeof fetchMainData==="function") ? fetchMainData() : Promise.resolve();
+        const doFetch = ()=>{
+          const p = (typeof fetchMainData==="function") ? fetchMainData() : Promise.resolve();
+          // MAIN이 (스플래시 타임아웃보다 늦게라도) 끝나면, 지연건수 등이 캐시 기준으로
+          // 틀리게 남지 않도록 현재 화면을 최신 데이터로 다시 그린다.
+          Promise.resolve(p).then(function(){ refreshActiveViewAfterData(); }).catch(function(){});
+          return p;
+        };
         try{
           if(typeof idbGet === "function"){
             return idbGet("cache_mainData").then(function(cached){
@@ -5733,10 +5759,10 @@ window.__qualityInited = true;
     steps.forEach(st => setStep(st.key, "active"));
     statusEl.textContent = "데이터 동기화 중…";
 
-    // 각 단계는 최대 20초. 캐시가 이미 반영돼 있으면 fetch가 빨리 끝나거나,
-    // 늦어도 20초 후엔 시작할 수 있게 해 데이터 용량이 커져도 무한 대기를 막는다.
+    // 각 단계는 최대 30초. 그보다 늦어도 fetch 완료 시 refreshActiveViewAfterData가
+    // 화면을 최신값으로 교정하므로, 지연건수 등이 캐시 상태로 남지 않는다.
     const tasks = steps.map(function(st){
-      return withTimeout(st.run(), 20000).then(function(r){
+      return withTimeout(st.run(), 30000).then(function(r){
         if(r !== "timeout") ok++;
         done++;
         setStep(st.key, "done");
