@@ -406,6 +406,11 @@
   .gs-splash-sub{font-size:12px;color:#9fb0d6;margin-top:4px;letter-spacing:3px;}
   .gs-splash-status{margin-top:22px;font-size:14px;font-weight:600;color:#dbe6ff;min-height:20px;}
   .gs-splash-bar{margin-top:12px;height:7px;background:rgba(255,255,255,.14);border-radius:6px;overflow:hidden;}
+  .gs-splash-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#4d8bff,#7fd0ff);transition:width .4s ease;
+    background-size:200% 100%;animation:gsFlow 1.4s linear infinite;}
+  @keyframes gsFlow{0%{background-position:0% 0;}100%{background-position:-200% 0;}}
+  .gs-splash-meter{display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:#9fb0d6;font-variant-numeric:tabular-nums;}
+  #gs-splashPct{font-weight:600;color:#dbe6ff;}
   .gs-splash-fill{height:100%;width:0%;border-radius:6px;background:linear-gradient(90deg,#4d8bff,#7fd0ff);
     transition:width .5s ease;}
   .gs-splash-steps{list-style:none;padding:0;margin:20px 0 0;text-align:left;}
@@ -819,6 +824,10 @@
     <div class="gs-splash-sub">ERP 웹 시스템</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
+    <div class="gs-splash-meter">
+      <span id="gs-splashPct">0%</span>
+      <span id="gs-splashTime">0.0초</span>
+    </div>
     <ul class="gs-splash-steps" id="gs-splashSteps">
       <li data-step="main"><span class="gs-sdot"></span>MAIN·생산 데이터</li>
       <li data-step="inv"><span class="gs-sdot"></span>입출고·재고</li>
@@ -5663,6 +5672,15 @@ window.__qualityInited = true;
   const statusEl = document.getElementById("gs-splashStatus");
   const enterBtn = document.getElementById("gs-splashEnter");
   const hint = document.getElementById("gs-splashHint");
+  const pctEl = document.getElementById("gs-splashPct");
+  const timeEl = document.getElementById("gs-splashTime");
+
+  // 경과 시간을 0.1초 단위로 실시간 표시 (멈춰 보이지 않도록)
+  const startTs = Date.now();
+  let timeTimer = setInterval(function(){
+    if(timeEl) timeEl.textContent = ((Date.now() - startTs) / 1000).toFixed(1) + "초";
+  }, 100);
+  function setPct(p){ if(pctEl) pctEl.textContent = Math.round(p) + "%"; if(fill) fill.style.width = Math.round(p) + "%"; }
 
   const steps = [
     { key:"main",    label:"MAIN·생산 데이터",  run:()=> {
@@ -5723,6 +5741,7 @@ window.__qualityInited = true;
         done++;
         setStep(st.key, "done");
         fill.style.width = Math.round(done/steps.length*100) + "%";
+        setPct(done/steps.length*100);
       });
     });
     await Promise.all(tasks);
@@ -5731,6 +5750,11 @@ window.__qualityInited = true;
   }
 
   function finish(ok){
+    // 경과 시간 타이머 정지 + 최종 소요시간 확정 표시
+    try{ clearInterval(timeTimer); }catch(_){ }
+    const elapsed = ((Date.now() - startTs) / 1000).toFixed(1);
+    if(timeEl) timeEl.textContent = "완료 · " + elapsed + "초";
+    setPct(100);
     // 모든 동기화가 끝난 뒤, 상태(생산/수입/측정/비젼…)를 다시 계산해 화면을 새로 그린다.
     // (검사대기 데이터가 늦게 도착하면 접속 직후엔 상태가 "생산 0%"로 잘못 보일 수 있으므로,
     //  완료 시점에 강제로 재계산해 최종 값으로 맞춘다.)
