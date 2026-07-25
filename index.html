@@ -2033,17 +2033,16 @@ function gsRender(keyword){
     if(d.waitMe) parts.push("공정 " + d.waitMe);
     if(d.waitCl) parts.push("출하 " + d.waitCl);
     if(d.waitVi) parts.push("비젼 " + d.waitVi);
-    const breakdown = parts.length
-      ? '<span style="font-size:12.5px;color:#6b7280;font-weight:400;margin-left:10px;">(' + parts.join(" · ") + ')</span>'
-      : "";
-    const warn = (!d.waitLoaded)
-      ? '<div class="gs-sub"><span style="color:#C0392B;">공정·출하·비젼은 [🔄 불러오기] 필요</span></div>'
-      : "";
-    html += '<div class="gs-row" style="flex-wrap:wrap;">' +
-            '<div class="gs-ico">🔍</div><div class="gs-name">검사대기현황</div>' +
-            '<div class="gs-val hit"><b style="font-size:16px;">' + d.wait + '</b>개' + breakdown + '</div>' +
-            '<button class="gs-btn" data-gsact="waitinsp">보기</button>' +
-            warn + '</div>';
+    // 다른 행(도면·도번상세 등)과 동일한 한 줄 구조로 통일한다.
+    // 값 = "28개 (공정 14 · 비젼 14)" 형태로 한 셀 안에 표시 → 줄바꿈 없음
+    const valHtml = d.wait + "개" + (parts.length
+      ? ' <span style="font-size:12px;color:#6b7280;font-weight:400;">(' + parts.join(" · ") + ')</span>'
+      : "");
+    html += row("🔍", "검사대기현황", valHtml, true, "waitinsp", false);
+    if(!d.waitLoaded){
+      html += '<div class="gs-row" style="border-top:0;padding-top:0;"><div class="gs-ico"></div>' +
+              '<div class="gs-name"></div><div class="gs-val" style="color:#C0392B;font-size:11.5px;font-weight:400;">공정·출하·비젼은 [🔄 불러오기] 필요</div></div>';
+    }
   } else {
     html += row("🔍", "검사대기현황", "0개", false, "waitinsp", true);
   }
@@ -5955,12 +5954,16 @@ function renderSummaryView(){
   const needRefresh =
     !lastSync ||
     (Date.now() - lastSync > 1 * 60 * 1000);
-  if(needRefresh){
+  // 스플래시(진입 로딩)가 있으면 MAIN 동기화를 스플래시가 전담한다.
+  // 여기서 또 fetchMainData를 부르면 같은 요청이 겹쳐 모바일에서 오히려 느려지고,
+  // 옛 캐시(109)가 최신(79)으로 바뀌는 시점이 늦어진다.
+  const splashHandlesMain = !!document.getElementById("gs-splash");
+  if(needRefresh && !splashHandlesMain){
     document.getElementById("main-apiStatus").textContent =
       "최신 데이터 자동 확인 중...";
     fetchMainData("2025,2026");
   }
-  fetchProcessData();
+  if(!splashHandlesMain) fetchProcessData();
   renderSummaryView();
 })();
 // 켜둔 사람과 방금 접속한 사람의 데이터가 어긋나지 않도록, 주기적으로 조용히 갱신한다.
