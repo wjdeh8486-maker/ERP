@@ -335,8 +335,10 @@
     color:#fff;cursor:pointer;white-space:nowrap;}
   #gs-go:hover{background:#22315e;}
   #gs-reset{padding:10px 14px;font-size:13px;font-weight:700;border:1px solid #ccd3e0;border-radius:7px;
-    background:#f7f9fc;color:#4b5563;cursor:pointer;white-space:nowrap;}
+    background:#f7f9fc;color:#4b5563;cursor:pointer;white-space:nowrap;transition:all .12s;}
   #gs-reset:hover{background:#eef2f8;}
+  #gs-reset:active{transform:scale(.96);}
+  #gs-reset.gs-resetting{background:#152046;color:#fff;border-color:#152046;cursor:default;opacity:.85;}
   #gs-body{padding:10px 16px 16px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;}
   .gs-row{display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid #f0f2f6;}
   .gs-row:last-child{border-bottom:0;}
@@ -1835,22 +1837,15 @@ function gsCollect(keyword){
   const rows = (typeof mainData !== "undefined" && mainData) ? mainData.filter(r=>gsMatch(r, kw)) : [];
   const live = rows.filter(r=> (Number(r.qty)||0) > 0 && r.shipped !== "납품완료");
 
-  // 검사대기: 검사대기현황 화면과 "같은 함수·같은 데이터"로 계산해 숫자가 어긋나지 않게 한다.
-  // (MAIN 시트 컬럼이나 측정실/크린룸 맵을 쓰면 화면과 값이 달라진다)
-  let wIn = 0, wMe = 0, wCl = 0, wVi = 0, waitLoaded = false;
+  // 검사대기: 납기/생산계획 화면과 "같은 함수(groupWait*)"로 계산한다.
+  // 이 함수들은 MAIN 데이터만으로 계산되므로 [🔄 불러오기] 없이도 즉시 값이 나온다.
+  // (검사대기현황 탭의 별도 로드 데이터에 의존하면 불러오기 전에는 0으로 나온다)
+  let wIn = 0, wMe = 0, wCl = 0, wVi = 0, waitLoaded = true;
   try{
-    const sum = function(list){ return (list||[]).reduce(function(a,r){ return a + (Number(r.qty)||0); }, 0); };
-    if(typeof waitInspFilter === "function"){
-      if(typeof waitInspIncomingList === "function"){
-        wIn = sum(waitInspFilter(waitInspIncomingList(), kw));
-      }
-      if(typeof waitInspAggregate === "function" && typeof waitInspLoaded !== "undefined" && waitInspLoaded){
-        wMe = sum(waitInspFilter(waitInspAggregate("공정검사대기"), kw));
-        wCl = sum(waitInspFilter(waitInspAggregate("출하검사대기"), kw));
-        wVi = sum(waitInspFilter(waitInspAggregate("비젼검사대기"), kw));
-        waitLoaded = true;
-      }
-    }
+    if(typeof groupWaitIncoming === "function") wIn = groupWaitIncoming(rows);
+    if(typeof groupWaitMeasure === "function")  wMe = groupWaitMeasure(rows);
+    if(typeof groupWaitClean === "function")    wCl = groupWaitClean(rows);
+    if(typeof groupWaitVision === "function")   wVi = groupWaitVision(rows);
   }catch(_){ }
   const wait = wIn + wMe + wCl + wVi;
 
@@ -1882,17 +1877,19 @@ function gsCollect(keyword){
     hit.forEach(r=>{ const d = String(r.date||""); if(d > ncLast) ncLast = d; });
   }catch(_){ }
 
-  // 재고: 재고 화면과 동일한 계산(invComputeStock)을 품번 단위로 합산
+  // 재고: 납기/생산계획의 "재고 보유" 열과 같은 기준(groupWaitDeliver = 납품대기 수량)을 쓴다.
+  // 입출고 데이터(invData)만 쓰면 그 데이터가 없을 때 "기록 없음"이 되어 화면과 어긋난다.
   let stock = 0, stockRows = 0;
   try{
+    if(typeof groupWaitDeliver === "function"){
+      stock = groupWaitDeliver(rows);
+      if(stock > 0) stockRows = 1;   // 표시 판단용 (0보다 크면 값 있음)
+    }
+    // 입출고 데이터가 있으면 그 행 수도 반영 (없어도 위 납품대기로 표시됨)
     const list = (typeof invData !== "undefined" && invData) || [];
-    const parts = new Set();
     list.forEach(r=>{
       const pn = String(r.partNo||"");
-      if(pn && pn.toLowerCase().includes(kw)){ parts.add(pn); stockRows++; }
-    });
-    parts.forEach(function(pn){
-      if(typeof invComputeStock === "function") stock += invComputeStock(pn).stock;
+      if(pn && pn.toLowerCase().includes(kw)) stockRows++;
     });
   }catch(_){ }
 
@@ -2012,7 +2009,7 @@ function gsRender(keyword){
   html += row("⏰", "지연 LIST", d.overdue > 0 ? d.overdue + "건 (최대 " + d.maxLate + "일)" : "0건", d.overdue>0, "overdue", d.overdue===0);
   html += row("🚚", "주간 출하", d.weekly > 0 ? d.weekly + "건" : "0건", d.weekly>0, "weekly", d.weekly===0);
   html += row("⚠️", "고객 부적합", d.nc > 0 ? d.nc + "건 (최근 " + (d.ncLast||"-") + ")" : "0건", d.nc>0, "nc", d.nc===0);
-  html += row("📦", "재고", d.stockRows > 0 ? d.stock + " EA" : "기록 없음", d.stockRows>0, "inventory", d.stockRows===0);
+  html += row("📦", "재고", d.stock > 0 ? d.stock + " EA" : (d.stockRows>0 ? "0 EA" : "기록 없음"), d.stock>0, "inventory", d.stock===0 && d.stockRows===0);
   if(d.dwgList.length <= 1){
     html += row("📐", "도면", d.dwgNo ? d.dwgNo : "도번 없음", !!d.dwgNo, "dwg", !d.dwgNo);
   } else {
@@ -2201,9 +2198,22 @@ function gsClose(){
     if(go) go.addEventListener("click", run);
     const rs = document.getElementById("gs-reset");
     if(rs) rs.addEventListener("click", function(){
-      gsResetAll();               // 모든 메뉴의 검색창까지 초기화
-      gsRender("");               // 결과 영역을 안내 문구로 되돌린다
-      if(inp) inp.focus();
+      if(rs.classList.contains("gs-resetting")) return;   // 연타 방지
+      // 1) 즉시 눌린 티를 낸다 (버벅여도 반응이 있음을 알림)
+      rs.classList.add("gs-resetting");
+      const orig = rs.textContent;
+      rs.textContent = "초기화 중…";
+      gsRender("");                       // 결과 영역을 안내 문구로 (가벼움, 즉시)
+      if(inp){ inp.value = ""; }
+      // 2) 무거운 전체 초기화는 화면이 갱신된 다음 프레임에 실행
+      requestAnimationFrame(function(){
+        setTimeout(function(){
+          try{ gsResetAll(); }catch(e){ console.error(e); }
+          rs.textContent = orig;
+          rs.classList.remove("gs-resetting");
+          if(inp) inp.focus();
+        }, 0);
+      });
     });
     if(inp) inp.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); run(); } });
   }
