@@ -385,12 +385,12 @@
     #gs-reset{min-height:44px;padding:10px 16px;flex:1 1 0;}
     #gs-body{padding:8px 12px 14px;}
     /* 값이 길어 이름·버튼을 밀어내지 않도록 값만 아랫줄로 */
-    .gs-row{flex-wrap:wrap;padding:12px 2px;}
-    .gs-name{font-size:13px;}
-    .gs-btn{min-height:36px;padding:6px 14px;}
-    .gs-val{order:3;flex:1 1 100%;text-align:left;padding-left:36px;margin-top:3px;font-size:12px;}
-    .gs-sub{order:4;padding-left:36px;}
-    .gs-chips{order:5;padding-left:36px;gap:5px;}
+    .gs-row{padding:12px 4px;}
+    .gs-name{font-size:13px;flex:none;min-width:96px;}
+    .gs-btn{min-height:36px;padding:6px 14px;flex:none;}
+    .gs-val{flex:1;text-align:left;font-size:13px;padding-left:6px;white-space:normal;}
+    .gs-sub{order:4;flex:1 1 100%;padding-left:36px;}
+    .gs-chips{order:5;flex:1 1 100%;padding-left:36px;gap:5px;}
     .gs-chip{padding:7px 10px;font-size:11.5px;min-height:34px;}
   }
   @media print{ #gs-fab,#gs-overlay,#gs-hint{display:none !important;} }
@@ -3696,37 +3696,29 @@ async function fetchMainData(yearsParam){
   statusEl.textContent = "불러오는 중...";
   const yearsQuery = yearsParam ? "&years=" + encodeURIComponent(yearsParam) : "";
 
-  // MAIN 시트를 먼저 단독으로 받아 즉시 반영한다.
-  // (지연건수 등은 MAIN 데이터만으로 계산되므로, 나머지 6개 시트를 기다리지 않고 바로 정확해진다)
-  // 네트워크가 불안정하면 한 번 조용히 재시도하고, 그래도 실패하면 아래 Promise.all이 최종적으로 채운다.
-  let __mainResCached = null;
-  async function tryFetchMainOnce(){
-    const r = await fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery);
-    return await r.json();
-  }
-  for(let attempt=0; attempt<2 && !__mainResCached; attempt++){
-    try{
-      if(attempt>0) await new Promise(res=>setTimeout(res, 600)); // 잠깐 쉬고 재시도
-      const mainRes = await tryFetchMainOnce();
-      if(mainRes && mainRes.success && Array.isArray(mainRes.rows)){
-        __mainResCached = mainRes;
-        mainApiUrl = url;
-        mainData = mainRes.rows.map(mapRowToMain);
-        markMainStatusDirty();
-        await saveMainData();
-        cacheSet("mainLastSync", Date.now());
-        mainInitialRender(mainData);
-        updateSyncBanner();
-        // 현재 보는 화면(월별 현황의 지연건수 등)을 최신 MAIN으로 즉시 교정
-        if(typeof refreshActiveViewAfterData === "function") refreshActiveViewAfterData();
-      }
-    }catch(e){ /* 조용히 넘어감 - 아래 Promise.all이 최종 로드 담당 */ }
-  }
+  // MAIN 시트 요청에 .then을 붙여, 도착하는 즉시 mainData를 반영하고 지연건수 등을 교정한다.
+  // (순차로 기다리지 않고 병렬로 받으므로 전체 로딩은 가장 느린 하나만큼만 걸린다)
+  const mainFetch = fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery)
+    .then(r=>r.json())
+    .then(function(mainRes){
+      try{
+        if(mainRes && mainRes.success && Array.isArray(mainRes.rows)){
+          mainApiUrl = url;
+          mainData = mainRes.rows.map(mapRowToMain);
+          markMainStatusDirty();
+          saveMainData();
+          cacheSet("mainLastSync", Date.now());
+          mainInitialRender(mainData);
+          updateSyncBanner();
+          // MAIN이 오는 즉시 현재 화면(지연건수 등)을 최신값으로 교정
+          if(typeof refreshActiveViewAfterData === "function") refreshActiveViewAfterData();
+        }
+      }catch(_){ }
+      return mainRes;
+    });
 
   return Promise.all([
-    // MAIN은 위에서 이미 받았으면 재사용(중복 요청 방지), 아니면 다시 받는다
-    __mainResCached ? Promise.resolve(__mainResCached)
-                    : fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery).then(r=>r.json()),
+    mainFetch,   // 위에서 즉시 반영까지 처리됨
     fetch(url + "?dataset=" + encodeURIComponent("생산공정현황")).then(r=>r.json()).catch(()=>({success:false})),
     fetch(url + "?dataset=" + encodeURIComponent("수입검사(외관)")).then(r=>r.json()).catch(()=>({success:false})),
     fetch(url + "?dataset=" + encodeURIComponent("공정검사(사내외관)")).then(r=>r.json()).catch(()=>({success:false})),
@@ -5805,10 +5797,8 @@ window.__qualityInited = true;
     steps.forEach(st => setStep(st.key, "active"));
     statusEl.textContent = "데이터 동기화 중…";
 
-    // 각 단계는 최대 30초. 그보다 늦어도 fetch 완료 시 refreshActiveViewAfterData가
-    // 화면을 최신값으로 교정하므로, 지연건수 등이 캐시 상태로 남지 않는다.
-    // 동시 요청이 너무 많으면 Apps Script가 일부를 거부(Failed to fetch)하므로,
-    // MAIN(지연건수 등에 중요)을 먼저 끝낸 뒤 나머지 3개를 병렬로 받는다.
+    // 4개 데이터를 동시에 받는다(병렬). MAIN은 fetchMainData 내부에서 우선 반영되므로
+    // 지연건수 등은 MAIN이 오는 즉시 정확해지고, 전체 대기는 가장 느린 하나만큼만 걸린다.
     const runStep = function(st){
       return withTimeout(st.run(), 30000).then(function(r){
         if(r !== "timeout") ok++;
@@ -5818,10 +5808,7 @@ window.__qualityInited = true;
         markRealPct(done/steps.length*100);
       });
     };
-    const mainStep = steps.find(s=>s.key==="main");
-    const restSteps = steps.filter(s=>s.key!=="main");
-    if(mainStep) await runStep(mainStep);          // MAIN 먼저 (지연건수 조기 정확화)
-    await Promise.all(restSteps.map(runStep));      // 나머지는 병렬
+    await Promise.all(steps.map(runStep));   // 전부 병렬 (가장 느린 것만큼만 대기)
     window.alert = realAlert;   // 원복
     finish(ok);
   }
