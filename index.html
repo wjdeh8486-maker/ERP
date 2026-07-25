@@ -6055,10 +6055,16 @@ async function autoRefreshAll(){
   }catch(_){ }
   __autoRefreshRunning = false;
 }
-setInterval(autoRefreshAll, 3 * 60 * 1000);   // 3분마다
+let __lastAutoRefresh = Date.now();
+setInterval(function(){ __lastAutoRefresh = Date.now(); autoRefreshAll(); }, 60 * 60 * 1000);   // 1시간마다 (데이터는 하루 1회 업로드되므로 잦은 갱신 불필요)
 // 탭을 다시 활성화(다른 창 보다 돌아옴)했을 때도 한 번 갱신
 document.addEventListener("visibilitychange", function(){
-  if(!document.hidden) autoRefreshAll();
+  // 탭으로 돌아왔을 때, 마지막 갱신 후 10분 이상 지났을 때만 갱신한다.
+  // (자주 창을 오가도 매번 전체를 다시 받지 않도록. 데이터는 하루 1회 업로드라 충분)
+  if(!document.hidden && (Date.now() - __lastAutoRefresh > 10 * 60 * 1000)){
+    __lastAutoRefresh = Date.now();
+    autoRefreshAll();
+  }
 });
 
 /* ============ 데이터 업로드 (엑셀 → 구글시트 덮어쓰기) ============
