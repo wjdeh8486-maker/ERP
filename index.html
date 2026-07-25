@@ -370,6 +370,11 @@
   .gs-chip{padding:6px 11px;font-size:12px;font-weight:600;border-radius:6px;border:1px solid #2f6fed;
     background:#fff;color:#2f6fed;cursor:pointer;white-space:nowrap;}
   .gs-chip:hover{background:#eef4ff;}
+  /* 정보 표시용 칩(클릭 안 됨): 공정별 검사대기 수량 등 */
+  .gs-chip-static{border-color:#d5dae4;color:#4b5563;background:#f7f9fc;cursor:default;font-weight:600;}
+  .gs-chip-static:hover{background:#f7f9fc;}
+  .gs-chip-warn{border-color:#e3b7b0;color:#C0392B;background:#fdf3f1;cursor:default;font-weight:600;}
+  .gs-chip-warn:hover{background:#fdf3f1;}
   .gs-chipmore{align-self:center;font-size:11.5px;color:#9aa3b2;}
   .gs-empty{padding:34px 10px;text-align:center;color:#9aa3b2;font-size:13px;line-height:1.7;}
   .gs-sum{padding:10px 4px 6px;font-size:12px;color:#6b7280;}
@@ -2022,10 +2027,12 @@ function gsRender(keyword){
     html += row("📅", "납기/생산계획", "진행중 " + d.live + "건", d.live>0, "management", d.live===0);
   } else {
     // ORDER NO·고객사로만 찾은 경우: 도번 기준 화면은 결과가 비어 있어 이동해도 소용없다
-    html += '<div class="gs-row"><div class="gs-ico">📄</div>' +
+    // 안내 문구는 이름이 길어 한 줄에 다 안 들어가므로, 칩처럼 아래 줄로 자동 줄바꿈되게 둔다.
+    html += '<div class="gs-row" style="flex-wrap:wrap;">' +
+            '<div class="gs-ico">📄</div>' +
             '<div class="gs-name">도번상세내역 · 납기/생산계획</div>' +
-            '<div class="gs-val zero">도번·품번으로 검색 시 조회</div>' +
-            '<button class="gs-btn" disabled>없음</button></div>';
+            '<button class="gs-btn" disabled>없음</button>' +
+            '<div class="gs-chips"><span class="gs-chip gs-chip-static">도번·품번으로 검색 시 조회</span></div></div>';
   }
   if(d.wait > 0){
     const parts = [];
@@ -2033,16 +2040,18 @@ function gsRender(keyword){
     if(d.waitMe) parts.push("공정 " + d.waitMe);
     if(d.waitCl) parts.push("출하 " + d.waitCl);
     if(d.waitVi) parts.push("비젼 " + d.waitVi);
-    // 다른 행(도면·도번상세 등)과 동일한 한 줄 구조로 통일한다.
-    // 값 = "28개 (공정 14 · 비젼 14)" 형태로 한 셀 안에 표시 → 줄바꿈 없음
-    const valHtml = d.wait + "개" + (parts.length
-      ? ' <span style="font-size:12px;color:#6b7280;font-weight:400;">(' + parts.join(" · ") + ')</span>'
-      : "");
-    html += row("🔍", "검사대기현황", valHtml, true, "waitinsp", false);
-    if(!d.waitLoaded){
-      html += '<div class="gs-row" style="border-top:0;padding-top:0;"><div class="gs-ico"></div>' +
-              '<div class="gs-name"></div><div class="gs-val" style="color:#C0392B;font-size:11.5px;font-weight:400;">공정·출하·비젼은 [🔄 불러오기] 필요</div></div>';
-    }
+    // 도면 행과 같은 칩 레이아웃: 공정별 세부를 칩으로 두어, 공간이 있으면 값 옆(가운데)에,
+    // 좁으면 자동으로 아래로 줄바꿈되게 한다.
+    const chips = parts.map(function(p){
+      return '<span class="gs-chip gs-chip-static">' + p + '</span>';
+    }).join("");
+    const warn = (!d.waitLoaded)
+      ? '<span class="gs-chip gs-chip-warn">공정·출하·비젼은 [🔄 불러오기] 필요</span>' : "";
+    html += '<div class="gs-row" style="flex-wrap:wrap;">' +
+            '<div class="gs-ico">🔍</div><div class="gs-name">검사대기현황</div>' +
+            '<div class="gs-val hit">' + d.wait + '개</div>' +
+            '<button class="gs-btn" data-gsact="waitinsp">보기</button>' +
+            '<div class="gs-chips">' + chips + warn + '</div></div>';
   } else {
     html += row("🔍", "검사대기현황", "0개", false, "waitinsp", true);
   }
