@@ -2578,6 +2578,16 @@ function markMainStatusDirty(){ mainStatusMapDirty = true; stockPreShipMap = nul
 // 데이터가 (뒤늦게라도) 도착한 뒤, 지금 보고 있는 화면을 최신값으로 다시 그린다.
 // 스플래시 타임아웃으로 캐시 상태(예: 지연건수 109)로 시작했더라도,
 // 실제 fetch가 끝나면 이 함수가 최신값(79)으로 화면을 교정한다.
+// MAIN·재고 데이터 도착 추적. 지연건수는 재고(출고 제외)에 의존하므로,
+// 둘 다 도착한 뒤에 계산해야 처음부터 정확한 값(79)이 나온다.
+let __dataArrived = { main:false, inv:false };
+function markDataArrived(which){
+  __dataArrived[which] = true;
+  // MAIN과 재고가 모두 도착하면 지연건수 등 현재 화면을 확정 계산한다.
+  if(__dataArrived.main && __dataArrived.inv){
+    if(typeof refreshActiveViewAfterData === "function") refreshActiveViewAfterData();
+  }
+}
 function refreshActiveViewAfterData(){
   try{
     markMainStatusDirty();
@@ -3721,6 +3731,7 @@ async function fetchMainData(yearsParam){
           updateSyncBanner();
           // MAIN이 오는 즉시 현재 화면(지연건수 등)을 최신값으로 교정
           if(typeof refreshActiveViewAfterData === "function") refreshActiveViewAfterData();
+          if(typeof markDataArrived === "function") markDataArrived("main");
         }
       }catch(_){ }
       return mainRes;
@@ -4180,6 +4191,7 @@ invRenderAll();
 // 재고가 들어오면 '출고' 판정이 가능해지므로, 지연건수 등 현재 화면을 다시 계산한다.
 // (재고 로드 전엔 출고된 건이 안 빠져 지연건수가 부풀 수 있음)
 if(typeof refreshActiveViewAfterData === "function") refreshActiveViewAfterData();
+if(typeof markDataArrived === "function") markDataArrived("inv");
 cacheSet("cache_invData", invData);
 cacheSet("invLastSync", Date.now());
 updateSyncBanner();
@@ -5831,7 +5843,7 @@ window.__qualityInited = true;
     // 4개 데이터를 동시에 받는다(병렬). MAIN은 fetchMainData 내부에서 우선 반영되므로
     // 지연건수 등은 MAIN이 오는 즉시 정확해지고, 전체 대기는 가장 느린 하나만큼만 걸린다.
     const runStep = function(st){
-      return withTimeout(st.run(), 45000).then(function(r){
+      return withTimeout(st.run(), 30000).then(function(r){
         if(r !== "timeout") ok++;
         done++;
         setStep(st.key, "done");
