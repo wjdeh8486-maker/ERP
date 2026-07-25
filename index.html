@@ -5778,16 +5778,16 @@ window.__qualityInited = true;
     if(timeEl) timeEl.textContent = ((Date.now() - startTs) / 1000).toFixed(1) + "초";
   }, 100);
   function setPct(p){ if(pctEl) pctEl.textContent = Math.round(p) + "%"; if(fill) fill.style.width = Math.round(p) + "%"; }
-  // 실제 완료율과 별개로, 기다리는 동안 게이지가 서서히 차오르게 한다.
-  // (4개가 거의 동시에 끝나 0→100으로 튀어 보이는 것을 막고, 진행감을 준다)
-  let realPct = 0;          // 실제 완료율(단계 완료 시 갱신)
-  let shownPct = 0;         // 화면에 보이는 값(부드럽게 realPct를 따라감)
+  // 진행률은 실제 완료된 단계 수에 맞춘다(4개 → 각 25%). 살짝만 부드럽게 따라가게 한다.
+  let realPct = 0;          // 실제 완료율(단계가 끝날 때마다 25%씩 증가)
+  let shownPct = 0;         // 화면 값(realPct를 부드럽게 따라감)
   let pctTimer = setInterval(function(){
-    // 실제 완료율까지는 빠르게, 아직 안 끝난 구간은 최대 90%까지 천천히 기어오른다
-    const target = Math.max(realPct, Math.min(90, shownPct + 1.2));
-    if(shownPct < target) shownPct = Math.min(target, shownPct + Math.max(0.4, (target-shownPct)*0.15));
-    setPct(shownPct);
-  }, 90);
+    // 화면값이 실제 완료율을 부드럽게 따라가되, 앞질러 가짜로 오르지는 않는다(현실 반영).
+    if(shownPct < realPct){
+      shownPct = Math.min(realPct, shownPct + Math.max(0.8, (realPct - shownPct) * 0.25));
+      setPct(shownPct);
+    }
+  }, 60);
   function markRealPct(p){ realPct = p; if(p >= 100){ shownPct = 100; setPct(100); } }
 
   const steps = [
@@ -5855,8 +5855,9 @@ window.__qualityInited = true;
         if(r !== "timeout") ok++;
         done++;
         setStep(st.key, "done");
-        fill.style.width = Math.round(done/steps.length*100) + "%";
-        markRealPct(done/steps.length*100);
+        markRealPct(done/steps.length*100);   // 실제 완료 단계 수에 맞춰 진행률 갱신
+        // 지금까지 몇 개 받았는지 실시간 표시 (현실적인 진행 상황)
+        if(done < steps.length) statusEl.textContent = "데이터 동기화 중… (" + done + "/" + steps.length + ")";
       });
     };
     await Promise.all(steps.map(runStep));   // 전부 병렬 (가장 느린 것만큼만 대기)
