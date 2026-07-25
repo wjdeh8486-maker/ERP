@@ -4090,7 +4090,10 @@ setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
     invRenderCheck("");
   }
   const needRefresh = !lastSync || (Date.now() - lastSync > 1 * 60 * 1000);
-  if(needRefresh){
+  // 스플래시(진입 로딩)가 재고 동기화를 전담하므로, 여기서는 중복 fetch를 하지 않는다.
+  // (동시에 두 번 fetch하면 invData를 서로 덮어써 접속 직후 빈 화면이 될 수 있다)
+  const splashHandlesInv = !!document.getElementById("gs-splash");
+  if(needRefresh && !splashHandlesInv){
     if(statusEl) statusEl.textContent = "최신 데이터 자동 확인 중...";
     fetchInvData();
   }
@@ -5588,7 +5591,14 @@ window.__qualityInited = true;
 
   const steps = [
     { key:"main",    label:"MAIN·생산 데이터",  run:()=> (typeof fetchMainData==="function") ? fetchMainData() : Promise.resolve() },
-    { key:"inv",     label:"입출고·재고",        run:()=> (typeof fetchInvData==="function") ? fetchInvData() : Promise.resolve() },
+    { key:"inv",     label:"입출고·재고",        run:()=> {
+        // 캐시가 있으면 먼저 즉시 반영(접속 직후 빈 화면 방지), 그 다음 최신 fetch
+        try{
+          const cachedInv = (typeof cacheGet==="function") ? cacheGet("cache_invData") : null;
+          if(cachedInv && cachedInv.length){ invData = cachedInv; if(typeof markMainStatusDirty==="function") markMainStatusDirty(); }
+        }catch(_){ }
+        return (typeof fetchInvData==="function") ? fetchInvData() : Promise.resolve();
+      } },
     { key:"quality", label:"품질·부적합",        run:()=> (typeof fetchQualityData==="function") ? fetchQualityData() : Promise.resolve() },
     { key:"wait",    label:"검사대기현황",       run:()=> (typeof fetchWaitInspData==="function") ? fetchWaitInspData() : Promise.resolve() },
   ];
@@ -5638,6 +5648,11 @@ window.__qualityInited = true;
         if(typeof mainStatusMapDirty !== "undefined") mainStatusMapDirty = false;
       }
       if(typeof mainInitialRender === "function" && mainData) mainInitialRender(mainData);
+      // 재고 데이터가 늦게 도착했을 수 있으므로 재고 화면도 다시 그린다
+      try{
+        if(typeof invRenderCheck === "function") invRenderCheck("");
+        if(typeof invRenderAll === "function") invRenderAll();
+      }catch(_){ }
       __viewRendered.summary = false;
       __viewRendered.weekly = false;
     }catch(e){ console.error(e); }
