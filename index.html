@@ -2066,36 +2066,37 @@ function openPrintWindow(bodyHTML, extraCSS, title){
     alert("팝업이 차단되어 인쇄창을 열 수 없습니다.\n브라우저에서 이 사이트의 팝업을 허용해 주세요.");
     return;
   }
-  // 원본 스타일 문자열의 "#print-area" 스코프를 제거해, 새 창(그 요소가 없음)에서도 적용되게 한다.
-  const scopedCSS = String(extraCSS || "").replace(/#print-area\s*/g, "");
-  // 표·색상을 확실히 살리는 기본 인쇄 스타일 (원본 인라인 스타일과 충돌하지 않도록 최소화)
+  // PC와 동일한 인쇄물을 만들기 위해, 이 앱의 모든 <style> 규칙을 그대로 새 창에 복사한다.
+  // (모바일 새 창은 원래 앱 CSS를 물려받지 못하므로, 직접 복사해야 PC와 같은 표/색상이 나온다)
+  let appCSS = "";
+  document.querySelectorAll("style").forEach(st => { appCSS += st.textContent + "\n"; });
+  // 원본 화면은 #print-area 안에서 인쇄되므로, 인쇄용 규칙이 새 창에서도 먹도록
+  // 넘어온 스타일과 본문을 #print-area로 감싼다 (스코프 일치 → PC와 동일하게 적용).
   const baseCSS = `
     @page{ margin:8mm; }
-    *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; box-sizing:border-box; }
+    *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
     html,body{ margin:0; padding:0; background:#fff; }
-    body{ padding:6px; font-family:'맑은 고딕','Malgun Gothic',AppleGothic,sans-serif; color:#1A1E27; font-size:11px; -webkit-text-size-adjust:100%; }
-    h1,h2,h3{ margin:0 0 6px; }
-    h2{ font-size:13px; }
-    table{ width:100% !important; border-collapse:collapse !important; table-layout:auto; }
-    th,td{ border:1px solid #888; padding:3px 4px; word-break:keep-all; }
-    thead{ display:table-header-group; }
-    tr{ page-break-inside:avoid; }
-    /* 화면 전용 요소는 인쇄창에서 숨긴다 */
-    .dwg-tabs, .mgmt-noprint, input, select, .gs-fab, #gs-fab{ display:none !important; }
+    body{ font-family:'맑은 고딕','Malgun Gothic',AppleGothic,sans-serif; -webkit-text-size-adjust:100%; }
     .print-toolbar button{ display:inline-block !important; }
+    /* 새 창에서는 화면 전용 UI를 감춘다 */
+    #gs-fab,#gs-overlay,#gs-splash,.side-nav-toggle,.dwg-tabs{ display:none !important; }
+    @media print{ .print-toolbar{ display:none !important; } }
   `;
   w.document.open();
   w.document.write(
     '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<title>' + (title||"인쇄") + '</title>' +
-    '<style>' + baseCSS + scopedCSS + '</style></head><body>' +
-    '<div class="print-toolbar" style="position:sticky;top:0;background:#152046;padding:10px;text-align:center;z-index:9;">' +
+    '<style>' + appCSS + '</style>' +          // 앱 전체 CSS (PC와 동일한 표/색상)
+    '<style>' + baseCSS + '</style>' +          // 인쇄 공통 보정
+    '<style>' + (extraCSS||"") + '</style>' +   // 이 화면의 인쇄 방향/표 규칙(#print-area 스코프 그대로)
+    '</head><body>' +
+    '<div class="print-toolbar" style="position:sticky;top:0;background:#152046;padding:10px;text-align:center;z-index:99;">' +
       '<button onclick="window.print()" style="padding:9px 22px;font-size:14px;font-weight:700;border:0;border-radius:6px;background:#fff;color:#152046;cursor:pointer;">🖨 인쇄하기</button>' +
       '<button onclick="window.close()" style="margin-left:8px;padding:9px 18px;font-size:14px;font-weight:700;border:0;border-radius:6px;background:#3a4560;color:#fff;cursor:pointer;">닫기</button>' +
     '</div>' +
-    '<div class="print-body">' + bodyHTML + '</div>' +
-    '<scr' + 'ipt>window.addEventListener("load",function(){setTimeout(function(){window.print();},450);});</scr' + 'ipt>' +
+    '<div id="print-area">' + bodyHTML + '</div>' +   // PC와 동일하게 #print-area로 감쌈
+    '<scr' + 'ipt>window.addEventListener("load",function(){setTimeout(function(){window.print();},500);});</scr' + 'ipt>' +
     '</body></html>'
   );
   w.document.close();
