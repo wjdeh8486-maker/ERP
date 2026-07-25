@@ -5665,7 +5665,23 @@ window.__qualityInited = true;
   const hint = document.getElementById("gs-splashHint");
 
   const steps = [
-    { key:"main",    label:"MAIN·생산 데이터",  run:()=> (typeof fetchMainData==="function") ? fetchMainData() : Promise.resolve() },
+    { key:"main",    label:"MAIN·생산 데이터",  run:()=> {
+        // MAIN 캐시(IndexedDB)가 있으면 먼저 반영해 화면을 즉시 띄우고, 최신은 뒤이어 fetch.
+        // 데이터 용량이 커도 캐시 덕에 대기 체감이 짧아진다.
+        const doFetch = ()=> (typeof fetchMainData==="function") ? fetchMainData() : Promise.resolve();
+        try{
+          if(typeof idbGet === "function"){
+            return idbGet("cache_mainData").then(function(cached){
+              if(cached && cached.length){
+                mainData = cached;
+                if(typeof markMainStatusDirty==="function") markMainStatusDirty();
+              }
+              return doFetch();
+            }).catch(doFetch);
+          }
+        }catch(_){ }
+        return doFetch();
+      } },
     { key:"inv",     label:"입출고·재고",        run:()=> {
         // 캐시가 있으면 먼저 즉시 반영(접속 직후 빈 화면 방지), 그 다음 최신 fetch
         try{
@@ -5699,8 +5715,10 @@ window.__qualityInited = true;
     steps.forEach(st => setStep(st.key, "active"));
     statusEl.textContent = "데이터 동기화 중…";
 
+    // 각 단계는 최대 20초. 캐시가 이미 반영돼 있으면 fetch가 빨리 끝나거나,
+    // 늦어도 20초 후엔 시작할 수 있게 해 데이터 용량이 커져도 무한 대기를 막는다.
     const tasks = steps.map(function(st){
-      return withTimeout(st.run(), 25000).then(function(r){
+      return withTimeout(st.run(), 20000).then(function(r){
         if(r !== "timeout") ok++;
         done++;
         setStep(st.key, "done");
@@ -5730,6 +5748,15 @@ window.__qualityInited = true;
       }catch(_){ }
       __viewRendered.summary = false;
       __viewRendered.weekly = false;
+      // 지금 화면에 떠 있는 뷰를 실제로 다시 그린다 (월별 현황이 첫 화면이면
+      // 데이터가 덜 온 상태로 계산돼 지연건수 등이 틀릴 수 있으므로 최종값으로 다시 렌더).
+      try{
+        const active = document.querySelector(".view.active");
+        const id = active ? active.id : "";
+        if(id === "view-summary" && typeof renderSummaryView === "function"){ renderSummaryView(); __viewRendered.summary = true; }
+        else if(id === "view-weekly" && typeof renderWeeklyView === "function"){ renderWeeklyView(); __viewRendered.weekly = true; }
+        else if(id === "view-waitinsp" && typeof renderWaitInspTab === "function"){ renderWaitInspTab(); }
+      }catch(_){ }
     }catch(e){ console.error(e); }
 
     statusEl.textContent = "동기화 완료";
