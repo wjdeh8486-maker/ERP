@@ -2066,26 +2066,36 @@ function openPrintWindow(bodyHTML, extraCSS, title){
     alert("팝업이 차단되어 인쇄창을 열 수 없습니다.\n브라우저에서 이 사이트의 팝업을 허용해 주세요.");
     return;
   }
+  // 원본 스타일 문자열의 "#print-area" 스코프를 제거해, 새 창(그 요소가 없음)에서도 적용되게 한다.
+  const scopedCSS = String(extraCSS || "").replace(/#print-area\s*/g, "");
+  // 표·색상을 확실히 살리는 기본 인쇄 스타일 (원본 인라인 스타일과 충돌하지 않도록 최소화)
   const baseCSS = `
-    *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; box-sizing:border-box; }
-    body{ margin:0; padding:8px; font-family:'맑은 고딕',Malgun Gothic,sans-serif; color:#1A1E27; }
-    h2{ font-size:14px; margin:0 0 8px; }
-    table{ width:100%; border-collapse:collapse; }
-    th,td{ border:1px solid #999; padding:3px 4px; text-align:center; }
-    .mgmt-noprint,.dwg-tabs,button,input{ display:none !important; }
-    @media print{ .print-toolbar{ display:none !important; } }
+    @page{ margin:8mm; }
+    *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; box-sizing:border-box; }
+    html,body{ margin:0; padding:0; background:#fff; }
+    body{ padding:6px; font-family:'맑은 고딕','Malgun Gothic',AppleGothic,sans-serif; color:#1A1E27; font-size:11px; -webkit-text-size-adjust:100%; }
+    h1,h2,h3{ margin:0 0 6px; }
+    h2{ font-size:13px; }
+    table{ width:100% !important; border-collapse:collapse !important; table-layout:auto; }
+    th,td{ border:1px solid #888; padding:3px 4px; word-break:keep-all; }
+    thead{ display:table-header-group; }
+    tr{ page-break-inside:avoid; }
+    /* 화면 전용 요소는 인쇄창에서 숨긴다 */
+    .dwg-tabs, .mgmt-noprint, input, select, .gs-fab, #gs-fab{ display:none !important; }
+    .print-toolbar button{ display:inline-block !important; }
   `;
   w.document.open();
   w.document.write(
     '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<title>' + (title||"인쇄") + '</title>' +
-    '<style>' + baseCSS + (extraCSS||"") + '</style></head><body>' +
-    '<div class="print-toolbar" style="position:sticky;top:0;background:#152046;padding:10px;text-align:center;">' +
-      '<button onclick="window.print()" style="padding:8px 20px;font-size:14px;font-weight:700;border:0;border-radius:6px;background:#fff;color:#152046;">🖨 인쇄하기</button>' +
+    '<style>' + baseCSS + scopedCSS + '</style></head><body>' +
+    '<div class="print-toolbar" style="position:sticky;top:0;background:#152046;padding:10px;text-align:center;z-index:9;">' +
+      '<button onclick="window.print()" style="padding:9px 22px;font-size:14px;font-weight:700;border:0;border-radius:6px;background:#fff;color:#152046;cursor:pointer;">🖨 인쇄하기</button>' +
+      '<button onclick="window.close()" style="margin-left:8px;padding:9px 18px;font-size:14px;font-weight:700;border:0;border-radius:6px;background:#3a4560;color:#fff;cursor:pointer;">닫기</button>' +
     '</div>' +
-    bodyHTML +
-    '<scr' + 'ipt>window.addEventListener("load",function(){setTimeout(function(){window.print();},400);});</scr' + 'ipt>' +
+    '<div class="print-body">' + bodyHTML + '</div>' +
+    '<scr' + 'ipt>window.addEventListener("load",function(){setTimeout(function(){window.print();},450);});</scr' + 'ipt>' +
     '</body></html>'
   );
   w.document.close();
@@ -7021,7 +7031,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if(!src || !pa) return;
       const dateStr = new Date().toLocaleDateString('ko-KR');
       const kw = managementSearchKeyword ? ` · 검색: ${managementSearchKeyword}` : '';
-      pa.innerHTML = `
+      const reportHTML = `
         <div class="q-report-page">
           <h2>납기/생산계획 (${dateStr}${kw})</h2>
           ${src.innerHTML}
@@ -7059,12 +7069,14 @@ document.addEventListener("DOMContentLoaded", () => {
         #print-area *{ position:static !important; float:none !important; }
       `;
       // 모바일·태블릿: window.print()가 @media print를 제대로 반영하지 못해
-      // 빈 화면이 나오므로, 인쇄 전용 새 창에 완성된 내용만 담아 인쇄한다.
+      // 빈 화면/깨짐이 나오므로, 인쇄 전용 새 창에 완성된 내용만 담아 인쇄한다.
+      // (원본 화면의 print-area는 건드리지 않아, 닫아도 화면이 깨지지 않는다)
       if(IS_MOBILE){
-        openPrintWindow(pa.innerHTML, orientationStyle.textContent, "납기/생산계획");
-        pa.innerHTML = "";
+        openPrintWindow(reportHTML, orientationStyle.textContent, "납기/생산계획");
         return;
       }
+      // PC: 기존 방식 (print-area 사용)
+      pa.innerHTML = reportHTML;
       document.head.appendChild(orientationStyle);
       const cleanupMgmtPrint = () => {
         const st = document.getElementById("mgmt-print-orientation");
@@ -7992,7 +8004,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       const dateStr = new Date().toLocaleDateString('ko-KR');
-      pa.innerHTML = `
+      const reportHTML = `
         <div class="q-report-page">
           <h2>도번상세내역 (${dateStr} · 검색: ${keyword})</h2>
           ${body}
@@ -8011,11 +8023,11 @@ document.addEventListener("DOMContentLoaded", () => {
         #print-area tr{ break-inside:avoid; }
       `;
       if(IS_MOBILE){
-        openPrintWindow(pa.innerHTML, st.textContent, "도번상세내역");
-        pa.innerHTML = "";
+        openPrintWindow(reportHTML, st.textContent, "도번상세내역");
         return;
       }
       document.head.appendChild(st);
+      pa.innerHTML = reportHTML;
       window.print();
       setTimeout(() => {
         pa.innerHTML = "";
