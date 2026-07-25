@@ -646,7 +646,6 @@
     #print-area #management-detail > div > div:first-child{ break-after:avoid; page-break-after:avoid; }
     #print-area [id^="management-"] h2{ break-after:avoid; page-break-after:avoid; }
     #print-area [id^="management-"] h2{ font-size:11px; margin:0 0 2px; }
-    #print-area [id^="management-"] th{ color:#000; }
     #print-area [id^="management-"] .badge{ border:1px solid #999; padding:1px 4px !important; font-size:8px !important; }
     /* 상세의 제거(✕)/복원 버튼은 인쇄물에 나오지 않게 */
     #print-area .mgmt-noprint{ display:none !important; }
@@ -2075,10 +2074,18 @@ function openPrintWindow(bodyHTML, extraCSS, title){
   document.querySelectorAll("style").forEach(st => { appCSS += st.textContent + "\n"; });
 
   // 인쇄 방향: extraCSS 안의 @page size(landscape/portrait)를 읽어 맨 위에서 강제 선언한다.
-  // (모바일 브라우저는 @page size 지시를 자주 무시하므로, 최상단에 단독으로 다시 넣는다)
   const isLandscape = /@page\s*\{[^}]*landscape/i.test(String(extraCSS||"")) || /landscape/i.test(String(extraCSS||""));
   const orient = isLandscape ? "landscape" : "portrait";
-  const forcePage = "@page{ size: A4 " + orient + "; margin: 8mm; } @media print{ @page{ size: A4 " + orient + "; } }";
+  // 여러 문법을 총동원해 방향을 지정 (일부 모바일 브라우저는 특정 문법만 인식)
+  const forcePage =
+    "@page{ size: A4 " + orient + "; margin: 8mm; }" +
+    "@page:first{ size: A4 " + orient + "; }" +
+    "@media print{ @page{ size: A4 " + orient + "; } html,body{ width:auto; } }";
+  // 모바일에서 @page를 무시하는 경우를 대비한 안내 배너 (가로일 때만)
+  const orientNotice = (isLandscape && IS_MOBILE)
+    ? '<div class="print-orient-notice" style="background:#FFF3CD;color:#8a6d00;padding:8px 12px;font-size:12px;font-weight:700;text-align:center;border-bottom:1px solid #E0C34A;">'
+      + '📱 인쇄 화면에서 방향을 <b>가로(Landscape)</b>로 설정해 주세요 (표가 넓어 가로 인쇄를 권장합니다)</div>'
+    : '';
 
   const baseCSS = `
     *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
@@ -2086,7 +2093,7 @@ function openPrintWindow(bodyHTML, extraCSS, title){
     body{ font-family:'맑은 고딕','Malgun Gothic',AppleGothic,sans-serif; -webkit-text-size-adjust:100%; }
     .print-toolbar button{ display:inline-block !important; }
     #gs-fab,#gs-overlay,#gs-splash,.side-nav-toggle,.dwg-tabs{ display:none !important; }
-    @media print{ .print-toolbar{ display:none !important; } }
+    @media print{ .print-toolbar,.print-orient-notice{ display:none !important; } }
     /* 넓은 표(12개월 등) 글씨 깨짐 방지: 강제 압축 대신 내용에 맞춘 폭 + 자동 줄바꿈 */
     #print-area table{ table-layout:auto !important; width:100% !important; border-collapse:collapse !important; }
     #print-area th, #print-area td{ white-space:normal !important; word-break:keep-all; overflow-wrap:anywhere;
@@ -2106,6 +2113,7 @@ function openPrintWindow(bodyHTML, extraCSS, title){
       '<button onclick="window.print()" style="padding:9px 22px;font-size:14px;font-weight:700;border:0;border-radius:6px;background:#fff;color:#152046;cursor:pointer;">🖨 인쇄하기</button>' +
       '<button onclick="window.close()" style="margin-left:8px;padding:9px 18px;font-size:14px;font-weight:700;border:0;border-radius:6px;background:#3a4560;color:#fff;cursor:pointer;">닫기</button>' +
     '</div>' +
+    orientNotice +
     '<div id="print-area">' + bodyHTML + '</div>' +
     '<scr' + 'ipt>window.addEventListener("load",function(){setTimeout(function(){window.print();},500);});</scr' + 'ipt>' +
     '</body></html>'
