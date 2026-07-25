@@ -3474,7 +3474,8 @@ function mapRowToMain(row){
     deburrCost: Number(getFieldFlexible(row, "집,연마,버")||getFieldFlexible(row, "집연마버"))||0,
     processCost: Number(getFieldFlexible(row, "후처리(세정)")||getFieldFlexible(row, "처리비(세정)")||getFieldFlexible(row, "후처리")||getFieldFlexible(row, "처리비")||getFieldFlexible(row, "세정처리비")||getFieldFuzzy(row, "후처리")||getFieldFuzzy(row, "세정"))||0,
     // 수입검사 대기: 등록일자 2026년부터, 생산공정현황 - 수입검사(외관) = 대기 (음수면 0)
-    waitIncomingInspection: computeWaitIncomingInspection(row)
+    waitIncomingInspection: computeWaitIncomingInspection(row),
+    _source: row["_source"]   // 연도 구분(2023~2026). 지연건수 등에서 최근 연도만 보기 위해 보존
   };
   return result;
 }
@@ -5449,9 +5450,23 @@ function overdueDaysLate(dueDate){
   d.setHours(0,0,0,0);
   return Math.round((today - d) / (1000*60*60*24));
 }
+// 지연건수 등은 항상 최근 2개 연도(올해·작년)만 대상으로 한다.
+// (모바일에서 [전체 불러오기]로 2023~2024까지 캐시에 섞여도 지연건수가 부풀지 않게)
+function isRecentYearRow(r){
+  const recent = [ new Date().getFullYear(), new Date().getFullYear() - 1 ]; // 예: 2026, 2025
+  // 1순위: 백엔드가 준 연도 태그(_source)
+  if(r._source !== undefined && r._source !== null && r._source !== ""){
+    return recent.indexOf(Number(r._source)) !== -1;
+  }
+  // 2순위: 납기일의 연도로 판단 (태그가 없을 때)
+  const y = parseInt(String(r.dueDate||"").slice(0,4), 10);
+  if(y) return recent.indexOf(y) !== -1;
+  return true; // 판단 불가하면 포함(과도한 제외 방지)
+}
 function overdueGetRows(){
   return (mainData||[]).filter(r=>{
     if((Number(r.qty)||0) <= 0) return false;
+    if(!isRecentYearRow(r)) return false;   // 최근 2년만
     if(!isOverdue(r.dueDate)) return false;
     if(r.shipped === "납품완료") return false;
     return true;
