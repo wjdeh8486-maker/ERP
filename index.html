@@ -5571,6 +5571,10 @@ window.__qualityInited = true;
 
   async function runAll(){
     // 4개 데이터는 서로 독립적이므로 "동시에" 불러온다 (순차보다 크게 빠름).
+    // 스플래시 동기화 중에는 각 fetch 함수의 alert(URL 미설정 등)를 잠시 막아,
+    // 접속 즉시 경고창이 여러 개 쏟아지는 것을 방지한다.
+    const realAlert = window.alert;
+    window.alert = function(){};
     let ok = 0, done = 0;
     steps.forEach(st => setStep(st.key, "active"));
     statusEl.textContent = "데이터 동기화 중…";
@@ -5584,6 +5588,7 @@ window.__qualityInited = true;
       });
     });
     await Promise.all(tasks);
+    window.alert = realAlert;   // 원복
     finish(ok);
   }
 
