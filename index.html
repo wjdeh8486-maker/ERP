@@ -2067,35 +2067,42 @@ function openPrintWindow(bodyHTML, extraCSS, title){
     return;
   }
   // PC와 동일한 인쇄물을 만들기 위해, 이 앱의 모든 <style> 규칙을 그대로 새 창에 복사한다.
-  // (모바일 새 창은 원래 앱 CSS를 물려받지 못하므로, 직접 복사해야 PC와 같은 표/색상이 나온다)
   let appCSS = "";
   document.querySelectorAll("style").forEach(st => { appCSS += st.textContent + "\n"; });
-  // 원본 화면은 #print-area 안에서 인쇄되므로, 인쇄용 규칙이 새 창에서도 먹도록
-  // 넘어온 스타일과 본문을 #print-area로 감싼다 (스코프 일치 → PC와 동일하게 적용).
+
+  // 인쇄 방향: extraCSS 안의 @page size(landscape/portrait)를 읽어 맨 위에서 강제 선언한다.
+  // (모바일 브라우저는 @page size 지시를 자주 무시하므로, 최상단에 단독으로 다시 넣는다)
+  const isLandscape = /@page\s*\{[^}]*landscape/i.test(String(extraCSS||"")) || /landscape/i.test(String(extraCSS||""));
+  const orient = isLandscape ? "landscape" : "portrait";
+  const forcePage = "@page{ size: A4 " + orient + "; margin: 8mm; } @media print{ @page{ size: A4 " + orient + "; } }";
+
   const baseCSS = `
-    @page{ margin:8mm; }
     *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
     html,body{ margin:0; padding:0; background:#fff; }
     body{ font-family:'맑은 고딕','Malgun Gothic',AppleGothic,sans-serif; -webkit-text-size-adjust:100%; }
     .print-toolbar button{ display:inline-block !important; }
-    /* 새 창에서는 화면 전용 UI를 감춘다 */
     #gs-fab,#gs-overlay,#gs-splash,.side-nav-toggle,.dwg-tabs{ display:none !important; }
     @media print{ .print-toolbar{ display:none !important; } }
+    /* 넓은 표(12개월 등) 글씨 깨짐 방지: 강제 압축 대신 내용에 맞춘 폭 + 자동 줄바꿈 */
+    #print-area table{ table-layout:auto !important; width:100% !important; border-collapse:collapse !important; }
+    #print-area th, #print-area td{ white-space:normal !important; word-break:keep-all; overflow-wrap:anywhere;
+      overflow:visible !important; text-overflow:clip !important; }
   `;
   w.document.open();
   w.document.write(
     '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<title>' + (title||"인쇄") + '</title>' +
-    '<style>' + appCSS + '</style>' +          // 앱 전체 CSS (PC와 동일한 표/색상)
-    '<style>' + baseCSS + '</style>' +          // 인쇄 공통 보정
-    '<style>' + (extraCSS||"") + '</style>' +   // 이 화면의 인쇄 방향/표 규칙(#print-area 스코프 그대로)
+    '<style>' + forcePage + '</style>' +        // 방향 강제 (최상단·최우선)
+    '<style>' + appCSS + '</style>' +           // 앱 전체 CSS (PC와 동일한 표/색상)
+    '<style>' + (extraCSS||"") + '</style>' +   // 이 화면의 인쇄 규칙
+    '<style>' + baseCSS + '</style>' +          // 마지막에 보정(우선 적용)
     '</head><body>' +
     '<div class="print-toolbar" style="position:sticky;top:0;background:#152046;padding:10px;text-align:center;z-index:99;">' +
       '<button onclick="window.print()" style="padding:9px 22px;font-size:14px;font-weight:700;border:0;border-radius:6px;background:#fff;color:#152046;cursor:pointer;">🖨 인쇄하기</button>' +
       '<button onclick="window.close()" style="margin-left:8px;padding:9px 18px;font-size:14px;font-weight:700;border:0;border-radius:6px;background:#3a4560;color:#fff;cursor:pointer;">닫기</button>' +
     '</div>' +
-    '<div id="print-area">' + bodyHTML + '</div>' +   // PC와 동일하게 #print-area로 감쌈
+    '<div id="print-area">' + bodyHTML + '</div>' +
     '<scr' + 'ipt>window.addEventListener("load",function(){setTimeout(function(){window.print();},500);});</scr' + 'ipt>' +
     '</body></html>'
   );
@@ -7048,13 +7055,12 @@ document.addEventListener("DOMContentLoaded", () => {
         #print-area [id^="management-"]{ overflow:visible !important; }
         #print-area [id^="management-"] > div, #print-area [id^="management-"] div[style*="overflow"]{ overflow:visible !important; }
         #print-area [id^="management-"] table{
-          width:100% !important; table-layout:fixed !important;
-          font-size:7.5px !important; border-collapse:collapse !important;
+          width:100% !important; table-layout:auto !important;
+          font-size:9px !important; border-collapse:collapse !important;
         }
         #print-area [id^="management-"] th, #print-area [id^="management-"] td{
-          padding:2.5px 2px !important; word-break:break-all !important;
-          white-space:normal !important; overflow:visible !important;
-          vertical-align:middle !important; line-height:1.3 !important;
+          white-space:normal !important; word-break:keep-all; overflow-wrap:anywhere;
+          overflow:visible !important; text-overflow:clip !important; padding:2px 3px !important;
         }
         #print-area [id^="management-"] .badge{ font-size:6.5px !important; padding:0 2px !important; }
         #print-area .mgmt-noprint{ display:none !important; }
