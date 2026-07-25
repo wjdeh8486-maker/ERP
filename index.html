@@ -354,12 +354,12 @@
   #gs-reset:active{transform:scale(.96);}
   #gs-reset.gs-resetting{background:#152046;color:#fff;border-color:#152046;cursor:default;opacity:.85;}
   #gs-body{padding:14px 22px 20px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;}
-  .gs-row{display:flex;align-items:center;gap:12px;padding:14px 6px;border-bottom:1px solid #f0f2f6;}
+  .gs-row{display:flex;align-items:center;gap:12px;padding:14px 10px;border-bottom:1px solid #f0f2f6;}
   .gs-row:last-child{border-bottom:0;}
-  .gs-ico{width:26px;text-align:center;font-size:15px;flex:none;}
-  .gs-name{flex:1;font-size:13.5px;font-weight:600;color:#243046;}
-  .gs-val{font-size:13px;color:#4B5563;text-align:right;white-space:nowrap;}
-  .gs-val.hit{color:#1a4fbd;font-weight:600;}
+  .gs-ico{width:26px;text-align:center;font-size:16px;flex:none;}
+  .gs-name{flex:none;min-width:118px;font-size:14px;font-weight:600;color:#243046;}
+  .gs-val{flex:1;font-size:15px;color:#243046;text-align:left;white-space:nowrap;font-weight:600;}
+  .gs-val.hit{color:#0B5CAB;font-weight:600;}
   .gs-val.zero{color:#9aa3b2;}
   .gs-btn{flex:none;padding:6px 13px;font-size:12px;font-weight:600;border-radius:6px;border:1px solid #2f6fed;
     background:#fff;color:#2f6fed;cursor:pointer;}
@@ -2033,12 +2033,17 @@ function gsRender(keyword){
     if(d.waitMe) parts.push("공정 " + d.waitMe);
     if(d.waitCl) parts.push("출하 " + d.waitCl);
     if(d.waitVi) parts.push("비젼 " + d.waitVi);
-    if(!d.waitLoaded) parts.push('<span style="color:#C0392B;">공정·출하·비젼은 [🔄 불러오기] 필요</span>');
+    const breakdown = parts.length
+      ? '<span style="font-size:12.5px;color:#6b7280;font-weight:400;margin-left:10px;">(' + parts.join(" · ") + ')</span>'
+      : "";
+    const warn = (!d.waitLoaded)
+      ? '<div class="gs-sub"><span style="color:#C0392B;">공정·출하·비젼은 [🔄 불러오기] 필요</span></div>'
+      : "";
     html += '<div class="gs-row" style="flex-wrap:wrap;">' +
             '<div class="gs-ico">🔍</div><div class="gs-name">검사대기현황</div>' +
-            '<div class="gs-val hit">' + d.wait + '개</div>' +
+            '<div class="gs-val hit"><b style="font-size:16px;">' + d.wait + '</b>개' + breakdown + '</div>' +
             '<button class="gs-btn" data-gsact="waitinsp">보기</button>' +
-            '<div class="gs-sub">' + parts.join(" · ") + '</div></div>';
+            warn + '</div>';
   } else {
     html += row("🔍", "검사대기현황", "0개", false, "waitinsp", true);
   }
@@ -5701,6 +5706,17 @@ window.__qualityInited = true;
     if(timeEl) timeEl.textContent = ((Date.now() - startTs) / 1000).toFixed(1) + "초";
   }, 100);
   function setPct(p){ if(pctEl) pctEl.textContent = Math.round(p) + "%"; if(fill) fill.style.width = Math.round(p) + "%"; }
+  // 실제 완료율과 별개로, 기다리는 동안 게이지가 서서히 차오르게 한다.
+  // (4개가 거의 동시에 끝나 0→100으로 튀어 보이는 것을 막고, 진행감을 준다)
+  let realPct = 0;          // 실제 완료율(단계 완료 시 갱신)
+  let shownPct = 0;         // 화면에 보이는 값(부드럽게 realPct를 따라감)
+  let pctTimer = setInterval(function(){
+    // 실제 완료율까지는 빠르게, 아직 안 끝난 구간은 최대 90%까지 천천히 기어오른다
+    const target = Math.max(realPct, Math.min(90, shownPct + 1.2));
+    if(shownPct < target) shownPct = Math.min(target, shownPct + Math.max(0.4, (target-shownPct)*0.15));
+    setPct(shownPct);
+  }, 90);
+  function markRealPct(p){ realPct = p; if(p >= 100){ shownPct = 100; setPct(100); } }
 
   const steps = [
     { key:"main",    label:"MAIN·생산 데이터",  run:()=> {
@@ -5767,7 +5783,7 @@ window.__qualityInited = true;
         done++;
         setStep(st.key, "done");
         fill.style.width = Math.round(done/steps.length*100) + "%";
-        setPct(done/steps.length*100);
+        markRealPct(done/steps.length*100);
       });
     });
     await Promise.all(tasks);
@@ -5778,6 +5794,7 @@ window.__qualityInited = true;
   function finish(ok){
     // 경과 시간 타이머 정지 + 최종 소요시간 확정 표시
     try{ clearInterval(timeTimer); }catch(_){ }
+    try{ clearInterval(pctTimer); }catch(_){ }
     const elapsed = ((Date.now() - startTs) / 1000).toFixed(1);
     if(timeEl) timeEl.textContent = "완료 · " + elapsed + "초";
     setPct(100);
