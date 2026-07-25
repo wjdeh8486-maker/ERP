@@ -647,6 +647,11 @@
     #print-area [id^="management-"] h2{ break-after:avoid; page-break-after:avoid; }
     #print-area [id^="management-"] h2{ font-size:11px; margin:0 0 2px; }
     #print-area [id^="management-"] .badge{ border:1px solid #999; padding:1px 4px !important; font-size:8px !important; }
+    /* 남색 배경(#2A3150 등) 위의 글자는 인쇄에서도 흰색을 유지 (기본 검정으로 덮이는 것 방지) */
+    #print-area [id^="management-"] thead tr[style*="#2A3150"] th,
+    #print-area [id^="management-"] td[style*="#2A3150"],
+    #print-area [id^="management-"] tr[style*="#152046"] th,
+    #print-area [id^="management-"] tr[style*="rgb(42, 49, 80)"] th{ color:#fff !important; }
     /* 상세의 제거(✕)/복원 버튼은 인쇄물에 나오지 않게 */
     #print-area .mgmt-noprint{ display:none !important; }
     /* 인쇄 겹침 방지: 스크롤 영역을 펼친다. 표는 내용에 맞춰 배치하고 글씨는 읽을 수 있게 유지 */
@@ -2197,6 +2202,21 @@ function gsOpen(){
   ov.classList.add("open");
   const inp = document.getElementById("gs-input");
   if(inp) setTimeout(function(){ inp.focus(); inp.select(); }, 60);
+  // 재고 데이터가 아직 없으면(특히 모바일에서 로드 누락 시) 백그라운드로 불러온다.
+  // 로드가 끝나면, 현재 검색어가 있을 경우 결과를 다시 그려 재고가 반영되게 한다.
+  try{
+    const noInv = (typeof invData === "undefined") || !invData || invData.length === 0
+      || (invData.length && typeof INV_SAMPLE !== "undefined" && invData === INV_SAMPLE);
+    if(noInv && typeof fetchInvData === "function"){
+      const p = fetchInvData();
+      if(p && typeof p.then === "function"){
+        p.then(function(){
+          const cur = inp ? inp.value.trim() : "";
+          if(cur) gsRender(cur);
+        }).catch(function(){});
+      }
+    }
+  }catch(_){ }
 }
 function gsClose(){
   const ov = document.getElementById("gs-overlay");
@@ -6822,11 +6842,11 @@ function renderManagementDetail(rows){
           <table style="width:100%;border-collapse:collapse;font-size:11px;">
             <thead>
               <tr style="background:#2A3150;color:#fff;">
-                <th style="padding:6px;text-align:center;">ORDER</th>
-                <th style="padding:6px;text-align:center;">PROJECT NO</th>
-                <th style="padding:6px;text-align:center;">상태</th>
-                <th style="padding:6px;text-align:center;">수량</th>
-                ${Array.from({length:12}, (_,i) => `<th style="padding:6px 4px;text-align:center;">${i+1}월</th>`).join('')}
+                <th style="padding:6px;text-align:center;color:#fff;">ORDER</th>
+                <th style="padding:6px;text-align:center;color:#fff;">PROJECT NO</th>
+                <th style="padding:6px;text-align:center;color:#fff;">상태</th>
+                <th style="padding:6px;text-align:center;color:#fff;">수량</th>
+                ${Array.from({length:12}, (_,i) => `<th style="padding:6px 4px;text-align:center;color:#fff;">${i+1}월</th>`).join('')}
               </tr>
             </thead>
             <tbody>
