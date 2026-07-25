@@ -1857,15 +1857,14 @@ function gsCollect(keyword){
     overdue.forEach(r=>{ const d = Number(overdueDaysLate(r.dueDate))||0; if(d>maxLate) maxLate=d; });
   }
 
-  // 주간 출하: 이번 주 월요일 ~ 다음 주 일요일 사이 최종납기
-  let weekly = 0;
+  // 최종 납기: 진행중 건들 중 가장 임박한(가장 빠른) 납기일.
+  // 품번 검색이면 그 품번 건들 중 최단, ORDER NO 검색이면 해당 건의 납기가 잡힌다.
+  let nextDue = "";
   try{
-    if(typeof weeklyMonday === "function" && typeof mgmtAddDays === "function"){
-      const { monday } = weeklyMonday();
-      const from = monday, to = mgmtAddDays(monday, 13);
-      const fs = mgmtFmtYMD(from), ts = mgmtFmtYMD(to);
-      weekly = live.filter(r=> r.dueDate && r.dueDate >= fs && r.dueDate <= ts).length;
-    }
+    live.forEach(r=>{
+      const d = String(r.dueDate||"").trim();
+      if(d && (!nextDue || d < nextDue)) nextDue = d;
+    });
   }catch(_){ }
 
   // 고객 부적합
@@ -1909,7 +1908,7 @@ function gsCollect(keyword){
 
   return {
     total: rows.length, live: live.length, wait, overdue: overdue.length, maxLate,
-    weekly, nc, ncLast, stock, stockRows, dwgNo, dwgList: dwgSet, byDrawing,
+    nextDue, nc, ncLast, stock, stockRows, dwgNo, dwgList: dwgSet, byDrawing,
     waitIn: wIn, waitMe: wMe, waitCl: wCl, waitVi: wVi, waitLoaded
   };
 }
@@ -2007,7 +2006,11 @@ function gsRender(keyword){
     html += row("🔍", "검사대기현황", "0개", false, "waitinsp", true);
   }
   html += row("⏰", "지연 LIST", d.overdue > 0 ? d.overdue + "건 (최대 " + d.maxLate + "일)" : "0건", d.overdue>0, "overdue", d.overdue===0);
-  html += row("🚚", "주간 출하", d.weekly > 0 ? d.weekly + "건" : "0건", d.weekly>0, "weekly", d.weekly===0);
+  // 최종 납기: 이동 대상이 아니라 정보이므로 버튼 없이 날짜만 표시
+  html += '<div class="gs-row"><div class="gs-ico">📅</div>' +
+          '<div class="gs-name">최종 납기</div>' +
+          '<div class="gs-val ' + (d.nextDue ? 'hit' : 'zero') + '" style="flex:1;">' +
+          (d.nextDue ? d.nextDue : "-") + '</div></div>';
   html += row("⚠️", "고객 부적합", d.nc > 0 ? d.nc + "건 (최근 " + (d.ncLast||"-") + ")" : "0건", d.nc>0, "nc", d.nc===0);
   html += row("📦", "재고", d.stock > 0 ? d.stock + " EA" : (d.stockRows>0 ? "0 EA" : "기록 없음"), d.stock>0, "inventory", d.stock===0 && d.stockRows===0);
   if(d.dwgList.length <= 1){
