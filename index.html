@@ -1982,6 +1982,12 @@ function gsRender(keyword){
   }
 
   let html = '<div class="gs-sum">전체 ' + d.total + '건 · 진행중 ' + d.live + '건</div>';
+  // 최종 납기: 가장 임박한 납기일을 최상단에 크게 표시
+  html += '<div class="gs-row" style="background:#F0F5FF;border-radius:8px;margin-bottom:4px;">' +
+          '<div class="gs-ico">📅</div>' +
+          '<div class="gs-name">최종 납기</div>' +
+          '<div class="gs-val ' + (d.nextDue ? 'hit' : 'zero') + '" style="flex:1;font-size:14px;">' +
+          (d.nextDue ? d.nextDue : "-") + '</div></div>';
   html += row("📋", "MAIN 대시보드", d.total + "건", d.total>0, "main", d.total===0);
   if(d.byDrawing){
     html += row("📄", "도번상세내역", d.total + "건", d.total>0, "history", d.total===0);
@@ -2009,11 +2015,6 @@ function gsRender(keyword){
     html += row("🔍", "검사대기현황", "0개", false, "waitinsp", true);
   }
   html += row("⏰", "지연 LIST", d.overdue > 0 ? d.overdue + "건 (최대 " + d.maxLate + "일)" : "0건", d.overdue>0, "overdue", d.overdue===0);
-  // 최종 납기: 이동 대상이 아니라 정보이므로 버튼 없이 날짜만 표시
-  html += '<div class="gs-row"><div class="gs-ico">📅</div>' +
-          '<div class="gs-name">최종 납기</div>' +
-          '<div class="gs-val ' + (d.nextDue ? 'hit' : 'zero') + '" style="flex:1;">' +
-          (d.nextDue ? d.nextDue : "-") + '</div></div>';
   html += row("⚠️", "고객 부적합", d.nc > 0 ? d.nc + "건 (최근 " + (d.ncLast||"-") + ")" : "0건", d.nc>0, "nc", d.nc===0);
   html += row("📦", "재고", d.stock > 0 ? d.stock + " EA" : (d.stockRows>0 ? "0 EA" : "기록 없음"), d.stock>0, "inventory", d.stock===0 && d.stockRows===0);
   if(d.dwgList.length <= 1){
@@ -2396,7 +2397,33 @@ function computeWaitMeasureRaw(r){
   const v = lookupWaitMap(measureWaitMap, r);
   return v!==null ? v : (Number(r.waitMeasure)||0);
 }
+// 품번별 재고(입고-출고)를 미리 맵으로 만들어 둔다. invData가 바뀔 때만 재계산.
+// (이전엔 행마다 invData.filter를 돌려 대량 데이터에서 심하게 느렸다)
+let invStockMap = null;
+function buildInvStockMap(){
+  if(invStockMap) return;
+  invStockMap = {};
+  (invData||[]).forEach(iv=>{
+    const k = String(iv.partNo||"").trim();
+    if(!k) return;
+    if(!invStockMap[k]) invStockMap[k] = 0;
+    invStockMap[k] += (Number(iv.inQty)||0) - (Number(iv.outQty)||0);
+  });
+}
 function computeWaitDeliverRaw(r){
+  if(typeof invData === "undefined") return Number(r.waitDeliver)||0;
+  buildInvStockMap();
+  const keys = [String(r.oldDrawingNo||"").trim(), String(r.partNo||"").trim()].filter(Boolean);
+  let total = 0, found = false;
+  const seen = new Set();
+  keys.forEach(k=>{
+    if(seen.has(k)) return;
+    seen.add(k);
+    if(k in invStockMap){ found = true; total += invStockMap[k]; }
+  });
+  return found ? total : (Number(r.waitDeliver)||0);
+}
+function __unused_computeWaitDeliverRaw_old(r){
   if(typeof invComputeStock !== "function") return Number(r.waitDeliver)||0;
   const keys = [String(r.oldDrawingNo||"").trim(), String(r.partNo||"").trim()].filter(Boolean);
   let total = 0, found = false;
@@ -2490,7 +2517,7 @@ let mainStatusMapDirty = true;
 // 이미 그린 화면을 기억해 재방문 시 재렌더를 생략한다 (메뉴 이동 속도 향상).
 // 데이터가 갱신되면 markMainStatusDirty()에서 false로 되돌려 다시 그리게 한다.
 let __viewRendered = { summary:false, weekly:false };
-function markMainStatusDirty(){ mainStatusMapDirty = true; stockPreShipMap = null; __viewRendered.summary = false; __viewRendered.weekly = false; }
+function markMainStatusDirty(){ mainStatusMapDirty = true; stockPreShipMap = null; invStockMap = null; __viewRendered.summary = false; __viewRendered.weekly = false; }
 function computeAllStatuses(data){
   const result = {};
   const groups = {};
@@ -2649,6 +2676,12 @@ function mainRenderTable(data){
     const _status = computeProductStatus(r);
     const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
     const rowClass = r.shipped==="납품완료" ? "row-shipped" : (_status==="출고" ? "row-shipout" : "");
+    // 무거운 계산은 행마다 한 번씩만 (이전엔 class 판정 + 값 표시로 2번씩 호출돼 느렸다)
+    const wDeliver = computeWaitDeliver(r);
+    const wMeasure = computeWaitMeasure(r);
+    const wClean = computeWaitClean(r);
+    const wVision = computeWaitVision(r);
+    const wIncoming = Number(r.waitIncomingInspection)||0;
     return `<tr class="${rowClass}">
       <td>${statusBadge(_status)}</td><td>${r.orderNo}</td><td>${r.customer}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
@@ -2656,11 +2689,11 @@ function mainRenderTable(data){
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
       <td class="${overdue?'cell-overdue':''}">${r.dueDate||''}</td>
       <td>${r.shipDate||''}</td><td>${r.shipped||''}</td><td>${getCurrentProcess(r.orderNo)}</td>
-      <td class="${computeWaitDeliver(r)>0?'cell-wait-hi':''}">${computeWaitDeliver(r)}</td>
-      <td class="${r.waitIncomingInspection>0?'cell-wait-hi':''}">${r.waitIncomingInspection}</td>
-      <td class="${computeWaitMeasure(r)>0?'cell-wait-hi':''}">${computeWaitMeasure(r)}</td>
-      <td class="${computeWaitClean(r)>0?'cell-wait-hi':''}">${computeWaitClean(r)}</td>
-      <td class="${computeWaitVision(r)>0?'cell-wait-hi':''}">${computeWaitVision(r)}</td>
+      <td class="${wDeliver>0?'cell-wait-hi':''}">${wDeliver}</td>
+      <td class="${wIncoming>0?'cell-wait-hi':''}">${wIncoming}</td>
+      <td class="${wMeasure>0?'cell-wait-hi':''}">${wMeasure}</td>
+      <td class="${wClean>0?'cell-wait-hi':''}">${wClean}</td>
+      <td class="${wVision>0?'cell-wait-hi':''}">${wVision}</td>
       <td style="color:var(--text);font-style:normal;font-weight:700;">${computeStockPreShip(r)}</td>
     </tr>`;
   }).join("");
