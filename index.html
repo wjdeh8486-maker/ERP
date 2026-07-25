@@ -1690,11 +1690,45 @@ function hideBusy(){
 function runBusy(fn, msg){
   showBusy(msg);
   setTimeout(()=>{
-    try{ fn(); }
+    try{
+      const r = fn();
+      // fn이 Promise를 반환하면 완료될 때까지 토스트를 유지한다
+      if(r && typeof r.then === "function"){
+        r.catch(e=>console.error(e)).finally(hideBusy);
+        return;
+      }
+    }
     catch(e){ console.error(e); }
-    finally{ hideBusy(); }
+    hideBusy();
   }, 50);
 }
+
+/* 인쇄·다운로드 등 무거운 버튼을 누르면 자동으로 "진행중" 토스트를 띄운다.
+   각 버튼에 개별 코드를 넣지 않아도 되도록, 클릭을 가로채 라벨로 메시지를 정한다. */
+(function(){
+  function labelFor(btn){
+    const t = (btn.textContent || "").replace(/\s+/g," ").trim();
+    if(/인쇄/.test(t)) return "인쇄 준비 중...";
+    if(/다운로드|엑셀/.test(t)) return "다운로드 준비 중...";
+    return "";
+  }
+  document.addEventListener("click", function(e){
+    const btn = e.target.closest("button");
+    if(!btn) return;
+    const id = btn.id || "";
+    // 인쇄/다운로드 계열 버튼만 대상 (id 또는 클래스로 판별)
+    const isTarget = /-(printBtn|excelBtn|allPrintBtn|calPrintBtn)$/.test(id)
+      || btn.classList.contains("tb-download-btn")
+      || btn.classList.contains("tb-print-btn");
+    if(!isTarget) return;
+    const msg = labelFor(btn);
+    if(!msg) return;
+    // 이미 각자 runBusy로 토스트를 띄우는 버튼도 있으므로, 여기서는 "즉각 반응"만 담당.
+    // 짧게 띄웠다가, 실제 작업이 runBusy를 또 부르면 그게 이어받고, 아니면 스스로 사라진다.
+    showBusy(msg);
+    setTimeout(hideBusy, 1400);
+  }, true);   // capture 단계: 다른 핸들러보다 먼저 토스트를 띄운다
+})();
 
 /* ============ 엑셀 스타일 헬퍼 ============ */
 // 다운로드되는 엑셀이 "디자인 깨진(스타일 없는)" 상태로 나가지 않도록,
@@ -2247,13 +2281,15 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("inv-syncPanel").classList.remove("open");
     document.getElementById("quality-syncPanel").classList.remove("open");
     if(target==="summary"){
-      runBusy(renderSummaryView);
+      if(__viewRendered.summary){ /* 이미 그려둠: 즉시 표시 */ }
+      else runBusy(()=>{ renderSummaryView(); __viewRendered.summary = true; });
     }
     if(target==="weekly"){
-      runBusy(renderWeeklyView);
+      if(__viewRendered.weekly){ /* 캐시된 화면 그대로 */ }
+      else runBusy(()=>{ renderWeeklyView(); __viewRendered.weekly = true; });
     }
     if(target==="waitinsp"){
-      runBusy(initWaitInspView);
+      runBusy(initWaitInspView);   // 검사대기는 자동 최신화가 걸려 있으므로 항상 갱신
     }
     if(target==="quality" && !window.__qualityInited){
       window.__qualityInited = true;
@@ -2408,7 +2444,10 @@ function computeProductStatusRaw(r){
 }
 let mainStatusMap = {};
 let mainStatusMapDirty = true;
-function markMainStatusDirty(){ mainStatusMapDirty = true; stockPreShipMap = null; }
+// 이미 그린 화면을 기억해 재방문 시 재렌더를 생략한다 (메뉴 이동 속도 향상).
+// 데이터가 갱신되면 markMainStatusDirty()에서 false로 되돌려 다시 그리게 한다.
+let __viewRendered = { summary:false, weekly:false };
+function markMainStatusDirty(){ mainStatusMapDirty = true; stockPreShipMap = null; __viewRendered.summary = false; __viewRendered.weekly = false; }
 function computeAllStatuses(data){
   const result = {};
   const groups = {};
@@ -5531,17 +5570,20 @@ window.__qualityInited = true;
   }
 
   async function runAll(){
-    let ok = 0;
-    for(let i=0;i<steps.length;i++){
-      const st = steps[i];
-      setStep(st.key, "active");
-      statusEl.textContent = st.label + " 동기화 중…";
-      // 각 단계는 최대 20초까지만 기다리고, 실패해도 다음으로 진행 (한 곳이 막혀도 시작 가능)
-      const r = await withTimeout(st.run(), 20000);
-      if(r !== "timeout") ok++;
-      setStep(st.key, "done");
-      fill.style.width = Math.round((i+1)/steps.length*100) + "%";
-    }
+    // 4개 데이터는 서로 독립적이므로 "동시에" 불러온다 (순차보다 크게 빠름).
+    let ok = 0, done = 0;
+    steps.forEach(st => setStep(st.key, "active"));
+    statusEl.textContent = "데이터 동기화 중…";
+
+    const tasks = steps.map(function(st){
+      return withTimeout(st.run(), 25000).then(function(r){
+        if(r !== "timeout") ok++;
+        done++;
+        setStep(st.key, "done");
+        fill.style.width = Math.round(done/steps.length*100) + "%";
+      });
+    });
+    await Promise.all(tasks);
     finish(ok);
   }
 
