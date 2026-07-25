@@ -2581,6 +2581,9 @@ function markMainStatusDirty(){ mainStatusMapDirty = true; stockPreShipMap = nul
 // MAIN·재고 데이터 도착 추적. 지연건수는 재고(출고 제외)에 의존하므로,
 // 둘 다 도착한 뒤에 계산해야 처음부터 정확한 값(79)이 나온다.
 let __dataArrived = { main:false, inv:false };
+// 재고(입출고) 데이터가 서버에서 실제로 로드됐는지. 지연건수는 재고 출고를 빼야 정확하므로,
+// 이게 false인 동안엔 지연건수를 "계산 중"으로 표시해 틀린 값(출고 미반영)을 안 보여준다.
+let invServerLoaded = false;
 function markDataArrived(which){
   __dataArrived[which] = true;
   // MAIN과 재고가 모두 도착하면 지연건수 등 현재 화면을 확정 계산한다.
@@ -4190,6 +4193,7 @@ invRenderCheck("");
 invRenderAll();
 // 재고가 들어오면 '출고' 판정이 가능해지므로, 지연건수 등 현재 화면을 다시 계산한다.
 // (재고 로드 전엔 출고된 건이 안 빠져 지연건수가 부풀 수 있음)
+invServerLoaded = true;   // 서버에서 재고를 실제로 받음 → 지연건수 정확히 계산 가능
 if(typeof refreshActiveViewAfterData === "function") refreshActiveViewAfterData();
 if(typeof markDataArrived === "function") markDataArrived("inv");
 cacheSet("cache_invData", invData);
@@ -4237,6 +4241,7 @@ setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
   const statusEl = document.getElementById("inv-apiStatus");
   if(cachedInv){
     invData = cachedInv;
+    invServerLoaded = true;
     markMainStatusDirty();
     invRenderCheck("");
     invRenderAll();
@@ -5811,7 +5816,7 @@ window.__qualityInited = true;
         // 캐시가 있으면 먼저 즉시 반영(접속 직후 빈 화면 방지), 그 다음 최신 fetch
         try{
           const cachedInv = (typeof cacheGet==="function") ? cacheGet("cache_invData") : null;
-          if(cachedInv && cachedInv.length){ invData = cachedInv; if(typeof markMainStatusDirty==="function") markMainStatusDirty(); }
+          if(cachedInv && cachedInv.length){ invData = cachedInv; invServerLoaded = true; if(typeof markMainStatusDirty==="function") markMainStatusDirty(); }
         }catch(_){ }
         return (typeof fetchInvData==="function") ? fetchInvData() : Promise.resolve();
       } },
@@ -5951,7 +5956,16 @@ function renderSummaryView(){
     .filter(r=>String(r.dueDate||"").startsWith(monthPrefix))
     .filter(r=>computeProductStatus(r) !== "출고")
     .sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
-  document.getElementById("summary-statOverdue").textContent = overdueRows.length;
+  // 재고(출고) 데이터가 아직 안 왔으면, 출고된 건을 못 빼 지연건수가 부풀 수 있으므로
+  // 정확한 값 대신 "계산 중"을 표시한다. 재고가 오면 자동으로 정확한 값으로 갱신된다.
+  const overdueEl = document.getElementById("summary-statOverdue");
+  if(!invServerLoaded){
+    overdueEl.textContent = "계산 중…";
+    overdueEl.style.fontSize = "0.55em";
+  } else {
+    overdueEl.textContent = overdueRows.length;
+    overdueEl.style.fontSize = "";
+  }
   const overdueTop5 = overdueRows.slice(0,10);
   document.getElementById("summary-overdueList").innerHTML = overdueTop5.length ? overdueTop5.map(r=>
     `<tr><td style="text-align:center;">${r.orderNo}</td><td style="text-align:center;">${r.vendor||''}</td><td style="text-align:center;">${dwgLink(r.oldDrawingNo)}</td><td style="text-align:center;">${r.partName}</td><td style="text-align:center;">${getCurrentProcess(r.orderNo)||''}</td><td>${r.qty}</td><td class="cell-overdue">${overdueDaysLate(r.dueDate)}일</td></tr>`
