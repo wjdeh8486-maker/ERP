@@ -3863,7 +3863,9 @@ async function fetchMainData(yearsParam){
      }
      mainData = res.rows.map(mapRowToMain);
 markMainStatusDirty();
-await saveMainData();
+// 캐시 저장은 화면 표시와 무관하므로 await하지 않고 백그라운드로 저장한다.
+// (await하면 IndexedDB 저장이 느리거나 막힐 때 로딩 완료가 지연됨 → 30초 타임아웃 원인)
+saveMainData().catch(function(){});
 cacheSet("mainLastSync", Date.now());
 mainInitialRender(mainData);
 updateSyncBanner();
@@ -4466,18 +4468,24 @@ function fetchQualityData(){
 }
 function idbSet(key, value){
   return new Promise((resolve)=>{
+    let settled = false;
+    const done = (v)=>{ if(!settled){ settled = true; resolve(v); } };
+    // 안전장치: 5초 안에 안 끝나면(다른 탭이 DB를 잡고 있는 등) 실패로 간주하고 진행
+    setTimeout(()=>done(false), 5000);
     try{
       const req = indexedDB.open("erp_cache_db", 1);
       req.onupgradeneeded = ()=>{ req.result.createObjectStore("kv"); };
+      req.onblocked = ()=>done(false);
       req.onsuccess = ()=>{
         const db = req.result;
         const tx = db.transaction("kv","readwrite");
         tx.objectStore("kv").put(value, key);
-        tx.oncomplete = ()=>resolve(true);
-        tx.onerror = ()=>resolve(false);
+        tx.oncomplete = ()=>done(true);
+        tx.onerror = ()=>done(false);
+        tx.onabort = ()=>done(false);
       };
-      req.onerror = ()=>resolve(false);
-    }catch(e){ resolve(false); }
+      req.onerror = ()=>done(false);
+    }catch(e){ done(false); }
   });
 }
 function idbGet(key){
