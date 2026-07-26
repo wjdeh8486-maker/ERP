@@ -2497,19 +2497,7 @@ function computeWaitDeliverRaw(r){
   });
   return found ? total : (Number(r.waitDeliver)||0);
 }
-function __unused_computeWaitDeliverRaw_old(r){
-  if(typeof invComputeStock !== "function") return Number(r.waitDeliver)||0;
-  const keys = [String(r.oldDrawingNo||"").trim(), String(r.partNo||"").trim()].filter(Boolean);
-  let total = 0, found = false;
-  const seen = new Set();
-  keys.forEach(k=>{
-    if(seen.has(k)) return;
-    seen.add(k);
-    const rows = invData.filter(iv=>iv.partNo===k);
-    if(rows.length){ found = true; total += invComputeStock(k).stock; }
-  });
-  return found ? total : (Number(r.waitDeliver)||0);
-}
+
 function computeWaitCleanRaw(r){
   const v = lookupWaitMap(cleanWaitMap, r);
   return v!==null ? v : (Number(r.waitClean)||0);
@@ -4138,13 +4126,7 @@ renderInvAllSelectors();
 /* ============ 장기 재고(AGING STOCK) LOGIC ============ */
 // 입고는 됐는데 그 수량만큼 아직 출고되지 않은 S/N을, 입고일 기준 경과일수가
 // 기준일수(기본 150일) 이상인 것만 모아서 보여줍니다.
-function invAgingDaysSince(inDate){
-  const d = new Date(inDate);
-  if(isNaN(d)) return 0;
-  const today = new Date(); today.setHours(0,0,0,0);
-  d.setHours(0,0,0,0);
-  return Math.round((today - d) / (1000*60*60*24));
-}
+
 function invGetAgingRows(thresholdDays){
   const byPart = {};
   invData.forEach(r=>{
@@ -5125,38 +5107,6 @@ function drawYearRevenueBarChart(container, years, revenues, profits, title){
       <path d="${profLinePath}" fill="none" stroke="#2E7D46" stroke-width="2.5" stroke-dasharray="5,4"></path>
       ${profMarkers}
     </svg>
-  `;
-}
-function drawPieChart(container, items, title){
-  const total = items.reduce((s,it)=>s+it.value,0);
-  if(!total){
-    container.innerHTML = `<div style="font-size:13px;font-weight:400;color:var(--text-mute);margin-bottom:8px;">${title}</div><div class="empty-state">데이터 없음</div>`;
-    return;
-  }
-  const w = 260, h = 240, cx = 120, cy = 120, r = 95;
-  let angle = -Math.PI/2;
-  let paths = "";
-  let legend = "";
-  items.forEach(it=>{
-    const frac = it.value/total;
-    const endAngle = angle + frac*Math.PI*2;
-    const x1 = cx + r*Math.cos(angle), y1 = cy + r*Math.sin(angle);
-    const x2 = cx + r*Math.cos(endAngle), y2 = cy + r*Math.sin(endAngle);
-    const largeArc = (endAngle-angle) > Math.PI ? 1 : 0;
-    paths += `<path d="M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z" fill="${it.color}"></path>`;
-    const pct = Math.round(frac*1000)/10;
-    legend += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-      <span style="width:11px;height:11px;border-radius:3px;background:${it.color};display:inline-block;flex-shrink:0;"></span>
-      <span style="font-size:12.5px;">${it.name} · ${pct}% · ${it.valueLabel}</span>
-    </div>`;
-    angle = endAngle;
-  });
-  container.innerHTML = `
-    <div style="font-size:13px;font-weight:400;color:var(--text-mute);margin-bottom:8px;">${title}</div>
-    <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center;">
-      <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="max-width:240px;width:100%;height:auto;flex-shrink:0;">${paths}</svg>
-      <div>${legend}</div>
-    </div>
   `;
 }
 function renderSalesKPI(){
