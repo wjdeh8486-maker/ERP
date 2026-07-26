@@ -255,6 +255,12 @@
   .row-shipped{color:#9AA0AA;text-decoration:line-through;}
   .row-shipout{color:#9AA0AA;}
   .empty-state{padding:40px;text-align:center;color:var(--text-mute);}
+  .nc-field{margin-bottom:12px;}
+  .nc-field label{display:block;font-size:12.5px;font-weight:600;color:#374151;margin-bottom:4px;}
+  .nc-field input, .nc-field textarea{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid #d5dae4;border-radius:7px;font-size:13.5px;font-family:inherit;}
+  .nc-field textarea{resize:vertical;}
+  #nc-listBody tr{cursor:pointer;}
+  #nc-listBody tr:hover{background:#f2f6ff;}
   .cards-view{display:none;flex-direction:column;gap:10px;}
   .p-card{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
   .p-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
@@ -893,7 +899,10 @@
       <div class="nav-item nav-sub" data-view="waitinsp"><span class="dot"></span>검사대기현황</div>
     </div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
-    <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
+    <div class="nav-item" data-view="quality" data-navgroup="quality"><span class="dot"></span>품질분석<span class="nav-caret" data-caret="quality">▾</span></div>
+    <div class="nav-group" id="navgroup-quality">
+      <div class="nav-item nav-sub" data-view="ncregister"><span class="dot"></span>📝 부적합 등록</div>
+    </div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
     <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
     <div class="nav-item" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
@@ -1439,6 +1448,10 @@
         <span class="sync-toggle" id="quality-syncToggle">구글시트 연동 ▾</span>
       </div>
     </div>
+    <div id="topbar-ncregister" class="topbar" style="display:none;">
+      <h1>📝 부적합 등록</h1>
+      <div class="topbar-right"></div>
+    </div>
     <div class="sync-panel" id="quality-syncPanel">
       <input id="quality-appsScriptUrl" type="text" value="https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2Xur_FhnxfQReER1VnjFKNkwvEtezRo-93EVHlJ8uQdECpP/exec" placeholder="Apps Script 웹 앱 URL 붙여넣기">
       <button id="quality-apiSyncBtn">API로 불러오기</button>
@@ -1540,6 +1553,22 @@
       </div>
       <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 같은 <b style="color:#FFD400;">기존도번</b> 안에서 이전 이력보다 <b style="color:#FF6B6B;">오르면 빨강</b>, <b style="color:#E0C34A;">내리면 노랑</b>으로 표시됩니다.</div>
     </div>
+    <div class="view" id="view-ncregister">
+      <div class="search-row" style="margin-bottom:12px;">
+        <input id="nc-searchInput" type="text" placeholder="품번으로 검색 (최근 한 달 등록분)" style="flex:1;min-width:200px;">
+        <button id="nc-searchBtn" type="button">🔍 검색</button>
+        <button id="nc-newBtn" type="button" style="background:#2f6fed;color:#fff;">+ 새 부적합 등록</button>
+      </div>
+      <div class="sync-note" style="margin-bottom:10px;">※ 최근 한 달 내 등록된 고객부적합을 품번으로 검색합니다. [+ 새 부적합 등록]으로 신규 접수를 등록할 수 있습니다.</div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>접수일</th><th>품번</th><th>품명</th><th>수량</th><th>발견자</th><th>접수내용</th></tr></thead>
+          <tbody id="nc-listBody"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="nc-listEmpty">최근 한 달 내 등록된 부적합이 여기에 표시됩니다. 품번으로 검색하거나 [+ 새 부적합 등록]을 눌러 접수하세요.</div>
+    </div>
+
     <div class="view" id="view-vendor">
       <div class="table-wrap">
         <table>
@@ -1890,6 +1919,8 @@ function gsCollect(keyword){
   const kw = String(keyword||"").trim().toLowerCase();
   const rows = (typeof mainData !== "undefined" && mainData) ? mainData.filter(r=>gsMatch(r, kw)) : [];
   const live = rows.filter(r=> (Number(r.qty)||0) > 0 && r.shipped !== "납품완료");
+  // 진행중(live) 건들의 수량 합계 — 검사대기·재고 옆에 "8건(수량)"으로 함께 보여주기 위함
+  const liveQty = live.reduce(function(sum, r){ return sum + (Number(r.qty)||0); }, 0);
 
   // 검사대기: 납기/생산계획 화면과 "같은 함수(groupWait*)"로 계산한다.
   // 이 함수들은 MAIN 데이터만으로 계산되므로 [🔄 불러오기] 없이도 즉시 값이 나온다.
@@ -1903,9 +1934,8 @@ function gsCollect(keyword){
   }catch(_){ }
   const wait = wIn + wMe + wCl + wVi;
 
-  // 지연: 지연 LIST와 동일 기준
-  const overdue = rows.filter(r=> (Number(r.qty)||0) > 0 && !(r.shipped === "납품완료") &&
-                                  (typeof isOverdue === "function" && isOverdue(r.dueDate)));
+  // 지연: 공통 판정 함수(isOverdueRow) 사용 → 지연 LIST·MAIN 대시보드와 항상 일치
+  const overdue = rows.filter(function(r){ return typeof isOverdueRow === "function" ? isOverdueRow(r) : false; });
   let maxLate = 0;
   if(typeof overdueDaysLate === "function"){
     overdue.forEach(r=>{ const d = Number(overdueDaysLate(r.dueDate))||0; if(d>maxLate) maxLate=d; });
@@ -1922,12 +1952,22 @@ function gsCollect(keyword){
   }catch(_){ }
 
   // 고객 부적합
-  let nc = 0, ncLast = "";
+  let nc = 0, ncLast = "", ncRecent = [];
   try{
     const list = (typeof qualityRawData !== "undefined" && qualityRawData[CUSTOMER_NC_KEY]) || [];
-    const hit = list.filter(r=> String(r.partNo||"").toLowerCase().includes(kw));
+    const hitAll = list.filter(r=> String(r.partNo||"").toLowerCase().includes(kw));
+    // 올해(1월 1일부터) 접수된 부적합만 대상으로 한다 (건수·목록 모두 올해 기준으로 통일)
+    const yearStart = new Date(new Date().getFullYear(), 0, 1); yearStart.setHours(0,0,0,0);
+    const hit = hitAll.filter(function(r){ const dt = (r.date instanceof Date) ? r.date : new Date(r.date); return !isNaN(dt) && dt >= yearStart; });
     nc = hit.length;
     hit.forEach(r=>{ const d = String(r.date||""); if(d > ncLast) ncLast = d; });
+    ncRecent = hit
+      .sort(function(a,b){ return (b.date||0) - (a.date||0); })
+      .map(function(r){
+        const dt = (r.date instanceof Date) ? r.date : new Date(r.date);
+        const ds = isNaN(dt) ? String(r.date||"") : (dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0"));
+        return { date: ds, content: String(r.content||"").trim() };
+      });
   }catch(_){ }
 
   // 재고: 납기/생산계획의 "재고 보유" 열과 같은 기준(groupWaitDeliver = 납품대기 수량)을 쓴다.
@@ -1960,9 +2000,18 @@ function gsCollect(keyword){
     String(r.oldDrawingNo||"").toLowerCase().includes(kw) ||
     String(r.partNo||"").toLowerCase().includes(kw));
 
+  // 도번상세내역을 납기/생산계획과 동일 기준(진행중 = live)으로 맞춘다.
+  // 진행중 건들을 도번(없으면 품번)별로 묶은 그룹 수 → 완료·출고된 건은 제외됨.
+  const dwgGroupSet = {};
+  live.forEach(function(r){
+    const key = String(r.oldDrawingNo || r.partNo || "").trim();
+    if(key) dwgGroupSet[key] = true;
+  });
+  const dwgGroupCount = Object.keys(dwgGroupSet).length;
+
   return {
-    total: rows.length, live: live.length, wait, overdue: overdue.length, maxLate,
-    nextDue, nc, ncLast, stock, stockRows, dwgNo, dwgList: dwgSet, byDrawing,
+    total: rows.length, live: live.length, liveQty, wait, overdue: overdue.length, maxLate,
+    nextDue, nc, ncLast, ncRecent, stock, stockRows, dwgNo, dwgList: dwgSet, byDrawing, dwgGroupCount,
     waitIn: wIn, waitMe: wMe, waitCl: wCl, waitVi: wVi, waitLoaded
   };
 }
@@ -2041,8 +2090,8 @@ function gsRender(keyword){
           (d.nextDue ? d.nextDue : "-") + '</div></div>';
   html += row("📋", "MAIN 대시보드", d.total + "건", d.total>0, "main", d.total===0);
   if(d.byDrawing){
-    html += row("📄", "도번상세내역", d.total + "건", d.total>0, "history", d.total===0);
-    html += row("📅", "납기/생산계획", "진행중 " + d.live + "건", d.live>0, "management", d.live===0);
+    html += row("📄", "도번상세내역", d.dwgGroupCount + "건", d.dwgGroupCount>0, "history", d.dwgGroupCount===0);
+    html += row("📅", "납기/생산계획", d.live>0 ? ("진행중 " + d.live + "건 (" + d.liveQty + "개)") : "진행중 0건", d.live>0, "management", d.live===0);
   } else {
     // ORDER NO·고객사로만 찾은 경우: 도번 기준 화면은 결과가 비어 있어 이동해도 소용없다
     // 안내 문구는 이름이 길어 한 줄에 다 안 들어가므로, 칩처럼 아래 줄로 자동 줄바꿈되게 둔다.
@@ -2074,7 +2123,21 @@ function gsRender(keyword){
     html += row("🔍", "검사대기현황", "0개", false, "waitinsp", true);
   }
   html += row("⏰", "지연 LIST", d.overdue > 0 ? d.overdue + "건 (최대 " + d.maxLate + "일)" : "0건", d.overdue>0, "overdue", d.overdue===0);
-  html += row("⚠️", "고객 부적합", d.nc > 0 ? d.nc + "건 (최근 " + (d.ncLast||"-") + ")" : "0건", d.nc>0, "nc", d.nc===0);
+  if(d.nc > 0){
+    // 올해 접수일·접수내용을 칩으로 펼쳐, [보기] 클릭 없이 바로 확인되게 한다.
+    const ncChips = (d.ncRecent||[]).map(function(x){
+      const c = x.content ? (x.content.length > 24 ? x.content.slice(0,24) + "…" : x.content) : "-";
+      return '<span class="gs-chip gs-chip-static" title="' + String(x.content||"").replace(/"/g,"&quot;") + '">' +
+             x.date + " · " + c.replace(/</g,"&lt;") + '</span>';
+    }).join("");
+    html += '<div class="gs-row" style="flex-wrap:wrap;">' +
+            '<div class="gs-ico">⚠️</div><div class="gs-name">고객 부적합</div>' +
+            '<div class="gs-val hit">' + d.nc + '건</div>' +
+            '<button class="gs-btn" data-gsact="nc">보기</button>' +
+            (ncChips ? '<div class="gs-chips">' + ncChips + '</div>' : '') + '</div>';
+  } else {
+    html += row("⚠️", "고객 부적합", "0건", false, "nc", true);
+  }
   html += row("📦", "재고", d.stock > 0 ? d.stock + " EA" : (d.stockRows>0 ? "0 EA" : "기록 없음"), d.stock>0, "inventory", d.stock===0 && d.stockRows===0);
   if(d.dwgList.length <= 1){
     html += row("📐", "도면", d.dwgNo ? d.dwgNo : "도번 없음", !!d.dwgNo, "dwg", !d.dwgNo);
@@ -2388,6 +2451,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("topbar-inventory").style.display = target==="inventory" ? "flex" : "none";
     document.getElementById("topbar-overdue").style.display = target==="overdue" ? "flex" : "none";
     document.getElementById("topbar-quality").style.display = target==="quality" ? "flex" : "none";
+    document.getElementById("topbar-ncregister").style.display = target==="ncregister" ? "flex" : "none";
     document.getElementById("topbar-sales").style.display = target==="sales" ? "flex" : "none";
     document.getElementById("topbar-vendor").style.display = target==="vendor" ? "flex" : "none";
     document.getElementById("topbar-summary").style.display = target==="summary" ? "flex" : "none";
@@ -2773,7 +2837,10 @@ function mainRenderStats(data){
     const status = computeProductStatus(r);
     return ["재고","출고","측정","외관","비젼","수입","OK"].includes(status);
   }).length;
-  const overdue = data.filter(r => isOverdue(r.dueDate) && r.shipped !== "납품완료").length;
+  // 지연: 지연 LIST(overdueGetRows)와 동일 기준으로 계산 (최근2년·출고제외 포함)
+  //  → MAIN 대시보드·지연 LIST·통합검색 세 곳의 지연 건수가 항상 일치한다.
+  // 지연: 공통 판정 함수(isOverdueRow) 사용 → 지연 LIST·통합검색과 항상 일치
+  const overdue = data.filter(function(r){ return typeof isOverdueRow === "function" ? isOverdueRow(r) : false; }).length;
   const total = data.length || 1;
   const pct = Math.round(((qc + done) / total) * 100);
   document.getElementById("main-statProd").textContent = prod;
@@ -4372,13 +4439,37 @@ function fetchQualityData(){
     const ncRes = results[QUALITY_SHEETS.length];
     if(ncRes && ncRes.success && Array.isArray(ncRes.rows)){
       qualityRawData[CUSTOMER_NC_KEY] = ncRes.rows.map(row=>{
-        const finder = String(getFieldFuzzy(row, "발견자")||"").trim();
+        // 성능: getFieldFuzzy는 호출마다 Object.keys를 순회하므로, 행당 14번 부르면 느리다.
+        // 행의 키를 한 번만 정규화해 맵으로 만든 뒤, 각 필드를 그 맵에서 바로 찾는다.
+        const normMap = {};
+        Object.keys(row).forEach(function(k){
+          const nk = normalizeHeaderKey(k);
+          if(normMap[nk] === undefined) normMap[nk] = row[k];
+        });
+        const pick = function(label){
+          const t = normalizeHeaderKey(label);
+          if(normMap[t] !== undefined) return normMap[t];
+          // 부분일치 폴백(정확 키가 없을 때만)
+          const keys = Object.keys(normMap);
+          for(let i=0;i<keys.length;i++){ if(keys[i].includes(t)) return normMap[keys[i]]; }
+          return undefined;
+        };
+        const finder = String(pick("발견자")||"").trim();
         return {
-          date: parseQualityDate(getFieldFuzzy(row, "접수일")),
-          partNo: String(getFieldFuzzy(row, "품번")||"").trim(),
+          date: parseQualityDate(pick("접수일")),
+          partNo: String(pick("품번")||"").trim(),
+          partName: String(pick("품명")||"").trim(),
+          sn: String(pick("S/N")||"").trim(),
+          method: String(pick("접수방법")||"").trim(),
           finder,
-          qty: Number(getFieldFuzzy(row, "수량"))||0,
-          content: String(getFieldFuzzy(row, "접수내용")||"").trim(),
+          qty: Number(pick("수량"))||0,
+          content: String(pick("접수내용")||"").trim(),
+          treatment: String(pick("처리내용")||"").trim(),
+          note: String(pick("비고")||"").trim(),
+          temp: String(pick("임시조치")||"").trim(),
+          doneDate: String(pick("조치완료일")||"").trim(),
+          reportDate: String(pick("대책서송부일")||"").trim(),
+          validation: String(pick("유효성확인")||"").trim(),
           isDev: finder.includes("개발")
         };
       }).filter(r=>r.date && r.qty > 0);
@@ -5480,17 +5571,22 @@ function isRecentYearRow(r){
   if(y) return recent.indexOf(y) !== -1;
   return true; // 판단 불가하면 포함(과도한 제외 방지)
 }
+// 지연 판정 단일 기준. MAIN 대시보드·지연 LIST·통합검색이 모두 이 함수를 써서
+// 지연 건수가 항상 일치하도록 한다. (수량>0·최근2년·납기지남·납품완료아님·출고아님·완료아님)
+function isOverdueRow(r){
+  if((Number(r.qty)||0) <= 0) return false;
+  if(typeof isRecentYearRow === "function" && !isRecentYearRow(r)) return false;
+  if(!(typeof isOverdue === "function" && isOverdue(r.dueDate))) return false;
+  if(r.shipped === "납품완료") return false;
+  if(typeof computeProductStatus === "function"){
+    const st = computeProductStatus(r);
+    if(st === "출고") return false;
+    if(st === "완료") return false;
+  }
+  return true;
+}
 function overdueGetRows(){
-  return (mainData||[]).filter(r=>{
-    if((Number(r.qty)||0) <= 0) return false;
-    if(!isRecentYearRow(r)) return false;   // 최근 2년만
-    if(!isOverdue(r.dueDate)) return false;
-    if(r.shipped === "납품완료") return false;
-    // 재고에서 출고된 건(상태='출고')도 실제 나간 것이므로 지연에서 제외.
-    // (재고 데이터가 반영돼야 '출고'로 판정되므로, 재고 로드 전엔 안 빠져 109처럼 부풀 수 있음)
-    if(typeof computeProductStatus === "function" && computeProductStatus(r) === "출고") return false;
-    return true;
-  });
+  return (mainData||[]).filter(isOverdueRow);
 }
 // 검색창 필터까지 적용한 결과를 돌려줍니다. 화면 표시/인쇄/엑셀 다운로드가 전부 이 함수 하나를
 // 공유해서, "검색 결과만 인쇄"·"검색 결과만 다운로드"가 실제로 검색 결과와 항상 일치합니다.
@@ -5844,7 +5940,10 @@ window.__qualityInited = true;
     // 4개 데이터를 동시에 받는다(병렬). MAIN은 fetchMainData 내부에서 우선 반영되므로
     // 지연건수 등은 MAIN이 오는 즉시 정확해지고, 전체 대기는 가장 느린 하나만큼만 걸린다.
     const runStep = function(st){
+      const t0 = Date.now();
       return withTimeout(st.run(), 30000).then(function(r){
+        // 진단: 각 데이터가 몇 초 걸렸는지 콘솔에 표시 (F12로 확인)
+        console.log("[로딩] " + st.label + ": " + ((Date.now()-t0)/1000).toFixed(1) + "초" + (r==="timeout" ? " (타임아웃!)" : ""));
         if(r !== "timeout") ok++;
         done++;
         setStep(st.key, "done");
@@ -7606,10 +7705,10 @@ function renderHistoryView(keyword){
       .map(v => String(v||"")).join(" ").toLowerCase();
     return terms.some(t => hay.includes(t));
   };
-  // 도번별 그룹
+  // 도번별 그룹 (납기/생산계획·통합검색과 동일하게 '진행중'만: 수량>0 · 납품완료 아님)
   const groups = {};
   const order = [];
-  mainData.filter(match).forEach(r => {
+  mainData.filter(match).filter(r => (Number(r.qty)||0) > 0 && r.shipped !== "납품완료").forEach(r => {
     const key = String(r.oldDrawingNo || r.partNo || "미분류").trim();
     if(!key || key === "미분류") return;
     if(!groups[key]){ groups[key] = []; order.push(key); }
@@ -8392,8 +8491,312 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+/* ===================== 부적합 등록 (1단계: 등록 + 품번 검색) ===================== */
+function __initNcRegister(){
+  const modal = document.getElementById("nc-formModal");
+  if(!modal) return;
+
+  function ncUrl(){ return document.getElementById("quality-appsScriptUrl").value.trim(); }
+  function fmtDate(d){
+    if(!d) return "";
+    const dt = (d instanceof Date) ? d : new Date(d);
+    if(isNaN(dt)) return String(d);
+    return dt.getFullYear() + "-" + String(dt.getMonth()+1).padStart(2,"0") + "-" + String(dt.getDate()).padStart(2,"0");
+  }
+  function withinOneMonth(d){
+    if(!d) return false;
+    const dt = (d instanceof Date) ? d : new Date(d);
+    if(isNaN(dt)) return false;
+    const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth()-1); monthAgo.setHours(0,0,0,0);
+    return dt >= monthAgo;
+  }
+  function renderNcList(keyword){
+    const body = document.getElementById("nc-listBody");
+    const empty = document.getElementById("nc-listEmpty");
+    if(!body) return;
+    const all = (typeof qualityRawData !== "undefined" && qualityRawData[CUSTOMER_NC_KEY]) || [];
+    const kw = (keyword||"").trim().toLowerCase();
+    const rows = all
+      .filter(function(r){ return withinOneMonth(r.date); })
+      .filter(function(r){ return !kw || String(r.partNo||"").toLowerCase().includes(kw); })
+      .sort(function(a,b){ return (b.date||0) - (a.date||0); });
+    if(!rows.length){
+      body.innerHTML = "";
+      empty.style.display = "";
+      empty.textContent = kw ? ("'" + keyword + "' 품번으로 최근 한 달 내 등록된 부적합이 없습니다.") : "최근 한 달 내 등록된 부적합이 없습니다. [+ 새 부적합 등록]을 눌러 접수하세요.";
+      return;
+    }
+    empty.style.display = "none";
+    __ncRenderedRows = rows;   // 클릭 시 참조할 현재 목록
+    body.innerHTML = rows.map(function(r, idx){
+      return "<tr data-ncidx=\"" + idx + "\"><td style=\"text-align:center;\">" + fmtDate(r.date) + "</td>" +
+      "<td style=\"text-align:center;\">" + (r.partNo||"") + "</td>" +
+      "<td style=\"text-align:center;\">" + (r.partName||"") + "</td>" +
+      "<td style=\"text-align:center;\">" + (r.qty||"") + "</td>" +
+      "<td style=\"text-align:center;\">" + (r.finder||"") + "</td>" +
+      "<td>" + (r.content||"") + "</td></tr>";
+    }).join("");
+    // 행 클릭 → 수정 팝업
+    body.querySelectorAll("tr[data-ncidx]").forEach(function(tr){
+      tr.addEventListener("click", function(){
+        const idx = parseInt(tr.getAttribute("data-ncidx"), 10);
+        if(__ncRenderedRows[idx]) openEditForm(__ncRenderedRows[idx]);
+      });
+    });
+  }
+  let __ncRenderedRows = [];
+  function openForm(){
+    document.getElementById("nc-f-partNo").value = "";
+    document.getElementById("nc-f-date").value = fmtDate(new Date());
+    document.getElementById("nc-f-method").value = "";
+    document.getElementById("nc-f-finder").value = "";
+    document.getElementById("nc-f-partName").value = "";
+    document.getElementById("nc-f-partName").dataset.auto = "";
+    document.getElementById("nc-f-qty").value = "";
+    document.getElementById("nc-f-sn").value = "";
+    document.getElementById("nc-f-content").value = "";
+    document.getElementById("nc-f-treatment").value = "";
+    document.getElementById("nc-f-note").value = "";
+    document.getElementById("nc-f-temp").value = "";
+    document.getElementById("nc-f-doneDate").value = "";
+    document.getElementById("nc-f-reportDate").value = "";
+    document.getElementById("nc-f-validation").value = "";
+    document.getElementById("nc-formMsg").textContent = "";
+    // 등록 모드로 설정
+    __ncEditTarget = null;
+    document.getElementById("nc-formTitle").textContent = "📝 새 부적합 접수 등록";
+    document.getElementById("nc-formSubmit").textContent = "등록";
+    document.getElementById("nc-formDelete").style.display = "none";
+    document.getElementById("nc-f-partNo").readOnly = false;
+    document.getElementById("nc-f-date").readOnly = false;
+    modal.style.display = "flex";
+  }
+  // 수정 모드로 팝업 열기 (목록 행 클릭 시)
+  let __ncEditTarget = null;
+  function openEditForm(rec){
+    __ncEditTarget = {
+      // 행 식별 기준(원본 값 보존) — 수정/삭제 시 서버로 보냄
+      partNo: rec.partNo || "",
+      date: fmtDate(rec.date),
+      content: rec.content || ""
+    };
+    document.getElementById("nc-f-partNo").value = rec.partNo || "";
+    document.getElementById("nc-f-date").value = fmtDate(rec.date);
+    document.getElementById("nc-f-method").value = rec.method || "";
+    document.getElementById("nc-f-finder").value = rec.finder || "";
+    document.getElementById("nc-f-partName").value = rec.partName || "";
+    document.getElementById("nc-f-partName").dataset.auto = "";
+    document.getElementById("nc-f-qty").value = rec.qty || "";
+    document.getElementById("nc-f-sn").value = rec.sn || "";
+    document.getElementById("nc-f-content").value = rec.content || "";
+    document.getElementById("nc-f-treatment").value = rec.treatment || "";
+    document.getElementById("nc-f-note").value = rec.note || "";
+    document.getElementById("nc-f-temp").value = rec.temp || "";
+    document.getElementById("nc-f-doneDate").value = rec.doneDate || "";
+    document.getElementById("nc-f-reportDate").value = rec.reportDate || "";
+    document.getElementById("nc-f-validation").value = rec.validation || "";
+    document.getElementById("nc-formMsg").textContent = "";
+    // 수정 모드 UI
+    document.getElementById("nc-formTitle").textContent = "✏️ 부적합 수정";
+    document.getElementById("nc-formSubmit").textContent = "저장";
+    document.getElementById("nc-formDelete").style.display = "";
+    // 행 식별 기준(품번·접수일·접수내용)은 수정 못 하게 잠금 — 바꾸면 행을 못 찾음
+    document.getElementById("nc-f-partNo").readOnly = true;
+    document.getElementById("nc-f-date").readOnly = true;
+    modal.style.display = "flex";
+  }
+  function closeForm(){ modal.style.display = "none"; }
+  async function submitForm(){
+    const msg = document.getElementById("nc-formMsg");
+    const partNo = document.getElementById("nc-f-partNo").value.trim();
+    const date = document.getElementById("nc-f-date").value.trim();
+    if(!partNo){ msg.style.color="#C0392B"; msg.textContent = "품번을 입력해 주세요."; return; }
+    if(!date){ msg.style.color="#C0392B"; msg.textContent = "접수일을 선택해 주세요."; return; }
+    const url = ncUrl();
+    if(!url){ msg.style.color="#C0392B"; msg.textContent = "품질분석 화면에서 Apps Script URL을 먼저 설정해 주세요."; return; }
+    const row = {
+      "\ud488 \ubc88": partNo,
+      "\uc811\uc218\uc77c": date,
+      "\uc811\uc218 \ubc29\ubc95": document.getElementById("nc-f-method").value.trim(),
+      "\ubc1c\uacac\uc790": document.getElementById("nc-f-finder").value.trim(),
+      "\ud488  \uba85": document.getElementById("nc-f-partName").value.trim(),
+      "\uc218 \ub7c9": document.getElementById("nc-f-qty").value.trim(),
+      "S/N": document.getElementById("nc-f-sn").value.trim(),
+      "\uc811\uc218 \ub0b4\uc6a9": document.getElementById("nc-f-content").value.trim(),
+      "\ucc98\ub9ac \ub0b4\uc6a9": document.getElementById("nc-f-treatment").value.trim(),
+      "\ube44 \uace0": document.getElementById("nc-f-note").value.trim(),
+      "\uc784\uc2dc\uc870\uce58": document.getElementById("nc-f-temp").value.trim(),
+      "\uc870\uce58\uc644\ub8cc\uc77c": document.getElementById("nc-f-doneDate").value.trim(),
+      "\ub300\ucc45\uc11c\uc1a1\ubd80\uc77c": document.getElementById("nc-f-reportDate").value.trim(),
+      "\uc720\ud6a8\uc131\ud655\uc778": document.getElementById("nc-f-validation").value.trim()
+    };
+    const submitBtn = document.getElementById("nc-formSubmit");
+    const isEdit = !!__ncEditTarget;
+    submitBtn.disabled = true; submitBtn.textContent = isEdit ? "\uc800\uc7a5 \uc911\u2026" : "\ub4f1\ub85d \uc911\u2026";
+    msg.style.color = "#C0392B"; msg.textContent = "";
+    try{
+      const payload = isEdit
+        ? { action:"updateNcRow", sheetName: CUSTOMER_NC_KEY, match: __ncEditTarget, row: row }
+        : { action:"addRow", sheetName: CUSTOMER_NC_KEY, row: row };
+      const res = await fetch(url, { method:"POST", body: JSON.stringify(payload) }).then(function(r){ return r.json(); });
+      if(res && res.success){
+        msg.style.color = "#1D9E75";
+        msg.textContent = (isEdit ? "\uc218\uc815\ub418\uc5c8\uc2b5\ub2c8\ub2e4." : "\ub4f1\ub85d\ub418\uc5c8\uc2b5\ub2c8\ub2e4.") + " \ubaa9\ub85d\uc744 \uac31\uc2e0\ud569\ub2c8\ub2e4\u2026";
+        if(typeof qualityRawData !== "undefined"){
+          if(!qualityRawData[CUSTOMER_NC_KEY]) qualityRawData[CUSTOMER_NC_KEY] = [];
+          const localRec = {
+            date: new Date(date), partNo: partNo,
+            method: row["\uc811\uc218 \ubc29\ubc95"], finder: row["\ubc1c\uacac\uc790"],
+            partName: row["\ud488  \uba85"], qty: Number(row["\uc218 \ub7c9"])||0, sn: row["S/N"],
+            content: row["\uc811\uc218 \ub0b4\uc6a9"], treatment: row["\ucc98\ub9ac \ub0b4\uc6a9"],
+            note: row["\ube44 \uace0"], temp: row["\uc784\uc2dc\uc870\uce58"],
+            doneDate: row["\uc870\uce58\uc644\ub8cc\uc77c"], reportDate: row["\ub300\ucc45\uc11c\uc1a1\ubd80\uc77c"],
+            validation: row["\uc720\ud6a8\uc131\ud655\uc778"]
+          };
+          if(isEdit){
+            // 로컬에서 해당 항목 찾아 교체
+            const arr = qualityRawData[CUSTOMER_NC_KEY];
+            const i = arr.findIndex(function(x){
+              return String(x.partNo||"").trim()===__ncEditTarget.partNo.trim()
+                && fmtDate(x.date)===__ncEditTarget.date
+                && String(x.content||"").trim()===__ncEditTarget.content.trim();
+            });
+            if(i>=0) arr[i] = localRec; else arr.push(localRec);
+          } else {
+            qualityRawData[CUSTOMER_NC_KEY].push(localRec);
+          }
+        }
+        setTimeout(function(){ closeForm(); renderNcList(document.getElementById("nc-searchInput").value); }, 600);
+      } else {
+        msg.textContent = (isEdit ? "\uc218\uc815" : "\ub4f1\ub85d") + " \uc2e4\ud328: " + ((res && res.error) || "\uc54c \uc218 \uc5c6\ub294 \uc624\ub958");
+      }
+    }catch(e){
+      msg.textContent = "\uc2e4\ud328: \ub124\ud2b8\uc6cc\ud06c \uc624\ub958. URL\uacfc \ubc30\ud3ec \uad8c\ud55c(\ubaa8\ub4e0 \uc0ac\uc6a9\uc790)\uc744 \ud655\uc778\ud574 \uc8fc\uc138\uc694.";
+    }
+    submitBtn.disabled = false; submitBtn.textContent = __ncEditTarget ? "\uc800\uc7a5" : "\ub4f1\ub85d";
+  }
+  document.getElementById("nc-newBtn").addEventListener("click", openForm);
+  document.getElementById("nc-formClose").addEventListener("click", closeForm);
+  document.getElementById("nc-formCancel").addEventListener("click", closeForm);
+  document.getElementById("nc-formSubmit").addEventListener("click", submitForm);
+
+  // 삭제 (수정 모드에서만 보임)
+  async function deleteRecord(){
+    if(!__ncEditTarget) return;
+    if(!confirm("이 부적합을 삭제하시겠습니까?\\n\\n품번: " + __ncEditTarget.partNo + "\\n접수일: " + __ncEditTarget.date + "\\n\\n삭제하면 되돌릴 수 없습니다.")) return;
+    const msg = document.getElementById("nc-formMsg");
+    const url = ncUrl();
+    if(!url){ msg.style.color="#C0392B"; msg.textContent = "Apps Script URL을 먼저 설정해 주세요."; return; }
+    const delBtn = document.getElementById("nc-formDelete");
+    delBtn.disabled = true; delBtn.textContent = "삭제 중…";
+    try{
+      const res = await fetch(url, {
+        method:"POST",
+        body: JSON.stringify({ action:"deleteNcRow", sheetName: CUSTOMER_NC_KEY, match: __ncEditTarget })
+      }).then(function(r){ return r.json(); });
+      if(res && res.success){
+        msg.style.color = "#1D9E75"; msg.textContent = "삭제되었습니다. 목록을 갱신합니다…";
+        if(typeof qualityRawData !== "undefined" && qualityRawData[CUSTOMER_NC_KEY]){
+          const arr = qualityRawData[CUSTOMER_NC_KEY];
+          const i = arr.findIndex(function(x){
+            return String(x.partNo||"").trim()===__ncEditTarget.partNo.trim()
+              && fmtDate(x.date)===__ncEditTarget.date
+              && String(x.content||"").trim()===__ncEditTarget.content.trim();
+          });
+          if(i>=0) arr.splice(i,1);
+        }
+        setTimeout(function(){ closeForm(); renderNcList(document.getElementById("nc-searchInput").value); }, 600);
+      } else {
+        msg.style.color="#C0392B"; msg.textContent = "삭제 실패: " + ((res && res.error) || "알 수 없는 오류");
+      }
+    }catch(e){
+      msg.style.color="#C0392B"; msg.textContent = "삭제 실패: 네트워크 오류.";
+    }
+    delBtn.disabled = false; delBtn.textContent = "🗑 삭제";
+  }
+  document.getElementById("nc-formDelete").addEventListener("click", deleteRecord);
+  modal.addEventListener("click", function(e){ if(e.target === modal) closeForm(); });
+
+  // 품번 입력 시 MAIN 데이터에서 품명을 찾아 자동으로 채운다.
+  // (사용자가 품명을 직접 고쳤으면 덮어쓰지 않도록, 자동으로 채운 값일 때만 갱신)
+  function lookupPartName(partNo){
+    if(typeof mainData === "undefined" || !mainData) return "";
+    const key = String(partNo||"").trim();
+    if(!key) return "";
+    const hit = mainData.find(function(r){ return String(r.partNo||"").trim() === key; });
+    return hit ? String(hit.partName||"").trim() : "";
+  }
+  const partNoInput = document.getElementById("nc-f-partNo");
+  const partNameInput = document.getElementById("nc-f-partName");
+  function autoFillPartName(){
+    const name = lookupPartName(partNoInput.value);
+    if(name){
+      // 품명칸이 비어있거나, 직전에 자동으로 채운 값이면 갱신 (사용자 수동입력은 보존)
+      if(!partNameInput.value || partNameInput.dataset.auto === "1"){
+        partNameInput.value = name;
+        partNameInput.dataset.auto = "1";
+      }
+    }
+  }
+  partNoInput.addEventListener("input", autoFillPartName);
+  partNoInput.addEventListener("blur", autoFillPartName);
+  // 사용자가 품명을 직접 수정하면 자동채움 표시 해제 (이후 덮어쓰지 않음)
+  partNameInput.addEventListener("input", function(){ partNameInput.dataset.auto = ""; });
+
+  document.getElementById("nc-searchBtn").addEventListener("click", function(){
+    renderNcList(document.getElementById("nc-searchInput").value);
+  });
+  document.getElementById("nc-searchInput").addEventListener("keydown", function(e){
+    if(e.key === "Enter") renderNcList(this.value);
+  });
+  document.querySelectorAll('.nav-item[data-view="ncregister"]').forEach(function(nav){
+    nav.addEventListener("click", function(){ setTimeout(function(){ renderNcList(""); }, 50); });
+  });
+  window.renderNcList = renderNcList;
+}
+// 모달 HTML이 이 스크립트 뒤에 있으므로, DOM이 완성된 후 초기화한다.
+if(document.readyState === "loading"){
+  document.addEventListener("DOMContentLoaded", __initNcRegister);
+} else {
+  __initNcRegister();
+}
+
 </script>
 <div id="print-area" style="display:none;"></div>
+<!-- 부적합 등록 폼 모달 -->
+<div id="nc-formModal" style="display:none;position:fixed;inset:0;background:rgba(20,24,35,0.55);z-index:9998;align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto;">
+  <div style="width:100%;max-width:560px;background:#fff;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,0.35);overflow:hidden;">
+    <div style="background:#2A3150;color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
+      <span id="nc-formTitle" style="font-size:15px;font-weight:600;">📝 새 부적합 접수 등록</span>
+      <span id="nc-formClose" style="cursor:pointer;font-size:18px;">&times;</span>
+    </div>
+    <div style="padding:18px 20px 20px;">
+      <div class="nc-field"><label>품번 <span style="color:#C0392B;">*</span></label><input id="nc-f-partNo" type="text" placeholder="예: M600-024-004"></div>
+      <div class="nc-field"><label>접수일 <span style="color:#C0392B;">*</span></label><input id="nc-f-date" type="date"></div>
+      <div class="nc-field"><label>접수방법</label><input id="nc-f-method" type="text" placeholder="예: 유선, 이메일, 방문"></div>
+      <div class="nc-field"><label>발견자</label><input id="nc-f-finder" type="text" placeholder="예: 홍길동"></div>
+      <div class="nc-field"><label>품명</label><input id="nc-f-partName" type="text" placeholder="예: SHOWERHEAD"></div>
+      <div class="nc-field"><label>수량</label><input id="nc-f-qty" type="number" min="0" placeholder="예: 3"></div>
+      <div class="nc-field"><label>S/N</label><input id="nc-f-sn" type="text" placeholder="시리얼 번호(선택)"></div>
+      <div class="nc-field"><label>접수내용</label><textarea id="nc-f-content" rows="3" placeholder="부적합 내용을 입력하세요"></textarea></div>
+      <div style="border-top:1px solid #eef0f4;margin:14px 0 12px;padding-top:12px;font-size:12.5px;font-weight:600;color:#6b7280;">처리 · 조치 (아는 만큼 입력, 나머지는 나중에 수정)</div>
+      <div class="nc-field"><label>처리내용</label><textarea id="nc-f-treatment" rows="2" placeholder="처리 내용(선택)"></textarea></div>
+      <div class="nc-field"><label>비고</label><input id="nc-f-note" type="text" placeholder="비고(선택)"></div>
+      <div class="nc-field"><label>임시조치</label><textarea id="nc-f-temp" rows="2" placeholder="임시조치 내용(선택)"></textarea></div>
+      <div class="nc-field"><label>조치완료일</label><input id="nc-f-doneDate" type="date"></div>
+      <div class="nc-field"><label>대책서송부일</label><input id="nc-f-reportDate" type="date"></div>
+      <div class="nc-field"><label>유효성확인</label><input id="nc-f-validation" type="text" placeholder="유효성 확인 결과(선택)"></div>
+      <div id="nc-formMsg" style="font-size:12.5px;color:#C0392B;min-height:16px;margin-top:4px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
+        <button id="nc-formDelete" type="button" style="background:#fdf0ee;color:#C0392B;border:1px solid #e3b7b0;margin-right:auto;display:none;">🗑 삭제</button>
+        <button id="nc-formCancel" type="button" style="background:#eef0f4;color:#333;">취소</button>
+        <button id="nc-formSubmit" type="button" style="background:#2f6fed;color:#fff;">등록</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- MAIN 모바일 카드 확대 팝업 -->
 <div id="main-cardModal" style="display:none;position:fixed;inset:0;background:rgba(20,24,35,0.55);z-index:9997;align-items:flex-end;justify-content:center;padding:12px;" >
   <div style="width:100%;max-width:480px;max-height:86vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#fff;border-radius:14px;padding:18px 18px 14px;box-shadow:0 10px 40px rgba(0,0,0,0.35);">
