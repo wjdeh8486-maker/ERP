@@ -816,6 +816,20 @@
   }
   #busy-toast.show{ display:block; animation:busyPulse 1s ease-in-out infinite; }
   @keyframes busyPulse{ 0%,100%{opacity:1;} 50%{opacity:0.55;} }
+  /* 아직 로딩 중인 데이터 알림 배너 (ERP 시작 후 상단 고정) */
+  #loading-banner{
+    position:fixed; top:0; left:0; right:0; z-index:99998;
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    background:linear-gradient(90deg,#2f6fed,#4d8bff); color:#fff;
+    font-size:13.5px; font-weight:600; padding:9px 16px;
+    box-shadow:0 2px 10px rgba(0,0,0,0.2);
+  }
+  .lb-spinner{
+    width:15px; height:15px; border:2.5px solid rgba(255,255,255,0.35);
+    border-top-color:#fff; border-radius:50%; display:inline-block;
+    animation:lbSpin 0.7s linear infinite; flex:none;
+  }
+  @keyframes lbSpin{ to{ transform:rotate(360deg); } }
   /* 버튼/메뉴가 눌린 것을 바로 알 수 있게 눌림 효과 */
   button:active, .nav-item:active{ transform:scale(0.96); opacity:0.75; }
 
@@ -823,6 +837,10 @@
 </head>
 <body>
 <div id="busy-toast">⏳ 진행중...</div>
+<div id="loading-banner" style="display:none;">
+  <span class="lb-spinner"></span>
+  <span id="loading-banner-text">데이터를 불러오는 중입니다…</span>
+</div>
 <div id="gs-splash">
   <div class="gs-splash-box">
     <div class="gs-splash-logo">종합제품관리</div>
@@ -2584,6 +2602,28 @@ let __dataArrived = { main:false, inv:false };
 // 재고(입출고) 데이터가 서버에서 실제로 로드됐는지. 지연건수는 재고 출고를 빼야 정확하므로,
 // 이게 false인 동안엔 지연건수를 "계산 중"으로 표시해 틀린 값(출고 미반영)을 안 보여준다.
 let invServerLoaded = false;
+// 각 데이터가 서버에서 실제 로드됐는지 추적 (스플래시가 타임아웃으로 넘어가도, 아직 오는 중이면 배너로 알림)
+let __loadState = { main:false, inv:false, quality:false, wait:false };
+function setLoadDone(key){
+  __loadState[key] = true;
+  updateLoadingBanner();
+}
+function updateLoadingBanner(){
+  const banner = document.getElementById("loading-banner");
+  const textEl = document.getElementById("loading-banner-text");
+  if(!banner || !textEl) return;
+  // 스플래시(진입 로딩)가 아직 떠 있으면 배너를 띄우지 않는다(중복 방지).
+  const splash = document.getElementById("gs-splash");
+  const splashVisible = splash && splash.style.display !== "none" && !splash.classList.contains("hide");
+  const labels = { main:"MAIN·생산", inv:"입출고·재고", quality:"품질·부적합", wait:"검사대기" };
+  const pending = Object.keys(__loadState).filter(k=>!__loadState[k]).map(k=>labels[k]);
+  if(pending.length === 0 || splashVisible){
+    banner.style.display = "none";
+  } else {
+    textEl.textContent = pending.join(" · ") + " 불러오는 중…";
+    banner.style.display = "flex";
+  }
+}
 function markDataArrived(which){
   __dataArrived[which] = true;
   if(which === "inv") __dataArrived.inv = true;
@@ -3737,6 +3777,7 @@ async function fetchMainData(yearsParam){
           // 화면 교정은 markDataArrived가 담당(MAIN·재고 둘 다 왔을 때 1회). 단, 재고가
           // 이미 준비된 상태면 MAIN만으로도 즉시 정확하므로 markDataArrived가 바로 교정한다.
           if(typeof markDataArrived === "function") markDataArrived("main");
+          if(typeof setLoadDone === "function") setLoadDone("main");
           else if(typeof refreshActiveViewAfterData === "function") refreshActiveViewAfterData();
         }
       }catch(_){ }
@@ -4199,6 +4240,7 @@ invRenderAll();
 invServerLoaded = true;   // 서버에서 재고를 실제로 받음 → 지연건수 정확히 계산 가능
 // 화면 교정은 markDataArrived가 담당한다(MAIN·재고 둘 다 왔을 때 1회만). 중복 재렌더 방지.
 if(typeof markDataArrived === "function") markDataArrived("inv");
+if(typeof setLoadDone === "function") setLoadDone("inv");
 else if(typeof refreshActiveViewAfterData === "function") refreshActiveViewAfterData();
 cacheSet("cache_invData", invData);
 cacheSet("invLastSync", Date.now());
@@ -4377,6 +4419,7 @@ function fetchQualityData(){
 });
     const nowStr = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit", minute:"2-digit"});
     statusEl.textContent = "연동 완료 · 마지막 업데이트 " + nowStr + (warnings.length ? " · 일부 오류: "+warnings.join(" / ") : "");
+    if(typeof setLoadDone === "function") setLoadDone("quality");
     renderQualityAll();
   }).catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
 }
@@ -5914,6 +5957,8 @@ window.__qualityInited = true;
     if(enterBtn.disabled) return;
     splash.classList.add("hide");
     setTimeout(()=>{ splash.style.display = "none"; }, 450);
+    // 스플래시를 닫고 들어간 뒤, 아직 안 온 데이터가 있으면 상단 배너로 알린다.
+    if(typeof updateLoadingBanner === "function") updateLoadingBanner();
   });
 
   // 앱 스크립트가 로드된 뒤 시작
@@ -8029,6 +8074,7 @@ function fetchWaitInspData(){
 
     waitInspLoaded = true;
     waitInspSyncedAt = Date.now();
+    if(typeof setLoadDone === "function") setLoadDone("wait");
     idbSet("cache_waitInspData", { __data: waitInspData, __at: waitInspSyncedAt });
     if(statusEl) statusEl.textContent = "최신 · " + waitInspFmtAge(waitInspSyncedAt) + (warnings.length ? " · 읽기 실패: " + warnings.join(", ") : "");
     renderWaitInspTab();
