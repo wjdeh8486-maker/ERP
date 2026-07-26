@@ -4444,22 +4444,37 @@ function fetchQualityData(){
     const ncRes = results[QUALITY_SHEETS.length];
     if(ncRes && ncRes.success && Array.isArray(ncRes.rows)){
       qualityRawData[CUSTOMER_NC_KEY] = ncRes.rows.map(row=>{
-        const finder = String(getFieldFuzzy(row, "발견자")||"").trim();
+        // 성능: getFieldFuzzy는 호출마다 Object.keys를 순회하므로, 행당 14번 부르면 느리다.
+        // 행의 키를 한 번만 정규화해 맵으로 만든 뒤, 각 필드를 그 맵에서 바로 찾는다.
+        const normMap = {};
+        Object.keys(row).forEach(function(k){
+          const nk = normalizeHeaderKey(k);
+          if(normMap[nk] === undefined) normMap[nk] = row[k];
+        });
+        const pick = function(label){
+          const t = normalizeHeaderKey(label);
+          if(normMap[t] !== undefined) return normMap[t];
+          // 부분일치 폴백(정확 키가 없을 때만)
+          const keys = Object.keys(normMap);
+          for(let i=0;i<keys.length;i++){ if(keys[i].includes(t)) return normMap[keys[i]]; }
+          return undefined;
+        };
+        const finder = String(pick("발견자")||"").trim();
         return {
-          date: parseQualityDate(getFieldFuzzy(row, "접수일")),
-          partNo: String(getFieldFuzzy(row, "품번")||"").trim(),
-          partName: String(getFieldFuzzy(row, "품명")||"").trim(),
-          sn: String(getFieldFuzzy(row, "S/N")||"").trim(),
-          method: String(getFieldFuzzy(row, "접수방법")||"").trim(),
+          date: parseQualityDate(pick("접수일")),
+          partNo: String(pick("품번")||"").trim(),
+          partName: String(pick("품명")||"").trim(),
+          sn: String(pick("S/N")||"").trim(),
+          method: String(pick("접수방법")||"").trim(),
           finder,
-          qty: Number(getFieldFuzzy(row, "수량"))||0,
-          content: String(getFieldFuzzy(row, "접수내용")||"").trim(),
-          treatment: String(getFieldFuzzy(row, "처리내용")||"").trim(),
-          note: String(getFieldFuzzy(row, "비고")||"").trim(),
-          temp: String(getFieldFuzzy(row, "임시조치")||"").trim(),
-          doneDate: String(getFieldFuzzy(row, "조치완료일")||"").trim(),
-          reportDate: String(getFieldFuzzy(row, "대책서송부일")||"").trim(),
-          validation: String(getFieldFuzzy(row, "유효성확인")||"").trim(),
+          qty: Number(pick("수량"))||0,
+          content: String(pick("접수내용")||"").trim(),
+          treatment: String(pick("처리내용")||"").trim(),
+          note: String(pick("비고")||"").trim(),
+          temp: String(pick("임시조치")||"").trim(),
+          doneDate: String(pick("조치완료일")||"").trim(),
+          reportDate: String(pick("대책서송부일")||"").trim(),
+          validation: String(pick("유효성확인")||"").trim(),
           isDev: finder.includes("개발")
         };
       }).filter(r=>r.date && r.qty > 0);
@@ -5925,7 +5940,10 @@ window.__qualityInited = true;
     // 4개 데이터를 동시에 받는다(병렬). MAIN은 fetchMainData 내부에서 우선 반영되므로
     // 지연건수 등은 MAIN이 오는 즉시 정확해지고, 전체 대기는 가장 느린 하나만큼만 걸린다.
     const runStep = function(st){
+      const t0 = Date.now();
       return withTimeout(st.run(), 30000).then(function(r){
+        // 진단: 각 데이터가 몇 초 걸렸는지 콘솔에 표시 (F12로 확인)
+        console.log("[로딩] " + st.label + ": " + ((Date.now()-t0)/1000).toFixed(1) + "초" + (r==="timeout" ? " (타임아웃!)" : ""));
         if(r !== "timeout") ok++;
         done++;
         setStep(st.key, "done");
