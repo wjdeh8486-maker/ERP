@@ -4490,18 +4490,25 @@ function idbSet(key, value){
 }
 function idbGet(key){
   return new Promise((resolve)=>{
+    let settled = false;
+    const done = (v)=>{ if(!settled){ settled = true; resolve(v); } };
+    // 안전장치: 3초 안에 안 끝나면(DB가 다른 트랜잭션에 막힌 경우 등) 캐시 없음으로 진행.
+    // 캐시 읽기가 로딩 전체를 막지 않도록 한다(최신 데이터는 어차피 fetch로 온다).
+    setTimeout(()=>done(null), 3000);
     try{
       const req = indexedDB.open("erp_cache_db", 1);
       req.onupgradeneeded = ()=>{ req.result.createObjectStore("kv"); };
+      req.onblocked = ()=>done(null);
       req.onsuccess = ()=>{
         const db = req.result;
         const tx = db.transaction("kv","readonly");
         const getReq = tx.objectStore("kv").get(key);
-        getReq.onsuccess = ()=>resolve(getReq.result || null);
-        getReq.onerror = ()=>resolve(null);
+        getReq.onsuccess = ()=>done(getReq.result || null);
+        getReq.onerror = ()=>done(null);
+        tx.onabort = ()=>done(null);
       };
-      req.onerror = ()=>resolve(null);
-    }catch(e){ resolve(null); }
+      req.onerror = ()=>done(null);
+    }catch(e){ done(null); }
   });
 }
 function cacheSetQualityData(){
