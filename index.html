@@ -4408,9 +4408,16 @@ function fetchQualityData(){
           partNo: String(getFieldFuzzy(row, "품번")||"").trim(),
           partName: String(getFieldFuzzy(row, "품명")||"").trim(),
           sn: String(getFieldFuzzy(row, "S/N")||"").trim(),
+          method: String(getFieldFuzzy(row, "접수방법")||"").trim(),
           finder,
           qty: Number(getFieldFuzzy(row, "수량"))||0,
           content: String(getFieldFuzzy(row, "접수내용")||"").trim(),
+          treatment: String(getFieldFuzzy(row, "처리내용")||"").trim(),
+          note: String(getFieldFuzzy(row, "비고")||"").trim(),
+          temp: String(getFieldFuzzy(row, "임시조치")||"").trim(),
+          doneDate: String(getFieldFuzzy(row, "조치완료일")||"").trim(),
+          reportDate: String(getFieldFuzzy(row, "대책서송부일")||"").trim(),
+          validation: String(getFieldFuzzy(row, "유효성확인")||"").trim(),
           isDev: finder.includes("개발")
         };
       }).filter(r=>r.date && r.qty > 0);
@@ -8426,7 +8433,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* ===================== 부적합 등록 (1단계: 등록 + 품번 검색) ===================== */
-(function(){
+function __initNcRegister(){
   const modal = document.getElementById("nc-formModal");
   if(!modal) return;
 
@@ -8461,15 +8468,24 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     empty.style.display = "none";
-    body.innerHTML = rows.map(function(r){
-      return "<tr><td style=\"text-align:center;\">" + fmtDate(r.date) + "</td>" +
+    __ncRenderedRows = rows;   // 클릭 시 참조할 현재 목록
+    body.innerHTML = rows.map(function(r, idx){
+      return "<tr data-ncidx=\"" + idx + "\"><td style=\"text-align:center;\">" + fmtDate(r.date) + "</td>" +
       "<td style=\"text-align:center;\">" + (r.partNo||"") + "</td>" +
       "<td style=\"text-align:center;\">" + (r.partName||"") + "</td>" +
       "<td style=\"text-align:center;\">" + (r.qty||"") + "</td>" +
       "<td style=\"text-align:center;\">" + (r.finder||"") + "</td>" +
       "<td>" + (r.content||"") + "</td></tr>";
     }).join("");
+    // 행 클릭 → 수정 팝업
+    body.querySelectorAll("tr[data-ncidx]").forEach(function(tr){
+      tr.addEventListener("click", function(){
+        const idx = parseInt(tr.getAttribute("data-ncidx"), 10);
+        if(__ncRenderedRows[idx]) openEditForm(__ncRenderedRows[idx]);
+      });
+    });
   }
+  let __ncRenderedRows = [];
   function openForm(){
     document.getElementById("nc-f-partNo").value = "";
     document.getElementById("nc-f-date").value = fmtDate(new Date());
@@ -8487,6 +8503,47 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("nc-f-reportDate").value = "";
     document.getElementById("nc-f-validation").value = "";
     document.getElementById("nc-formMsg").textContent = "";
+    // 등록 모드로 설정
+    __ncEditTarget = null;
+    document.getElementById("nc-formTitle").textContent = "📝 새 부적합 접수 등록";
+    document.getElementById("nc-formSubmit").textContent = "등록";
+    document.getElementById("nc-formDelete").style.display = "none";
+    document.getElementById("nc-f-partNo").readOnly = false;
+    document.getElementById("nc-f-date").readOnly = false;
+    modal.style.display = "flex";
+  }
+  // 수정 모드로 팝업 열기 (목록 행 클릭 시)
+  let __ncEditTarget = null;
+  function openEditForm(rec){
+    __ncEditTarget = {
+      // 행 식별 기준(원본 값 보존) — 수정/삭제 시 서버로 보냄
+      partNo: rec.partNo || "",
+      date: fmtDate(rec.date),
+      content: rec.content || ""
+    };
+    document.getElementById("nc-f-partNo").value = rec.partNo || "";
+    document.getElementById("nc-f-date").value = fmtDate(rec.date);
+    document.getElementById("nc-f-method").value = rec.method || "";
+    document.getElementById("nc-f-finder").value = rec.finder || "";
+    document.getElementById("nc-f-partName").value = rec.partName || "";
+    document.getElementById("nc-f-partName").dataset.auto = "";
+    document.getElementById("nc-f-qty").value = rec.qty || "";
+    document.getElementById("nc-f-sn").value = rec.sn || "";
+    document.getElementById("nc-f-content").value = rec.content || "";
+    document.getElementById("nc-f-treatment").value = rec.treatment || "";
+    document.getElementById("nc-f-note").value = rec.note || "";
+    document.getElementById("nc-f-temp").value = rec.temp || "";
+    document.getElementById("nc-f-doneDate").value = rec.doneDate || "";
+    document.getElementById("nc-f-reportDate").value = rec.reportDate || "";
+    document.getElementById("nc-f-validation").value = rec.validation || "";
+    document.getElementById("nc-formMsg").textContent = "";
+    // 수정 모드 UI
+    document.getElementById("nc-formTitle").textContent = "✏️ 부적합 수정";
+    document.getElementById("nc-formSubmit").textContent = "저장";
+    document.getElementById("nc-formDelete").style.display = "";
+    // 행 식별 기준(품번·접수일·접수내용)은 수정 못 하게 잠금 — 바꾸면 행을 못 찾음
+    document.getElementById("nc-f-partNo").readOnly = true;
+    document.getElementById("nc-f-date").readOnly = true;
     modal.style.display = "flex";
   }
   function closeForm(){ modal.style.display = "none"; }
@@ -8515,37 +8572,90 @@ document.addEventListener("DOMContentLoaded", () => {
       "\uc720\ud6a8\uc131\ud655\uc778": document.getElementById("nc-f-validation").value.trim()
     };
     const submitBtn = document.getElementById("nc-formSubmit");
-    submitBtn.disabled = true; submitBtn.textContent = "\ub4f1\ub85d \uc911\u2026";
+    const isEdit = !!__ncEditTarget;
+    submitBtn.disabled = true; submitBtn.textContent = isEdit ? "\uc800\uc7a5 \uc911\u2026" : "\ub4f1\ub85d \uc911\u2026";
     msg.style.color = "#C0392B"; msg.textContent = "";
     try{
-      const res = await fetch(url, {
-        method:"POST",
-        body: JSON.stringify({ action:"addRow", sheetName: CUSTOMER_NC_KEY, row: row })
-      }).then(function(r){ return r.json(); });
+      const payload = isEdit
+        ? { action:"updateNcRow", sheetName: CUSTOMER_NC_KEY, match: __ncEditTarget, row: row }
+        : { action:"addRow", sheetName: CUSTOMER_NC_KEY, row: row };
+      const res = await fetch(url, { method:"POST", body: JSON.stringify(payload) }).then(function(r){ return r.json(); });
       if(res && res.success){
         msg.style.color = "#1D9E75";
-        msg.textContent = "\ub4f1\ub85d\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \ubaa9\ub85d\uc744 \uac31\uc2e0\ud569\ub2c8\ub2e4\u2026";
+        msg.textContent = (isEdit ? "\uc218\uc815\ub418\uc5c8\uc2b5\ub2c8\ub2e4." : "\ub4f1\ub85d\ub418\uc5c8\uc2b5\ub2c8\ub2e4.") + " \ubaa9\ub85d\uc744 \uac31\uc2e0\ud569\ub2c8\ub2e4\u2026";
         if(typeof qualityRawData !== "undefined"){
           if(!qualityRawData[CUSTOMER_NC_KEY]) qualityRawData[CUSTOMER_NC_KEY] = [];
-          qualityRawData[CUSTOMER_NC_KEY].push({
+          const localRec = {
             date: new Date(date), partNo: partNo,
-            finder: row["\ubc1c\uacac\uc790"], qty: Number(row["\uc218 \ub7c9"])||0,
-            content: row["\uc811\uc218 \ub0b4\uc6a9"], partName: row["\ud488  \uba85"], sn: row["S/N"]
-          });
+            method: row["\uc811\uc218 \ubc29\ubc95"], finder: row["\ubc1c\uacac\uc790"],
+            partName: row["\ud488  \uba85"], qty: Number(row["\uc218 \ub7c9"])||0, sn: row["S/N"],
+            content: row["\uc811\uc218 \ub0b4\uc6a9"], treatment: row["\ucc98\ub9ac \ub0b4\uc6a9"],
+            note: row["\ube44 \uace0"], temp: row["\uc784\uc2dc\uc870\uce58"],
+            doneDate: row["\uc870\uce58\uc644\ub8cc\uc77c"], reportDate: row["\ub300\ucc45\uc11c\uc1a1\ubd80\uc77c"],
+            validation: row["\uc720\ud6a8\uc131\ud655\uc778"]
+          };
+          if(isEdit){
+            // 로컬에서 해당 항목 찾아 교체
+            const arr = qualityRawData[CUSTOMER_NC_KEY];
+            const i = arr.findIndex(function(x){
+              return String(x.partNo||"").trim()===__ncEditTarget.partNo.trim()
+                && fmtDate(x.date)===__ncEditTarget.date
+                && String(x.content||"").trim()===__ncEditTarget.content.trim();
+            });
+            if(i>=0) arr[i] = localRec; else arr.push(localRec);
+          } else {
+            qualityRawData[CUSTOMER_NC_KEY].push(localRec);
+          }
         }
         setTimeout(function(){ closeForm(); renderNcList(document.getElementById("nc-searchInput").value); }, 600);
       } else {
-        msg.textContent = "\ub4f1\ub85d \uc2e4\ud328: " + ((res && res.error) || "\uc54c \uc218 \uc5c6\ub294 \uc624\ub958");
+        msg.textContent = (isEdit ? "\uc218\uc815" : "\ub4f1\ub85d") + " \uc2e4\ud328: " + ((res && res.error) || "\uc54c \uc218 \uc5c6\ub294 \uc624\ub958");
       }
     }catch(e){
-      msg.textContent = "\ub4f1\ub85d \uc2e4\ud328: \ub124\ud2b8\uc6cc\ud06c \uc624\ub958. URL\uacfc \ubc30\ud3ec \uad8c\ud55c(\ubaa8\ub4e0 \uc0ac\uc6a9\uc790)\uc744 \ud655\uc778\ud574 \uc8fc\uc138\uc694.";
+      msg.textContent = "\uc2e4\ud328: \ub124\ud2b8\uc6cc\ud06c \uc624\ub958. URL\uacfc \ubc30\ud3ec \uad8c\ud55c(\ubaa8\ub4e0 \uc0ac\uc6a9\uc790)\uc744 \ud655\uc778\ud574 \uc8fc\uc138\uc694.";
     }
-    submitBtn.disabled = false; submitBtn.textContent = "\ub4f1\ub85d";
+    submitBtn.disabled = false; submitBtn.textContent = __ncEditTarget ? "\uc800\uc7a5" : "\ub4f1\ub85d";
   }
   document.getElementById("nc-newBtn").addEventListener("click", openForm);
   document.getElementById("nc-formClose").addEventListener("click", closeForm);
   document.getElementById("nc-formCancel").addEventListener("click", closeForm);
   document.getElementById("nc-formSubmit").addEventListener("click", submitForm);
+
+  // 삭제 (수정 모드에서만 보임)
+  async function deleteRecord(){
+    if(!__ncEditTarget) return;
+    if(!confirm("이 부적합을 삭제하시겠습니까?\\n\\n품번: " + __ncEditTarget.partNo + "\\n접수일: " + __ncEditTarget.date + "\\n\\n삭제하면 되돌릴 수 없습니다.")) return;
+    const msg = document.getElementById("nc-formMsg");
+    const url = ncUrl();
+    if(!url){ msg.style.color="#C0392B"; msg.textContent = "Apps Script URL을 먼저 설정해 주세요."; return; }
+    const delBtn = document.getElementById("nc-formDelete");
+    delBtn.disabled = true; delBtn.textContent = "삭제 중…";
+    try{
+      const res = await fetch(url, {
+        method:"POST",
+        body: JSON.stringify({ action:"deleteNcRow", sheetName: CUSTOMER_NC_KEY, match: __ncEditTarget })
+      }).then(function(r){ return r.json(); });
+      if(res && res.success){
+        msg.style.color = "#1D9E75"; msg.textContent = "삭제되었습니다. 목록을 갱신합니다…";
+        if(typeof qualityRawData !== "undefined" && qualityRawData[CUSTOMER_NC_KEY]){
+          const arr = qualityRawData[CUSTOMER_NC_KEY];
+          const i = arr.findIndex(function(x){
+            return String(x.partNo||"").trim()===__ncEditTarget.partNo.trim()
+              && fmtDate(x.date)===__ncEditTarget.date
+              && String(x.content||"").trim()===__ncEditTarget.content.trim();
+          });
+          if(i>=0) arr.splice(i,1);
+        }
+        setTimeout(function(){ closeForm(); renderNcList(document.getElementById("nc-searchInput").value); }, 600);
+      } else {
+        msg.style.color="#C0392B"; msg.textContent = "삭제 실패: " + ((res && res.error) || "알 수 없는 오류");
+      }
+    }catch(e){
+      msg.style.color="#C0392B"; msg.textContent = "삭제 실패: 네트워크 오류.";
+    }
+    delBtn.disabled = false; delBtn.textContent = "🗑 삭제";
+  }
+  document.getElementById("nc-formDelete").addEventListener("click", deleteRecord);
   modal.addEventListener("click", function(e){ if(e.target === modal) closeForm(); });
 
   // 품번 입력 시 MAIN 데이터에서 품명을 찾아 자동으로 채운다.
@@ -8584,7 +8694,13 @@ document.addEventListener("DOMContentLoaded", () => {
     nav.addEventListener("click", function(){ setTimeout(function(){ renderNcList(""); }, 50); });
   });
   window.renderNcList = renderNcList;
-})();
+}
+// 모달 HTML이 이 스크립트 뒤에 있으므로, DOM이 완성된 후 초기화한다.
+if(document.readyState === "loading"){
+  document.addEventListener("DOMContentLoaded", __initNcRegister);
+} else {
+  __initNcRegister();
+}
 
 </script>
 <div id="print-area" style="display:none;"></div>
@@ -8592,7 +8708,7 @@ document.addEventListener("DOMContentLoaded", () => {
 <div id="nc-formModal" style="display:none;position:fixed;inset:0;background:rgba(20,24,35,0.55);z-index:9998;align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto;">
   <div style="width:100%;max-width:560px;background:#fff;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,0.35);overflow:hidden;">
     <div style="background:#2A3150;color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
-      <span style="font-size:15px;font-weight:600;">📝 새 부적합 접수 등록</span>
+      <span id="nc-formTitle" style="font-size:15px;font-weight:600;">📝 새 부적합 접수 등록</span>
       <span id="nc-formClose" style="cursor:pointer;font-size:18px;">&times;</span>
     </div>
     <div style="padding:18px 20px 20px;">
@@ -8613,6 +8729,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="nc-field"><label>유효성확인</label><input id="nc-f-validation" type="text" placeholder="유효성 확인 결과(선택)"></div>
       <div id="nc-formMsg" style="font-size:12.5px;color:#C0392B;min-height:16px;margin-top:4px;"></div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
+        <button id="nc-formDelete" type="button" style="background:#fdf0ee;color:#C0392B;border:1px solid #e3b7b0;margin-right:auto;display:none;">🗑 삭제</button>
         <button id="nc-formCancel" type="button" style="background:#eef0f4;color:#333;">취소</button>
         <button id="nc-formSubmit" type="button" style="background:#2f6fed;color:#fff;">등록</button>
       </div>
