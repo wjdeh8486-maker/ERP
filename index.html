@@ -212,6 +212,7 @@
   /* 테이블 도번 링크: 화면에서는 클릭 가능, 인쇄 시 일반 텍스트 */
   a.dwg-a{color:#1a4fbd;text-decoration:underline;text-underline-offset:2px;cursor:pointer;}
   a.dwg-a:hover{color:#2f6fed;}
+  .dwg-none{color:#9AA5B4;cursor:default;text-decoration:none;}
   @media print{ a.dwg-a{color:inherit !important;text-decoration:none !important;} }
   .stat-card.progress{flex:1 1 300px;min-width:275px;}
   .stat-card.progress .label{color:var(--red);}
@@ -1619,6 +1620,42 @@ function dwgSearchUrl(no){
   return DRAWING_SERVER + "/search?q=" + encodeURIComponent(String(no || "").trim());
 }
 
+// ── 도면 PDF 존재 판별 ───────────────────────────────────────
+// 서버 /list에서 'PDF가 있는 도번들의 정규화명' 집합을 받아둔다.
+// 각 도번이 이 집합에 부분일치하면 PDF가 있는 것으로 보고 링크를 활성화한다.
+let __dwgPdfSet = null;        // Set of normalized names (null = 아직 못 받음)
+let __dwgListLoaded = false;
+// 서버 norm과 동일: 소문자화 후 숫자/영문/한글만 남김
+function dwgNorm(s){
+  return String(s == null ? "" : s).toLowerCase().replace(/[^0-9a-z가-힣]/g, "");
+}
+function loadDwgList(){
+  // 목록을 한 번 받아 캐시. 실패해도 앱은 정상 동작(전부 링크 활성 폴백).
+  return fetch(DRAWING_SERVER + "/list", { cache: "no-store" })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if(res && res.ok && Array.isArray(res.pdfs)){
+        __dwgPdfSet = new Set(res.pdfs);
+        __dwgListLoaded = true;
+        if(typeof refreshDwgLinks === "function") refreshDwgLinks();  // 이미 그려진 링크 갱신
+      }
+      return __dwgPdfSet;
+    })
+    .catch(function(){ __dwgPdfSet = null; return null; });
+}
+// 이 도번의 PDF가 있는지. 목록을 못 받았으면(null) '있음'으로 간주(기존처럼 클릭 허용).
+function dwgHasPdf(no){
+  if(!__dwgPdfSet) return true;              // 목록 없음 → 판별 불가 → 활성(폴백)
+  const key = dwgNorm(no);
+  if(!key) return false;
+  if(__dwgPdfSet.has(key)) return true;
+  // 부분일치(파일명이 도번을 포함하는 경우). 도번이 6자 이상일 때만 부분일치 허용.
+  if(key.length >= 6){
+    for(const p of __dwgPdfSet){ if(p.indexOf(key) !== -1) return true; }
+  }
+  return false;
+}
+
 // 프로그램 방식 이동 (테이블 링크 폴백 등에서 사용)
 function openDrawing(no){
   const q = String(no || "").trim();
@@ -1635,8 +1672,27 @@ function dwgLink(no){
   const v = String(no || "").trim();
   if(!v) return "";
   const safe = v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  // PDF가 없으면 회색 비활성(클릭 불가). 목록을 못 받았으면 기존처럼 활성.
+  if(!dwgHasPdf(v)){
+    return '<span class="dwg-none" data-dwgno="' + safe + '" title="등록된 도면 PDF가 없습니다">' + safe + '</span>';
+  }
   const href = dwgSearchUrl(v).replace(/"/g,"&quot;");
-  return '<a href="' + href + '" target="_blank" rel="noopener" class="dwg-a" title="도면 PDF 열기">' + safe + '</a>';
+  return '<a href="' + href + '" target="_blank" rel="noopener" class="dwg-a" data-dwgno="' + safe + '" title="도면 PDF 열기">' + safe + '</a>';
+}
+
+// 목록(/list)이 (늦게) 도착하면, 이미 그려진 도번 표시를 다시 칠한다.
+// - PDF 없는 도번: 파란 링크 <a> → 회색 <span>(클릭 불가)
+// - PDF 있는 도번: 회색 <span> → 파란 링크 <a>
+function refreshDwgLinks(){
+  document.querySelectorAll("[data-dwgno]").forEach(function(el){
+    const no = el.getAttribute("data-dwgno");
+    const html = dwgLink(no);
+    // 바깥 요소를 새 표현으로 교체
+    const tmp = document.createElement("span");
+    tmp.innerHTML = html;
+    const fresh = tmp.firstChild;
+    if(fresh && el.parentNode) el.parentNode.replaceChild(fresh, el);
+  });
 }
 
 // 도면 서버 응답 확인 (모바일 최초 사용 시 인증서 미승인 감지용)
@@ -1711,6 +1767,12 @@ function checkDwgServer(){
   }
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindDwgSearch);
   else bindDwgSearch();
+  // 접속 시 도면 PDF 목록을 받아둔다(있는 도번만 파란 링크·나머지는 회색 처리).
+  // 서버 연결이 안 되면 조용히 넘어가고 종전처럼 전부 링크 활성으로 폴백된다.
+  if(typeof loadDwgList === "function"){
+    if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", function(){ loadDwgList(); });
+    else loadDwgList();
+  }
 
   // 앱 전환·뒤로가기 등으로 페이지가 복원될 때 잔류 상태 정리
   // (절전 복원 시 "연결 중..." 토스트가 남아 화면을 가리는 것을 방지)
