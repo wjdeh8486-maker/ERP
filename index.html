@@ -5660,7 +5660,7 @@ function overdueGetRows(){
 }
 // 검색창 필터까지 적용한 결과를 돌려줍니다. 화면 표시/인쇄/엑셀 다운로드가 전부 이 함수 하나를
 // 공유해서, "검색 결과만 인쇄"·"검색 결과만 다운로드"가 실제로 검색 결과와 항상 일치합니다.
-let overdueSelectedStatuses = ["생산","재고","출고","측정","외관","비젼","OK"];
+let overdueSelectedStatuses = ["생산","재고","출고","수입","측정","외관","비젼","OK"];
 function overdueGetFilteredRows(){
   const raw = document.getElementById("overdue-searchInput").value.trim().toLowerCase();
   let rows = overdueGetRows();
@@ -5696,7 +5696,7 @@ document.querySelectorAll("#overdue-statusDropdown input[type=checkbox]").forEac
   cb.addEventListener("change", ()=>{
     overdueSelectedStatuses = Array.from(document.querySelectorAll("#overdue-statusDropdown input[type=checkbox]:checked")).map(el=>el.value);
     const btn = document.getElementById("overdue-statusToggle");
-    const ALL = ["생산","재고","출고","측정","외관","비젼","OK"];
+    const ALL = ["생산","재고","출고","수입","측정","외관","비젼","OK"];
     btn.textContent = overdueSelectedStatuses.length===ALL.length ? "전체 상태 ▾" : `${ALL.length-overdueSelectedStatuses.length}개 제외 ▾`;
     overdueApplySearch();
   });
@@ -5704,7 +5704,7 @@ document.querySelectorAll("#overdue-statusDropdown input[type=checkbox]").forEac
 document.getElementById("overdue-statusRestoreBtn").addEventListener("click", (e)=>{
   e.stopPropagation();
   document.querySelectorAll("#overdue-statusDropdown input[type=checkbox]").forEach(cb=>{ cb.checked = true; });
-  overdueSelectedStatuses = ["생산","재고","출고","측정","외관","비젼","OK"];
+  overdueSelectedStatuses = ["생산","재고","출고","수입","측정","외관","비젼","OK"];
   document.getElementById("overdue-statusToggle").textContent = "전체 상태 ▾";
   overdueApplySearch();
 });
@@ -5713,7 +5713,7 @@ let overdueStatusSelectAll = true;
 document.getElementById("overdue-statusToggleSelectAllBtn").addEventListener("click", ()=>{
   overdueStatusSelectAll = !overdueStatusSelectAll;
   const btn = document.getElementById("overdue-statusToggleSelectAllBtn");
-  const ALL = ["생산","재고","출고","측정","외관","비젼","OK"];
+  const ALL = ["생산","재고","출고","수입","측정","외관","비젼","OK"];
   
   if(overdueStatusSelectAll){
     // 전체 선택
@@ -7924,12 +7924,15 @@ function renderHistoryView(keyword){
               const due = mgmtYmdToDate(r.dueDate), ship = mgmtYmdToDate(r.shipDate);
               const late = (due && ship) ? Math.round((ship-due)/86400000) : null;
               const st = computeProductStatus(r);
+              // 최종납기가 오늘 기준 지났는데 아직 납품/완료 안 된 건은 납기일을 빨간색으로 강조
+              const dueOverdue = (typeof isOverdue === "function" && isOverdue(r.dueDate)
+                                  && r.shipped !== "납품완료" && st !== "완료" && st !== "출고");
               return `<tr style="border-bottom:1px solid #EAEDF2;text-align:center;">
                 <td style="padding:6px;">${esc(r.orderNo)}</td>
                 <td style="padding:6px;">${esc(r.vendor||'-')}</td>
                 <td style="padding:6px;">${esc(r.customer||'')}</td>
                 <td style="padding:6px;">${r.qty}</td>
-                <td style="padding:6px;">${esc(r.dueDate||'')}</td>
+                <td style="padding:6px;${dueOverdue ? 'color:#E02424;font-weight:700;' : ''}">${esc(r.dueDate||'')}</td>
                 <td style="padding:6px;">${esc(r.shipDate||'-')}</td>
                 <td style="padding:6px;${late!==null && late>0 ? 'color:#E02424;font-weight:400;' : 'color:#2E7D46;'}">${late===null ? '-' : (late>0 ? '+'+late+'일' : '정시')}</td>
                 <td style="padding:6px;"><span class="badge status-${st}">${st}</span></td>
