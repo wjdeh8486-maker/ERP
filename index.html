@@ -1495,6 +1495,12 @@
       <div class="search-box">
         <input id="qchist-partNo" type="text" placeholder="도번 (예: 61031-00)">
         <input id="qchist-sn" type="text" placeholder="S/N (예: 186) — 선택" style="flex:0 0 160px;max-width:160px;">
+        <select id="qchist-sort" title="S/N 리스트 정렬 기준">
+          <option value="date-desc" selected>최근검사일 늦은순</option>
+          <option value="date-asc">최근검사일 빠른순</option>
+          <option value="sn-asc">S/N 오름차순</option>
+          <option value="sn-desc">S/N 내림차순</option>
+        </select>
         <button id="qchist-searchBtn">🔍 조회</button>
         <button id="qchist-clearBtn">초기화</button>
       </div>
@@ -8729,6 +8735,26 @@ const QC_COLS = [
   { key:"packing",   label:"포장" }
 ];
 function qcEsc(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+let qchistLast = null;   // 마지막 조회 결과(재정렬용)
+// S/N 리스트 정렬 (재고확인과 동일한 숫자 인식 정렬 규칙)
+function qchistSortList(list, mode){
+  const numCmp = (x,y)=> String(x).localeCompare(String(y), undefined, {numeric:true});
+  const byDate = (a,b,dir)=>{
+    const da=a.latest||"", db=b.latest||"";
+    if(da!==db){
+      if(!da) return 1;        // 날짜 없는 항목은 항상 맨 아래
+      if(!db) return -1;
+      return dir==="asc" ? da.localeCompare(db) : db.localeCompare(da);
+    }
+    return numCmp(a.sn, b.sn); // 같은 날짜면 S/N 오름차순(숫자)
+  };
+  const arr = list.slice();
+  if(mode==="date-asc")      arr.sort((a,b)=>byDate(a,b,"asc"));
+  else if(mode==="sn-asc")   arr.sort((a,b)=>numCmp(a.sn,b.sn));
+  else if(mode==="sn-desc")  arr.sort((a,b)=>numCmp(b.sn,a.sn));
+  else                       arr.sort((a,b)=>byDate(a,b,"desc")); // date-desc(기본)
+  return arr;
+}
 function qchistApiUrl(){
   const u = document.getElementById("main-appsScriptUrl");
   const q = document.getElementById("quality-appsScriptUrl");
@@ -8745,10 +8771,12 @@ function qchistInit(){
   const pbtn  = document.getElementById("qchist-printBtn");
   const part  = document.getElementById("qchist-partNo");
   const sn    = document.getElementById("qchist-sn");
+  const sortSel = document.getElementById("qchist-sort");
   if(btn)  btn.addEventListener("click", qchistSearch);
   if(clr)  clr.addEventListener("click", qchistClear);
   if(mbtn) mbtn.addEventListener("click", qchistDownloadMaster);
   if(pbtn) pbtn.addEventListener("click", qchistPrint);
+  if(sortSel) sortSel.addEventListener("change", function(){ if(qchistLast) qchistRender(qchistLast); }); // 재검색 없이 즉시 재정렬
   [part, sn].forEach(function(inp){
     if(inp) inp.addEventListener("keydown", function(e){ if(e.key==="Enter") qchistSearch(); });
   });
@@ -8794,6 +8822,7 @@ function qchistSearch(){
     });
 }
 function qchistRender(data){
+  qchistLast = data;                       // 재정렬용 저장
   const master = data.master;
   const list   = data.list || [];
   const partNo = data.partNo || "";
@@ -8841,7 +8870,10 @@ function qchistRender(data){
   }
   const pass = list.filter(function(r){ return r.judge==="합격"; }).length;
   const fail = list.length - pass;
-  const rowsHtml = list.map(function(r){
+  const sortSel = document.getElementById("qchist-sort");
+  const sortMode = (sortSel && sortSel.value) || "date-desc";
+  const sortedList = qchistSortList(list, sortMode);
+  const rowsHtml = sortedList.map(function(r){
     const cells = QC_COLS.map(function(c){
       const req  = master[c.key]==="Y";
       const done = r[c.key]==="O";
@@ -8868,7 +8900,7 @@ function qchistRender(data){
     +   '<span style="font-size:12.5px;color:#E02424;font-weight:700;">불합격 ' + fail + '</span>'
     +   '<span style="font-size:12px;color:#6B7280;">총 ' + list.length + '건</span>'
     + '</div>'
-    + '<div style="font-size:11.5px;color:#8A93A6;margin-bottom:8px;">최근검사일(어느 공정이든 가장 최근) 내림차순 · O = 완료 · <span style="color:#E02424;font-weight:700;">✕</span> = 누락(필수인데 미실시) · – = 해당 없음</div>'
+    + '<div style="font-size:11.5px;color:#8A93A6;margin-bottom:8px;">정렬 기준은 상단 드롭다운에서 변경 (최근검사일/S/N) · O = 완료 · <span style="color:#E02424;font-weight:700;">✕</span> = 누락(필수인데 미실시) · – = 해당 없음</div>'
     + '<div style="overflow:auto;max-height:calc(100vh - 420px);border:1px solid #E5EAF1;border-radius:8px;">'
     +   '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
     +     '<thead><tr style="background:#1F2A44;color:#fff;position:sticky;top:0;">'
