@@ -908,6 +908,7 @@
     </div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
+    <div class="nav-item" data-view="qchist"><span class="dot"></span>🧪 검사이력조회</div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
     <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
     <div class="nav-item" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
@@ -1261,6 +1262,7 @@
         <button class="tab-btn" data-wtab="공정검사대기">공정검사대기</button>
         <button class="tab-btn" data-wtab="출하검사대기">출하검사대기</button>
         <button class="tab-btn" data-wtab="비젼검사대기">비젼검사대기</button>
+        <button class="tab-btn" data-wtab="검사기준표">🧭 검사 기준표</button>
       </div>
       <div id="waitinsp-content"></div>
     </div>
@@ -1486,6 +1488,27 @@
       <div class="tab-panel" id="qpanel-incoming"></div>
       <div class="tab-panel" id="qpanel-shipping"></div>
       <div class="tab-panel" id="qpanel-customer"></div>
+    </div>
+    <!-- ===================== 검사이력조회 (품질검사관리 2단계) VIEW ===================== -->
+    <div id="topbar-qchist" class="topbar" style="display:none;">
+      <h1>🧪 검사이력조회</h1>
+      <div class="search-box">
+        <input id="qchist-partNo" type="text" placeholder="도번 (예: 61031-00)">
+        <input id="qchist-sn" type="text" placeholder="S/N (예: 186) — 선택" style="flex:0 0 160px;max-width:160px;">
+        <button id="qchist-searchBtn">🔍 조회</button>
+        <button id="qchist-clearBtn">초기화</button>
+      </div>
+      <div class="topbar-right">
+        <button id="qchist-printBtn">🖨️ 인쇄</button>
+        <button id="qchist-masterBtn" type="button" class="tb-download-btn">📥 MASTER</button>
+      </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 도번이 <b>받아야 할 검사</b>(MASTER)와 S/N별 <b>실제 완료 여부</b>를 비교해 누락검사·합격/불합격을 판정합니다. S/N을 비우면 해당 도번의 전체 S/N을 조회합니다. <span id="qchist-status"></span></div>
+    </div>
+    <div class="view" id="view-qchist">
+      <div id="qchist-print-page" style="padding:16px;">
+        <div id="qchist-master" class="table-wrap" style="margin-bottom:16px;"></div>
+        <div id="qchist-list" class="table-wrap"></div>
+      </div>
     </div>
     <!-- ===================== SALES(매출현황) VIEW ===================== -->
     <div id="topbar-sales" class="topbar" style="display:none;">
@@ -2504,6 +2527,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("topbar-inventory").style.display = target==="inventory" ? "flex" : "none";
     document.getElementById("topbar-overdue").style.display = target==="overdue" ? "flex" : "none";
     document.getElementById("topbar-quality").style.display = target==="quality" ? "flex" : "none";
+    document.getElementById("topbar-qchist").style.display = target==="qchist" ? "flex" : "none";
     document.getElementById("topbar-sales").style.display = target==="sales" ? "flex" : "none";
     document.getElementById("topbar-vendor").style.display = target==="vendor" ? "flex" : "none";
     document.getElementById("topbar-summary").style.display = target==="summary" ? "flex" : "none";
@@ -2528,6 +2552,10 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="quality" && !window.__qualityInited){
       window.__qualityInited = true;
       runBusy(initQualityView);
+    }
+    if(target==="qchist" && !window.__qchistInited){
+      window.__qchistInited = true;
+      qchistInit();
     }
     if(target==="management"){
       // 도번 조회 메뉴: 마지막으로 보던 탭으로 복원
@@ -3862,6 +3890,57 @@ function applySharedCache(cache){
 let processData = []; // 생산공정현황 (도면번호, 수량, 등록일자, 현재진행공정)
 let incomingInspectionData = []; // 수입검사(외관) 검사결과
 let inhouseInspectionData = []; // 공정검사(사내외관) 검사결과 (수입검사 대기에서 추가 차감)
+
+/* ===== 도번별 검사 기준표 (검사 우선순위 1단계) =====
+ * 과거 검사 기록에서 "이 도번이 실제로 받는 검사"를 뽑아낸다.
+ *  - 기능  : 수입검사(기능) 시트에 'LEAK 검사일'이 하나라도 있으면 받는 것
+ *  - 측정  : 공정검사(치수,BOLT,LED) 시트에 '검사일'이 하나라도 있으면 받는 것
+ *  - BOLT  : 공정검사(치수,BOLT,LED) 시트에 '체결 검사일자'가 하나라도 있으면 받는 것
+ * "한 번이라도 받았으면 받는 검사"로 등록. 반복 도번일수록 정확해진다.
+ * 결과: { 도번: {기능:true/false, BOLT:.., 측정:.., count:{기능,BOLT,측정}} }
+ */
+let __dwgInspSpec = null;   // 도번별 검사 기준표 (캐시)
+function getDwgField_(row){
+  return String(row["도 번"] || row["도번"] || "").trim();
+}
+function hasDate_(v){
+  const s = String(v == null ? "" : v).trim();
+  return s !== "" && s !== "-" && s.toLowerCase() !== "null";
+}
+function buildDwgInspSpec(){
+  const spec = {};
+  const ensure = function(dwg){
+    if(!spec[dwg]) spec[dwg] = { 기능:false, BOLT:false, 측정:false,
+                                 count:{기능:0, BOLT:0, 측정:0} };
+    return spec[dwg];
+  };
+  const qd = (typeof qualityRawData !== "undefined") ? qualityRawData : {};
+
+  // 기능: 수입검사(기능) — LEAK 검사일
+  (qd["수입검사(기능)"] || []).forEach(function(r){
+    const dwg = getDwgField_(r); if(!dwg) return;
+    if(hasDate_(r["LEAK 검사일"])){ const s = ensure(dwg); s.기능 = true; s.count.기능++; }
+  });
+  // 측정 + BOLT: 공정검사(치수,BOLT,LED) — 검사일 / 체결 검사일자
+  (qd["공정검사(치수,BOLT,LED)"] || []).forEach(function(r){
+    const dwg = getDwgField_(r); if(!dwg) return;
+    if(hasDate_(r["검사일"])){ const s = ensure(dwg); s.측정 = true; s.count.측정++; }
+    if(hasDate_(r["체결 검사일자"])){ const s = ensure(dwg); s.BOLT = true; s.count.BOLT++; }
+  });
+  __dwgInspSpec = spec;
+  return spec;
+}
+// 특정 도번이 받는 검사 목록(문자열 배열)을 돌려준다.
+function dwgRequiredInspections(dwg){
+  if(!__dwgInspSpec) buildDwgInspSpec();
+  const s = __dwgInspSpec[String(dwg||"").trim()];
+  if(!s) return [];
+  const out = [];
+  if(s.기능) out.push("기능");
+  if(s.BOLT) out.push("BOLT");
+  if(s.측정) out.push("측정");
+  return out;
+}
 
 async function fetchMainData(yearsParam){
   const url = document.getElementById("main-appsScriptUrl").value.trim();
@@ -8262,10 +8341,77 @@ function waitInspFilter(list, kwOverride){
   return list.filter(r => dwgs.has(String(r.partNo||"").trim().toLowerCase()));
 }
 
+// 검사 기준표 탭 렌더: 도번별로 과거에 받은 검사(기능·BOLT·측정)를 표로 보여준다.
+// 이팀장님이 "이 도번이 이 검사를 받는 게 맞다"를 눈으로 검증하는 1단계 화면.
+function renderDwgInspSpecTab(el){
+  const qd = (typeof qualityRawData !== "undefined") ? qualityRawData : {};
+  const hasData = (qd["수입검사(기능)"] && qd["수입검사(기능)"].length) ||
+                  (qd["공정검사(치수,BOLT,LED)"] && qd["공정검사(치수,BOLT,LED)"].length);
+  if(!hasData){
+    el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">품질(검사종합) 데이터를 불러온 뒤 표시됩니다. 상단 품질분석에서 동기화해 주세요.</div>`;
+    return;
+  }
+  const spec = buildDwgInspSpec();
+  const dwgs = Object.keys(spec).sort();
+  const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const chk = b => b ? '<span style="color:#1D9E75;font-weight:700;">●</span>' : '<span style="color:#D5DAE4;">○</span>';
+
+  el.innerHTML = `
+    <div class="table-wrap" style="padding:14px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+        <input id="dwgspec-search" type="text" placeholder="도번 검색 (예: M200-001)" style="flex:1;min-width:200px;padding:9px 12px;border:1px solid #D5DAE4;border-radius:7px;font-size:13.5px;">
+        <span style="font-size:12px;color:#6B7280;">과거 검사 기록에서 <b>한 번이라도 받은 검사</b>를 ● 로 표시합니다. (도번 ${dwgs.length}개)</span>
+      </div>
+      <div style="font-size:11.5px;color:#8A93A6;margin-bottom:8px;">
+        기능 = 수입검사(기능) · 측정 = 공정검사 치수 · BOLT = 공정검사 체결
+      </div>
+      <div style="overflow:auto;max-height:calc(100vh - 320px);border:1px solid #E5EAF1;border-radius:8px;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#F6F8FB;position:sticky;top:0;">
+              <th style="padding:9px 12px;text-align:left;border-bottom:1px solid #E5EAF1;">도번</th>
+              <th style="padding:9px;text-align:center;border-bottom:1px solid #E5EAF1;width:80px;">기능</th>
+              <th style="padding:9px;text-align:center;border-bottom:1px solid #E5EAF1;width:80px;">BOLT</th>
+              <th style="padding:9px;text-align:center;border-bottom:1px solid #E5EAF1;width:80px;">측정</th>
+              <th style="padding:9px;text-align:center;border-bottom:1px solid #E5EAF1;width:110px;">받는 검사 수</th>
+            </tr>
+          </thead>
+          <tbody id="dwgspec-tbody">
+            ${dwgs.map(d=>{
+              const s = spec[d];
+              const cnt = (s.기능?1:0)+(s.BOLT?1:0)+(s.측정?1:0);
+              return `<tr data-dwg="${esc(d)}" style="border-bottom:1px solid #EEF1F5;">
+                <td style="padding:8px 12px;font-weight:600;">${esc(d)}</td>
+                <td style="padding:8px;text-align:center;">${chk(s.기능)}</td>
+                <td style="padding:8px;text-align:center;">${chk(s.BOLT)}</td>
+                <td style="padding:8px;text-align:center;">${chk(s.측정)}</td>
+                <td style="padding:8px;text-align:center;font-weight:700;color:${cnt===3?'#C0392B':cnt===2?'#B8860B':'#6B7280'};">${cnt}개</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  // 도번 검색 필터
+  const search = document.getElementById("dwgspec-search");
+  if(search){
+    search.addEventListener("input", function(){
+      const kw = search.value.trim().toLowerCase();
+      document.querySelectorAll("#dwgspec-tbody tr").forEach(function(tr){
+        const d = (tr.getAttribute("data-dwg")||"").toLowerCase();
+        tr.style.display = (!kw || d.includes(kw)) ? "" : "none";
+      });
+    });
+  }
+}
+
 function renderWaitInspTab(){
   const el = document.getElementById("waitinsp-content");
   if(!el) return;
   const key = waitInspActiveTab;
+  // 검사 기준표 탭: 도번별로 '받는 검사(기능·BOLT·측정)'를 과거 기록에서 뽑아 보여준다.
+  if(key === "검사기준표"){ renderDwgInspSpecTab(el); return; }
   const isIncoming = (key === "수입검사대기");
   if(isIncoming){
     if(!processData || !processData.length){
@@ -8564,6 +8710,213 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+/* ============================================================
+   🧪 검사이력조회 (품질검사관리 2단계)
+   - 백엔드(doGet)의 ?mode=qcSearch / ?mode=qcMaster 를 호출한다.
+   - 도번이 "받아야 할 검사"(MASTER)와 S/N별 "실제 완료 여부"(O)를
+     비교해 누락검사와 합격/불합격을 판정해 보여준다.
+   ============================================================ */
+const QC_COLS = [
+  { key:"exterior",  label:"외관" },
+  { key:"dimension", label:"치수" },
+  { key:"bolt",      label:"BOLT" },
+  { key:"led",       label:"LED"  },
+  { key:"flow",      label:"FLOW" },
+  { key:"leak",      label:"LEAK" },
+  { key:"pressure",  label:"가압" },
+  { key:"vacuum",    label:"진공" },
+  { key:"packing",   label:"포장" }
+];
+function qcEsc(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function qchistApiUrl(){
+  const u = document.getElementById("main-appsScriptUrl");
+  const q = document.getElementById("quality-appsScriptUrl");
+  return (u && u.value.trim()) || (q && q.value.trim()) || "";
+}
+function qchistSetStatus(msg, isErr){
+  const el = document.getElementById("qchist-status");
+  if(el){ el.textContent = msg || ""; el.style.color = isErr ? "#FFB4A2" : "#B9C2D6"; }
+}
+function qchistInit(){
+  const btn   = document.getElementById("qchist-searchBtn");
+  const clr   = document.getElementById("qchist-clearBtn");
+  const mbtn  = document.getElementById("qchist-masterBtn");
+  const pbtn  = document.getElementById("qchist-printBtn");
+  const part  = document.getElementById("qchist-partNo");
+  const sn    = document.getElementById("qchist-sn");
+  if(btn)  btn.addEventListener("click", qchistSearch);
+  if(clr)  clr.addEventListener("click", qchistClear);
+  if(mbtn) mbtn.addEventListener("click", qchistDownloadMaster);
+  if(pbtn) pbtn.addEventListener("click", qchistPrint);
+  [part, sn].forEach(function(inp){
+    if(inp) inp.addEventListener("keydown", function(e){ if(e.key==="Enter") qchistSearch(); });
+  });
+  // 초기 안내
+  document.getElementById("qchist-master").innerHTML =
+    '<div style="padding:40px 20px;text-align:center;color:#8A93A6;font-size:13.5px;">도번(또는 S/N)을 입력하고 <b>조회</b>를 누르면 MASTER 기준과 S/N별 검사 완료 현황이 표시됩니다.</div>';
+  document.getElementById("qchist-list").innerHTML = "";
+}
+function qchistClear(){
+  document.getElementById("qchist-partNo").value = "";
+  document.getElementById("qchist-sn").value = "";
+  qchistSetStatus("");
+  qchistInit.__done = true;
+  document.getElementById("qchist-master").innerHTML =
+    '<div style="padding:40px 20px;text-align:center;color:#8A93A6;font-size:13.5px;">도번(또는 S/N)을 입력하고 <b>조회</b>를 누르면 MASTER 기준과 S/N별 검사 완료 현황이 표시됩니다.</div>';
+  document.getElementById("qchist-list").innerHTML = "";
+  document.getElementById("qchist-partNo").focus();
+}
+function qchistSearch(){
+  const partNo = document.getElementById("qchist-partNo").value.trim();
+  const sn     = document.getElementById("qchist-sn").value.trim();
+  const url    = qchistApiUrl();
+  if(!url){ alert("Apps Script 웹 앱 URL이 설정되어 있지 않습니다. (품질분석 화면의 구글시트 연동 확인)"); return; }
+  if(!partNo && !sn){ alert("도번 또는 S/N을 입력해 주세요."); return; }
+  const btn = document.getElementById("qchist-searchBtn");
+  if(btn){ btn.disabled = true; btn.textContent = "조회 중…"; }
+  qchistSetStatus("조회 중…");
+  const q = url + "?mode=qcSearch&partNo=" + encodeURIComponent(partNo) + "&sn=" + encodeURIComponent(sn);
+  fetch(q, { cache:"no-store" })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(!data || !data.success){ throw new Error((data && data.error) || "조회 실패"); }
+      qchistRender(data);
+    })
+    .catch(function(e){
+      qchistSetStatus("오류: " + (e && e.message || e), true);
+      document.getElementById("qchist-master").innerHTML =
+        '<div style="padding:40px 20px;text-align:center;color:#C0392B;font-size:13.5px;">조회 중 오류가 발생했습니다.<br>' + qcEsc(e && e.message || e) + '</div>';
+      document.getElementById("qchist-list").innerHTML = "";
+    })
+    .finally(function(){
+      if(btn){ btn.disabled = false; btn.textContent = "🔍 조회"; }
+    });
+}
+function qchistRender(data){
+  const master = data.master;
+  const list   = data.list || [];
+  const partNo = data.partNo || "";
+  // MASTER 카드
+  if(!master){
+    document.getElementById("qchist-master").innerHTML =
+      '<div style="padding:36px 20px;text-align:center;color:#C0392B;font-size:13.5px;">'
+      + '입력하신 조건으로 MASTER(검사 기준)를 찾지 못했습니다.'
+      + (partNo ? '<br><span style="color:#6B7280;">도번: <b>' + qcEsc(partNo) + '</b></span>' : '')
+      + '<br><span style="color:#8A93A6;font-size:12px;">과거 검사 이력이 없는 신규 도번이거나 도번/S-N이 정확하지 않을 수 있습니다.</span></div>';
+    document.getElementById("qchist-list").innerHTML = "";
+    qchistSetStatus("MASTER 없음");
+    return;
+  }
+  const reqCount = QC_COLS.reduce(function(n,c){ return n + (master[c.key]==="Y" ? 1 : 0); }, 0);
+  document.getElementById("qchist-master").innerHTML =
+    '<div style="padding:14px 16px;">'
+    + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">'
+    +   '<span style="font-size:15px;font-weight:700;color:#1F2A44;">제품 MASTER</span>'
+    +   '<span style="font-size:13px;color:#0B5CAB;font-weight:700;background:#E7F0FB;border:1px solid #B9D2F0;border-radius:20px;padding:2px 12px;">' + qcEsc(partNo) + '</span>'
+    +   '<span style="font-size:12px;color:#6B7280;">필수 검사 <b style="color:#1F2A44;">' + reqCount + '개</b></span>'
+    + '</div>'
+    + '<div style="font-size:11.5px;color:#8A93A6;margin-bottom:8px;">● = 이 도번이 받아야 하는 검사 · ○ = 해당 없음</div>'
+    + '<div style="overflow:auto;border:1px solid #E5EAF1;border-radius:8px;">'
+    +   '<table style="width:100%;border-collapse:collapse;font-size:13px;text-align:center;">'
+    +     '<thead><tr style="background:#1F2A44;color:#fff;">'
+    +       QC_COLS.map(function(c){ return '<th style="padding:9px 8px;">' + c.label + '</th>'; }).join("")
+    +     '</tr></thead>'
+    +     '<tbody><tr>'
+    +       QC_COLS.map(function(c){
+              const req = master[c.key]==="Y";
+              return '<td style="padding:10px 8px;border-top:1px solid #EEF1F5;">'
+                + (req ? '<span style="color:#1D9E75;font-weight:700;font-size:15px;">●</span>'
+                       : '<span style="color:#D5DAE4;font-size:15px;">○</span>') + '</td>';
+            }).join("")
+    +     '</tr></tbody>'
+    +   '</table>'
+    + '</div></div>';
+  // S/N별 검사 현황
+  if(!list.length){
+    document.getElementById("qchist-list").innerHTML =
+      '<div style="padding:36px 20px;text-align:center;color:#8A93A6;font-size:13.5px;">해당 도번의 S/N별 검사 이력이 없습니다.</div>';
+    qchistSetStatus("도번 " + qcEsc(partNo) + " · S/N 0건");
+    return;
+  }
+  const pass = list.filter(function(r){ return r.judge==="합격"; }).length;
+  const fail = list.length - pass;
+  const rowsHtml = list.map(function(r){
+    const cells = QC_COLS.map(function(c){
+      const req  = master[c.key]==="Y";
+      const done = r[c.key]==="O";
+      let inner;
+      if(!req)        inner = '<span style="color:#C6CCD6;">–</span>';          // 해당 없음
+      else if(done)   inner = '<span style="color:#1D9E75;font-weight:700;">O</span>'; // 완료
+      else            inner = '<span style="color:#E02424;font-weight:700;">✕</span>'; // 누락
+      return '<td style="padding:8px;text-align:center;border-bottom:1px solid #EEF1F5;">' + inner + '</td>';
+    }).join("");
+    const isFail = r.judge==="불합격";
+    return '<tr style="background:' + (isFail ? "#FEF5F5" : "#fff") + ';">'
+      + '<td style="padding:8px 12px;font-weight:600;border-bottom:1px solid #EEF1F5;white-space:nowrap;">' + qcEsc(r.sn) + '</td>'
+      + '<td style="padding:8px 12px;text-align:center;border-bottom:1px solid #EEF1F5;white-space:nowrap;color:' + (r.latest ? "#1F2A44" : "#C6CCD6") + ';">' + (r.latest ? qcEsc(r.latest) : "-") + '</td>'
+      + cells
+      + '<td style="padding:8px 12px;border-bottom:1px solid #EEF1F5;color:#C0392B;font-size:12.5px;">' + qcEsc(r.missing) + '</td>'
+      + '<td style="padding:8px 12px;text-align:center;border-bottom:1px solid #EEF1F5;font-weight:700;color:' + (isFail ? "#E02424" : "#1D9E75") + ';">' + qcEsc(r.judge) + '</td>'
+      + '</tr>';
+  }).join("");
+  document.getElementById("qchist-list").innerHTML =
+    '<div style="padding:14px 16px;">'
+    + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">'
+    +   '<span style="font-size:15px;font-weight:700;color:#1F2A44;">S/N별 검사 현황</span>'
+    +   '<span style="font-size:12.5px;color:#1D9E75;font-weight:700;">합격 ' + pass + '</span>'
+    +   '<span style="font-size:12.5px;color:#E02424;font-weight:700;">불합격 ' + fail + '</span>'
+    +   '<span style="font-size:12px;color:#6B7280;">총 ' + list.length + '건</span>'
+    + '</div>'
+    + '<div style="font-size:11.5px;color:#8A93A6;margin-bottom:8px;">최근검사일(어느 공정이든 가장 최근) 내림차순 · O = 완료 · <span style="color:#E02424;font-weight:700;">✕</span> = 누락(필수인데 미실시) · – = 해당 없음</div>'
+    + '<div style="overflow:auto;max-height:calc(100vh - 420px);border:1px solid #E5EAF1;border-radius:8px;">'
+    +   '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
+    +     '<thead><tr style="background:#1F2A44;color:#fff;position:sticky;top:0;">'
+    +       '<th style="padding:9px 12px;text-align:left;white-space:nowrap;">S/N</th>'
+    +       '<th style="padding:9px 12px;text-align:center;white-space:nowrap;">최근검사일</th>'
+    +       QC_COLS.map(function(c){ return '<th style="padding:9px 8px;text-align:center;">' + c.label + '</th>'; }).join("")
+    +       '<th style="padding:9px 12px;text-align:left;">누락검사</th>'
+    +       '<th style="padding:9px 12px;text-align:center;white-space:nowrap;">판정</th>'
+    +     '</tr></thead>'
+    +     '<tbody>' + rowsHtml + '</tbody>'
+    +   '</table>'
+    + '</div></div>';
+  qchistSetStatus("도번 " + qcEsc(partNo) + " · S/N " + list.length + "건 (합격 " + pass + " / 불합격 " + fail + ")");
+}
+function qchistDownloadMaster(){
+  const url = qchistApiUrl();
+  if(!url){ alert("Apps Script 웹 앱 URL이 설정되어 있지 않습니다."); return; }
+  const btn = document.getElementById("qchist-masterBtn");
+  if(btn){ btn.disabled = true; btn.textContent = "생성 중…"; }
+  fetch(url + "?mode=qcMaster", { cache:"no-store" })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(!data || !data.success || !Array.isArray(data.list)) throw new Error((data && data.error) || "MASTER 생성 실패");
+      let csv = "도번," + QC_COLS.map(function(c){ return c.label; }).join(",") + "\n";
+      data.list.forEach(function(r){
+        csv += [ r.partNo ].concat(QC_COLS.map(function(c){ return r[c.key] || ""; })).join(",") + "\n";
+      });
+      const blob = new Blob(["\uFEFF" + csv], { type:"text/csv;charset=utf-8;" }); // BOM: 엑셀 한글 깨짐 방지
+      const link = document.createElement("a");
+      const d = new Date();
+      const ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+      link.href = URL.createObjectURL(blob);
+      link.download = "MASTER_" + ds + ".csv";
+      link.click();
+      setTimeout(function(){ URL.revokeObjectURL(link.href); }, 1000);
+    })
+    .catch(function(e){ alert("MASTER 다운로드 오류: " + (e && e.message || e)); })
+    .finally(function(){ if(btn){ btn.disabled = false; btn.textContent = "📥 MASTER"; } });
+}
+function qchistPrint(){
+  const area = document.getElementById("print-area");
+  const page = document.getElementById("qchist-print-page");
+  if(!area || !page){ window.print(); return; }
+  area.innerHTML = '<h2>검사이력조회</h2>' + page.innerHTML;
+  area.style.display = "block";
+  window.print();
+  setTimeout(function(){ area.style.display = "none"; area.innerHTML = ""; }, 300);
+}
 
 </script>
 <div id="print-area" style="display:none;"></div>
