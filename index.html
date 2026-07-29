@@ -907,7 +907,10 @@
       <div class="nav-item nav-sub" data-view="waitinsp"><span class="dot"></span>검사대기현황</div>
     </div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
-    <div class="nav-item" data-view="qchist"><span class="dot"></span>🧪 검사이력조회</div>
+    <div class="nav-item" data-view="qchist" data-navgroup="qchist"><span class="dot"></span>🧪 검사이력조회<span class="nav-caret" data-caret="qchist">▾</span></div>
+    <div class="nav-group" id="navgroup-qchist">
+      <div class="nav-item nav-sub" data-view="qcprio"><span class="dot"></span>📋 검사 요청서</div>
+    </div>
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
     <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
@@ -1516,6 +1519,31 @@
         <div id="qchist-list" class="table-wrap"></div>
       </div>
     </div>
+    <!-- ===================== 검사 우선순위 (AI) VIEW ===================== -->
+    <div id="topbar-qcprio" class="topbar" style="display:none;">
+      <h1>📋 검사 요청서</h1>
+      <div class="search-box">
+        <select id="qcprio-customer"><option value="">전체 고객사</option></select>
+        <select id="qcprio-process">
+          <option value="all">전체 공정</option>
+          <option value="수입">수입검사</option>
+          <option value="측정">공정(측정)</option>
+          <option value="출하">출하검사</option>
+          <option value="비젼">비젼검사</option>
+        </select>
+        <button id="qcprio-refreshBtn">🔄 새로고침</button>
+      </div>
+      <div class="topbar-right">
+        <button id="qcprio-printBtn">🖨️ 인쇄</button>
+      </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 검사대기가 있는 항목을 <b>미납 → 납기임박(3일내) → 차주물량(4~7일)</b> 순으로 정렬합니다. (같은 티어는 납기 빠른 순 → 대기수량 많은 순) <span id="qcprio-status"></span></div>
+    </div>
+    <div class="view" id="view-qcprio">
+      <div id="qcprio-print-page" style="padding:16px;">
+        <div id="qcprio-summary" style="margin-bottom:14px;"></div>
+        <div id="qcprio-list" class="table-wrap"></div>
+      </div>
+    </div>
     <!-- ===================== SALES(매출현황) VIEW ===================== -->
     <div id="topbar-sales" class="topbar" style="display:none;">
       <h1>매출현황</h1>
@@ -1983,7 +2011,7 @@ function setNavGroup(name, open){
 }
 // 프로그램을 열 때는 소메뉴(월별 현황 / MAIN 대시보드)를 항상 접힌 상태로 시작한다.
 // 세션 중 펼친 상태는 그대로 유지되고, 새로 열면 다시 접힌다.
-["summary","main"].forEach(name => setNavGroup(name, false));
+["summary","main","qchist"].forEach(name => setNavGroup(name, false));
 document.querySelectorAll(".nav-caret").forEach(caret => {
   caret.addEventListener("click", (e) => {
     e.stopPropagation(); // 화면 전환 없이 접고/펴기만
@@ -2534,6 +2562,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("topbar-overdue").style.display = target==="overdue" ? "flex" : "none";
     document.getElementById("topbar-quality").style.display = target==="quality" ? "flex" : "none";
     document.getElementById("topbar-qchist").style.display = target==="qchist" ? "flex" : "none";
+    document.getElementById("topbar-qcprio").style.display = target==="qcprio" ? "flex" : "none";
     document.getElementById("topbar-sales").style.display = target==="sales" ? "flex" : "none";
     document.getElementById("topbar-vendor").style.display = target==="vendor" ? "flex" : "none";
     document.getElementById("topbar-summary").style.display = target==="summary" ? "flex" : "none";
@@ -2562,6 +2591,10 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="qchist" && !window.__qchistInited){
       window.__qchistInited = true;
       qchistInit();
+    }
+    if(target==="qcprio"){
+      if(!window.__qcprioInited){ window.__qcprioInited = true; qcprioInit(); }
+      qcprioRender();
     }
     if(target==="management"){
       // 도번 조회 메뉴: 마지막으로 보던 탭으로 복원
@@ -8957,6 +8990,196 @@ function qchistPrint(){
     #print-area th, #print-area td { padding:5px 6px !important; }
   `;
   openPrintWindow('<h2>검사이력조회</h2>' + page.innerHTML, extraCSS, "검사이력조회");
+}
+/* ============================================================
+   🎯 AI 검사 우선순위
+   - 이미 로드된 mainData만 사용 (백엔드 변경 없음)
+   - 검사대기 있는 항목을 티어별로 정렬:
+       ① 미납(납기 지남) ② 납기임박(0~3일) ③ 차주물량(4~7일) ④ 그 외
+   ============================================================ */
+const QCPRIO_TIERS = {
+  1: { label:"미납",     color:"#E02424", bg:"#FDEBEB" },
+  2: { label:"납기임박", color:"#C2410C", bg:"#FEF0E6" },
+  3: { label:"차주물량", color:"#0B5CAB", bg:"#E7F0FB" },
+  4: { label:"그 외",    color:"#6B7280", bg:"#F1F3F5" }
+};
+function qcprioTier(dueDate){
+  const dr = getDaysRemaining(dueDate);
+  let t;
+  if(dr >= 9999) t = 4;
+  else if(dr < 0) t = 1;
+  else if(dr <= 3) t = 2;
+  else if(dr <= 7) t = 3;
+  else t = 4;
+  return { t: t, days: dr };
+}
+function qcprioBuildRows(){
+  if(typeof mainStatusMapDirty !== "undefined" && mainStatusMapDirty && typeof computeAllStatuses === "function"){
+    mainStatusMap = computeAllStatuses(mainData);
+    mainStatusMapDirty = false;
+  }
+  const base = (mainData||[])
+    .map(function(r){ return Object.assign({}, r, { productStatus: computeProductStatus(r) }); })
+    .filter(function(r){
+      return (Number(r.qty)||0) > 0
+        && String(r.oldDrawingNo||"").trim() !== ""
+        && String(r.productStatus||"").trim() !== ""
+        && r.productStatus !== "출고"
+        && r.shipped !== "납품완료";
+    });
+  return base.map(function(r){
+    const w수입 = Number(computeWaitDeliver(r))||0;
+    const w측정 = Number(computeWaitMeasure(r))||0;
+    const w출하 = Number(computeWaitClean(r))||0;
+    const w비젼 = Number(computeWaitVision(r))||0;
+    const waitTotal = w수입 + w측정 + w출하 + w비젼;
+    const tg = qcprioTier(r.dueDate);
+    return Object.assign({}, r, { w수입:w수입, w측정:w측정, w출하:w출하, w비젼:w비젼, waitTotal:waitTotal, tier:tg.t, days:tg.days });
+  }).filter(function(r){ return r.waitTotal > 0; });
+}
+function qcprioProcessWait(r, proc){
+  if(proc==="수입") return r.w수입;
+  if(proc==="측정") return r.w측정;
+  if(proc==="출하") return r.w출하;
+  if(proc==="비젼") return r.w비젼;
+  return r.waitTotal;
+}
+function qcprioInit(){
+  const rb = document.getElementById("qcprio-refreshBtn");
+  const pb = document.getElementById("qcprio-printBtn");
+  const cs = document.getElementById("qcprio-customer");
+  const ps = document.getElementById("qcprio-process");
+  if(rb) rb.addEventListener("click", qcprioRender);
+  if(pb) pb.addEventListener("click", qcprioPrint);
+  if(cs) cs.addEventListener("change", qcprioRender);
+  if(ps) ps.addEventListener("change", qcprioRender);
+}
+function qcprioFillCustomers(rows){
+  const sel = document.getElementById("qcprio-customer");
+  if(!sel) return;
+  const cur = sel.value;
+  const set = {};
+  rows.forEach(function(r){ const c=String(r.customer||"").trim(); if(c) set[c]=1; });
+  const names = Object.keys(set).sort(function(a,b){ return a.localeCompare(b,"ko"); });
+  sel.innerHTML = '<option value="">전체 고객사</option>' + names.map(function(c){ return '<option value="'+qcEsc(c)+'">'+qcEsc(c)+'</option>'; }).join("");
+  if(cur && names.indexOf(cur)>=0) sel.value = cur;
+}
+function qcprioRender(){
+  const listEl = document.getElementById("qcprio-list");
+  const sumEl  = document.getElementById("qcprio-summary");
+  if(!listEl || !sumEl) return;
+
+  if(!mainData || !mainData.length){
+    sumEl.innerHTML = "";
+    listEl.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#8A93A6;font-size:13.5px;">MAIN 데이터를 먼저 불러와 주세요. (구글시트 연동 또는 엑셀 업로드)</div>';
+    return;
+  }
+
+  let rows = qcprioBuildRows();
+  qcprioFillCustomers(rows);
+
+  const custSel = document.getElementById("qcprio-customer");
+  const procSel = document.getElementById("qcprio-process");
+  const cust = custSel ? custSel.value : "";
+  const proc = procSel ? procSel.value : "all";
+
+  if(cust) rows = rows.filter(function(r){ return String(r.customer||"").trim() === cust; });
+  if(proc !== "all") rows = rows.filter(function(r){ return qcprioProcessWait(r, proc) > 0; });
+
+  // 정렬: 티어 → 남은일 오름차순 → (선택 공정)대기수량 많은 순
+  rows.sort(function(a,b){
+    if(a.tier !== b.tier) return a.tier - b.tier;
+    if(a.days !== b.days) return a.days - b.days;
+    return qcprioProcessWait(b, proc) - qcprioProcessWait(a, proc);
+  });
+
+  // 요약 (티어별 건수/수량)
+  const agg = {1:{c:0,q:0},2:{c:0,q:0},3:{c:0,q:0},4:{c:0,q:0}};
+  rows.forEach(function(r){ agg[r.tier].c++; agg[r.tier].q += qcprioProcessWait(r, proc); });
+  const chip = function(t){
+    const T = QCPRIO_TIERS[t];
+    return '<span style="display:inline-flex;align-items:center;gap:6px;background:'+T.bg+';color:'+T.color+';border:1px solid '+T.color+'33;border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;margin-right:8px;">'
+      + T.label + ' <b>' + agg[t].c + '건</b> <span style="font-weight:500;opacity:.85;">('+agg[t].q+'개)</span></span>';
+  };
+  const procLabel = proc==="all" ? "전체 공정" : (procSel.options[procSel.selectedIndex].text);
+  sumEl.innerHTML =
+    '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+    + '<span style="font-size:14px;font-weight:700;color:#1F2A44;margin-right:6px;">우선순위 요약</span>'
+    + chip(1) + chip(2) + chip(3) + chip(4)
+    + '</div>'
+    + '<div style="margin-top:8px;font-size:12.5px;color:#4B5563;">'
+    +   (agg[1].c>0
+          ? '🔴 <b>미납 '+agg[1].c+'건('+agg[1].q+'개)</b>부터 즉시 처리하세요.'
+          : (agg[2].c>0 ? '🟠 미납은 없습니다. <b>납기임박 '+agg[2].c+'건</b>을 우선 검사하세요.'
+                        : '🟢 미납·납기임박 없음. 차주물량 위주로 진행하세요.'))
+    +   ' <span style="color:#8A93A6;">· 기준 공정: '+qcEsc(procLabel)+'</span>'
+    + '</div>';
+
+  if(!rows.length){
+    listEl.innerHTML = '<div style="padding:36px 20px;text-align:center;color:#8A93A6;font-size:13.5px;">해당 조건에 검사대기 항목이 없습니다.</div>';
+    document.getElementById("qcprio-status").textContent = "0건";
+    return;
+  }
+
+  const cell = function(v){ return v>0 ? '<b style="color:#1F2A44;">'+v+'</b>' : '<span style="color:#C6CCD6;">·</span>'; };
+  const rowsHtml = rows.map(function(r, i){
+    const T = QCPRIO_TIERS[r.tier];
+    const daysTxt = r.days>=9999 ? '미정' : (r.days<0 ? Math.abs(r.days)+'일 지남' : r.days+'일');
+    return '<tr style="background:'+(r.tier===1?"#FEF5F5":"#fff")+';border-bottom:1px solid #EEF1F5;">'
+      + '<td style="padding:8px;text-align:center;font-weight:700;color:#6B7280;">'+(i+1)+'</td>'
+      + '<td style="padding:8px;text-align:center;"><span style="background:'+T.bg+';color:'+T.color+';border-radius:12px;padding:2px 9px;font-size:11.5px;font-weight:700;white-space:nowrap;">'+T.label+'</span></td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+(typeof dwgLink==="function"?dwgLink(r.oldDrawingNo):qcEsc(r.oldDrawingNo||""))+'</td>'
+      + '<td style="padding:8px;">'+qcEsc(r.partName||"")+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+qcEsc(r.customer||"")+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;'+(r.days<0?"color:#E02424;font-weight:700;":"")+'">'+qcEsc(r.dueDate||"-")+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;'+(r.days<=3?"color:#E02424;font-weight:700;":"")+'">'+daysTxt+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+cell(r.w수입)+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+cell(r.w측정)+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+cell(r.w출하)+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+cell(r.w비젼)+'</td>'
+      + '<td style="padding:8px;text-align:center;font-weight:700;color:#0B5CAB;">'+r.waitTotal+'</td>'
+      + '</tr>';
+  }).join("");
+
+  listEl.innerHTML =
+    '<div style="padding:6px 4px;">'
+    + '<div style="overflow:auto;max-height:calc(100vh - 300px);border:1px solid #E5EAF1;border-radius:8px;">'
+    +   '<table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
+    +     '<thead><tr style="background:#1F2A44;color:#fff;position:sticky;top:0;">'
+    +       '<th style="padding:9px 8px;">순위</th>'
+    +       '<th style="padding:9px 8px;">우선순위</th>'
+    +       '<th style="padding:9px 8px;">도번</th>'
+    +       '<th style="padding:9px 8px;text-align:left;">품명</th>'
+    +       '<th style="padding:9px 8px;">고객사</th>'
+    +       '<th style="padding:9px 8px;">최종납기</th>'
+    +       '<th style="padding:9px 8px;">남은일</th>'
+    +       '<th style="padding:9px 8px;">수입</th>'
+    +       '<th style="padding:9px 8px;">측정</th>'
+    +       '<th style="padding:9px 8px;">출하</th>'
+    +       '<th style="padding:9px 8px;">비젼</th>'
+    +       '<th style="padding:9px 8px;">대기합계</th>'
+    +     '</tr></thead>'
+    +     '<tbody>'+rowsHtml+'</tbody>'
+    +   '</table>'
+    + '</div></div>';
+  document.getElementById("qcprio-status").textContent =
+    "총 "+rows.length+"건 (미납 "+agg[1].c+" / 임박 "+agg[2].c+" / 차주 "+agg[3].c+")";
+}
+function qcprioPrint(){
+  const page = document.getElementById("qcprio-print-page");
+  if(!page){ window.print(); return; }
+  const extraCSS = `
+    @page { size: A4 landscape; margin: 10mm; }
+    #print-area h2 { font-size:16px; margin:0 0 10px; }
+    #print-area #qcprio-list div { overflow:visible !important; max-height:none !important; }
+    #print-area thead { display:table-header-group !important; }
+    #print-area thead tr { position:static !important; }
+    #print-area tr { break-inside:avoid; page-break-inside:avoid; }
+    #print-area table { font-size:11px; table-layout:auto !important; width:100% !important; }
+    #print-area th, #print-area td { padding:5px 6px !important; }
+  `;
+  const stamp = new Date().toLocaleString("ko-KR");
+  openPrintWindow('<h2>검사 요청서 ('+stamp+')</h2>' + page.innerHTML, extraCSS, "검사 요청서");
 }
 
 </script>
