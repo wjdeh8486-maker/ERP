@@ -8727,7 +8727,7 @@ const QC_COLS = [
   { key:"exterior",  label:"외관" },
   { key:"dimension", label:"치수" },
   { key:"bolt",      label:"BOLT" },
-  { key:"led",       label:"TC / PIN / LED"  },
+  { key:"led",       label:"LED"  },
   { key:"flow",      label:"FLOW" },
   { key:"leak",      label:"LEAK" },
   { key:"pressure",  label:"가압" },
@@ -8941,13 +8941,22 @@ function qchistDownloadMaster(){
     .finally(function(){ if(btn){ btn.disabled = false; btn.textContent = "📥 MASTER"; } });
 }
 function qchistPrint(){
-  const area = document.getElementById("print-area");
   const page = document.getElementById("qchist-print-page");
-  if(!area || !page){ window.print(); return; }
-  area.innerHTML = '<h2>검사이력조회</h2>' + page.innerHTML;
-  area.style.display = "block";
-  window.print();
-  setTimeout(function(){ area.style.display = "none"; area.innerHTML = ""; }, 300);
+  if(!page){ window.print(); return; }
+  // 가로형(landscape) + 가로 스크롤 제거 + 열 제목(공정) 매 페이지 상단 반복
+  const extraCSS = `
+    @page { size: A4 landscape; margin: 10mm; }
+    #print-area h2 { font-size:16px; margin:0 0 10px; }
+    /* overflow/max-height 컨테이너 해제 → 표 전체가 잘리지 않고 인쇄(슬라이드 제거) */
+    #print-area #qchist-master div, #print-area #qchist-list div { overflow:visible !important; max-height:none !important; }
+    /* thead(외관·치수·…·포장·판정)를 매 페이지 상단에 반복, 아래 S/N 행만 넘어가게 */
+    #print-area thead { display:table-header-group !important; }
+    #print-area thead tr { position:static !important; }
+    #print-area tr { break-inside:avoid; page-break-inside:avoid; }
+    #print-area table { font-size:11px; table-layout:auto !important; width:100% !important; }
+    #print-area th, #print-area td { padding:5px 6px !important; }
+  `;
+  openPrintWindow('<h2>검사이력조회</h2>' + page.innerHTML, extraCSS, "검사이력조회");
 }
 
 </script>
