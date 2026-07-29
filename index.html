@@ -9025,12 +9025,21 @@ function qcprioGetRows(){
   return qcprioRowsCache;
 }
 function qcprioBuildRows(){
-  if(typeof mainStatusMapDirty !== "undefined" && mainStatusMapDirty && typeof computeAllStatuses === "function"){
+
+  if(typeof mainStatusMapDirty !== "undefined"
+     && mainStatusMapDirty
+     && typeof computeAllStatuses === "function"){
+
     mainStatusMap = computeAllStatuses(mainData);
     mainStatusMapDirty = false;
   }
-  const base = (mainData||[])
-    .map(function(r){ return Object.assign({}, r, { productStatus: computeProductStatus(r) }); })
+
+  const base = (mainData || [])
+    .map(function(r){
+      return Object.assign({}, r, {
+        productStatus: computeProductStatus(r)
+      });
+    })
     .filter(function(r){
       return (Number(r.qty)||0) > 0
         && String(r.oldDrawingNo||"").trim() !== ""
@@ -9038,15 +9047,104 @@ function qcprioBuildRows(){
         && r.productStatus !== "출고"
         && r.shipped !== "납품완료";
     });
+
   return base.map(function(r){
-    const w수입 = Number(computeWaitDeliver(r))||0;
-    const w측정 = Number(computeWaitMeasure(r))||0;
-    const w출하 = Number(computeWaitClean(r))||0;
-    const w비젼 = Number(computeWaitVision(r))||0;
-    const waitTotal = w수입 + w측정 + w출하 + w비젼;
+
+    // 재고
+    const stockQty =
+      Number(computeWaitDeliver(r)) || 0;
+
+    // 출하검사
+    const shipQty =
+      Number(computeWaitClean(r)) || 0;
+
+    // 공정검사
+    const processQty =
+        (Number(computeWaitMeasure(r)) || 0)
+      + (Number(computeWaitVision(r)) || 0);
+
+    // 수입검사
+    const incomingQty =
+      Number(r.waitIncomingInspection) || 0;
+
+    const needQty =
+      Number(r.qty) || 0;
+
+let requestType = "";
+let requestQty = 0;
+
+let remainQty = needQty;
+
+// 1. 재고 차감
+remainQty -= stockQty;
+
+if(remainQty > 0){
+
+  // 2. 출하 차감
+  remainQty -= shipQty;
+
+  if(remainQty > 0){
+
+    // 3. 공정 차감
+    remainQty -= processQty;
+
+    if(remainQty > 0){
+
+      // 공정까지 해도 부족하면 수입 검사
+      requestType = "수입";
+      requestQty = remainQty;
+
+    }else{
+
+      // 실제로 필요한 곳은 공정
+      requestType = "공정";
+
+      requestQty = Math.min(
+        needQty - stockQty - shipQty,
+        processQty
+      );
+
+    }
+
+  }else{
+
+    // 출하까지만 하면 납품 가능
+    requestType = "출하";
+
+    requestQty = Math.min(
+      needQty - stockQty,
+      shipQty
+    );
+
+  }
+}
+
     const tg = qcprioTier(r);
-    return Object.assign({}, r, { w수입:w수입, w측정:w측정, w출하:w출하, w비젼:w비젼, waitTotal:waitTotal, tier:tg.t, days:tg.days });
-  }).filter(function(r){ return r.waitTotal > 0 && r.tier > 0; });  // 대기0·그외/미납非2026·무납기 제외
+
+    return Object.assign({}, r, {
+
+      stockQty : stockQty,
+
+      requestType : requestType,
+      requestQty  : requestQty,
+
+      w수입 : incomingQty,
+      w측정 : Number(computeWaitMeasure(r)) || 0,
+      w출하 : shipQty,
+      w비젼 : Number(computeWaitVision(r)) || 0,
+
+      waitTotal : requestQty,
+
+      tier : tg.t,
+      days : tg.days
+    });
+
+  }).filter(function(r){
+
+    return r.requestQty > 0
+      && r.tier > 0;
+
+  });
 }
 function qcprioProcessWait(r, proc){
   if(proc==="수입") return r.w수입;
@@ -9146,8 +9244,9 @@ function qcprioRender(){
       + '<td style="padding:8px;text-align:center;white-space:nowrap;'+(r.days<=3?"color:#E02424;font-weight:700;":"")+'">'+daysTxt+'</td>'
       + '<td style="padding:8px;text-align:center;">'+cell(r.w수입)+'</td>'
       + '<td style="padding:8px;text-align:center;">'+cell(r.w측정 + r.w비젼)+'</td>'
-      + '<td style="padding:8px;text-align:center;">'+cell(r.w출하)+'</td>'
-      + '<td style="padding:8px;text-align:center;font-weight:700;color:#0B5CAB;">'+r.waitTotal+'</td>'
+    + '<td style="padding:8px;text-align:center;">'+cell(r.w출하)+'</td>'
++ '<td style="padding:8px;text-align:center;font-weight:700;color:#E02424;">'+r.requestType+'</td>'
++ '<td style="padding:8px;text-align:center;font-weight:700;">'+r.requestQty+'</td>'
       + '</tr>';
   }).join("");
 
@@ -9164,11 +9263,12 @@ function qcprioRender(){
     +       '<th style="padding:9px 8px;">최종납기</th>'
     +       '<th style="padding:9px 8px;">납품수량</th>'
     +       '<th style="padding:9px 8px;">남은일</th>'
-    +       '<th style="padding:9px 8px;">수입</th>'
-    +       '<th style="padding:9px 8px;">공정+비젼</th>'
-    +       '<th style="padding:9px 8px;">출하</th>'
-    +       '<th style="padding:9px 8px;">대기합계</th>'
-    +     '</tr></thead>'
++ '<th style="padding:9px 8px;">수입</th>'
++ '<th style="padding:9px 8px;">공정+비젼</th>'
++ '<th style="padding:9px 8px;">출하</th>'
++ '<th style="padding:9px 8px;">지시공정</th>'
++ '<th style="padding:9px 8px;">검사수량</th>'
+   +     '</tr></thead>'
     +     '<tbody>'+rowsHtml+'</tbody>'
     +   '</table>'
     + '</div></div>';
