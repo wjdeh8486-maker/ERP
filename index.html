@@ -9069,54 +9069,47 @@ function qcprioBuildRows(){
 
     const needQty =
       Number(r.qty) || 0;
-
 let requestType = "";
 let requestQty = 0;
 
-let remainQty = needQty;
+const needAfterStock =
+  Math.max(0, needQty - stockQty);
 
-// 1. 재고 차감
-remainQty -= stockQty;
+const needAfterShip =
+  Math.max(0, needAfterStock - shipQty);
 
-if(remainQty > 0){
+const needAfterProcess =
+  Math.max(0, needAfterShip - processQty);
 
-  // 2. 출하 차감
-  remainQty -= shipQty;
+// 재고로 해결 가능
+if(needAfterStock <= 0){
 
-  if(remainQty > 0){
+  requestType = "";
+  requestQty = 0;
 
-    // 3. 공정 차감
-    remainQty -= processQty;
+}
 
-    if(remainQty > 0){
+// 출하까지만 하면 가능
+else if(shipQty >= needAfterStock){
 
-      // 공정까지 해도 부족하면 수입 검사
-      requestType = "수입";
-      requestQty = remainQty;
+  requestType = "출하";
+  requestQty = needAfterStock;
 
-    }else{
+}
 
-      // 실제로 필요한 곳은 공정
-      requestType = "공정";
+// 공정까지만 하면 가능
+else if(processQty >= needAfterShip){
 
-      requestQty = Math.min(
-        needQty - stockQty - shipQty,
-        processQty
-      );
+  requestType = "공정";
+  requestQty = needAfterShip;
 
-    }
+}
 
-  }else{
+// 공정으로도 부족 --> 수입검사 필요
+else{
 
-    // 출하까지만 하면 납품 가능
-    requestType = "출하";
-
-    requestQty = Math.min(
-      needQty - stockQty,
-      shipQty
-    );
-
-  }
+  requestType = "수입";
+requestQty = needAfterProcess;
 }
 
     const tg = qcprioTier(r);
