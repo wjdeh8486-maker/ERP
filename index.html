@@ -803,8 +803,35 @@
   #weekly-content .table-wrap,
   #history-content .table-wrap,
   #waitinsp-content .table-wrap,
+  #qchist-master, #qchist-list,
+  #qcprio-list,
   #view-quality .tab-panel .table-wrap{
     max-height:none;
+  }
+  /* 검사요청서·검사이력조회: 표 박스는 입출고 재고관리처럼 내용만큼 넓게,
+     내부 표만 가로 스크롤(overflow:auto)로 처리해 세로로 잘리지 않게 한다. */
+  #qcprio-list, #qchist-master, #qchist-list{
+    overflow:visible;
+    border:none;
+    background:transparent;
+    padding-bottom:0;
+    box-shadow:none;
+  }
+  .qcprio-tablebox{
+    max-height:none;
+    overscroll-behavior-x:contain;
+  }
+  /* 검사요청서 표 헤더/셀 여백을 살짝 촘촘히(컬럼이 많아졌으므로) */
+  .qcprio-tablebox th{ white-space:nowrap; }
+  @media screen and (max-width: 860px){
+    /* 모바일: 검사요청서/검사이력 표는 카드가 아니라 가로 스크롤로 본다(겹침 방지) */
+    .qcprio-tablebox{ -webkit-overflow-scrolling:touch; }
+    .qcprio-tablebox table{ font-size:11.5px; }
+    .qcprio-tablebox th, .qcprio-tablebox td{ padding:6px 6px !important; }
+    #qchist-master table, #qchist-list table{ min-width:640px; }
+    #qchist-master, #qchist-list{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    /* 정렬 드롭다운: 모바일에선 인라인 고정폭 대신 한 줄 전체를 쓴다(겹침·잘림 방지) */
+    #topbar-qchist #qchist-sort{ flex:1 1 100% !important; max-width:none !important; min-height:44px; }
   }
 
   /* 모바일: 소메뉴/신규 화면 상단 버튼 정리 */
@@ -1498,7 +1525,7 @@
       <div class="search-box">
         <input id="qchist-partNo" type="text" placeholder="도번 (예: 61031-00)">
         <input id="qchist-sn" type="text" placeholder="S/N (예: 186) — 선택" style="flex:0 0 160px;max-width:160px;">
-        <select id="qchist-sort" title="S/N 리스트 정렬 기준">
+        <select id="qchist-sort" title="S/N 리스트 정렬 기준" style="flex:0 0 168px;max-width:168px;">
           <option value="date-desc" selected>최근검사일 늦은순</option>
           <option value="date-asc">최근검사일 빠른순</option>
           <option value="sn-asc">S/N 오름차순</option>
@@ -8878,7 +8905,7 @@ function qchistRender(data){
     +   '<span style="font-size:12px;color:#6B7280;">필수 검사 <b style="color:#1F2A44;">' + reqCount + '개</b></span>'
     + '</div>'
     + '<div style="font-size:11.5px;color:#8A93A6;margin-bottom:8px;">● = 이 도번이 받아야 하는 검사 · ○ = 해당 없음</div>'
-    + '<div style="overflow:auto;border:1px solid #E5EAF1;border-radius:8px;">'
+    + '<div class="qchist-tablebox" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid #E5EAF1;border-radius:8px;">'
     +   '<table style="width:100%;border-collapse:collapse;font-size:13px;text-align:center;">'
     +     '<thead><tr style="background:#1F2A44;color:#fff;">'
     +       QC_COLS.map(function(c){ return '<th style="padding:9px 8px;">' + c.label + '</th>'; }).join("")
@@ -8933,9 +8960,9 @@ function qchistRender(data){
     +   '<span style="font-size:12px;color:#6B7280;">총 ' + list.length + '건</span>'
     + '</div>'
     + '<div style="font-size:11.5px;color:#8A93A6;margin-bottom:8px;">정렬 기준은 상단 드롭다운에서 변경 (최근검사일/S/N) · O = 완료 · <span style="color:#E02424;font-weight:700;">✕</span> = 누락(필수인데 미실시) · – = 해당 없음</div>'
-    + '<div style="overflow:auto;max-height:calc(100vh - 420px);border:1px solid #E5EAF1;border-radius:8px;">'
+    + '<div class="qchist-tablebox" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid #E5EAF1;border-radius:8px;">'
     +   '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
-    +     '<thead><tr style="background:#1F2A44;color:#fff;position:sticky;top:0;">'
+    +     '<thead><tr style="background:#1F2A44;color:#fff;position:sticky;top:0;z-index:2;">'
     +       '<th style="padding:9px 12px;text-align:left;white-space:nowrap;">S/N</th>'
     +       '<th style="padding:9px 12px;text-align:center;white-space:nowrap;">최근검사일</th>'
     +       QC_COLS.map(function(c){ return '<th style="padding:9px 8px;text-align:center;">' + c.label + '</th>'; }).join("")
@@ -9064,44 +9091,39 @@ function qcprioBuildRows(){
 let requestType = "";
 let requestQty = 0;
 
-const needAfterStock =
-  Math.max(0, needQty - stockQty);
+// [지시공정 규칙]
+// 부족분 = 납품수량 - 재고. 이 부족분을 재고→출하→공정→수입 순(완성에 가까운 순)으로
+// 끌어와 채운다. 부족분을 "마지막으로 채운(가장 덜 진행된) 대기 공정"이 지시공정이 된다.
+//  - 대기가 0인 공정은 자동으로 건너뛴다(수입 0이면 "수입"이 지시되지 않음).
+//  - 재고+출하+공정+수입 을 전부 끌어와도 부족분을 못 채우면(아직 생산이 덜 된 물량)
+//    지시공정을 정하지 않고(requestType=""), 아래 filter에서 목록에서 제외한다.
+const needAfterStock = Math.max(0, needQty - stockQty);
 
-const needAfterShip =
-  Math.max(0, needAfterStock - shipQty);
-
-const needAfterProcess =
-  Math.max(0, needAfterShip - processQty);
-
-// 재고로 해결 가능
 if(needAfterStock <= 0){
+  // 재고만으로 납품 가능 → 검사 지시 불필요
+  requestType = ""; requestQty = 0;
+} else {
+  let need = needAfterStock;
 
-  requestType = "";
-  requestQty = 0;
+  const takeShip    = Math.min(shipQty,    need); need -= takeShip;    // 출하검사대기에서 충당
+  const afterShip   = need;
+  const takeProcess = Math.min(processQty, need); need -= takeProcess; // 공정(측정+비젼)대기에서 충당
+  const afterProc   = need;
+  const takeIncoming= Math.min(incomingQty,need); need -= takeIncoming;// 수입검사대기에서 충당
 
-}
-
-// 출하까지만 하면 가능
-else if(shipQty >= needAfterStock){
-
-  requestType = "출하";
-  requestQty = needAfterStock;
-
-}
-
-// 공정까지만 하면 가능
-else if(processQty >= needAfterShip){
-
-  requestType = "공정";
-  requestQty = needAfterShip;
-
-}
-
-// 공정으로도 부족 --> 수입검사 필요
-else{
-
-  requestType = "수입";
-requestQty = needAfterProcess;
+  if(need > 0){
+    // 대기 전체(재고+출하+공정+수입)로도 부족분을 못 채움 → 아직 생산이 덜 됨 → 목록 제외
+    requestType = ""; requestQty = 0;
+  } else if(takeIncoming > 0){
+    // 수입검사대기까지 끌어와야 채워짐 → 지시: 수입, 검사수량 = 공정까지 채우고 남은 부족분
+    requestType = "수입"; requestQty = afterProc;
+  } else if(takeProcess > 0){
+    // 공정(측정+비젼)대기까지 끌어와야 채워짐 → 지시: 공정, 검사수량 = 출하로 채우고 남은 부족분
+    requestType = "공정"; requestQty = afterShip;
+  } else {
+    // 출하검사대기만으로 부족분이 전부 채워짐 → 지시: 출하
+    requestType = "출하"; requestQty = needAfterStock;
+  }
 }
 
     const tg = qcprioTier(r);
@@ -9125,9 +9147,10 @@ requestQty = needAfterProcess;
     });
 
   }).filter(function(r){
-return r.requestQty > 0
-  && (r.w수입 + r.w출하 + r.w측정 + r.w비젼) > 0
-  && r.tier > 0;
+    // requestType이 빈 항목 = (재고로 이미 충족) 또는 (대기로도 부족분을 못 채우는 물량) → 목록 제외
+    return r.requestType !== ""
+      && r.requestQty > 0
+      && r.tier > 0;
   });
 }
 function qcprioProcessWait(r, proc){
@@ -9246,18 +9269,19 @@ else if(proc === "출하"){
       + '<td style="padding:8px;text-align:center;white-space:nowrap;'+(r.days<0?"color:#E02424;font-weight:700;":"")+'">'+qcEsc(r.dueDate||"-")+'</td>'
       + '<td style="padding:8px;text-align:center;font-weight:700;color:#1F2A44;">'+(Number(r.qty)||0)+'</td>'
       + '<td style="padding:8px;text-align:center;white-space:nowrap;'+(r.days<=3?"color:#E02424;font-weight:700;":"")+'">'+daysTxt+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+cell(r.stockQty)+'</td>'
       + '<td style="padding:8px;text-align:center;">'+cell(r.w수입)+'</td>'
       + '<td style="padding:8px;text-align:center;">'+cell(r.w측정 + r.w비젼)+'</td>'
     + '<td style="padding:8px;text-align:center;">'+cell(r.w출하)+'</td>'
 + '<td style="padding:8px;text-align:center;font-weight:700;color:#E02424;">'+r.requestType+'</td>'
 + '<td style="padding:8px;text-align:center;font-weight:700;">'+r.requestQty+'</td>'
++ '<td style="padding:8px;text-align:center;white-space:nowrap;color:#0B5CAB;">'+qcEsc(getCurrentProcess(r.orderNo)||"-")+'</td>'
       + '</tr>';
   }).join("");
   listEl.innerHTML =
-    '<div style="padding:6px 4px;">'
-    + '<div style="overflow:auto;max-height:calc(100vh - 300px);border:1px solid #E5EAF1;border-radius:8px;">'
-    +   '<table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
-    +     '<thead><tr style="background:#1F2A44;color:#fff;position:sticky;top:0;">'
+    '<div class="qcprio-tablebox" style="border:1px solid #E5EAF1;border-radius:8px;overflow:auto;-webkit-overflow-scrolling:touch;">'
+    +   '<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1080px;">'
+    +     '<thead><tr style="background:#1F2A44;color:#fff;position:sticky;top:0;z-index:2;">'
     +       '<th style="padding:9px 8px;">순위</th>'
     +       '<th style="padding:9px 8px;">우선순위</th>'
     +       '<th style="padding:9px 8px;">도번</th>'
@@ -9266,15 +9290,17 @@ else if(proc === "출하"){
     +       '<th style="padding:9px 8px;">최종납기</th>'
     +       '<th style="padding:9px 8px;">납품수량</th>'
     +       '<th style="padding:9px 8px;">남은일</th>'
++ '<th style="padding:9px 8px;">납품대기</th>'
 + '<th style="padding:9px 8px;">수입</th>'
 + '<th style="padding:9px 8px;">공정+비젼</th>'
 + '<th style="padding:9px 8px;">출하</th>'
 + '<th style="padding:9px 8px;">지시공정</th>'
 + '<th style="padding:9px 8px;">검사수량</th>'
++ '<th style="padding:9px 8px;">현재진행공정</th>'
    +     '</tr></thead>'
     +     '<tbody>'+rowsHtml+'</tbody>'
     +   '</table>'
-    + '</div></div>';
+    + '</div>';
   document.getElementById("qcprio-status").textContent =
     "총 "+rows.length+"건 (미납 "+agg[1].c+" / 임박 "+agg[2].c+" / 차주 "+agg[3].c+")";
 }
@@ -9285,11 +9311,12 @@ function qcprioPrint(){
     @page { size: A4 landscape; margin: 10mm; }
     #print-area h2 { font-size:16px; margin:0 0 10px; }
     #print-area #qcprio-list div { overflow:visible !important; max-height:none !important; }
+    #print-area .qcprio-tablebox { border:none !important; }
     #print-area thead { display:table-header-group !important; }
     #print-area thead tr { position:static !important; }
     #print-area tr { break-inside:avoid; page-break-inside:avoid; }
-    #print-area table { font-size:11px; table-layout:auto !important; width:100% !important; }
-    #print-area th, #print-area td { padding:5px 6px !important; }
+    #print-area table { font-size:10px; table-layout:auto !important; width:100% !important; min-width:0 !important; }
+    #print-area th, #print-area td { padding:4px 5px !important; white-space:normal !important; }
   `;
   const stamp = new Date().toLocaleString("ko-KR");
   openPrintWindow('<h2>검사 요청서 ('+stamp+')</h2>' + page.innerHTML, extraCSS, "검사 요청서");
