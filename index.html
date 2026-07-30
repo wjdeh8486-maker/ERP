@@ -5244,7 +5244,7 @@ function renderCustomerNCPanel(){
 }
 /* ===== 시정조치(CAPA) : 고객부적합관리대장 데이터를 재구성해 조치 진행상태를 추적 =====
    [종결 규칙]  대책서송부일이 있는 건 → 유효성확인이 되면 종결
-                대책서송부일이 없는 건 → 조치완료일이 있으면 종결
+                대책서송부일이 없는 건 → 조치(처리내용)가 기재되면 종결
    [지연]       미종결 상태로 접수 후 7일 초과
    추가 입력 없이 기존 데이터로만 판정하므로, 대장을 채울수록 자동으로 채워진다. */
 const CAPA_OVERDUE_DAYS = 7;
@@ -5255,15 +5255,14 @@ function capaHasVal(v){
 function capaJudge(r){
   const hasReport = capaHasVal(r.reportDate);   // 대책서송부일
   const hasValid  = capaHasVal(r.validation);   // 유효성확인
-  const hasDone   = capaHasVal(r.doneDate);     // 조치완료일
-  const hasTreat  = capaHasVal(r.treatment);    // 처리내용(시정조치)
+  const hasTreat  = capaHasVal(r.treatment);    // 조치(처리내용)
   const hasTemp   = capaHasVal(r.temp);         // 임시조치
-  // 종결 판정
-  const closed = hasReport ? hasValid : hasDone;
+  // 종결 판정: 대책서 나가는 건은 유효성확인, 아닌 건은 조치(처리내용) 기재 시 종결
+  const closed = hasReport ? hasValid : hasTreat;
   let stage;
   if(closed)            stage = { key:"closed",  label:"종결",        bg:"#E7F5EC", color:"#1E7E45" };
   else if(hasReport)    stage = { key:"validate",label:"유효성확인 대기", bg:"#E7F0FA", color:"#0B5CAB" };
-  else if(hasDone||hasTreat) stage = { key:"action", label:"시정조치 중", bg:"#FFF3E3", color:"#C4700A" };
+  else if(hasTreat)     stage = { key:"action", label:"대책서 대기",   bg:"#FFF3E3", color:"#C4700A" };
   else if(hasTemp)      stage = { key:"temp",    label:"임시조치",     bg:"#FBF6DD", color:"#94770A" };
   else                  stage = { key:"received",label:"접수(미조치)",  bg:"#EEF0F3", color:"#5A6478" };
   return { closed, stage, needsReport:hasReport };
@@ -5322,7 +5321,7 @@ function renderCAPAPanel(){
   const stageMeta = {
     received:{label:"접수(미조치)",bg:"#EEF0F3",color:"#5A6478"},
     temp:{label:"임시조치",bg:"#FBF6DD",color:"#94770A"},
-    action:{label:"시정조치 중",bg:"#FFF3E3",color:"#C4700A"},
+    action:{label:"대책서 대기",bg:"#FFF3E3",color:"#C4700A"},
     validate:{label:"유효성확인 대기",bg:"#E7F0FA",color:"#0B5CAB"},
     closed:{label:"종결",bg:"#E7F5EC",color:"#1E7E45"}
   };
@@ -5362,7 +5361,7 @@ function renderCAPAPanel(){
           <thead><tr>
             <th>접수일</th><th>경과</th><th>품번</th><th style="text-align:left;">품명</th>
             <th>발견자</th><th>수량</th><th>진행단계</th>
-            <th>임시</th><th>시정</th><th>대책서</th><th>유효성</th>
+            <th>임시</th><th>조치</th><th>대책서</th><th>유효성</th>
             <th style="text-align:left;">접수 내용</th>
           </tr></thead>
           <tbody>
@@ -5385,7 +5384,7 @@ function renderCAPAPanel(){
       </div>
       <div style="font-size:11px;color:var(--text-mute);margin-top:8px;">
         ● = 완료/기재됨 · ○ = 미완료 · – = 해당 없음(대책서 미대상) ·
-        종결 규칙: 대책서 대상은 <b>유효성확인</b> 완료 시, 그 외는 <b>조치완료일</b> 기재 시 종결
+        종결 규칙: 대책서 대상은 <b>유효성확인</b> 완료 시, 그 외는 <b>조치</b>가 기재되면 종결
       </div>
     </div>
   `;
