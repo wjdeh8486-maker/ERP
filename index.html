@@ -820,9 +820,38 @@
   .qcprio-tablebox{
     max-height:none;
     overscroll-behavior-x:contain;
+    /* 오른쪽 끝에 스크롤 가능함을 알리는 얇은 그림자 힌트 */
+    background:
+      linear-gradient(90deg, var(--card-bg) 30%, rgba(255,255,255,0)) left / 24px 100% no-repeat,
+      linear-gradient(90deg, rgba(255,255,255,0), var(--card-bg) 70%) right / 24px 100% no-repeat,
+      radial-gradient(farthest-side at 100% 50%, rgba(31,42,68,.14), rgba(0,0,0,0)) right / 12px 100% no-repeat;
+    background-attachment: local, local, scroll;
   }
   /* 검사요청서 표 헤더/셀 여백을 살짝 촘촘히(컬럼이 많아졌으므로) */
   .qcprio-tablebox th{ white-space:nowrap; }
+  .qcprio-tablebox td{ white-space:nowrap; }
+
+  /* ===== 태블릿(≤1024px): 표는 유지, 가로 스크롤로 깔끔하게 ===== */
+  @media screen and (max-width: 1024px){
+    .qcprio-tablebox{ -webkit-overflow-scrolling:touch; }
+    #qchist-master, #qchist-list{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    #qchist-master table, #qchist-list table{ min-width:720px; }
+    /* 첫 컬럼(순위/S/N)을 왼쪽에 고정 → 옆으로 밀어도 어느 행인지 안 놓침.
+       배경은 각 행(tr)의 인라인 배경을 그대로 상속(inherit)해 티어색과 어긋나지 않게. */
+    .qcprio-tablebox table thead th:first-child,
+    .qcprio-tablebox table tbody td:first-child{
+      position:sticky; left:0; z-index:3;
+      background:inherit;
+      box-shadow:2px 0 0 rgba(31,42,68,.06);
+    }
+    .qcprio-tablebox table thead th:first-child{ background:#1F2A44; }
+    #qchist-list table thead th:first-child,
+    #qchist-list table tbody td:first-child{
+      position:sticky; left:0; z-index:3; background:inherit;
+      box-shadow:2px 0 0 rgba(31,42,68,.06);
+    }
+    #qchist-list table thead th:first-child{ background:#1F2A44; }
+  }
   @media screen and (max-width: 860px){
     /* 모바일: 검사요청서/검사이력 표는 카드가 아니라 가로 스크롤로 본다(겹침 방지) */
     .qcprio-tablebox{ -webkit-overflow-scrolling:touch; }
@@ -830,6 +859,8 @@
     .qcprio-tablebox th, .qcprio-tablebox td{ padding:6px 6px !important; }
     #qchist-master table, #qchist-list table{ min-width:640px; }
     #qchist-master, #qchist-list{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    #qchist-list table{ font-size:11.5px; }
+    #qchist-list th, #qchist-list td{ padding:6px 6px !important; }
     /* 정렬 드롭다운: 모바일에선 인라인 고정폭 대신 한 줄 전체를 쓴다(겹침·잘림 방지) */
     #topbar-qchist #qchist-sort{ flex:1 1 100% !important; max-width:none !important; min-height:44px; }
   }
@@ -9270,7 +9301,6 @@ else if(proc === "출하"){
       + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+qcEsc(r.customer||"")+'</td>'
       + '<td style="padding:8px;text-align:center;white-space:nowrap;'+(r.days<0?"color:#E02424;font-weight:700;":"")+'">'+qcEsc(r.dueDate||"-")+'</td>'
       + '<td style="padding:8px;text-align:center;font-weight:700;color:#1F2A44;">'+(Number(r.qty)||0)+'</td>'
-      + '<td style="padding:8px;text-align:center;white-space:nowrap;'+(r.days<=3?"color:#E02424;font-weight:700;":"")+'">'+daysTxt+'</td>'
       + '<td style="padding:8px;text-align:center;">'+cell(r.stockQty)+'</td>'
       + '<td style="padding:8px;text-align:center;">'+cell(r.w수입)+'</td>'
       + '<td style="padding:8px;text-align:center;">'+cell(r.w측정 + r.w비젼)+'</td>'
@@ -9283,6 +9313,11 @@ else if(proc === "출하"){
   listEl.innerHTML =
     '<div class="qcprio-tablebox" style="border:1px solid #E5EAF1;border-radius:8px;overflow:auto;-webkit-overflow-scrolling:touch;">'
     +   '<table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1080px;">'
+    +     '<colgroup>'
+    +       '<col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5">'
+    +       '<col class="c6"><col class="c7"><col class="c8"><col class="c9"><col class="c10">'
+    +       '<col class="c11"><col class="c12"><col class="c13"><col class="c14">'
+    +     '</colgroup>'
     +     '<thead><tr style="background:#1F2A44;color:#fff;position:sticky;top:0;z-index:2;">'
     +       '<th style="padding:9px 8px;">순위</th>'
     +       '<th style="padding:9px 8px;">우선순위</th>'
@@ -9291,7 +9326,6 @@ else if(proc === "출하"){
     +       '<th style="padding:9px 8px;">고객사</th>'
     +       '<th style="padding:9px 8px;">최종납기</th>'
     +       '<th style="padding:9px 8px;">납품수량</th>'
-    +       '<th style="padding:9px 8px;">남은일</th>'
 + '<th style="padding:9px 8px;">납품대기</th>'
 + '<th style="padding:9px 8px;">수입</th>'
 + '<th style="padding:9px 8px;">공정+비젼</th>'
@@ -9310,15 +9344,43 @@ function qcprioPrint(){
   const page = document.getElementById("qcprio-print-page");
   if(!page){ window.print(); return; }
   const extraCSS = `
-    @page { size: A4 landscape; margin: 10mm; }
-    #print-area h2 { font-size:16px; margin:0 0 10px; }
+    @page { size: A4 landscape; margin: 8mm; }
+    #print-area h2 { font-size:15px; margin:0 0 8px; }
     #print-area #qcprio-list div { overflow:visible !important; max-height:none !important; }
-    #print-area .qcprio-tablebox { border:none !important; }
+    #print-area .qcprio-tablebox { border:none !important; background:none !important; }
     #print-area thead { display:table-header-group !important; }
     #print-area thead tr { position:static !important; }
+    #print-area thead th { position:static !important; box-shadow:none !important; }
+    #print-area tbody td:first-child { position:static !important; box-shadow:none !important; }
     #print-area tr { break-inside:avoid; page-break-inside:avoid; }
-    #print-area table { font-size:10px; table-layout:auto !important; width:100% !important; min-width:0 !important; }
-    #print-area th, #print-area td { padding:4px 5px !important; white-space:normal !important; }
+    /* 컬럼폭을 고정 배분해 A4 가로에 넘침 없이 한눈에 들어오게 */
+    #print-area table {
+      font-size:8.5px !important; table-layout:fixed !important;
+      width:100% !important; min-width:0 !important; border-collapse:collapse !important;
+    }
+    #print-area th, #print-area td {
+      padding:3px 3px !important; overflow:hidden;
+      text-overflow:ellipsis; word-break:keep-all; line-height:1.25 !important;
+    }
+    /* 대부분 컬럼은 한 줄 유지, 품명·현재진행공정만 줄바뀜 허용 */
+    #print-area th, #print-area td { white-space:nowrap !important; }
+    #print-area td:nth-child(4), #print-area th:nth-child(4),
+    #print-area td:nth-child(14), #print-area th:nth-child(14) { white-space:normal !important; }
+    /* 컬럼별 폭(순위·우선순위·도번·품명·고객사·최종납기·납품수량·납품대기·수입·공정+비젼·출하·지시공정·검사수량·현재진행공정) */
+    #print-area col.c1  { width:3.2%; }
+    #print-area col.c2  { width:5.5%; }
+    #print-area col.c3  { width:9%; }
+    #print-area col.c4  { width:18%; }
+    #print-area col.c5  { width:6.5%; }
+    #print-area col.c6  { width:7%; }
+    #print-area col.c7  { width:5%; }
+    #print-area col.c8  { width:5%; }
+    #print-area col.c9  { width:4%; }
+    #print-area col.c10 { width:6%; }
+    #print-area col.c11 { width:4%; }
+    #print-area col.c12 { width:5.5%; }
+    #print-area col.c13 { width:5%; }
+    #print-area col.c14 { width:11%; }
   `;
   const stamp = new Date().toLocaleString("ko-KR");
   openPrintWindow('<h2>검사 요청서 ('+stamp+')</h2>' + page.innerHTML, extraCSS, "검사 요청서");
