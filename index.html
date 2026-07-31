@@ -4710,27 +4710,36 @@ function fetchQualityData(){
         const pick = function(label){
           const t = normalizeHeaderKey(label);
           if(normMap[t] !== undefined) return normMap[t];
-          // 부분일치 폴백(정확 키가 없을 때만)
+          // 부분일치 폴백(정확 키가 없을 때만) - 양방향(헤더⊇라벨 또는 라벨⊇헤더)
           const keys = Object.keys(normMap);
           for(let i=0;i<keys.length;i++){ if(keys[i].includes(t)) return normMap[keys[i]]; }
+          for(let i=0;i<keys.length;i++){ if(keys[i].length>=2 && t.includes(keys[i])) return normMap[keys[i]]; }
           return undefined;
         };
-        const finder = String(pick("발견자")||"").trim();
+        // 여러 후보 컬럼명 중 값이 있는 첫 번째를 반환 (원본 헤더명이 조금씩 달라도 흡수)
+        const pickMany = function(labels){
+          for(let i=0;i<labels.length;i++){
+            const v = pick(labels[i]);
+            if(v !== undefined && String(v).trim() !== "") return v;
+          }
+          return undefined;
+        };
+        const finder = String(pick("발견자")||pick("발견")||"").trim();
         return {
-          date: parseQualityDate(pick("접수일")),
-          partNo: String(pick("품번")||"").trim(),
+          date: parseQualityDate(pickMany(["접수일","접수 일자","발생일","일자","접수일자"])),
+          partNo: String(pickMany(["품번","도번","품 번"])||"").trim(),
           partName: String(pick("품명")||"").trim(),
           sn: String(pick("S/N")||"").trim(),
           method: String(pick("접수방법")||"").trim(),
           finder,
-          qty: Number(pick("수량"))||0,
-          content: String(pick("접수내용")||"").trim(),
-          treatment: String(pick("처리내용")||"").trim(),
+          qty: Number(pickMany(["수량","부적합수량","불량수량"]))||0,
+          content: String(pickMany(["접수내용","부적합내용","불량내용","내용"])||"").trim(),
+          treatment: String(pickMany(["처리내용","조치내용","시정조치","시정조치내용","조치사항"])||"").trim(),
           note: String(pick("비고")||"").trim(),
-          temp: String(pick("임시조치")||"").trim(),
-          doneDate: String(pick("조치완료일")||"").trim(),
-          reportDate: String(pick("대책서송부일")||"").trim(),
-          validation: String(pick("유효성확인")||"").trim(),
+          temp: String(pickMany(["임시조치","응급조치","임시대책","임시 조치"])||"").trim(),
+          doneDate: String(pickMany(["조치완료일","조치완료","완료일","조치일","조치일자","조치완료일자","시정완료일","조치완료 일자","완료일자"])||"").trim(),
+          reportDate: String(pickMany(["대책서송부일","대책서발행일","대책서발송일","대책서송부","대책서 송부일","대책서일"])||"").trim(),
+          validation: String(pickMany(["유효성확인","효과검증","효과확인","유효성","유효성 확인","검증"])||"").trim(),
           isDev: finder.includes("개발")
         };
       }).filter(r=>r.date && r.qty > 0);
