@@ -5278,15 +5278,18 @@ function capaJudge(r){
   const hasReport = capaHasVal(r.reportDate);   // 대책서송부일
   const hasValid  = capaHasVal(r.validation);   // 유효성확인
   const hasDone   = capaHasVal(r.doneDate);     // 조치완료일
+  const hasTreat  = capaHasVal(r.treatment);    // 처리내용(조치)
   const hasTemp   = capaHasVal(r.temp);         // 임시조치(단계엔 반영 안 함, 표의 임시 컬럼에만 표시)
-  // 종결 판정: 대책서 나가는 건은 유효성확인, 아닌 건은 조치완료일 기재 시 종결
-  const closed = hasReport ? hasValid : hasDone;
+  // 조치 완료 여부: 조치완료일이 있거나 처리내용(조치)이 기재되면 조치 완료로 본다.
+  const actionDone = hasDone || hasTreat;
+  // 종결 판정: 대책서 나가는 건은 유효성확인, 아닌 건은 조치가 완료되면 종결
+  const closed = hasReport ? hasValid : actionDone;
   let stage;
   if(closed && hasReport)      stage = { key:"reportClosed", label:"종결",        bg:"#E7F5EC", color:"#1E7E45" }; // 대책서 경로 최종 종결
-  else if(closed)              stage = { key:"selfClosed",   label:"조치완료(종결)", bg:"#E9F6EE", color:"#2E9E5B" }; // 조치완료일로 종결(사내)
+  else if(closed)              stage = { key:"selfClosed",   label:"조치완료(종결)", bg:"#E9F6EE", color:"#2E9E5B" }; // 조치완료로 종결(사내)
   else if(hasReport)           stage = { key:"validate",     label:"유효성확인 대기", bg:"#E7F0FA", color:"#0B5CAB" }; // 대책서 발행, 유효성 전
-  else                         stage = { key:"received",     label:"접수(미조치)",  bg:"#EEF0F3", color:"#5A6478" }; // 조치완료일 전(임시조치만 포함)
-  return { closed, stage, needsReport:hasReport, hasReport };
+  else                         stage = { key:"received",     label:"접수(미조치)",  bg:"#EEF0F3", color:"#5A6478" }; // 조치 전(임시조치만 포함)
+  return { closed, stage, needsReport:hasReport, actionDone };
 }
 function renderCAPAPanel(){
   const panel = document.getElementById("qpanel-capa");
@@ -5398,7 +5401,7 @@ function renderCAPAPanel(){
               <td class="${r.qty>0?'cell-defect':''}">${r.qty}</td>
               <td>${badge(r._stage)}</td>
               <td style="color:${capaHasVal(r.temp)?'#1E7E45':'#C6CCD6'};font-weight:700;">${capaHasVal(r.temp)?'●':'○'}</td>
-              <td style="color:${capaHasVal(r.doneDate)?'#1E7E45':'#C6CCD6'};font-weight:700;">${capaHasVal(r.doneDate)?'●':'○'}</td>
+              <td style="color:${(capaHasVal(r.doneDate)||capaHasVal(r.treatment))?'#1E7E45':'#C6CCD6'};font-weight:700;">${(capaHasVal(r.doneDate)||capaHasVal(r.treatment))?'●':'○'}</td>
               <td style="color:${capaHasVal(r.reportDate)?'#1E7E45':'#C6CCD6'};font-weight:700;">${capaHasVal(r.reportDate)?'●':'○'}</td>
               <td style="color:${capaHasVal(r.validation)?'#1E7E45':'#C6CCD6'};font-weight:700;">${capaHasVal(r.validation)?'●':(r._needsReport?'○':'–')}</td>
               <td style="text-align:left;max-width:280px;">${esc(r.content)}</td>
@@ -5408,7 +5411,7 @@ function renderCAPAPanel(){
       </div>
       <div style="font-size:11px;color:var(--text-mute);margin-top:8px;">
         ● = 완료/기재됨 · ○ = 미완료 · – = 해당 없음(대책서 미대상) ·
-        종결 규칙: 대책서 대상은 <b>유효성확인</b> 완료 시, 그 외는 <b>조치완료일</b>이 기재되면 종결
+        종결 규칙: 대책서 대상은 <b>유효성확인</b> 완료 시, 그 외는 <b>조치완료일 또는 처리내용(조치)</b>이 있으면 종결
       </div>
     </div>
   `;
@@ -9572,11 +9575,15 @@ else if(proc === "재고"){
   };
   loadAll.forEach(function(r){
     const tk = r.tier===1?"t1":r.tier===2?"t2":r.tier===3?"t3":null;
-    const vals = { 수입:(r.w수입||0), 공정:((r.w측정||0)+(r.w비젼||0)), 출하:(r.w출하||0), 재고:(r.stockQty||0) };
-    Object.keys(vals).forEach(function(cat){
-      load[cat].tot += vals[cat];
-      if(tk) load[cat][tk] += vals[cat];
-    });
+    // 부하 = 실제 검사할 물량(지시공정별 검사수량). 리스트에 나오는 것만 집계해 과다합산을 막는다.
+    const cat = r.requestType==="수입" ? "수입"
+             : r.requestType==="공정" ? "공정"
+             : r.requestType==="출하" ? "출하"
+             : r.requestType==="재고" ? "재고" : null;
+    if(!cat) return;
+    const q = Number(r.requestQty)||0;
+    load[cat].tot += q;
+    if(tk) load[cat][tk] += q;
   });
   const maxLoad = Math.max(load.수입.tot, load.공정.tot, load.출하.tot, load.재고.tot);
   const loadMeta = {
