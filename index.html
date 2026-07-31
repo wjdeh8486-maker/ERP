@@ -9552,6 +9552,47 @@ else if(proc === "재고"){
       + T.label + ' <b>' + agg[t].c + '건</b> <span style="font-weight:500;opacity:.85;">('+agg[t].q+'개)</span></span>';
   };
   const procLabel = proc==="all" ? "전체 공정" : (procSel.options[procSel.selectedIndex].text);
+
+  // ===== 검사 부하 예측 (필터와 무관하게 전체 대기 기준) =====
+  // 카테고리별 대기 물량을 시점(미납/납기임박/차주)으로 나눠 집계.
+  // LEAK·FLOW·가압·진공 등 기능검사는 '공정'에 포함된다(측정+비젼).
+  const loadAll = qcprioGetRows();
+  const load = {
+    수입:{t1:0,t2:0,t3:0,tot:0}, 공정:{t1:0,t2:0,t3:0,tot:0},
+    출하:{t1:0,t2:0,t3:0,tot:0}, 재고:{t1:0,t2:0,t3:0,tot:0}
+  };
+  loadAll.forEach(function(r){
+    const tk = r.tier===1?"t1":r.tier===2?"t2":r.tier===3?"t3":null;
+    const vals = { 수입:(r.w수입||0), 공정:((r.w측정||0)+(r.w비젼||0)), 출하:(r.w출하||0), 재고:(r.stockQty||0) };
+    Object.keys(vals).forEach(function(cat){
+      load[cat].tot += vals[cat];
+      if(tk) load[cat][tk] += vals[cat];
+    });
+  });
+  const maxLoad = Math.max(load.수입.tot, load.공정.tot, load.출하.tot, load.재고.tot);
+  const loadMeta = {
+    수입:{ label:"수입검사", color:"#7A3EA8", bg:"#F3EAFB" },
+    공정:{ label:"공정검사", color:"#C4700A", bg:"#FFF3E3" },
+    출하:{ label:"출하검사", color:"#0B7A8A", bg:"#E4F5F7" },
+    재고:{ label:"재고(출하검사)", color:"#0B5CAB", bg:"#E7F0FA" }
+  };
+  const loadCard = function(cat){
+    const L = load[cat], M = loadMeta[cat];
+    const isMax = L.tot>0 && L.tot===maxLoad;
+    return '<div style="flex:1;min-width:132px;background:'+M.bg+';border-radius:8px;padding:10px 12px;'+(isMax?'outline:2px solid '+M.color+';outline-offset:-1px;':'')+'">'
+      + '<div style="font-size:12px;color:'+M.color+';font-weight:700;">'+M.label+(isMax?' 🔺병목':'')+'</div>'
+      + '<div style="font-size:22px;font-weight:400;color:'+M.color+';margin-top:2px;">'+L.tot+'<span style="font-size:11px;color:#6B7280;"> 개</span></div>'
+      + '<div style="font-size:11px;color:#6B7280;margin-top:3px;">미납 '+L.t1+' · 임박 '+L.t2+' · 차주 '+L.t3+'</div>'
+      + '</div>';
+  };
+  const loadBlock =
+    '<div style="margin-top:14px;padding-top:12px;border-top:1px dashed #E5EAF1;">'
+    + '<div style="font-size:14px;font-weight:700;color:#1F2A44;margin-bottom:8px;">📊 검사 부하 예측 '
+    +   '<span style="font-size:11px;color:#8A93A6;font-weight:400;">· 대기 물량 기준 · 기능검사(LEAK·FLOW·가압·진공)는 공정에 포함 · 🔺병목=최대 부하</span></div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:10px;">'
+    +   loadCard("수입") + loadCard("공정") + loadCard("출하") + loadCard("재고")
+    + '</div></div>';
+
   sumEl.innerHTML =
     '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
     + '<span style="font-size:14px;font-weight:700;color:#1F2A44;margin-right:6px;">우선순위 요약</span>'
@@ -9563,7 +9604,8 @@ else if(proc === "재고"){
           : (agg[2].c>0 ? '🟠 미납은 없습니다. <b>납기임박 '+agg[2].c+'건</b>을 우선 검사하세요.'
                         : '🟢 미납·납기임박 없음. 차주물량 위주로 진행하세요.'))
     +   ' <span style="color:#8A93A6;">· 기준 공정: '+qcEsc(procLabel)+'</span>'
-    + '</div>';
+    + '</div>'
+    + loadBlock;
 
   if(!rows.length){
     listEl.innerHTML = '<div style="padding:36px 20px;text-align:center;color:#8A93A6;font-size:13.5px;">해당 조건에 검사대기 항목이 없습니다.</div>';
