@@ -523,6 +523,11 @@
     #print-area .capa-print-table th, #print-area .capa-print-table td{ padding:1.5px 2px; word-break:break-all; }
     #print-area .capa-print-table td:last-child, #print-area .capa-print-table th:last-child{ white-space:normal; text-align:left; }
     #print-area .capa-print-table span{ padding:1px 4px !important; font-size:6.5px !important; }
+    /* 재발관리 목록도 A4 세로 폭에 맞춰 축소 */
+    #print-area .recur-print-table{ min-width:0 !important; font-size:7px; table-layout:fixed; }
+    #print-area .recur-print-table th, #print-area .recur-print-table td{ padding:2px 3px; word-break:break-all; }
+    #print-area .recur-print-table td:last-child, #print-area .recur-print-table th:last-child{ white-space:normal; text-align:left; }
+    #print-area .recur-print-table span{ padding:1px 4px !important; font-size:6.5px !important; }
     #print-area .q-monthly-table, #print-area .q-detail-section > div{ overflow:visible !important; }
     #print-area .q-monthly-table{ margin-top:2px !important; }
     #print-area svg{ width:100%; height:auto; display:block; }
@@ -1562,12 +1567,14 @@
         <button class="tab-btn" data-qtab="shipping">출하검사</button>
         <button class="tab-btn" data-qtab="customer">고객부적합</button>
         <button class="tab-btn" data-qtab="capa">시정조치</button>
+        <button class="tab-btn" data-qtab="recur">재발관리</button>
       </div>
       <div class="tab-panel active" id="qpanel-process"></div>
       <div class="tab-panel" id="qpanel-incoming"></div>
       <div class="tab-panel" id="qpanel-shipping"></div>
       <div class="tab-panel" id="qpanel-customer"></div>
       <div class="tab-panel" id="qpanel-capa"></div>
+      <div class="tab-panel" id="qpanel-recur"></div>
     </div>
     <!-- ===================== 검사이력조회 (품질검사관리 2단계) VIEW ===================== -->
     <div id="topbar-qchist" class="topbar" style="display:none;">
@@ -5091,6 +5098,7 @@ function renderQualityAll(){
   });
   renderCustomerNCPanel();
   renderCAPAPanel();
+  renderRecurPanel();
 }
 /* ===== 고객부적합 (출하검사와 동일한 구성: KPI → 월별 추이 그래프/표 → 주차별 → 상세 → 유형) ===== */
 // 해당 월의 납품완료 수량 (MAIN 데이터의 납품일자 기준) — 고객부적합 PPM 분모
@@ -5396,10 +5404,105 @@ function renderCAPAPanel(){
     </div>
   `;
 }
+/* ===== 재발 부적합 감지 : 같은 도번에서 부적합이 반복되면 근본대책 필요 신호 =====
+   CAPA로 "종결"됐다 해도 같은 도번에서 또 발생하면 재발방지 실패. 도번별로 부적합
+   발생 횟수를 집계해 2회 이상(재발)·3회 이상(중점관리)을 강조한다. 고객부적합 데이터만 사용. */
+function renderRecurPanel(){
+  const panel = document.getElementById("qpanel-recur");
+  if(!panel) return;
+  const rowsAll = qualityRawData[CUSTOMER_NC_KEY] || [];
+  if(!rowsAll.length){
+    panel.innerHTML = `<div class="table-wrap" style="padding:30px;text-align:center;color:var(--text-mute);">재발 감지에 사용할 고객부적합 데이터가 없습니다.</div>`;
+    return;
+  }
+  const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  // 선택 연도의 1~선택월 누적 (다른 품질 탭과 동일 기준)
+  const rows = rowsAll.filter(r => r.date.getFullYear()===qualityYear && (r.date.getMonth()+1) <= qualityMonth);
+
+  // 도번별 그룹
+  const groups = {};
+  rows.forEach(r=>{
+    const key = String(r.partNo||"").trim() || "(도번없음)";
+    if(!groups[key]) groups[key] = { partNo:key, partName:r.partName||"", cnt:0, qty:0, dates:[], contents:[] };
+    const g = groups[key];
+    g.cnt++; g.qty += (Number(r.qty)||0);
+    g.dates.push(r.date);
+    if(r.content) g.contents.push({ date:r.date, content:r.content, finder:r.finder||"" });
+    if(!g.partName && r.partName) g.partName = r.partName;
+  });
+  let list = Object.values(groups);
+  list.forEach(g=>{
+    g.dates.sort((a,b)=>a-b);
+    g.firstDate = g.dates[0];
+    g.lastDate  = g.dates[g.dates.length-1];
+    // 재발 간격(일): 첫 발생 → 마지막 발생
+    g.spanDays = Math.round((g.lastDate - g.firstDate)/86400000);
+    g.contents.sort((a,b)=>b.date-a.date);
+  });
+  // 재발(2회 이상)만, 발생 횟수 많은 순 → 최근 발생 순
+  const recur = list.filter(g=>g.cnt>=2).sort((a,b)=> (b.cnt-a.cnt) || (b.lastDate-a.lastDate));
+
+  const totalDrawings = list.length;
+  const recurCnt = recur.length;
+  const heavyCnt = recur.filter(g=>g.cnt>=3).length;
+  const recurRate = totalDrawings>0 ? Math.round((recurCnt/totalDrawings)*100) : 0;
+
+  const sevBadge = cnt => {
+    if(cnt>=3) return `<span style="background:#FDE7E7;color:#C0281F;border-radius:12px;padding:2px 10px;font-size:11.5px;font-weight:700;">중점관리 ${cnt}회</span>`;
+    return `<span style="background:#FFF3E3;color:#C4700A;border-radius:12px;padding:2px 10px;font-size:11.5px;font-weight:700;">재발 ${cnt}회</span>`;
+  };
+
+  panel.innerHTML = `
+    <div class="summary-row" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="label" style="color:var(--text-mute);">부적합 발생 도번</div>
+        <div style="font-size:24px;font-weight:400;margin-top:4px;">${totalDrawings.toLocaleString()}<span style="font-size:13px;color:var(--text-mute);"> 종</span></div>
+        <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">${qualityYear}년 1~${qualityMonth}월 접수 기준</div>
+      </div>
+      <div class="stat-card" style="${recurCnt>0?'border-color:#F5C89A;':''}"><div class="label" style="color:var(--text-mute);">재발 도번 (2회 이상)</div>
+        <div style="font-size:24px;font-weight:400;margin-top:4px;color:${recurCnt>0?'#C4700A':'#1E7E45'};">${recurCnt.toLocaleString()}<span style="font-size:13px;color:var(--text-mute);"> 종</span></div>
+        <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">전체 도번의 ${recurRate}%</div>
+      </div>
+      <div class="stat-card" style="${heavyCnt>0?'border-color:#F1B0B0;':''}"><div class="label" style="color:var(--text-mute);">중점관리 (3회 이상)</div>
+        <div style="font-size:24px;font-weight:400;margin-top:4px;color:${heavyCnt>0?'#C0281F':'#1E7E45'};">${heavyCnt.toLocaleString()}<span style="font-size:13px;color:var(--text-mute);"> 종</span></div>
+        <div style="font-size:12px;color:var(--text-mute);margin-top:2px;">근본대책 우선 대상</div>
+      </div>
+    </div>
+    <div class="table-wrap" style="padding:16px;">
+      <div style="font-size:13px;font-weight:400;color:var(--text-mute);margin-bottom:8px;">
+        재발 도번 목록 (${recur.length}종) · 발생 횟수 많은 순 · <span style="color:#C0281F;">3회 이상 = 중점관리</span>
+      </div>
+      ${recur.length===0
+        ? `<div style="padding:24px;text-align:center;color:#1E7E45;font-size:13px;">✔ 재발(2회 이상) 도번이 없습니다.</div>`
+        : `<div style="overflow-x:auto;">
+        <table class="recur-print-table" style="width:100%;min-width:820px;">
+          <thead><tr>
+            <th>도번</th><th style="text-align:left;">품명</th><th>발생 횟수</th><th>누적 수량</th>
+            <th>최초 발생</th><th>최근 발생</th><th>기간</th><th style="text-align:left;">최근 부적합 내용</th>
+          </tr></thead>
+          <tbody>
+            ${recur.map(g=>`<tr style="${g.cnt>=3?'background:#FDECEC;':''}">
+              <td style="white-space:nowrap;font-weight:700;">${esc(g.partNo)}</td>
+              <td style="text-align:left;">${esc(g.partName)}</td>
+              <td>${sevBadge(g.cnt)}</td>
+              <td class="cell-defect">${g.qty}</td>
+              <td style="white-space:nowrap;">${mgmtFmtYMD(g.firstDate)}</td>
+              <td style="white-space:nowrap;font-weight:700;">${mgmtFmtYMD(g.lastDate)}</td>
+              <td style="white-space:nowrap;">${g.spanDays}일</td>
+              <td style="text-align:left;max-width:300px;font-size:12px;">${g.contents.slice(0,2).map(c=>`<div>· ${esc(c.content)} <span style="color:#AEB9CC;">(${mgmtFmtYMD(c.date)})</span></div>`).join("")}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>`}
+      <div style="font-size:11px;color:var(--text-mute);margin-top:8px;">
+        같은 도번에서 2회 이상 부적합이 접수된 경우 재발로 봅니다. 3회 이상은 시정조치(CAPA)가 근본원인을 못 잡았을 가능성이 높아 중점관리가 필요합니다.
+      </div>
+    </div>
+  `;
+}
 function printQualityReport(){
   renderQualityAll();
-  const order = ["process","incoming","shipping","customer","capa"];
-  const catLabelMap = { customer:"고객부적합", capa:"시정조치(CAPA)" };
+  const order = ["process","incoming","shipping","customer","capa","recur"];
+  const catLabelMap = { customer:"고객부적합", capa:"시정조치(CAPA)", recur:"재발관리" };
   const approvalBox = `
     <table class="q-approval-table">
       <tbody>
