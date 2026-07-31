@@ -1604,6 +1604,7 @@
           <option value="수입">수입검사</option>
           <option value="공정비젼">공정+비젼</option>
           <option value="출하">출하검사</option>
+          <option value="재고">재고 (출하검사 대상)</option>
         </select>
         <button id="qcprio-refreshBtn">🔄 새로고침</button>
       </div>
@@ -9293,14 +9294,15 @@ let requestQty = 0;
 // [지시공정 규칙]
 // 부족분 = 납품수량 - 재고. 이 부족분을 재고→출하→공정→수입 순(완성에 가까운 순)으로
 // 끌어와 채운다. 부족분을 "마지막으로 채운(가장 덜 진행된) 대기 공정"이 지시공정이 된다.
+//  - 재고만으로 납품 가능 → 재고품도 출하검사 대상이므로 지시공정 "재고"로 목록에 포함.
 //  - 대기가 0인 공정은 자동으로 건너뛴다(수입 0이면 "수입"이 지시되지 않음).
 //  - 재고+출하+공정+수입 을 전부 끌어와도 부족분을 못 채우면(아직 생산이 덜 된 물량)
 //    지시공정을 정하지 않고(requestType=""), 아래 filter에서 목록에서 제외한다.
 const needAfterStock = Math.max(0, needQty - stockQty);
 
 if(needAfterStock <= 0){
-  // 재고만으로 납품 가능 → 검사 지시 불필요
-  requestType = ""; requestQty = 0;
+  // 재고만으로 납품 가능 → 재고품에서 출하검사 지시 → 공정란 "재고"
+  requestType = "재고"; requestQty = needQty;
 } else {
   let need = needAfterStock;
 
@@ -9415,7 +9417,14 @@ else if(proc === "공정비젼"){
 else if(proc === "출하"){
 
     rows = rows.filter(function(r){
-        return r.requestType === "출하";
+        return r.requestType === "출하" || r.requestType === "재고";
+    });
+
+}
+else if(proc === "재고"){
+
+    rows = rows.filter(function(r){
+        return r.requestType === "재고";
     });
 
 }
@@ -9468,11 +9477,11 @@ else if(proc === "출하"){
       + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+qcEsc(r.customer||"")+'</td>'
       + '<td style="padding:8px;text-align:center;white-space:nowrap;'+(r.days<0?"color:#E02424;font-weight:700;":"")+'">'+qcEsc(r.dueDate||"-")+'</td>'
       + '<td style="padding:8px;text-align:center;font-weight:700;color:#1F2A44;">'+(Number(r.qty)||0)+'</td>'
-      + '<td class="qp-waitcol" style="padding:8px;text-align:center;border-left:3px solid #1B4F8A;background:#EAF3FC;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+(r.stockQty>0?'<b style="color:#0B5CAB;">'+r.stockQty+'</b>':'<span style="color:#AEB9CC;">·</span>')+'</td>'
-      + '<td style="padding:8px;text-align:center;">'+cell(r.w수입)+'</td>'
+      + '<td class="qp-divider" style="padding:8px;text-align:center;border-left:3px solid #1B4F8A;">'+cell(r.w수입)+'</td>'
       + '<td style="padding:8px;text-align:center;">'+cell(r.w측정 + r.w비젼)+'</td>'
-    + '<td style="padding:8px;text-align:center;">'+cell(r.w출하)+'</td>'
-+ '<td style="padding:8px;text-align:center;font-weight:700;color:#E02424;">'+r.requestType+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+cell(r.w출하)+'</td>'
+      + '<td class="qp-stockcol" style="padding:8px;text-align:center;background:#EAF3FC;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+(r.stockQty>0?'<b style="color:#0B5CAB;">'+r.stockQty+'</b>':'<span style="color:#AEB9CC;">·</span>')+'</td>'
++ '<td style="padding:8px;text-align:center;font-weight:700;color:'+(r.requestType==="재고"?"#0B5CAB":"#E02424")+';">'+r.requestType+'</td>'
 + '<td style="padding:8px;text-align:center;font-weight:700;">'+r.requestQty+'</td>'
 + '<td style="padding:8px;text-align:center;white-space:nowrap;color:#0B5CAB;">'+qcEsc(getCurrentProcess(r.orderNo)||"-")+'</td>'
       + '</tr>';
@@ -9494,10 +9503,10 @@ else if(proc === "출하"){
     +       '<th style="padding:9px 8px;">고객사</th>'
     +       '<th style="padding:9px 8px;">최종납기</th>'
     +       '<th style="padding:9px 8px;">납품수량</th>'
-+ '<th class="qp-waitcol" style="padding:9px 8px;border-left:3px solid #1B4F8A;background:#DCEBFB;color:#0B3D73;-webkit-print-color-adjust:exact;print-color-adjust:exact;">납품대기</th>'
-+ '<th style="padding:9px 8px;">수입</th>'
++ '<th class="qp-divider" style="padding:9px 8px;border-left:3px solid #1B4F8A;">수입</th>'
 + '<th style="padding:9px 8px;">공정+비젼</th>'
 + '<th style="padding:9px 8px;">출하</th>'
++ '<th class="qp-stockcol" style="padding:9px 8px;background:#DCEBFB;color:#0B3D73;-webkit-print-color-adjust:exact;print-color-adjust:exact;">재고</th>'
 + '<th style="padding:9px 8px;">지시공정</th>'
 + '<th style="padding:9px 8px;">검사수량</th>'
 + '<th style="padding:9px 8px;">현재진행공정</th>'
@@ -9534,11 +9543,12 @@ function qcprioPrint(){
     #print-area th, #print-area td { white-space:nowrap !important; }
     #print-area td:nth-child(5), #print-area th:nth-child(5),
     #print-area td:nth-child(15), #print-area th:nth-child(15) { white-space:normal !important; }
-    /* 납품대기 컬럼: 인쇄에서도 배경색·세로 구분선 유지 (주문/납품 ↔ 검사대기 경계) */
+    /* 재고·구분선: 인쇄에서도 배경색·세로 구분선 유지 (납품수량 ↔ 검사대기 경계, 출하 옆 재고) */
     #print-area, #print-area * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
-    #print-area th.qp-waitcol { background:#DCEBFB !important; border-left:2.5px solid #1B4F8A !important; }
-    #print-area td.qp-waitcol { background:#EAF3FC !important; border-left:2.5px solid #1B4F8A !important; }
-    /* 컬럼별 폭(순위·우선순위·ORDER NO.·도번·품명·고객사·최종납기·납품수량·납품대기·수입·공정+비젼·출하·지시공정·검사수량·현재진행공정) */
+    #print-area th.qp-divider, #print-area td.qp-divider { border-left:2.5px solid #1B4F8A !important; }
+    #print-area th.qp-stockcol { background:#DCEBFB !important; }
+    #print-area td.qp-stockcol { background:#EAF3FC !important; }
+    /* 컬럼별 폭(순위·우선순위·ORDER NO.·도번·품명·고객사·최종납기·납품수량·수입·공정+비젼·출하·재고·지시공정·검사수량·현재진행공정) */
     #print-area col.c1  { width:3%; }
     #print-area col.c2  { width:5%; }
     #print-area col.c3  { width:7%; }
@@ -9546,11 +9556,11 @@ function qcprioPrint(){
     #print-area col.c5  { width:16%; }
     #print-area col.c6  { width:6%; }
     #print-area col.c7  { width:6.5%; }
-    #print-area col.c8  { width:4.5%; }
+    #print-area col.c8  { width:5%; }
     #print-area col.c9  { width:4.5%; }
-    #print-area col.c10 { width:3.5%; }
-    #print-area col.c11 { width:5.5%; }
-    #print-area col.c12 { width:3.5%; }
+    #print-area col.c10 { width:5.5%; }
+    #print-area col.c11 { width:4.5%; }
+    #print-area col.c12 { width:4.5%; }
     #print-area col.c13 { width:5%; }
     #print-area col.c14 { width:4.5%; }
     #print-area col.c15 { width:10%; }
