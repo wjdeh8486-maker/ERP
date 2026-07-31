@@ -4650,7 +4650,7 @@ function getWeekOfMonth(date){
   if(day<=21) return 3;
   return 4;
 }
-function normalizeHeaderKey(k){ return String(k).replace(/\s+/g,"").trim().toLowerCase(); }
+function normalizeHeaderKey(k){ return String(k).replace(/[\s\u00a0\u200b\u200c\u200d\ufeff]+/g,"").trim().toLowerCase(); }
 function getFieldFlexible(row, label){
   if(label in row) return row[label];
   const target = normalizeHeaderKey(label);
@@ -4699,6 +4699,8 @@ function fetchQualityData(){
     // 규칙: 수량(F) > 0 인 행만 집계, 발견자(D)에 "개발" 문구가 있으면 개발부적합, 그 외 양산부적합
     const ncRes = results[QUALITY_SHEETS.length];
     if(ncRes && ncRes.success && Array.isArray(ncRes.rows)){
+      // 진단용: 원본 시트의 실제 컬럼명 저장 (임시조치/조치완료일 인식 문제 확인)
+      window.__ncRawCols = (ncRes.rows.length ? Object.keys(ncRes.rows[0]) : []);
       qualityRawData[CUSTOMER_NC_KEY] = ncRes.rows.map(row=>{
         // 성능: getFieldFuzzy는 호출마다 Object.keys를 순회하므로, 행당 14번 부르면 느리다.
         // 행의 키를 한 번만 정규화해 맵으로 만든 뒤, 각 필드를 그 맵에서 바로 찾는다.
@@ -5413,6 +5415,14 @@ function renderCAPAPanel(){
         ● = 완료/기재됨 · ○ = 미완료 · – = 해당 없음(대책서 미대상) ·
         종결 규칙: 대책서 대상은 <b>유효성확인</b> 완료 시, 그 외는 <b>조치완료일 또는 처리내용(조치)</b>이 있으면 종결
       </div>
+      <details style="margin-top:10px;font-size:11px;color:#8A93A6;">
+        <summary style="cursor:pointer;">🔧 컬럼 인식 진단 (임시조치·조치완료일이 안 나올 때 열어보세요)</summary>
+        <div style="margin-top:6px;line-height:1.7;">
+          <div>인식 건수 — 임시조치: <b>${rows.filter(r=>capaHasVal(r.temp)).length}</b>건 · 조치완료일: <b>${rows.filter(r=>capaHasVal(r.doneDate)).length}</b>건 · 처리내용: <b>${rows.filter(r=>capaHasVal(r.treatment)).length}</b>건 · 대책서: <b>${rows.filter(r=>capaHasVal(r.reportDate)).length}</b>건 · 유효성: <b>${rows.filter(r=>capaHasVal(r.validation)).length}</b>건</div>
+          <div style="margin-top:4px;">원본 시트 컬럼명: <span style="color:#5A6478;">${(window.__ncRawCols||[]).map(c=>esc(c)).join(" · ") || "(없음)"}</span></div>
+          <div style="margin-top:4px;color:#AEB9CC;">임시조치/조치완료일 건수가 0인데 원본에 값이 있다면, 위 컬럼명 목록에서 실제 이름을 확인해 알려주세요.</div>
+        </div>
+      </details>
     </div>
   `;
 }
