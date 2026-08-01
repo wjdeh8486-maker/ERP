@@ -9983,6 +9983,9 @@ var docmasterData = [];
 var docmasterSource = "sample";   // "sheet" | "sample"
 var docmasterSaving = false;
 var __docmasterSeq = 1;
+var docmasterSelected = {};        // 다중 선택 삭제용 (_id -> true)
+var docmasterVisibleIds = [];      // 현재 화면에 보이는 행 _id 목록
+var docmasterEditId = null;        // 수정 모드 대상 _id (null이면 추가 모드)
 
 // 문서 Master 전용 Apps Script URL (기존 ERP와 동일한 웹앱 사용)
 function docmasterApiUrl(){
@@ -10091,49 +10094,98 @@ function docmasterSetNote(msg){
 }
 
 // ➕ 문서 추가 폼(모달)
-function docmasterOpenAddForm(){
+function docmasterOpenAddForm(){ docmasterOpenForm(null); }
+
+function docmasterOpenForm(editId){
   var old = document.getElementById("docmaster-modal");
   if(old) old.remove();
+  var editing = (editId != null);
+  docmasterEditId = editing ? String(editId) : null;
+
+  // 수정 모드면 기존 값 찾기
+  var row = null;
+  if(editing){
+    for(var k=0;k<docmasterData.length;k++){ if(String(docmasterData[k]._id)===String(editId)){ row = docmasterData[k]; break; } }
+    if(!row){ docmasterEditId = null; editing = false; }
+  }
+
   var cats = [["QM","QM 품질매뉴얼"],["QP","QP 프로세스"],["QS","QS 기준서"],["QI","QI 지침서"],
               ["ETSI","ETSI"],["OPLS","OPLS 사례"],["SUP","협력업체"],["기타","기타"]];
   var today = new Date();
   var td = today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0")+"-"+String(today.getDate()).padStart(2,"0");
-  var catOpts = cats.map(function(c){ return '<option value="'+c[0]+'">'+c[1]+'</option>'; }).join("");
+
+  // 프리필 값
+  var vCat    = editing ? (row.cat||"") : "";
+  var vNo     = editing ? (row.no||"")  : "";
+  var vName   = editing ? (row.name||""): "";
+  var vRev    = editing ? (row.rev||"Rev0") : "Rev0";
+  var vDate   = editing ? (/^\d{4}-\d{2}-\d{2}$/.test(row.revDate||"") ? row.revDate : "") : td;
+  var vStatus = editing ? (row.status||"유효") : "유효";
+  var vOwner  = editing ? (row.owner||"품질팀") : "품질팀";
+  var vPath   = editing ? (row.path||"") : "";
+  var vReason = editing ? (row.reason||"") : "";
+
+  var catOpts = cats.map(function(c){ return '<option value="'+c[0]+'"'+(c[0]===vCat?' selected':'')+'>'+c[1]+'</option>'; }).join("");
+  var statusOpts = ["유효","개정중","폐지"].map(function(s){ return '<option'+(s===vStatus?' selected':'')+'>'+s+'</option>'; }).join("");
+
+  var title = editing ? "✏️ 문서 수정" : "➕ 문서 추가 / 개정";
+  var hint  = editing
+    ? "💡 경로만 바뀐 거면 <b>경로</b>만 고치고, 실제 개정이면 <b>Rev·개정일</b>도 함께 바꾸세요."
+    : "💡 이미 있는 <b>문서번호</b>를 입력하면 새로 추가하지 않고 그 문서의 Rev·개정일·경로를 <b>갱신</b>합니다.";
+
   var wrap = document.createElement("div");
   wrap.id = "docmaster-modal";
   wrap.style.cssText = "position:fixed;inset:0;background:rgba(20,28,45,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
   wrap.innerHTML =
     '<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
-    + '<div style="background:#1F2A44;color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;font-weight:700;font-size:15px;">➕ 문서 추가</div>'
+    + '<div style="background:#1F2A44;color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;font-weight:700;font-size:15px;">'+title+'</div>'
+    + '<div style="background:#EEF4FB;color:#2A4A73;padding:8px 18px;font-size:12px;border-bottom:1px solid #DCE6F2;">'+hint+'</div>'
     + '<div style="padding:18px;display:flex;flex-direction:column;gap:12px;">'
     + fld("분류", '<select id="dm-f-cat" style="'+inpCSS()+'">'+catOpts+'</select>')
-    + fld("문서번호 <span style=\'color:#8A93A6;font-weight:400;\'>(없으면 비워두세요)</span>", '<input id="dm-f-no" style="'+inpCSS()+'" placeholder="예: QI-910-05">')
-    + fld("문서명 <span style=\'color:#C0392B;\'>*</span>", '<input id="dm-f-name" style="'+inpCSS()+'" placeholder="문서명">')
+    + fld("문서번호 <span style=\'color:#8A93A6;font-weight:400;\'>(없으면 비워두세요)</span>", '<input id="dm-f-no" value="'+docmasterEsc(vNo)+'" style="'+inpCSS()+'" placeholder="예: QI-910-05">')
+    + fld("문서명 <span style=\'color:#C0392B;\'>*</span>", '<input id="dm-f-name" value="'+docmasterEsc(vName)+'" style="'+inpCSS()+'" placeholder="문서명">')
     + '<div style="display:flex;gap:10px;">'
-    +   '<div style="flex:1;">'+fld("현재 Rev", '<input id="dm-f-rev" style="'+inpCSS()+'" value="Rev0">')+'</div>'
-    +   '<div style="flex:1;">'+fld("개정일", '<input id="dm-f-date" type="date" style="'+inpCSS()+'" value="'+td+'">')+'</div>'
+    +   '<div style="flex:1;">'+fld("현재 Rev", '<input id="dm-f-rev" value="'+docmasterEsc(vRev)+'" style="'+inpCSS()+'">')+'</div>'
+    +   '<div style="flex:1;">'+fld("개정일", '<input id="dm-f-date" type="date" style="'+inpCSS()+'" value="'+docmasterEsc(vDate)+'">')+'</div>'
     + '</div>'
     + '<div style="display:flex;gap:10px;">'
-    +   '<div style="flex:1;">'+fld("상태", '<select id="dm-f-status" style="'+inpCSS()+'"><option>유효</option><option>개정중</option><option>폐지</option></select>')+'</div>'
-    +   '<div style="flex:1;">'+fld("담당자", '<input id="dm-f-owner" style="'+inpCSS()+'" value="품질팀">')+'</div>'
+    +   '<div style="flex:1;">'+fld("상태", '<select id="dm-f-status" style="'+inpCSS()+'">'+statusOpts+'</select>')+'</div>'
+    +   '<div style="flex:1;">'+fld("담당자", '<input id="dm-f-owner" value="'+docmasterEsc(vOwner)+'" style="'+inpCSS()+'">')+'</div>'
     + '</div>'
     + fld("사내 경로 <span style=\'color:#C0392B;\'>*</span> <span style=\'color:#8A93A6;font-weight:400;\'>(탐색기 경로 그대로 붙여넣기)</span>",
-          '<input id="dm-f-path" style="'+inpCSS()+'" placeholder="\\\\Ntl\\5.품질팀\\...\\문서.xlsx">')
-    + fld("개정사유", '<input id="dm-f-reason" style="'+inpCSS()+'" placeholder="(선택)">')
+          '<input id="dm-f-path" value="'+docmasterEsc(vPath)+'" style="'+inpCSS()+'" placeholder="\\\\Ntl\\5.품질팀\\...\\문서.xlsx">')
+    + fld("개정사유", '<input id="dm-f-reason" value="'+docmasterEsc(vReason)+'" style="'+inpCSS()+'" placeholder="(선택)">')
     + '<div id="dm-f-err" style="color:#C0392B;font-size:12.5px;min-height:16px;"></div>'
     + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">'
     +   '<button type="button" id="dm-f-cancel" style="padding:9px 16px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;">취소</button>'
-    +   '<button type="button" id="dm-f-save" style="padding:9px 18px;border:none;border-radius:8px;background:#0B5CAB;color:#fff;font-weight:700;cursor:pointer;">저장</button>'
+    +   '<button type="button" id="dm-f-save" style="padding:9px 18px;border:none;border-radius:8px;background:#0B5CAB;color:#fff;font-weight:700;cursor:pointer;">'+(editing?"수정 저장":"저장")+'</button>'
     + '</div>'
     + '</div></div>';
   document.body.appendChild(wrap);
   function inpCSS(){ return "width:100%;padding:8px 10px;border:1px solid #C9D3E0;border-radius:8px;font-size:13px;box-sizing:border-box;"; }
   function fld(label, inner){ return '<div><div style="font-size:12.5px;color:#5A6478;margin-bottom:4px;">'+label+'</div>'+inner+'</div>'; }
-  var close = function(){ wrap.remove(); };
+  var close = function(){ docmasterEditId = null; wrap.remove(); };
   wrap.addEventListener("click", function(e){ if(e.target===wrap) close(); });
   document.getElementById("dm-f-cancel").addEventListener("click", close);
   document.getElementById("dm-f-save").addEventListener("click", docmasterAddSubmit);
-  var nameEl = document.getElementById("dm-f-name"); if(nameEl) nameEl.focus();
+  var focusEl = document.getElementById(editing ? "dm-f-path" : "dm-f-name"); if(focusEl) focusEl.focus();
+}
+
+// 이미 등록된 문서 찾기: 문서번호 우선, 번호가 없으면 문서명(번호 없는 항목끼리)으로 매칭
+function docmasterFindExisting(no, name){
+  no   = String(no||"").trim().toLowerCase();
+  name = String(name||"").trim().toLowerCase();
+  if(no){
+    for(var i=0;i<docmasterData.length;i++){
+      if(String(docmasterData[i].no||"").trim().toLowerCase() === no) return i;
+    }
+    return -1;                     // 번호를 입력했는데 같은 번호가 없으면 신규
+  }
+  for(var j=0;j<docmasterData.length;j++){
+    var r = docmasterData[j];
+    if(!String(r.no||"").trim() && String(r.name||"").trim().toLowerCase() === name) return j;
+  }
+  return -1;
 }
 
 function docmasterAddSubmit(){
@@ -10147,11 +10199,48 @@ function docmasterAddSubmit(){
     revDate:get("dm-f-date"), status:get("dm-f-status")||"유효", owner:get("dm-f-owner"),
     path:path, reason:get("dm-f-reason")
   });
-  rec._id = __docmasterSeq++;
-  docmasterData.push(rec);
+
+  var action = "추가";
+
+  // 수정 모드: 해당 행(_id)을 그대로 갱신 (중복 판정 없이)
+  if(docmasterEditId != null){
+    var eidx = -1;
+    for(var e2=0;e2<docmasterData.length;e2++){ if(String(docmasterData[e2]._id)===docmasterEditId){ eidx=e2; break; } }
+    if(eidx >= 0){
+      rec._id = docmasterData[eidx]._id;
+      docmasterData[eidx] = rec;
+    } else {                     // 대상이 사라졌으면 새로 추가
+      rec._id = __docmasterSeq++;
+      docmasterData.push(rec);
+    }
+    docmasterEditId = null;
+    var mE = document.getElementById("docmaster-modal"); if(mE) mE.remove();
+    docmasterRender();
+    docmasterPersist("수정");
+    return;
+  }
+
+  var existIdx = docmasterFindExisting(rec.no, rec.name);
+  if(existIdx >= 0){
+    // 이미 있는 문서 → 개정 내용으로 그 행을 갱신(중복 생성 안 함)
+    var old = docmasterData[existIdx];
+    var msg = "이미 등록된 문서입니다. 개정 내용으로 갱신할까요?\n\n"
+            + "[" + (old.no||"번호없음") + "] " + old.name + "\n"
+            + "현재: " + (old.rev||"-") + " (" + (old.revDate||"-") + ")\n"
+            + "변경: " + (rec.rev||"-") + " (" + (rec.revDate||"-") + ")\n\n"
+            + "[확인] 이 문서를 위 내용으로 갱신\n[취소] 갱신 취소";
+    if(!confirm(msg)) return;       // 취소 시 폼 유지(번호 수정 후 다시 시도 가능)
+    rec._id = old._id;              // 같은 행(식별자) 유지 → 새 항목이 아니라 갱신
+    docmasterData[existIdx] = rec;
+    action = "개정 갱신";
+  } else {
+    rec._id = __docmasterSeq++;
+    docmasterData.push(rec);
+  }
+
   var m = document.getElementById("docmaster-modal"); if(m) m.remove();
   docmasterRender();
-  docmasterPersist("추가");
+  docmasterPersist(action);
 }
 
 function docmasterDelete(id){
@@ -10180,6 +10269,41 @@ function docmasterPersist(action){
     docmasterSetNote(action+" 저장 요청됨 ("+new Date().toLocaleTimeString("ko-KR")+")");
     docmasterRender();
   });
+}
+
+// 선택 개수에 따라 '선택 삭제' 버튼/전체선택 체크박스 상태 갱신
+function docmasterUpdateBulkUI(){
+  var n = Object.keys(docmasterSelected).length;
+  var btn = document.getElementById("docmaster-bulkDelBtn");
+  if(btn){
+    btn.textContent = "🗑️ 선택 삭제 (" + n + ")";
+    btn.disabled = (n === 0);
+    btn.style.opacity = (n === 0) ? "0.5" : "1";
+  }
+  var info = document.getElementById("docmaster-selinfo");
+  if(info){
+    info.textContent = n > 0 ? (n + "건 선택됨") : "체크박스로 여러 문서를 골라 한 번에 삭제할 수 있습니다.";
+  }
+  var selall = document.getElementById("docmaster-selall");
+  if(selall){
+    var vis = docmasterVisibleIds;
+    var selVis = vis.filter(function(id){ return docmasterSelected[id]; }).length;
+    selall.checked = (vis.length > 0 && selVis === vis.length);
+    selall.indeterminate = (selVis > 0 && selVis < vis.length);
+  }
+}
+
+// 선택된 문서 일괄 삭제(저장은 한 번만)
+function docmasterBulkDelete(){
+  var ids = Object.keys(docmasterSelected);
+  if(!ids.length) return;
+  if(!confirm("선택한 " + ids.length + "건의 문서를 목록에서 삭제할까요?\n\n(삭제 후 되돌릴 수 없습니다)")) return;
+  var idset = {};
+  ids.forEach(function(id){ idset[id] = true; });
+  docmasterData = docmasterData.filter(function(r){ return !idset[String(r._id)]; });
+  docmasterSelected = {};
+  docmasterRender();
+  docmasterPersist("선택 삭제");
 }
 
 function docmasterCatMeta(cat){
@@ -10281,17 +10405,25 @@ function docmasterRender(){
   if(rows.length===0){
     html += '<div style="padding:30px;text-align:center;color:var(--text-mute);">조건에 맞는 문서가 없습니다.</div>';
   } else {
+    html += '<div class="docmaster-bulkbar" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+      +   '<button type="button" id="docmaster-bulkDelBtn" disabled style="font-size:12px;padding:6px 12px;border:1px solid #E4B4B4;border-radius:7px;background:#fff;color:#C0392B;font-weight:700;cursor:pointer;opacity:0.5;">🗑️ 선택 삭제 (0)</button>'
+      +   '<span id="docmaster-selinfo" style="font-size:12px;color:var(--text-mute);">체크박스로 여러 문서를 골라 한 번에 삭제할 수 있습니다.</span>'
+      + '</div>';
     html += '<div style="overflow-x:auto;"><table class="docmaster-table" style="width:100%;min-width:900px;border-collapse:collapse;font-size:13px;">'
       + '<thead><tr style="background:#1F2A44;color:#fff;">'
+      + '<th class="docmaster-selcol" style="padding:9px 6px;"><input type="checkbox" id="docmaster-selall" title="현재 화면 전체 선택" style="cursor:pointer;transform:scale(1.15);"></th>'
       + '<th style="padding:9px 8px;">분류</th><th style="padding:9px 8px;">문서번호</th>'
       + '<th style="padding:9px 8px;text-align:left;">문서명</th><th style="padding:9px 8px;">현재 Rev</th>'
       + '<th style="padding:9px 8px;">개정일</th><th style="padding:9px 8px;">상태</th>'
       + '<th style="padding:9px 8px;">담당자</th><th style="padding:9px 8px;text-align:left;">개정사유</th>'
       + '<th style="padding:9px 8px;">파일</th></tr></thead><tbody>';
+    var visibleIds = [];
     rows.forEach(function(r, i){
+      visibleIds.push(String(r._id));
       var cm = docmasterCatMeta(r.cat);
       var obsolete = (r.status==="폐지");
       html += '<tr style="border-bottom:1px solid #EEF1F5;'+(obsolete?'opacity:0.55;':'')+(i%2?'background:#F8FAFC;':'')+'">'
+        + '<td class="docmaster-selcol" style="padding:8px 6px;text-align:center;"><input type="checkbox" class="docmaster-rowchk" data-id="'+docmasterEsc(r._id)+'"'+(docmasterSelected[r._id]?' checked':'')+' style="cursor:pointer;transform:scale(1.15);"></td>'
         + '<td style="padding:8px;text-align:center;"><span style="background:'+cm.bg+';color:'+cm.color+';border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap;">'+docmasterEsc(cm.label.split(" ")[0])+'</span></td>'
         + '<td style="padding:8px;text-align:center;font-weight:700;white-space:nowrap;">'+docmasterEsc(r.no)+'</td>'
         + '<td style="padding:8px;text-align:left;">'+docmasterEsc(r.name)+'</td>'
@@ -10302,9 +10434,11 @@ function docmasterRender(){
         + '<td style="padding:8px;text-align:left;font-size:12px;color:#5A6478;">'+docmasterEsc(r.reason||"-")+'</td>'
         + '<td style="padding:8px;text-align:center;white-space:nowrap;">'
         +   '<button type="button" class="docmaster-copybtn" data-path="'+docmasterEsc(r.path||"")+'" style="font-size:11px;padding:4px 8px;border:1px solid #C9D3E0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">📋 경로 복사</button>'
+        +   ' <button type="button" class="docmaster-editbtn" data-id="'+docmasterEsc(r._id)+'" title="이 문서 수정" style="font-size:11px;padding:4px 8px;border:1px solid #BBD3F0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">✏️</button>'
         +   ' <button type="button" class="docmaster-delbtn" data-id="'+docmasterEsc(r._id)+'" title="이 문서 삭제" style="font-size:11px;padding:4px 8px;border:1px solid #E4B4B4;border-radius:6px;background:#fff;color:#C0392B;cursor:pointer;">🗑️</button>'
         + '</td></tr>';
     });
+    docmasterVisibleIds = visibleIds;
     html += '</tbody></table></div>';
   }
   html += '<div style="font-size:11px;color:var(--text-mute);margin-top:8px;">※ 문서 파일은 사내 서버에 있습니다. <b>경로 복사</b> 후 파일 탐색기 주소창에 붙여넣어 여세요. (인터넷 페이지에서 사내 파일 직접 열기는 브라우저 보안상 차단됩니다)</div>';
@@ -10320,12 +10454,43 @@ function docmasterRender(){
       docmasterCopy(path, btn);
     });
   });
+  // 수정 버튼
+  el.querySelectorAll(".docmaster-editbtn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      docmasterOpenForm(btn.getAttribute("data-id"));
+    });
+  });
   // 삭제 버튼
   el.querySelectorAll(".docmaster-delbtn").forEach(function(btn){
     btn.addEventListener("click", function(){
       docmasterDelete(btn.getAttribute("data-id"));
     });
   });
+  // 행 체크박스
+  el.querySelectorAll(".docmaster-rowchk").forEach(function(chk){
+    chk.addEventListener("change", function(){
+      var id = chk.getAttribute("data-id");
+      if(chk.checked) docmasterSelected[id] = true;
+      else delete docmasterSelected[id];
+      docmasterUpdateBulkUI();
+    });
+  });
+  // 전체 선택 체크박스(현재 화면 기준)
+  var selall = document.getElementById("docmaster-selall");
+  if(selall){
+    selall.addEventListener("change", function(){
+      docmasterVisibleIds.forEach(function(id){
+        if(selall.checked) docmasterSelected[id] = true;
+        else delete docmasterSelected[id];
+      });
+      el.querySelectorAll(".docmaster-rowchk").forEach(function(c){ c.checked = selall.checked; });
+      docmasterUpdateBulkUI();
+    });
+  }
+  // 선택 삭제 버튼
+  var bulkBtn = document.getElementById("docmaster-bulkDelBtn");
+  if(bulkBtn) bulkBtn.addEventListener("click", docmasterBulkDelete);
+  docmasterUpdateBulkUI();
 
   var stEl = document.getElementById("docmaster-status-text");
   if(stEl){
@@ -10380,7 +10545,10 @@ function docmasterPrint(){
     + "    #print-area table { width:100% !important; min-width:0 !important; font-size:9px; border-collapse:collapse; }\n"
     + "    #print-area th, #print-area td { padding:4px 5px !important; border:1px solid #ccc; }\n"
     + "    #print-area .docmaster-copybtn { display:none; }\n"
+    + "    #print-area .docmaster-editbtn { display:none; }\n"
     + "    #print-area .docmaster-delbtn { display:none; }\n"
+    + "    #print-area .docmaster-selcol { display:none; }\n"
+    + "    #print-area .docmaster-bulkbar { display:none; }\n"
     + "    #print-area thead { display:table-header-group; }\n";
   var stamp = new Date().toLocaleString("ko-KR");
   openPrintWindow('<h2>문서 Master 목록 ('+stamp+')</h2>' + content.innerHTML, extraCSS, "문서 Master");
