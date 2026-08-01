@@ -1599,6 +1599,9 @@
           <option value="SUP">협력업체</option>
           <option value="ETC">기타</option>
         </select>
+        <select id="docmaster-year" style="flex:0 0 120px;max-width:120px;">
+          <option value="all">전체 연도</option>
+        </select>
         <select id="docmaster-status" style="flex:0 0 120px;max-width:120px;">
           <option value="valid">유효 문서만</option>
           <option value="all">전체(폐지 포함)</option>
@@ -10050,8 +10053,10 @@ function docmasterInit(){
   var s  = document.getElementById("docmaster-search");
   var c  = document.getElementById("docmaster-cat");
   var st = document.getElementById("docmaster-status");
+  var yr = document.getElementById("docmaster-year");
   if(s)  s.addEventListener("input", docmasterRender);
   if(c)  c.addEventListener("change", docmasterRender);
+  if(yr) yr.addEventListener("change", docmasterRender);
   if(st) st.addEventListener("change", docmasterRender);
   var pb = document.getElementById("docmaster-printBtn");
   if(pb) pb.addEventListener("click", docmasterPrint);
@@ -10532,6 +10537,20 @@ function docmasterRender(){
   var cat = (document.getElementById("docmaster-cat")||{}).value || "all";
   var stMode = (document.getElementById("docmaster-status")||{}).value || "valid";
 
+  // 연도 필터 옵션 채우기(데이터의 개정연도 기준, 현재 선택 유지)
+  var curYear = new Date().getFullYear();
+  var yearSel = document.getElementById("docmaster-year");
+  var selYear = yearSel ? (yearSel.value || "all") : "all";
+  if(yearSel){
+    var ySet = {};
+    docmasterData.forEach(function(r){ var d=docmasterParseDate(r.revDate); if(d) ySet[d.getFullYear()]=true; });
+    var years = Object.keys(ySet).map(Number).sort(function(a,b){ return b-a; });
+    if(selYear!=="all" && years.indexOf(Number(selYear))<0) selYear = "all";
+    yearSel.innerHTML = '<option value="all">전체 연도</option>'
+      + years.map(function(y){ return '<option value="'+y+'"'+(String(y)===String(selYear)?' selected':'')+'>'+y+'년'+(y===curYear?' (올해)':'')+'</option>'; }).join("");
+    yearSel.value = selYear;
+  }
+
   var rows = docmasterData.slice();
   if(stMode === "valid") rows = rows.filter(function(r){ return r.status !== "폐지"; });
 
@@ -10554,6 +10573,10 @@ function docmasterRender(){
   })();
 
   if(cat !== "all") rows = rows.filter(function(r){ return r.cat === cat; });
+  if(selYear !== "all") rows = rows.filter(function(r){
+    var d = docmasterParseDate(r.revDate);
+    return d && String(d.getFullYear()) === String(selYear);
+  });
   if(kw) rows = rows.filter(function(r){
     return (String(r.no).toLowerCase().indexOf(kw)>=0)
         || (String(r.name).toLowerCase().indexOf(kw)>=0)
@@ -10626,13 +10649,16 @@ function docmasterRender(){
       visibleIds.push(String(r._id));
       var cm = docmasterCatMeta(r.cat);
       var obsolete = (r.status==="폐지");
-      html += '<tr style="border-bottom:1px solid #EEF1F5;'+(obsolete?'opacity:0.55;':'')+(i%2?'background:#F8FAFC;':'')+'">'
+      var rd = docmasterParseDate(r.revDate);
+      var thisYear = rd && (rd.getFullYear() === curYear);   // 올해 개정된 문서
+      var bg = thisYear ? '#FFF7DE' : (i%2 ? '#F8FAFC' : '');
+      html += '<tr style="border-bottom:1px solid #EEF1F5;'+(obsolete?'opacity:0.55;':'')+(bg?('background:'+bg+';'):'')+(thisYear?'box-shadow:inset 3px 0 0 #E5A400;':'')+'">'
         + '<td class="docmaster-selcol" style="padding:8px 6px;text-align:center;"><input type="checkbox" class="docmaster-rowchk" data-id="'+docmasterEsc(r._id)+'"'+(docmasterSelected[r._id]?' checked':'')+' style="cursor:pointer;transform:scale(1.15);"></td>'
         + '<td style="padding:8px;text-align:center;"><span style="background:'+cm.bg+';color:'+cm.color+';border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap;">'+docmasterEsc(cm.label.split(" ")[0])+'</span></td>'
         + '<td style="padding:8px;text-align:center;font-weight:700;white-space:nowrap;">'+docmasterEsc(r.no)+'</td>'
         + '<td style="padding:8px;text-align:left;">'+docmasterEsc(r.name)+'</td>'
         + '<td style="padding:8px;text-align:center;font-weight:700;color:#0B5CAB;white-space:nowrap;">'+docmasterEsc(r.rev)+'</td>'
-        + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+docmasterEsc(r.revDate||"-")+'</td>'
+        + '<td style="padding:8px;text-align:center;white-space:nowrap;'+(thisYear?'color:#9A6A00;font-weight:700;':'')+'">'+docmasterEsc(r.revDate||"-")+(thisYear?' <span style="background:#F4C430;color:#5A3E00;border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700;">올해</span>':'')+'</td>'
         + '<td style="padding:8px;text-align:center;">'+statusBadge(r.status)+'</td>'
         + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+docmasterEsc(r.owner||"-")+'</td>'
         + '<td style="padding:8px;text-align:left;font-size:12px;color:#5A6478;">'+docmasterEsc(r.reason||"-")+'</td>'
@@ -10645,7 +10671,7 @@ function docmasterRender(){
     docmasterVisibleIds = visibleIds;
     html += '</tbody></table></div>';
   }
-  html += '<div style="font-size:11px;color:var(--text-mute);margin-top:8px;">※ 문서 파일은 사내 서버에 있습니다. <b>경로 복사</b> 후 파일 탐색기 주소창에 붙여넣어 여세요. (인터넷 페이지에서 사내 파일 직접 열기는 브라우저 보안상 차단됩니다)</div>';
+  html += '<div style="font-size:11px;color:var(--text-mute);margin-top:8px;">※ <span style="background:#FFF7DE;box-shadow:inset 3px 0 0 #E5A400;padding:1px 8px;border-radius:3px;">노란 배경</span>은 <b>'+curYear+'년(올해) 개정</b>된 문서입니다. · 문서 파일은 사내 서버에 있습니다. <b>경로 복사</b> 후 파일 탐색기 주소창에 붙여넣어 여세요. (인터넷 페이지에서 사내 파일 직접 열기는 브라우저 보안상 차단됩니다)</div>';
   html += '</div>';
 
   el.innerHTML = html;
