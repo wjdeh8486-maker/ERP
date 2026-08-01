@@ -1607,6 +1607,7 @@
       <div class="topbar-right">
         <button type="button" id="docmaster-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 문서 추가</button>
         <button type="button" id="docmaster-bulkAddBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="엑셀에서 복사한 여러 문서를 한 번에 등록합니다">📥 여러 건 추가</button>
+        <button type="button" id="docmaster-dedupeBtn" style="background:#fff;color:#7A3EA8;border:1px solid #D9C4EC;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="문서명이 같은 구버전을 삭제하고 최신 개정본만 남깁니다">🧹 중복 정리</button>
         <button type="button" id="docmaster-refreshBtn" title="구글시트에서 최신 목록을 다시 불러옵니다">🔄 새로고침</button>
         <button id="docmaster-printBtn">🖨️ 인쇄</button>
       </div>
@@ -10058,6 +10059,8 @@ function docmasterInit(){
   if(ab) ab.addEventListener("click", docmasterOpenAddForm);
   var bab = document.getElementById("docmaster-bulkAddBtn");
   if(bab) bab.addEventListener("click", docmasterOpenBulk);
+  var dbtn = document.getElementById("docmaster-dedupeBtn");
+  if(dbtn) dbtn.addEventListener("click", docmasterDedupeClean);
   var rb = document.getElementById("docmaster-refreshBtn");
   if(rb) rb.addEventListener("click", function(){ docmasterLoadFromSheet(true); });
 
@@ -10230,6 +10233,45 @@ function docmasterOpenForm(editId){
   document.getElementById("dm-f-cancel").addEventListener("click", close);
   document.getElementById("dm-f-save").addEventListener("click", docmasterAddSubmit);
   var focusEl = document.getElementById(editing ? "dm-f-path" : "dm-f-name"); if(focusEl) focusEl.focus();
+}
+
+// ── 중복 정리: 문서명이 같은 그룹은 개정일이 가장 늦은 1건만 남기고 나머지 삭제 ──
+function docmasterDedupeClean(){
+  var best = {};        // 정규화된 문서명 -> 대표(최신) row
+  var groups = {};      // 문서명 -> [row,...]
+  docmasterData.forEach(function(r){
+    var key = String(r.name||"").trim().toLowerCase();
+    (groups[key] = groups[key] || []).push(r);
+    if(!best[key]){ best[key] = r; return; }
+    var d1 = docmasterParseDate(r.revDate), d2 = docmasterParseDate(best[key].revDate);
+    var t1 = d1 ? d1.getTime() : -Infinity, t2 = d2 ? d2.getTime() : -Infinity;
+    if(t1 > t2) best[key] = r;      // 개정일이 더 늦으면 대표 교체(동일하면 먼저 것 유지)
+  });
+
+  var keepIds = {};
+  Object.keys(best).forEach(function(k){ keepIds[best[k]._id] = true; });
+  var removeList = docmasterData.filter(function(r){ return !keepIds[r._id]; });
+
+  if(!removeList.length){ alert("정리할 중복이 없습니다.\n(문서명이 같은 구버전이 없습니다)"); return; }
+
+  // 삭제 예시(최대 6그룹) 안내
+  var dupKeys = Object.keys(groups).filter(function(k){ return groups[k].length > 1; });
+  var sample = dupKeys.slice(0,6).map(function(k){
+    var keep = best[k];
+    return "· " + keep.name + " → 남김 " + (keep.revDate||"-") + (keep.no?(" ["+keep.no+"]"):"");
+  }).join("\n");
+  var more = dupKeys.length > 6 ? ("\n  …외 " + (dupKeys.length-6) + "개 그룹") : "";
+
+  var msg = "문서명이 같은 " + dupKeys.length + "개 그룹에서 구버전 " + removeList.length + "건을 삭제합니다.\n"
+          + "(각 그룹은 개정일이 가장 늦은 1건만 남깁니다)\n\n" + sample + more
+          + "\n\n삭제 후 되돌릴 수 없습니다. 진행할까요?";
+  if(!confirm(msg)) return;
+
+  docmasterData = docmasterData.filter(function(r){ return keepIds[r._id]; });
+  docmasterSelected = {};
+  docmasterRender();
+  docmasterPersist("중복 정리");
+  alert("중복 정리 완료\n\n삭제 " + removeList.length + "건 · 남은 문서 " + docmasterData.length + "건");
 }
 
 // ── 여러 건 한 번에 추가(붙여넣기) ─────────────────────────────
