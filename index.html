@@ -1004,6 +1004,11 @@
     <div id="topbar-summary" class="topbar">
       <h1>📊 월별 현황</h1>
       <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <div class="search-box" style="gap:8px;">
+        <select id="summary-year" style="flex:0 0 100px;max-width:100px;"></select>
+        <select id="summary-month" style="flex:0 0 90px;max-width:90px;"></select>
+        <button type="button" id="summary-thisMonthBtn" style="flex:0 0 auto;padding:6px 12px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;color:#0B5CAB;font-weight:700;cursor:pointer;">이번 달</button>
+      </div>
       <span id="summary-syncBanner" class="sync-banner" style="display:none;">⚪ 동기화 확인 중...</span>
     </div>
     <div id="topbar-main" class="topbar" style="display:none;">
@@ -6613,16 +6618,52 @@ document.getElementById("summary-card-aging").addEventListener("click", ()=>{
   const tabBtn = document.querySelector('.tab-btn[data-tab="aging"]');
   if(tabBtn) tabBtn.click();
 });
+// 연/월 선택기 초기화(최초 1회): 2025~2026, 기본값 = 이번 달
+function summaryInitSelectors(){
+  var yEl = document.getElementById("summary-year");
+  var mEl = document.getElementById("summary-month");
+  if(!yEl || !mEl || yEl.getAttribute("data-init")) return;
+  var now = new Date();
+  yEl.innerHTML = [2025,2026].map(function(y){ return '<option value="'+y+'">'+y+'년</option>'; }).join("");
+  var mh = ""; for(var m=1;m<=12;m++){ mh += '<option value="'+m+'">'+m+'월</option>'; }
+  mEl.innerHTML = mh;
+  yEl.value = String(now.getFullYear() >= 2026 ? 2026 : (now.getFullYear() <= 2025 ? 2025 : now.getFullYear()));
+  mEl.value = String(now.getMonth()+1);
+  yEl.setAttribute("data-init","1");
+  yEl.addEventListener("change", renderSummaryView);
+  mEl.addEventListener("change", renderSummaryView);
+  var tb = document.getElementById("summary-thisMonthBtn");
+  if(tb) tb.addEventListener("click", function(){
+    var n = new Date();
+    yEl.value = String(n.getFullYear() >= 2026 ? 2026 : (n.getFullYear() <= 2025 ? 2025 : n.getFullYear()));
+    mEl.value = String(n.getMonth()+1);
+    renderSummaryView();
+  });
+}
+
 function renderSummaryView(){
+  summaryInitSelectors();
   const now = new Date();
-  const year = now.getFullYear(), month = now.getMonth()+1;
-  document.getElementById("summary-rangeLabel").textContent = "📊 " + year + "년 " + month + "월 월별 현황 보고서";
+  const p = n => String(n).padStart(2,"0");
+  const yEl = document.getElementById("summary-year");
+  const mEl = document.getElementById("summary-month");
+  const year  = yEl ? (parseInt(yEl.value,10) || now.getFullYear())   : now.getFullYear();
+  const month = mEl ? (parseInt(mEl.value,10) || (now.getMonth()+1))  : now.getMonth()+1;
+  const isCurrentMonth = (year === now.getFullYear() && month === now.getMonth()+1);
+  const isFutureMonth  = (year > now.getFullYear()) || (year === now.getFullYear() && month > now.getMonth()+1);
+
+  document.getElementById("summary-rangeLabel").textContent =
+    "📊 " + year + "년 " + month + "월 월별 현황 보고서" + (isCurrentMonth ? " (진행 중)" : (isFutureMonth ? " (예정)" : " · 마감"));
   document.getElementById("summary-generatedAt").textContent = "생성 시각: " + now.toLocaleString("ko-KR");
 
-  // 생산 진행률(%) - "이번 달" 이력만 대상으로 계산합니다 (이번달 1일 ~ 오늘까지 최종납기인 건).
-  const monthStartStr = year + "-" + String(month).padStart(2,"0") + "-01";
-  const todayStr2 = year + "-" + String(month).padStart(2,"0") + "-" + String(now.getDate()).padStart(2,"0");
-  const allRows = (mainData||[]).filter(r=>(Number(r.qty)||0)>0 && r.dueDate && r.dueDate >= monthStartStr && r.dueDate <= todayStr2);
+  // 생산 진행률(%) - 선택한 달의 최종납기 건 대상.
+  //   · 이번 달이면 1일~오늘,  · 지난(마감) 달이면 1일~말일 전체를 본다.
+  const monthStartStr = year + "-" + p(month) + "-01";
+  const lastDay = new Date(year, month, 0).getDate();
+  const endStr = isCurrentMonth
+    ? (year + "-" + p(month) + "-" + p(now.getDate()))
+    : (year + "-" + p(month) + "-" + p(lastDay));
+  const allRows = (mainData||[]).filter(r=>(Number(r.qty)||0)>0 && r.dueDate && r.dueDate >= monthStartStr && r.dueDate <= endStr);
   const doneCount = allRows.filter(r=>computeProductStatus(r)==="완료").length;
   const qcCount = allRows.filter(r=>["재고","출고","측정","외관","비젼","OK"].includes(computeProductStatus(r))).length;
   const totalCount = allRows.length || 1;
