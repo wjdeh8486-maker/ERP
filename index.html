@@ -1606,6 +1606,7 @@
       </div>
       <div class="topbar-right">
         <button type="button" id="docmaster-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 문서 추가</button>
+        <button type="button" id="docmaster-bulkAddBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="엑셀에서 복사한 여러 문서를 한 번에 등록합니다">📥 여러 건 추가</button>
         <button type="button" id="docmaster-refreshBtn" title="구글시트에서 최신 목록을 다시 불러옵니다">🔄 새로고침</button>
         <button id="docmaster-printBtn">🖨️ 인쇄</button>
       </div>
@@ -10055,6 +10056,8 @@ function docmasterInit(){
   if(pb) pb.addEventListener("click", docmasterPrint);
   var ab = document.getElementById("docmaster-addBtn");
   if(ab) ab.addEventListener("click", docmasterOpenAddForm);
+  var bab = document.getElementById("docmaster-bulkAddBtn");
+  if(bab) bab.addEventListener("click", docmasterOpenBulk);
   var rb = document.getElementById("docmaster-refreshBtn");
   if(rb) rb.addEventListener("click", function(){ docmasterLoadFromSheet(true); });
 
@@ -10227,6 +10230,107 @@ function docmasterOpenForm(editId){
   document.getElementById("dm-f-cancel").addEventListener("click", close);
   document.getElementById("dm-f-save").addEventListener("click", docmasterAddSubmit);
   var focusEl = document.getElementById(editing ? "dm-f-path" : "dm-f-name"); if(focusEl) focusEl.focus();
+}
+
+// ── 여러 건 한 번에 추가(붙여넣기) ─────────────────────────────
+// 한 줄 = 문서 1개. 탭(엑셀 복사) 우선, 없으면 콤마로 분리.
+//   · 2칸        → 문서명 | 경로
+//   · 3칸        → 문서번호 | 문서명 | 경로
+//   · 그 이상    → 분류 | 문서번호 | 문서명 | Rev | 개정일 | 상태 | 담당자 | 경로 | 개정사유
+function docmasterParseBulk(text){
+  var lines = String(text||"").split(/\r?\n/);
+  var out = [];
+  lines.forEach(function(ln){
+    if(!ln.replace(/[\t,]/g,"").trim()) return;         // 완전 빈 줄 스킵
+    var f = ln.indexOf("\t")>=0 ? ln.split("\t") : ln.split(",");
+    f = f.map(function(s){ return String(s).trim(); });
+    var rec;
+    if(f.length <= 2){
+      rec = { cat:"기타", no:"", name:f[0]||"", rev:"Rev0", revDate:"", status:"유효", owner:"품질팀", path:f[1]||"", reason:"" };
+    } else if(f.length === 3){
+      rec = { cat:"기타", no:f[0]||"", name:f[1]||"", rev:"Rev0", revDate:"", status:"유효", owner:"품질팀", path:f[2]||"", reason:"" };
+    } else {
+      rec = { cat:f[0]||"기타", no:f[1]||"", name:f[2]||"", rev:f[3]||"Rev0", revDate:f[4]||"",
+              status:f[5]||"유효", owner:f[6]||"품질팀", path:f[7]||"", reason:f[8]||"" };
+    }
+    rec = docmasterNormalize(rec);
+    rec._valid = !!(rec.name && rec.path);              // 문서명·경로 필수
+    out.push(rec);
+  });
+  return out;
+}
+
+function docmasterOpenBulk(){
+  var old = document.getElementById("docmaster-modal");
+  if(old) old.remove();
+  var wrap = document.createElement("div");
+  wrap.id = "docmaster-modal";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(20,28,45,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
+  wrap.innerHTML =
+    '<div style="background:#fff;border-radius:14px;max-width:720px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    + '<div style="background:#0B7A8A;color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;font-weight:700;font-size:15px;">📥 여러 건 추가 (붙여넣기)</div>'
+    + '<div style="padding:18px;display:flex;flex-direction:column;gap:12px;">'
+    + '<div style="font-size:12.5px;color:#5A6478;line-height:1.7;">'
+    +   '한 줄에 문서 1개씩, 엑셀에서 복사해 붙여넣으세요. 칸은 <b>탭(엑셀 복사)</b> 또는 콤마로 구분합니다.<br>'
+    +   '· 간단형: <b>문서명 [탭] 경로</b><br>'
+    +   '· 번호포함: <b>문서번호 [탭] 문서명 [탭] 경로</b><br>'
+    +   '· 전체형: 분류 [탭] 문서번호 [탭] 문서명 [탭] Rev [탭] 개정일 [탭] 상태 [탭] 담당자 [탭] 경로 [탭] 개정사유<br>'
+    +   '<span style="color:#8A93A6;">※ 문서명·경로는 필수. 빈 칸은 기본값(분류=기타, Rev=Rev0, 상태=유효, 담당자=품질팀). 이미 있는 문서번호는 갱신됩니다.</span>'
+    + '</div>'
+    + '<textarea id="dm-bulk-text" style="width:100%;height:220px;padding:10px;border:1px solid #C9D3E0;border-radius:8px;font-size:12.5px;font-family:monospace;box-sizing:border-box;white-space:pre;overflow:auto;" '
+    +   'placeholder="예)&#10;환경관리지침서\t\\\\Ntl\\5.품질팀\\...\\환경관리지침서.pdf&#10;작업표준\t\\\\Ntl\\5.품질팀\\생산자료\\작업표준.xlsx"></textarea>'
+    + '<div id="dm-bulk-preview" style="font-size:12.5px;color:#2A4A73;min-height:20px;"></div>'
+    + '<div style="display:flex;justify-content:flex-end;gap:8px;">'
+    +   '<button type="button" id="dm-bulk-cancel" style="padding:9px 16px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;">취소</button>'
+    +   '<button type="button" id="dm-bulk-import" disabled style="padding:9px 18px;border:none;border-radius:8px;background:#0B7A8A;color:#fff;font-weight:700;cursor:pointer;opacity:0.5;">가져오기</button>'
+    + '</div>'
+    + '</div></div>';
+  document.body.appendChild(wrap);
+  var close = function(){ wrap.remove(); };
+  wrap.addEventListener("click", function(e){ if(e.target===wrap) close(); });
+  document.getElementById("dm-bulk-cancel").addEventListener("click", close);
+
+  var ta = document.getElementById("dm-bulk-text");
+  var pv = document.getElementById("dm-bulk-preview");
+  var imp = document.getElementById("dm-bulk-import");
+  var refresh = function(){
+    var recs = docmasterParseBulk(ta.value);
+    var ok = recs.filter(function(r){ return r._valid; }).length;
+    var bad = recs.length - ok;
+    pv.innerHTML = recs.length
+      ? ("가져올 문서 <b>" + ok + "건</b>" + (bad ? " · <span style='color:#C0392B;'>경로/문서명 누락 " + bad + "건은 제외</span>" : ""))
+      : "붙여넣으면 여기에 미리보기가 표시됩니다.";
+    imp.disabled = (ok === 0);
+    imp.style.opacity = (ok === 0) ? "0.5" : "1";
+    imp.textContent = "가져오기" + (ok ? " ("+ok+"건)" : "");
+  };
+  ta.addEventListener("input", refresh);
+  imp.addEventListener("click", function(){ docmasterBulkSubmit(ta.value); });
+  ta.focus();
+  refresh();
+}
+
+function docmasterBulkSubmit(text){
+  var recs = docmasterParseBulk(text).filter(function(r){ return r._valid; });
+  if(!recs.length) return;
+  var added = 0, updated = 0;
+  recs.forEach(function(rec){
+    delete rec._valid;
+    var idx = docmasterFindExisting(rec.no, rec.name);
+    if(idx >= 0){
+      rec._id = docmasterData[idx]._id;   // 기존 문서 → 갱신
+      docmasterData[idx] = rec;
+      updated++;
+    } else {
+      rec._id = __docmasterSeq++;
+      docmasterData.push(rec);
+      added++;
+    }
+  });
+  var m = document.getElementById("docmaster-modal"); if(m) m.remove();
+  docmasterRender();
+  docmasterPersist("여러 건 등록");
+  alert("여러 건 등록 완료\n\n추가 " + added + "건 · 갱신 " + updated + "건");
 }
 
 // 이미 등록된 문서 찾기: 문서번호 우선, 번호가 없으면 문서명(번호 없는 항목끼리)으로 매칭
