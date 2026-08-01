@@ -10057,6 +10057,23 @@ function docmasterLoadFromSheet(userTriggered){
 }
 
 // 시트에서 온 행을 표준 필드로 정리
+// 어떤 날짜 형식이 와도 'YYYY-MM-DD'로 정리
+//  - "2024-04-02", "2024-04-02T00:00:..." → 앞 10자
+//  - "Tue Apr 02 2024 00:00:00 GMT+0900 (한국 표준시)" 같은 JS 날짜 문자열 → 파싱해 변환
+//  - "2024.4.2", "2024/4/2" → 표준형으로
+function docmasterFmtDate(v){
+  if(v==null) return "";
+  var s = String(v).trim();
+  if(!s) return "";
+  var m = s.match(/^(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
+  if(m) return m[1] + "-" + ("0"+m[2]).slice(-2) + "-" + ("0"+m[3]).slice(-2);
+  var d = new Date(s);
+  if(!isNaN(d.getTime())){
+    return d.getFullYear() + "-" + ("0"+(d.getMonth()+1)).slice(-2) + "-" + ("0"+d.getDate()).slice(-2);
+  }
+  return s;
+}
+
 function docmasterNormalize(r){
   r = r || {};
   return {
@@ -10064,7 +10081,7 @@ function docmasterNormalize(r){
     name:   r.name   || "",
     cat:    r.cat    || "기타",
     rev:    r.rev    || "",
-    revDate:r.revDate|| "",
+    revDate:docmasterFmtDate(r.revDate),
     status: r.status || "유효",
     owner:  r.owner  || "",
     path:   r.path   || "",
