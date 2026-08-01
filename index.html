@@ -992,6 +992,7 @@
       <div class="nav-item nav-sub" data-view="qcprio"><span class="dot"></span>📋 검사 요청서</div>
     </div>
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
+    <div class="nav-item" data-view="docmaster"><span class="dot"></span>📑 문서 Master</div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
     <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
     <div class="nav-item" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
@@ -1575,6 +1576,38 @@
       <div class="tab-panel" id="qpanel-customer"></div>
       <div class="tab-panel" id="qpanel-capa"></div>
       <div class="tab-panel" id="qpanel-recur"></div>
+    </div>
+    <!-- ===================== 문서 Master (품질문서 관리) VIEW ===================== -->
+    <div id="topbar-docmaster" class="topbar" style="display:none;">
+      <h1>📑 문서 Master</h1>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <div class="search-box">
+        <input id="docmaster-search" type="text" placeholder="문서번호·문서명·담당자 검색">
+        <select id="docmaster-cat" style="flex:0 0 150px;max-width:150px;">
+          <option value="all">전체 분류</option>
+          <option value="QM">QM 품질매뉴얼</option>
+          <option value="QP">QP 프로세스</option>
+          <option value="QS">QS 기준서</option>
+          <option value="QI">QI 지침서</option>
+          <option value="ETSI">ETSI</option>
+          <option value="OPLS">OPLS 사례</option>
+          <option value="SUP">협력업체</option>
+          <option value="ETC">기타</option>
+        </select>
+        <select id="docmaster-status" style="flex:0 0 120px;max-width:120px;">
+          <option value="valid">유효 문서만</option>
+          <option value="all">전체(폐지 포함)</option>
+        </select>
+      </div>
+      <div class="topbar-right">
+        <button type="button" id="docmaster-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 문서 추가</button>
+        <button type="button" id="docmaster-refreshBtn" title="구글시트에서 최신 목록을 다시 불러옵니다">🔄 새로고침</button>
+        <button id="docmaster-printBtn">🖨️ 인쇄</button>
+      </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 품질문서(QM·QP·QS·QI 등)의 현재 Rev·개정일·상태를 관리합니다. 문서 파일은 사내 서버에 있으며, <b>경로 복사</b> 버튼으로 탐색기에서 여세요. <span id="docmaster-status-text"></span></div>
+    </div>
+    <div class="view" id="view-docmaster">
+      <div id="docmaster-content"></div>
     </div>
     <!-- ===================== 검사이력조회 (품질검사관리 2단계) VIEW ===================== -->
     <div id="topbar-qchist" class="topbar" style="display:none;">
@@ -2647,6 +2680,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("topbar-inventory").style.display = target==="inventory" ? "flex" : "none";
     document.getElementById("topbar-overdue").style.display = target==="overdue" ? "flex" : "none";
     document.getElementById("topbar-quality").style.display = target==="quality" ? "flex" : "none";
+    document.getElementById("topbar-docmaster").style.display = target==="docmaster" ? "flex" : "none";
     document.getElementById("topbar-qchist").style.display = target==="qchist" ? "flex" : "none";
     document.getElementById("topbar-qcprio").style.display = target==="qcprio" ? "flex" : "none";
     document.getElementById("topbar-sales").style.display = target==="sales" ? "flex" : "none";
@@ -2681,6 +2715,10 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="qcprio"){
       if(!window.__qcprioInited){ window.__qcprioInited = true; qcprioInit(); }
       qcprioRender();
+    }
+    if(target==="docmaster"){
+      if(!window.__docmasterInited){ window.__docmasterInited = true; docmasterInit(); }
+      docmasterRender();
     }
     if(target==="management"){
       // 도번 조회 메뉴: 마지막으로 보던 탭으로 복원
@@ -9742,6 +9780,610 @@ function qcprioPrint(){
   `;
   const stamp = new Date().toLocaleString("ko-KR");
   openPrintWindow('<h2>검사 요청서 ('+stamp+')</h2>' + page.innerHTML, extraCSS, "검사 요청서");
+}
+
+/* ===================== 📑 문서 Master (품질문서 관리) ===================== */
+// 샘플 데이터. 실제 운용 시에는 구글시트(문서관리대장)에서 이 배열을 채운다.
+// 필드: no(문서번호) name(문서명) cat(분류) rev(현재Rev) revDate(개정일)
+//       status(유효/개정중/폐지) owner(담당자) path(사내경로) reason(개정사유)
+var DOCMASTER_SAMPLE = [
+  { no:"QM-100", name:"품질매뉴얼 7.3제외 REV", cat:"QM", rev:"Rev0", revDate:"2023-09-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\01. 품질경영매뉴얼\\QM-100(품질매뉴얼)7.3제외 REV.xls", reason:"" },
+  { no:"", name:"엔티엘 2015 품질경영매뉴얼", cat:"QM", rev:"Rev0", revDate:"2018-07-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\01. 품질경영매뉴얼\\엔티엘_2015 품질경영매뉴얼.hwp", reason:"" },
+  { no:"", name:"엔티엘 품질‧환경‧안전‧보건 매뉴얼", cat:"QM", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\01. 품질경영매뉴얼\\엔티엘_품질‧환경‧안전‧보건 매뉴얼.hwp", reason:"" },
+  { no:"", name:"표준문서목록240305 수정", cat:"QM", rev:"Rev0", revDate:"2024-03-06", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\01. 품질경영매뉴얼\\표준문서목록240305(수정).xlsx", reason:"" },
+  { no:"NLT-MP-01", name:"방침 및 목표관리 프로세스", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NLT-MP-01 방침 및 목표관리 프로세스.doc", reason:"" },
+  { no:"NTL-EP-01", name:"환경영향평가 프로세스.ppt", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-EP-01 환경영향평가 프로세스.ppt", reason:"" },
+  { no:"NTL-EP-01-01", name:"물질수지표", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-EP-01-01 물질수지표.xls", reason:"" },
+  { no:"NTL-EP-01-02", name:"환경영향파악 조사표", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-EP-01-02 환경영향파악 조사표.xls", reason:"" },
+  { no:"NTL-EP-01-03", name:"환경영향 평가표", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-EP-01-03 환경영향 평가표.xls", reason:"" },
+  { no:"NTL-EP-01-04", name:"업무환경영향 평가표", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-EP-01-04  업무환경영향 평가표.xls", reason:"" },
+  { no:"NTL-EP-01-05", name:"환경영향 등록부", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-EP-01-05 환경영향 등록부.xls", reason:"" },
+  { no:"NTL-EP-02", name:"환경운영 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-EP-02 환경운영 지침서.hwp", reason:"" },
+  { no:"NTL-EP-03", name:"대기환경관리 프로세스.ppt", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-EP-03 대기환경관리 프로세스.ppt", reason:"" },
+  { no:"NTL-EP-03-01", name:"배기DUCT 점검기록부", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-EP-03-01 배기DUCT 점검기록부.xls", reason:"" },
+  { no:"NTL-EP-04", name:"폐기물관리 프로세스.ppt", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-EP-04 폐기물관리 프로세스.ppt", reason:"" },
+  { no:"NTL-EP-04-01", name:"폐기물 관리대잗", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-EP-04-01 폐기물 관리대잗.xls", reason:"" },
+  { no:"NTL-EP-04-02", name:"폐기물 점검 CHECK LIST", cat:"QP", rev:"Rev0", revDate:"2024-04-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-EP-04-02 폐기물 점검 CHECK LIST.xls", reason:"" },
+  { no:"NTL-ESP-01", name:"준수의무 프로세스", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-ESP-01 준수의무 프로세스.hwp", reason:"" },
+  { no:"NTL-ESP-01-01", name:"법규검토서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-ESP-01-01 법규검토서.xls", reason:"" },
+  { no:"NTL-ESP-01-02", name:"법규등록부", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-ESP-01-02 법규등록부.xls", reason:"" },
+  { no:"NTL-ESP-01-03", name:"법규준수평가서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-ESP-01-03 법규준수평가서.xls", reason:"" },
+  { no:"NTL-ESP-02", name:"비상사태 대비및대응 프로세스", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-ESP-02 비상사태 대비및대응 프로세스.hwp", reason:"" },
+  { no:"NTL-ESP-02-01", name:"비상사태 훈련계획서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-ESP-02-01 비상사태 훈련계획서.xlsx", reason:"" },
+  { no:"NTL-ESP-02-02", name:"비상사태 훈련결과 보고서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-ESP-02-02 비상사태 훈련결과 보고서.xlsx", reason:"" },
+  { no:"NTL-MP-01-01", name:"품질 환경 및 안전보건 목표관리 계획 실적서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-MP-01-01 품질 환경 및 안전보건 목표관리 계획 실적서.xls", reason:"" },
+  { no:"NTL-MP-02", name:"내부심사 프로세스", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-MP-02 내부심사 프로세스.hwp", reason:"" },
+  { no:"NTL-MP-02-01", name:"년간 내부심사 계획", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-MP-02-01 년간 내부심사 계획.xls", reason:"" },
+  { no:"NTL-MP-02-02", name:"내부심사 세부 일정표", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-MP-02-02 내부심사 세부 일정표.xls", reason:"" },
+  { no:"NTL-MP-02-03", name:"내부심사 점검표", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-MP-02-03 내부심사 점검표.xls", reason:"" },
+  { no:"NTL-MP-02-04", name:"내부심사 결과보고서", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-MP-02-04 내부심사 결과보고서.xls", reason:"" },
+  { no:"NTL-MP-04", name:"지식관리 및 교육훈련 프로세스", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-MP-04 지식관리 및 교육훈련 프로세스.hwp", reason:"" },
+  { no:"NTL-MP-06", name:"의사소통 관리 프로세스", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-MP-06 의사소통 관리 프로세스.hwp", reason:"" },
+  { no:"NTL-MP-06-01", name:"의사소통 관리 대장", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-MP-06-01 의사소통 관리 대장.xls", reason:"" },
+  { no:"NTL-QP-02", name:"업무환경관리 프로세스", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-QP-02 업무환경관리 프로세스.doc", reason:"" },
+  { no:"NTL-SI-01", name:"작업장 안전조치 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-01 작업장 안전조치 지침서.xls", reason:"" },
+  { no:"NTL-SI-02", name:"운반기계 지게차 안전관리 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-02 운반기계(지게차) 안전관리 지침서.xls", reason:"" },
+  { no:"NTL-SI-02-01", name:"지게차 안전작업 계획서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SI-02-01 지게차 안전작업 계획서.xls", reason:"" },
+  { no:"NTL-SI-02-02", name:"지게차 정기 안전점검일지", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SI-02-02 지게차 정기 안전점검일지.xls", reason:"" },
+  { no:"NTL-SI-02-03", name:"지게차 운저자 자격과정", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SI-02-03 지게차 운저자 자격과정.xls", reason:"" },
+  { no:"NTL-SI-03", name:"안전보호구 관리 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-03 안전보호구 관리 지침서.xls", reason:"" },
+  { no:"NTL-SI-03-01", name:"안전보호구 지급대장", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SI-03-01 안전보호구 지급대장.xls", reason:"" },
+  { no:"NTL-SI-04", name:"위험기계기구 관리 및 안전검사 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-04 위험기계기구 관리 및 안전검사 지침서.xls", reason:"" },
+  { no:"NTL-SI-05", name:"떨어짐에 의한 위험방지 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-05 떨어짐에 의한 위험방지 지침서.xls", reason:"" },
+  { no:"NTL-SI-06", name:"폭발,화재 및 위험물 누출예방 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-06 폭발,화재 및 위험물 누출예방 지침서.xls", reason:"" },
+  { no:"NTL-SI-07", name:"전기재해 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-07 전기재해 지침서.xls", reason:"" },
+  { no:"NTL-SI-08", name:"쾌적한 작업환경 유지활동 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-08 쾌적한 작업환경 유지활동 지침서.xls", reason:"" },
+  { no:"NTL-SI-09", name:"근로자 건강검진업무 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-09 근로자 건강검진업무 지침서.xls", reason:"" },
+  { no:"NTL-SI-10", name:"근골격계질환 예방관리 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-10 근골격계질환 예방관리 지침서.xls", reason:"" },
+  { no:"NTL-SI-11", name:"산업재해조사활동 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-11 산업재해조사활동 지침서.xls", reason:"" },
+  { no:"NTL-SI-12", name:"무재해운동의 자율적 추진 및 운영 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-12 무재해운동의 자율적 추진 및 운영 지침서.xls", reason:"" },
+  { no:"NTL-SI-13", name:"산업안전보건위원회 운영지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-13 산업안전보건위원회 운영지침서.xls", reason:"" },
+  { no:"NTL-SI-14", name:"MSDS 관리 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-14 MSDS 관리 지침서.xls", reason:"" },
+  { no:"NTL-SI-14-01", name:"MSDS 관리대장", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SI-14-01 MSDS 관리대장.xls", reason:"" },
+  { no:"NTL-SI-15", name:"응급조치 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\지침서\\NTL-SI-15 응급조치 지침서.xls", reason:"" },
+  { no:"NTL-SP-01", name:"근로자 협의 및 참여 프로세스", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-SP-01 근로자 협의 및 참여 프로세스.xls", reason:"" },
+  { no:"NTL-SP-01-01", name:"안전보건 의사소통 관리대장", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SP-01-01 안전보건 의사소통 관리대장.xls", reason:"" },
+  { no:"NTL-SP-02", name:"위험성 평가관리 프로세스", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-SP-02 위험성 평가관리 프로세스.xls", reason:"" },
+  { no:"NTL-SP-02-01", name:"위험성평가 계획서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SP-02-01 위험성평가 계획서.xls", reason:"" },
+  { no:"NTL-SP-02-02", name:"사전조사한 안전보건 정보", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SP-02-02 사전조사한 안전보건 정보.xls", reason:"" },
+  { no:"NTL-SP-02-03", name:"위험성 평가표", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SP-02-03 위험성 평가표.xls", reason:"" },
+  { no:"NTL-SP-02-04", name:"중요 위험작업 등록부", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SP-02-04 중요 위험작업 등록부.xls", reason:"" },
+  { no:"NTL-SP-03", name:"안전보건활동 지침서", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-SP-03 안전보건활동 지침서.doc", reason:"" },
+  { no:"NTL-SP-03-01", name:"안전점검일지", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SP-03-01 안전점검일지.doc", reason:"" },
+  { no:"NTL-SP-03-02", name:"안전보건교육대장", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SP-03-02 안전보건교육대장.hwp", reason:"" },
+  { no:"NTL-SP-04", name:"사건사고 및 시정조치 프로세스", cat:"QP", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\프로세스\\NTL-SP-04 사건사고 및 시정조치 프로세스.xls", reason:"" },
+  { no:"NTL-SP-04-01", name:"사건사고보고서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SP-04-01 사건사고보고서.xls", reason:"" },
+  { no:"NTL-SP-04-02", name:"사건사고관리대장", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SP-04-02 사건사고관리대장.xls", reason:"" },
+  { no:"NTL-SP-04-03", name:"아차사고 보고서", cat:"QP", rev:"Rev0", revDate:"2024-04-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\안전,환경\\양식\\NTL-SP-04-03 아차사고 보고서.xls", reason:"" },
+  { no:"QP-1010", name:"부적합제품관리", cat:"QP", rev:"Rev0", revDate:"2023-10-04", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-1010 부적합제품관리.xls", reason:"" },
+  { no:"QP-1020", name:"시정조치및예방조치", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-1020 시정조치및예방조치.xls", reason:"" },
+  { no:"QP-1030", name:"데이터분석및지속적개선", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-1030 데이터분석및지속적개선.xls", reason:"" },
+  { no:"QP-520", name:"조직 및 업무분장", cat:"QP", rev:"Rev0", revDate:"2023-01-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-520 조직 및 업무분장.xls", reason:"" },
+  { no:"QP-620", name:"프로세스측정 변경관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-620 프로세스측정(변경관리).xls", reason:"" },
+  { no:"QP-710", name:"설비관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-710 설비관리.xls", reason:"" },
+  { no:"QP-720", name:"계측기관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-720 계측기관리.xls", reason:"" },
+  { no:"QP-730", name:"교육훈련 및 자격인정", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\기존 프로세스\\QP-730 교육훈련 및 자격인정.xls", reason:"" },
+  { no:"QP-730", name:"교육훈련 및 자격인증 프로세스", cat:"QP", rev:"Rev4", revDate:"2022-10-21", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-730_교육훈련 및 자격인증 프로세스_Rev4.xlsx", reason:"" },
+  { no:"QP-750", name:"기반구조관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-750 기반구조관리.xls", reason:"" },
+  { no:"QP-760", name:"크린룸관리 최신", cat:"QP", rev:"Rev0", revDate:"2024-08-27", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-760 크린룸관리(최신).xls", reason:"" },
+  { no:"QP-770", name:"회사 표준관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-770 회사 표준관리.xls", reason:"" },
+  { no:"QP-780", name:"문서및자료관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-780 문서및자료관리.xls", reason:"" },
+  { no:"QP-790", name:"기록관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-790 기록관리.xls", reason:"" },
+  { no:"QP-810", name:"영업관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-810 영업관리.xls", reason:"" },
+  { no:"QP-820", name:"도면관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-820 도면관리.xls", reason:"" },
+  { no:"QP-830", name:"구매관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-830 구매관리.xls", reason:"" },
+  { no:"QP-840", name:"협력업체관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-840 협력업체관리.xls", reason:"" },
+  { no:"QP-850", name:"4M 변경관리", cat:"QP", rev:"Rev2", revDate:"2024-08-27", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-850 4M 변경관리(REV2).xlsx", reason:"" },
+  { no:"QP-850", name:"4M 변경관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\기존 프로세스\\QP-850 4M 변경관리.xls", reason:"" },
+  { no:"QP-860", name:"공정관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-860 공정관리.xls", reason:"" },
+  { no:"QP-870", name:"제품식별및추적성관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-870 제품식별및추적성관리.xls", reason:"" },
+  { no:"QP-880", name:"제품관리", cat:"QP", rev:"Rev0", revDate:"2024-08-27", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-880 제품관리.xls", reason:"" },
+  { no:"QP-890", name:"자재관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-890 자재관리.xls", reason:"" },
+  { no:"QP-910", name:"검사업무", cat:"QP", rev:"Rev0", revDate:"2025-08-25", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-910 검사업무.xls", reason:"" },
+  { no:"QP-920", name:"고객만족관리", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-920 고객만족관리.xls", reason:"" },
+  { no:"QP-930", name:"내부심사", cat:"QP", rev:"Rev0", revDate:"2023-08-31", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-930 내부심사.xls", reason:"" },
+  { no:"QP-940", name:"경영검토", cat:"QP", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-940 경영검토.xls", reason:"" },
+  { no:"QP-950", name:"수입검사 프로세스", cat:"QP", rev:"Rev0", revDate:"2022-10-21", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-950_수입검사 프로세스_Rev0.xlsx", reason:"" },
+  { no:"QP-960", name:"출하검사 프로세스", cat:"QP", rev:"Rev0", revDate:"2022-10-27", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\02. 품질경영프로세스\\QP-960_출하검사 프로세스_Rev0.xlsx", reason:"" },
+  { no:"", name:"250827DI실링 RUNSHEET", cat:"QP", rev:"Rev0", revDate:"2025-08-28", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\07. 협력업체 체크시트\\삼영테크\\250827DI실링 RUNSHEET.pdf", reason:"" },
+  { no:"", name:"Anodizing Check Sheet", cat:"QP", rev:"Rev1", revDate:"2025-06-13", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\07. 협력업체 체크시트\\Anodizing Check Sheet(REV1).xlsx", reason:"" },
+  { no:"", name:"Anodizing Check Sheet", cat:"QP", rev:"Rev0", revDate:"2025-06-20", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\07. 협력업체 체크시트\\Anodizing Check Sheet.pdf", reason:"" },
+  { no:"", name:"Anodizing Check Sheet", cat:"QP", rev:"Rev0", revDate:"2025-06-12", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\07. 협력업체 체크시트\\Anodizing Check Sheet.xlsx", reason:"" },
+  { no:"", name:"Chack sheet 협력업체", cat:"QP", rev:"Rev0", revDate:"2025-08-14", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\07. 협력업체 체크시트\\Chack sheet(협력업체).pdf", reason:"" },
+  { no:"", name:"Chack sheet 협력업체", cat:"QP", rev:"Rev0", revDate:"2025-08-14", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\07. 협력업체 체크시트\\Chack sheet(협력업체).xlsx", reason:"" },
+  { no:"", name:"외주 후처리 입고 관리 대장", cat:"QP", rev:"Rev0", revDate:"2025-08-28", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\07. 협력업체 체크시트\\외주(후처리) 입고 관리 대장.xlsx", reason:"" },
+  { no:"QP-710", name:"설비관리", cat:"QS", rev:"Rev0", revDate:"2019-06-10", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\기준서 및 지침서\\QP-710 설비관리.xls", reason:"" },
+  { no:"QP-780", name:"문서및자료관리", cat:"QS", rev:"Rev0", revDate:"2019-06-07", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\기준서 및 지침서\\QP-780 문서및자료관리.xls", reason:"" },
+  { no:"QP-930", name:"내부심사", cat:"QS", rev:"Rev0", revDate:"2019-06-10", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\기준서 및 지침서\\QP-930 내부심사.xls", reason:"" },
+  { no:"QS-910-01", name:"수입검사기준서", cat:"QS", rev:"Rev04", revDate:"2025-08-25", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-01 수입검사기준서_Rev04.xls", reason:"" },
+  { no:"QS-910-02", name:"공정검사기준서", cat:"QS", rev:"Rev02", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-02 공정검사기준서_Rev02.xls", reason:"" },
+  { no:"QS-910-03", name:"출하검사기준서", cat:"QS", rev:"Rev02", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-03 출하검사기준서_Rev02.xls", reason:"" },
+  { no:"QS-910-04", name:"Vacuum Test 기준서", cat:"QS", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-04 Vacuum Test 기준서.xls", reason:"" },
+  { no:"QS-910-05", name:"가압 Test 기준서", cat:"QS", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-05 가압 Test 기준서.xls", reason:"" },
+  { no:"QS-910-06", name:"Flow Test 기준서", cat:"QS", rev:"Rev0", revDate:"2024-08-27", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-06 Flow Test 기준서.xls", reason:"" },
+  { no:"QS-910-07", name:"현미경 검사 기준서", cat:"QS", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-07 현미경 검사 기준서.xls", reason:"" },
+  { no:"QS-910-08", name:"MOTOR SHAFT 검사 기준서", cat:"QS", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-08 MOTOR SHAFT 검사 기준서.xls", reason:"" },
+  { no:"QS-910-09", name:"BURNISHING 검사 기준서 최종", cat:"QS", rev:"Rev0", revDate:"2021-01-21", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-09 BURNISHING 검사 기준서_최종.xls", reason:"" },
+  { no:"QS-910-10", name:"FLIPPER 검사 기준서", cat:"QS", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-10 FLIPPER 검사 기준서.xls", reason:"" },
+  { no:"QS-910-11", name:"THROTTLE VALVE FLANGE 검사 기준서", cat:"QS", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-11 THROTTLE VALVE FLANGE 검사 기준서.xls", reason:"" },
+  { no:"QS-910-12", name:"MOTOR BOX FLANGE 검사 기준서", cat:"QS", rev:"Rev0", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-12 MOTOR BOX FLANGE 검사 기준서.xls", reason:"" },
+  { no:"QS-910-13", name:"FLANGE,FEEDTHRU,SS NW16 검사 기준서", cat:"QS", rev:"Rev0", revDate:"2021-12-15", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\QS-910-13 FLANGE,FEEDTHRU,SS NW16 검사 기준서.xlsx", reason:"" },
+  { no:"", name:"EUGENUS 검사기준서 최종본", cat:"QS", rev:"Rev0", revDate:"2018-11-30", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\EUGENUS 검사기준서_최종본.pdf", reason:"" },
+  { no:"", name:"Q-COST 부적합발생리스트 2019년", cat:"QS", rev:"Rev0", revDate:"2019-06-04", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\기준서 및 지침서\\Q-COST_부적합발생리스트(2019년)_.xlsx", reason:"" },
+  { no:"", name:"SHOWER HEAD 포장 관리 기준서", cat:"QS", rev:"Rev0", revDate:"2022-08-18", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\SHOWER HEAD 포장 관리 기준서.pdf", reason:"" },
+  { no:"", name:"검사장비관리대장 최신본", cat:"QS", rev:"Rev0", revDate:"2019-06-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\기준서 및 지침서\\검사장비관리대장(최신본).xlsx", reason:"" },
+  { no:"", name:"공정 FLOW", cat:"QS", rev:"Rev0", revDate:"2026-06-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\공정 FLOW.pdf", reason:"" },
+  { no:"", name:"공정 FLOW", cat:"QS", rev:"Rev0", revDate:"2026-06-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\03. 기준서\\공정 FLOW.pptx", reason:"" },
+  { no:"", name:"내부심사 Check Sheet", cat:"QS", rev:"Rev0", revDate:"2019-06-10", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\기준서 및 지침서\\내부심사 Check Sheet.xls", reason:"" },
+  { no:"", name:"설비관리대장", cat:"QS", rev:"Rev11", revDate:"2019-06-02", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\기준서 및 지침서\\설비관리대장_Rev11.xls", reason:"" },
+  { no:"ETSI-704-01", name:"포장관리지침서 R2 20240830", cat:"QI", rev:"Rev0", revDate:"2024-09-06", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\ETSI-704-01 포장관리지침서_R2_20240830.xlsx", reason:"" },
+  { no:"ETSI-802-002", name:"Leak & Flow test", cat:"QI", rev:"Rev0", revDate:"2020-05-15", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\ETSI-802-002_Leak & Flow test_R0.xlsx", reason:"" },
+  { no:"ETSI-802-004-004", name:"용접품 검사지침서 20150716", cat:"QI", rev:"Rev0", revDate:"2020-05-15", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\ETSI-802-004-004_용접품 검사지침서_20150716_R0.xlsx", reason:"" },
+  { no:"ETSI-802-011", name:"완제품 보관 보존 관리 지침서", cat:"QI", rev:"Rev0", revDate:"2023-10-04", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\ETSI-802-011_완제품 보관 보존 관리 지침서.xlsx", reason:"" },
+  { no:"GP-551", name:"조직및업무분장", cat:"QI", rev:"Rev0", revDate:"2018-07-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\수정해야할 지침서\\GP-551 조직및업무분장.xls", reason:"" },
+  { no:"QI-1010-01", name:"부적합품 관리 지침서", cat:"QI", rev:"Rev0", revDate:"2024-08-29", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-1010-01 부적합품 관리 지침서.xls", reason:"" },
+  { no:"QI-1010-02", name:"특채처리지침서", cat:"QI", rev:"Rev0", revDate:"2024-08-29", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-1010-02 특채처리지침서.xlsx", reason:"" },
+  { no:"QI-1020-01", name:"시정조치 및 재발방지 관리 지침서", cat:"QI", rev:"Rev0", revDate:"2025-08-25", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-1020-01 시정조치 및 재발방지 관리 지침서.xls", reason:"" },
+  { no:"QI-520-1", name:"3정5S 지침서", cat:"QI", rev:"Rev0", revDate:"2023-07-18", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\고객검수 준비 절차서 관련 자료\\QI-520-1 3정5S 지침서.xls", reason:"" },
+  { no:"QI-732-01", name:"전자도면 관리지침서", cat:"QI", rev:"Rev01", revDate:"2017-10-10", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\수정해야할 지침서\\QI-732-01 전자도면 관리지침서_Rev01.xls", reason:"" },
+  { no:"QI-760-01", name:"환경관리지침서 - 복사본", cat:"QI", rev:"Rev2", revDate:"2023-07-18", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\고객검수 준비 절차서 관련 자료\\QI-760-01 환경관리지침서_Rev2 - 복사본.xls", reason:"" },
+  { no:"QI-820-01", name:"전자도면 관리지침서", cat:"QI", rev:"Rev02", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-820-01 전자도면 관리지침서_Rev02.xls", reason:"" },
+  { no:"QI-880-02", name:"제품포장관리지침서", cat:"QI", rev:"Rev02", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-880-02 제품포장관리지침서_Rev02.xls", reason:"" },
+  { no:"QI-880-03", name:"제품 보관 및 납품 관리지침서", cat:"QI", rev:"Rev1", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-880-03 제품 보관 및 납품 관리지침서_Rev1.xls", reason:"" },
+  { no:"QI-880-04", name:"제품세정관리지침서", cat:"QI", rev:"Rev0", revDate:"2025-12-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-880-04 제품세정관리지침서.xls", reason:"" },
+  { no:"QI-880-05", name:"환경관리지침서", cat:"QI", rev:"Rev2", revDate:"2025-12-19", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-880-05 환경관리지침서_Rev2.xls", reason:"" },
+  { no:"QI-880-05", name:"환경관리지침서", cat:"QI", rev:"Rev3", revDate:"2025-12-26", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-880-05 환경관리지침서_Rev3.xls", reason:"" },
+  { no:"QI-880-06", name:"Air Shower 출입 지침서", cat:"QI", rev:"Rev0", revDate:"2025-12-19", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-880-06 Air Shower 출입 지침서_Rev0.xls", reason:"" },
+  { no:"QI-880-07", name:"제품취급지침서", cat:"QI", rev:"Rev02", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-880-07 제품취급지침서_Rev02.xls", reason:"" },
+  { no:"QI-880-08", name:"SHOWER HEAD 포장 관리 기준서", cat:"QI", rev:"Rev0", revDate:"2024-08-29", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\수정해야할 지침서\\QI-880-08_SHOWER HEAD 포장 관리 기준서.xlsx", reason:"" },
+  { no:"QI-880-08", name:"완제품 관리 지침서", cat:"QI", rev:"Rev02", revDate:"2026-06-30", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-880-08 완제품 관리 지침서 Rev02.xlsx", reason:"" },
+  { no:"QI-910-01", name:"품질 검사 표준", cat:"QI", rev:"Rev03", revDate:"2022-10-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-910-01  품질 검사 표준_Rev03.xls", reason:"" },
+  { no:"QI-910-02", name:"중점관리 항목 지침서", cat:"QI", rev:"Rev0", revDate:"2022-04-22", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-910-02 중점관리 항목 지침서_Rev0.xlsx", reason:"" },
+  { no:"QI-910-03", name:"조도 관리 지침서", cat:"QI", rev:"Rev0", revDate:"2024-06-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-910-03 조도 관리 지침서.xlsx", reason:"" },
+  { no:"QI-910-04", name:"검사JIG관리 지침서", cat:"QI", rev:"Rev1", revDate:"2025-09-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-910-04 검사JIG관리 지침서_REV1.xlsx", reason:"" },
+  { no:"QI-920-01", name:"고객검수 준비 지침서", cat:"QI", rev:"Rev0", revDate:"2024-08-29", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\QI-920-01 고객검수 준비 지침서_Rev0.xlsx", reason:"" },
+  { no:"QP-621-09", name:"폐기물관리프로세스", cat:"QI", rev:"Rev0", revDate:"2023-05-23", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\수정해야할 지침서\\QP-621-09_폐기물관리프로세스.xls", reason:"" },
+  { no:"QP-732", name:"도면관리", cat:"QI", rev:"Rev0", revDate:"2018-07-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\수정해야할 지침서\\QP-732 도면관리.xls", reason:"" },
+  { no:"QP-751-01", name:"생판회의 운영기준 지침서", cat:"QI", rev:"Rev0", revDate:"2022-11-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\수정해야할 지침서\\QP-751-01_생판회의 운영기준 지침서_Rev0.xlsx", reason:"" },
+  { no:"QP-760", name:"계측기관리 절차 및 양식", cat:"QI", rev:"Rev0", revDate:"2018-07-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\수정해야할 지침서\\QP-760 계측기관리 절차 및 양식.xls", reason:"" },
+  { no:"QP-770", name:"크린룸관리", cat:"QI", rev:"Rev01", revDate:"2017-10-16", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\수정해야할 지침서\\QP-770 크린룸관리_Rev01.xls", reason:"" },
+  { no:"", name:"25년 협력업체 정기평가 전체", cat:"QI", rev:"Rev0", revDate:"2025-08-29", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\2025년\\25년 협력업체 정기평가_전체.xlsx", reason:"" },
+  { no:"", name:"3정5S 체크시트 품질청소구역", cat:"QI", rev:"Rev0", revDate:"2025-08-26", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\2025년\\3정5S 체크시트 (품질청소구역).xls", reason:"" },
+  { no:"", name:"3차원측정기 보정 작업 지도서", cat:"QI", rev:"Rev0", revDate:"2018-12-19", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\06. 3차원측정기 작업지도서\\3차원측정기 보정 작업 지도서.xls", reason:"" },
+  { no:"", name:"4M 변경통보서 검사원변경 241205", cat:"QI", rev:"Rev0", revDate:"2025-08-29", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\2025년\\4M 변경통보서(검사원변경 241205).xlsx", reason:"" },
+  { no:"", name:"ISO9001인증서", cat:"QI", rev:"Rev0", revDate:"2024-07-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\2025년\\ISO9001인증서.pdf", reason:"" },
+  { no:"", name:"KakaoTalk 20220620 143224979.png", cat:"QI", rev:"Rev0", revDate:"2022-06-20", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\고객검수 준비 절차서 관련 자료\\KakaoTalk_20220620_143224979.png", reason:"" },
+  { no:"", name:"KakaoTalk 20220711 121404747.jpg", cat:"QI", rev:"Rev0", revDate:"2022-07-11", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\고객검수 준비 절차서 관련 자료\\KakaoTalk_20220711_121404747.jpg", reason:"" },
+  { no:"", name:"PCN 승인요청서", cat:"QI", rev:"Rev0", revDate:"2025-01-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\2025년\\PCN 승인요청서.pdf", reason:"" },
+  { no:"", name:"SHOWER HEAD 3차원측정 작업 지도서", cat:"QI", rev:"Rev0", revDate:"2018-12-20", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\06. 3차원측정기 작업지도서\\SHOWER HEAD 3차원측정 작업 지도서.xls", reason:"" },
+  { no:"", name:"SHOWER HEAD 3차원측정 작업 지도서 NTL 5-28-050423-2019 Conflict", cat:"QI", rev:"Rev0", revDate:"2019-05-27", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\06. 3차원측정기 작업지도서\\SHOWER HEAD 3차원측정 작업 지도서_NTL_5-28-050423-2019_Conflict.xls", reason:"" },
+  { no:"", name:"고객 검수절차서 협의 회의록 220805", cat:"QI", rev:"Rev0", revDate:"2022-08-12", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\고객 검수절차서 협의 회의록_220805.pdf", reason:"" },
+  { no:"", name:"고객검수 준비 지침서 회의록", cat:"QI", rev:"Rev0", revDate:"2022-08-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\고객검수 준비 절차서 관련 자료\\고객검수 준비 지침서_회의록.xls", reason:"" },
+  { no:"", name:"스막룸 관리 지침서 QI-880-09", cat:"QI", rev:"Rev0", revDate:"2025-08-25", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\스막룸 관리 지침서(QI-880-09).xlsx", reason:"" },
+  { no:"", name:"에어샤워 관리 지침서 QI-880-11", cat:"QI", rev:"Rev0", revDate:"2025-12-16", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\에어샤워 관리 지침서(QI-880-11).xlsx", reason:"" },
+  { no:"", name:"이재건 대리.png", cat:"QI", rev:"Rev0", revDate:"2023-04-28", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\이재건 대리.png", reason:"" },
+  { no:"", name:"이정도 차장.png", cat:"QI", rev:"Rev0", revDate:"2023-04-28", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\이정도 차장.png", reason:"" },
+  { no:"", name:"출장 검수품 납기 예정일", cat:"QI", rev:"Rev0", revDate:"2022-07-13", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\고객검수 준비 절차서 관련 자료\\출장 검수품 납기 예정일.xlsx", reason:"" },
+  { no:"", name:"출장검사 process", cat:"QI", rev:"Rev0", revDate:"2022-07-13", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\고객검수 준비 절차서 관련 자료\\출장검사 process.pptx", reason:"" },
+  { no:"", name:"출하장 관리 지침서 QI-880-10", cat:"QI", rev:"Rev0", revDate:"2025-08-25", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\04. 지침서\\출하장 관리 지침서(QI-880-10).xlsx", reason:"" },
+  { no:"", name:"1.OPLS 패럴체결불량 건", cat:"OPLS", rev:"Rev0", revDate:"2021-12-15", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\05. OPLS\\1.OPLS_패럴체결불량 건.xls", reason:"" },
+  { no:"", name:"2.OPLS S.Washer 규격불량 건", cat:"OPLS", rev:"Rev0", revDate:"2021-12-17", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\05. OPLS\\2.OPLS_S.Washer 규격불량 건.xls", reason:"" },
+  { no:"", name:"3.Spoke Screw Hole Tap 체결 부적합", cat:"OPLS", rev:"Rev0", revDate:"2023-04-21", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\05. OPLS\\3.Spoke Screw Hole Tap 체결 부적합.xlsx", reason:"" },
+  { no:"", name:"OPLS 양식", cat:"OPLS", rev:"Rev0", revDate:"2021-12-08", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\05. OPLS\\OPLS_양식.xls", reason:"" },
+  { no:"", name:"품질 ISSUE 협의 OPLS.xlsm", cat:"OPLS", rev:"Rev0", revDate:"2020-04-21", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\05. OPLS\\품질 ISSUE 협의 OPLS.xlsm", reason:"" },
+  { no:"ETSI-802-008", name:"가공품 표면처리 관리기준 R0 20180323", cat:"ETSI", rev:"Rev0", revDate:"2018-04-27", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\ETSI-802-008_가공품 표면처리 관리기준_R0_20180323.pdf", reason:"" },
+  { no:"", name:"ISO 9001 2015 인증서 국문", cat:"기타", rev:"Rev0", revDate:"2018-07-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\ISO 9001_2015 인증서_국문.pdf", reason:"" },
+  { no:"", name:"ISO 9001 2015 인증서 영문", cat:"기타", rev:"Rev0", revDate:"2018-07-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\ISO 9001_2015 인증서_영문.pdf", reason:"" },
+  { no:"", name:"New Design HRM Parts X400 190419", cat:"기타", rev:"Rev0", revDate:"2019-06-21", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\New Design HRM Parts X400_190419.pptx", reason:"" },
+  { no:"", name:"도금별 도막두께", cat:"기타", rev:"Rev0", revDate:"2017-06-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\도금별 도막두께.xlsx", reason:"" },
+  { no:"", name:"엔티엘 포상규정 승인 전", cat:"기타", rev:"Rev0", revDate:"2022-08-19", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\엔티엘 포상규정(승인 전).xlsx", reason:"" }
+];
+var docmasterData = [];
+
+var docmasterSource = "sample";   // "sheet" | "sample"
+var docmasterSaving = false;
+var __docmasterSeq = 1;
+
+// 문서 Master 전용 Apps Script URL (기존 ERP와 동일한 웹앱 사용)
+function docmasterApiUrl(){
+  var el = document.getElementById("main-appsScriptUrl")
+        || document.getElementById("quality-appsScriptUrl")
+        || document.getElementById("inv-appsScriptUrl");
+  var u = el && el.value ? el.value.trim() : "";
+  return u || "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2Xur_FhnxfQReER1VnjFKNkwvEtezRo-93EVHlJ8uQdECpP/exec";
+}
+
+// 각 문서에 내부 식별자 부여(삭제용). 시트에는 저장하지 않는다.
+function docmasterTag(list){
+  (list||[]).forEach(function(r){ if(r && r._id==null) r._id = __docmasterSeq++; });
+  return list;
+}
+
+function docmasterInit(){
+  // 이벤트 바인딩
+  var s  = document.getElementById("docmaster-search");
+  var c  = document.getElementById("docmaster-cat");
+  var st = document.getElementById("docmaster-status");
+  if(s)  s.addEventListener("input", docmasterRender);
+  if(c)  c.addEventListener("change", docmasterRender);
+  if(st) st.addEventListener("change", docmasterRender);
+  var pb = document.getElementById("docmaster-printBtn");
+  if(pb) pb.addEventListener("click", docmasterPrint);
+  var ab = document.getElementById("docmaster-addBtn");
+  if(ab) ab.addEventListener("click", docmasterOpenAddForm);
+  var rb = document.getElementById("docmaster-refreshBtn");
+  if(rb) rb.addEventListener("click", function(){ docmasterLoadFromSheet(true); });
+
+  // 우선 내장 샘플로 즉시 표시(백엔드 지연/미연결에도 화면이 비지 않도록)
+  docmasterData = docmasterTag(DOCMASTER_SAMPLE.map(function(r){ return Object.assign({}, r); }));
+  docmasterSource = "sample";
+  docmasterRender();
+  // 이어서 구글시트에서 실제 목록을 불러온다.
+  docmasterLoadFromSheet(false);
+}
+
+// 구글시트에서 문서 목록 로드. 실패하면 샘플 유지.
+function docmasterLoadFromSheet(userTriggered){
+  var url = docmasterApiUrl();
+  if(!url){ docmasterRender(); return; }
+  if(userTriggered) docmasterSetNote("불러오는 중…");
+  fetch(url + "?mode=docMaster", { cache:"no-store" })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if(res && res.success && Array.isArray(res.rows)){
+        if(res.rows.length){
+          docmasterData = docmasterTag(res.rows.map(docmasterNormalize));
+          docmasterSource = "sheet";
+          docmasterSetNote("");
+        } else {
+          // 시트는 연결됐지만 아직 비어있음 → 내장 목록을 시작 데이터로 사용
+          docmasterData = docmasterTag(DOCMASTER_SAMPLE.map(function(r){ return Object.assign({}, r); }));
+          docmasterSource = "sheet";
+          docmasterSetNote("시트 비어있음 — 추가/삭제 시 현재 목록이 시트에 저장됩니다");
+        }
+      } else {
+        docmasterSource = "sample"; // 백엔드 응답이 예상과 다름 → 샘플 유지
+      }
+      docmasterRender();
+    })
+    .catch(function(){
+      // 백엔드 미연결 → 샘플 유지
+      docmasterSource = "sample";
+      docmasterRender();
+    });
+}
+
+// 시트에서 온 행을 표준 필드로 정리
+function docmasterNormalize(r){
+  r = r || {};
+  return {
+    no:     r.no     || "",
+    name:   r.name   || "",
+    cat:    r.cat    || "기타",
+    rev:    r.rev    || "",
+    revDate:r.revDate|| "",
+    status: r.status || "유효",
+    owner:  r.owner  || "",
+    path:   r.path   || "",
+    reason: r.reason || ""
+  };
+}
+
+// 현재 전체 목록을 구글시트에 저장(덮어쓰기). 응답은 읽지 않음(no-cors).
+function docmasterSaveToSheet(){
+  var url = docmasterApiUrl();
+  if(!url) return Promise.resolve(false);
+  var payload = docmasterData.map(function(r){
+    return { no:r.no, name:r.name, cat:r.cat, rev:r.rev, revDate:r.revDate,
+             status:r.status, owner:r.owner, path:r.path, reason:r.reason };
+  });
+  return fetch(url, {
+    method:"POST",
+    mode:"no-cors",
+    headers:{ "Content-Type":"text/plain;charset=utf-8" },
+    body: JSON.stringify({ mode:"writeDocMaster", rows:payload, updatedAt:new Date().toISOString() })
+  }).then(function(){ return true; }).catch(function(){ return false; });
+}
+
+function docmasterSetNote(msg){
+  var stEl = document.getElementById("docmaster-status-text");
+  if(stEl && msg!=null) stEl.setAttribute("data-note", msg);
+}
+
+// ➕ 문서 추가 폼(모달)
+function docmasterOpenAddForm(){
+  var old = document.getElementById("docmaster-modal");
+  if(old) old.remove();
+  var cats = [["QM","QM 품질매뉴얼"],["QP","QP 프로세스"],["QS","QS 기준서"],["QI","QI 지침서"],
+              ["ETSI","ETSI"],["OPLS","OPLS 사례"],["SUP","협력업체"],["기타","기타"]];
+  var today = new Date();
+  var td = today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0")+"-"+String(today.getDate()).padStart(2,"0");
+  var catOpts = cats.map(function(c){ return '<option value="'+c[0]+'">'+c[1]+'</option>'; }).join("");
+  var wrap = document.createElement("div");
+  wrap.id = "docmaster-modal";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(20,28,45,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
+  wrap.innerHTML =
+    '<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    + '<div style="background:#1F2A44;color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;font-weight:700;font-size:15px;">➕ 문서 추가</div>'
+    + '<div style="padding:18px;display:flex;flex-direction:column;gap:12px;">'
+    + fld("분류", '<select id="dm-f-cat" style="'+inpCSS()+'">'+catOpts+'</select>')
+    + fld("문서번호 <span style=\'color:#8A93A6;font-weight:400;\'>(없으면 비워두세요)</span>", '<input id="dm-f-no" style="'+inpCSS()+'" placeholder="예: QI-910-05">')
+    + fld("문서명 <span style=\'color:#C0392B;\'>*</span>", '<input id="dm-f-name" style="'+inpCSS()+'" placeholder="문서명">')
+    + '<div style="display:flex;gap:10px;">'
+    +   '<div style="flex:1;">'+fld("현재 Rev", '<input id="dm-f-rev" style="'+inpCSS()+'" value="Rev0">')+'</div>'
+    +   '<div style="flex:1;">'+fld("개정일", '<input id="dm-f-date" type="date" style="'+inpCSS()+'" value="'+td+'">')+'</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:10px;">'
+    +   '<div style="flex:1;">'+fld("상태", '<select id="dm-f-status" style="'+inpCSS()+'"><option>유효</option><option>개정중</option><option>폐지</option></select>')+'</div>'
+    +   '<div style="flex:1;">'+fld("담당자", '<input id="dm-f-owner" style="'+inpCSS()+'" value="품질팀">')+'</div>'
+    + '</div>'
+    + fld("사내 경로 <span style=\'color:#C0392B;\'>*</span> <span style=\'color:#8A93A6;font-weight:400;\'>(탐색기 경로 그대로 붙여넣기)</span>",
+          '<input id="dm-f-path" style="'+inpCSS()+'" placeholder="\\\\Ntl\\5.품질팀\\...\\문서.xlsx">')
+    + fld("개정사유", '<input id="dm-f-reason" style="'+inpCSS()+'" placeholder="(선택)">')
+    + '<div id="dm-f-err" style="color:#C0392B;font-size:12.5px;min-height:16px;"></div>'
+    + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">'
+    +   '<button type="button" id="dm-f-cancel" style="padding:9px 16px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;">취소</button>'
+    +   '<button type="button" id="dm-f-save" style="padding:9px 18px;border:none;border-radius:8px;background:#0B5CAB;color:#fff;font-weight:700;cursor:pointer;">저장</button>'
+    + '</div>'
+    + '</div></div>';
+  document.body.appendChild(wrap);
+  function inpCSS(){ return "width:100%;padding:8px 10px;border:1px solid #C9D3E0;border-radius:8px;font-size:13px;box-sizing:border-box;"; }
+  function fld(label, inner){ return '<div><div style="font-size:12.5px;color:#5A6478;margin-bottom:4px;">'+label+'</div>'+inner+'</div>'; }
+  var close = function(){ wrap.remove(); };
+  wrap.addEventListener("click", function(e){ if(e.target===wrap) close(); });
+  document.getElementById("dm-f-cancel").addEventListener("click", close);
+  document.getElementById("dm-f-save").addEventListener("click", docmasterAddSubmit);
+  var nameEl = document.getElementById("dm-f-name"); if(nameEl) nameEl.focus();
+}
+
+function docmasterAddSubmit(){
+  var get = function(id){ var e=document.getElementById(id); return e ? String(e.value).trim() : ""; };
+  var err = document.getElementById("dm-f-err");
+  var name = get("dm-f-name"), path = get("dm-f-path");
+  if(!name){ if(err) err.textContent = "문서명을 입력하세요."; return; }
+  if(!path){ if(err) err.textContent = "사내 경로를 입력하세요."; return; }
+  var rec = docmasterNormalize({
+    no:get("dm-f-no"), name:name, cat:get("dm-f-cat"), rev:get("dm-f-rev")||"Rev0",
+    revDate:get("dm-f-date"), status:get("dm-f-status")||"유효", owner:get("dm-f-owner"),
+    path:path, reason:get("dm-f-reason")
+  });
+  rec._id = __docmasterSeq++;
+  docmasterData.push(rec);
+  var m = document.getElementById("docmaster-modal"); if(m) m.remove();
+  docmasterRender();
+  docmasterPersist("추가");
+}
+
+function docmasterDelete(id){
+  var idx = -1;
+  for(var i=0;i<docmasterData.length;i++){ if(String(docmasterData[i]._id)===String(id)){ idx=i; break; } }
+  if(idx<0) return;
+  var r = docmasterData[idx];
+  if(!confirm("이 문서를 목록에서 삭제할까요?\n\n["+(r.no||"-")+"] "+r.name)) return;
+  docmasterData.splice(idx,1);
+  docmasterRender();
+  docmasterPersist("삭제");
+}
+
+// 변경사항을 시트에 저장하고 상태를 안내
+function docmasterPersist(action){
+  if(docmasterSource !== "sheet"){
+    // 백엔드 미연결 상태 — 이번 세션 화면에만 반영됨을 알림
+    alert("문서를 "+action+"했습니다.\n단, 공유 저장 백엔드(구글시트)가 아직 연결되지 않아 이 변경은 새로고침하면 사라집니다.\n(백엔드 연결 후 영구 저장됩니다)");
+    return;
+  }
+  docmasterSaving = true;
+  docmasterSetNote(action+" 저장 중…");
+  docmasterRender();
+  docmasterSaveToSheet().then(function(){
+    docmasterSaving = false;
+    docmasterSetNote(action+" 저장 요청됨 ("+new Date().toLocaleTimeString("ko-KR")+")");
+    docmasterRender();
+  });
+}
+
+function docmasterCatMeta(cat){
+  var m = {
+    QM:{label:"QM 품질매뉴얼", color:"#7A3EA8", bg:"#F3EAFB"},
+    QP:{label:"QP 프로세스",   color:"#0B5CAB", bg:"#E7F0FA"},
+    QS:{label:"QS 기준서",     color:"#0B7A8A", bg:"#E4F5F7"},
+    QI:{label:"QI 지침서",     color:"#C4700A", bg:"#FFF3E3"},
+    ETSI:{label:"ETSI",       color:"#1E7E45", bg:"#E7F5EC"},
+    EUGENUS:{label:"EUGENUS", color:"#B23B6B", bg:"#FBEAF1"}
+  };
+  return m[cat] || {label:cat||"기타", color:"#5A6478", bg:"#EEF0F3"};
+}
+
+function docmasterEsc(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function docmasterRender(){
+  var el = document.getElementById("docmaster-content");
+  if(!el) return;
+  var kw = (document.getElementById("docmaster-search")||{}).value || "";
+  kw = String(kw).trim().toLowerCase();
+  var cat = (document.getElementById("docmaster-cat")||{}).value || "all";
+  var stMode = (document.getElementById("docmaster-status")||{}).value || "valid";
+
+  var rows = docmasterData.slice();
+  if(stMode === "valid") rows = rows.filter(function(r){ return r.status !== "폐지"; });
+
+  // 문서명 중복 제거: 같은 문서명은 개정일(최종일)이 가장 늦은 1건만 남김
+  (function(){
+    var best = {}; // 정규화된 문서명 -> 대표 row
+    rows.forEach(function(r){
+      var key = String(r.name==null?"":r.name).trim().toLowerCase();
+      if(!best[key]){ best[key] = r; return; }
+      var dr = docmasterParseDate(r.revDate);
+      var dc = docmasterParseDate(best[key].revDate);
+      var tr = dr ? dr.getTime() : -Infinity;
+      var tc = dc ? dc.getTime() : -Infinity;
+      if(tr > tc) best[key] = r; // 개정일이 더 늦으면 대표 교체
+    });
+    rows = rows.filter(function(r){
+      var key = String(r.name==null?"":r.name).trim().toLowerCase();
+      return best[key] === r;
+    });
+  })();
+
+  if(cat !== "all") rows = rows.filter(function(r){ return r.cat === cat; });
+  if(kw) rows = rows.filter(function(r){
+    return (String(r.no).toLowerCase().indexOf(kw)>=0)
+        || (String(r.name).toLowerCase().indexOf(kw)>=0)
+        || (String(r.owner).toLowerCase().indexOf(kw)>=0);
+  });
+  // 정렬: 분류 → 문서번호 있는 것 먼저 → 번호순 → 문서명순
+  var catOrder = {QM:0,QP:1,QS:2,QI:3,ETSI:4,EUGENUS:5};
+  rows.sort(function(a,b){
+    var ca=(catOrder[a.cat]!=null?catOrder[a.cat]:9), cb=(catOrder[b.cat]!=null?catOrder[b.cat]:9);
+    if(ca!==cb) return ca-cb;
+    var ha = (String(a.no).trim()!=="") ? 0 : 1;
+    var hb = (String(b.no).trim()!=="") ? 0 : 1;
+    if(ha!==hb) return ha-hb;                       // 번호 있는 문서 먼저
+    if(ha===0){                                     // 둘 다 번호 있으면 번호순
+      var c = String(a.no).localeCompare(String(b.no));
+      if(c!==0) return c;
+    }
+    return String(a.name).localeCompare(String(b.name), "ko"); // 그 외 문서명순
+  });
+
+  // KPI
+  var total = docmasterData.length;
+  var validCnt = docmasterData.filter(function(r){return r.status==="유효";}).length;
+  var editingCnt = docmasterData.filter(function(r){return r.status==="개정중";}).length;
+  var obsoleteCnt = docmasterData.filter(function(r){return r.status==="폐지";}).length;
+  // 최근 30일 내 개정
+  var today = new Date(); today.setHours(0,0,0,0);
+  var recentCnt = docmasterData.filter(function(r){
+    var d = docmasterParseDate(r.revDate); if(!d) return false;
+    return (today - d)/86400000 <= 30;
+  }).length;
+
+  var statusBadge = function(s){
+    if(s==="유효")  return '<span style="background:#E7F5EC;color:#1E7E45;border-radius:12px;padding:2px 10px;font-size:11.5px;font-weight:700;">유효</span>';
+    if(s==="개정중") return '<span style="background:#FFF3E3;color:#C4700A;border-radius:12px;padding:2px 10px;font-size:11.5px;font-weight:700;">개정중</span>';
+    return '<span style="background:#EEF0F3;color:#8A93A6;border-radius:12px;padding:2px 10px;font-size:11.5px;font-weight:700;">폐지</span>';
+  };
+
+  var html =
+    '<div class="summary-row" style="margin-bottom:16px;">'
+    + '<div class="stat-card"><div class="label" style="color:var(--text-mute);">전체 문서</div>'
+    +   '<div style="font-size:24px;font-weight:400;margin-top:4px;">'+total+'<span style="font-size:13px;color:var(--text-mute);"> 건</span></div>'
+    +   '<div style="font-size:12px;color:var(--text-mute);margin-top:2px;">유효 '+validCnt+' · 개정중 '+editingCnt+' · 폐지 '+obsoleteCnt+'</div></div>'
+    + '<div class="stat-card"><div class="label" style="color:var(--text-mute);">최근 30일 개정</div>'
+    +   '<div style="font-size:24px;font-weight:400;margin-top:4px;color:#0B5CAB;">'+recentCnt+'<span style="font-size:13px;color:var(--text-mute);"> 건</span></div>'
+    +   '<div style="font-size:12px;color:var(--text-mute);margin-top:2px;">최근 개정된 최신본</div></div>'
+    + '<div class="stat-card"><div class="label" style="color:var(--text-mute);">표시 중</div>'
+    +   '<div style="font-size:24px;font-weight:400;margin-top:4px;">'+rows.length+'<span style="font-size:13px;color:var(--text-mute);"> 건</span></div>'
+    +   '<div style="font-size:12px;color:var(--text-mute);margin-top:2px;">'+(stMode==="valid"?"유효 문서만":"폐지 포함")+'</div></div>'
+    + '</div>';
+
+  html += '<div class="table-wrap" style="padding:16px;">';
+  if(rows.length===0){
+    html += '<div style="padding:30px;text-align:center;color:var(--text-mute);">조건에 맞는 문서가 없습니다.</div>';
+  } else {
+    html += '<div style="overflow-x:auto;"><table class="docmaster-table" style="width:100%;min-width:900px;border-collapse:collapse;font-size:13px;">'
+      + '<thead><tr style="background:#1F2A44;color:#fff;">'
+      + '<th style="padding:9px 8px;">분류</th><th style="padding:9px 8px;">문서번호</th>'
+      + '<th style="padding:9px 8px;text-align:left;">문서명</th><th style="padding:9px 8px;">현재 Rev</th>'
+      + '<th style="padding:9px 8px;">개정일</th><th style="padding:9px 8px;">상태</th>'
+      + '<th style="padding:9px 8px;">담당자</th><th style="padding:9px 8px;text-align:left;">개정사유</th>'
+      + '<th style="padding:9px 8px;">파일</th></tr></thead><tbody>';
+    rows.forEach(function(r, i){
+      var cm = docmasterCatMeta(r.cat);
+      var obsolete = (r.status==="폐지");
+      html += '<tr style="border-bottom:1px solid #EEF1F5;'+(obsolete?'opacity:0.55;':'')+(i%2?'background:#F8FAFC;':'')+'">'
+        + '<td style="padding:8px;text-align:center;"><span style="background:'+cm.bg+';color:'+cm.color+';border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap;">'+docmasterEsc(cm.label.split(" ")[0])+'</span></td>'
+        + '<td style="padding:8px;text-align:center;font-weight:700;white-space:nowrap;">'+docmasterEsc(r.no)+'</td>'
+        + '<td style="padding:8px;text-align:left;">'+docmasterEsc(r.name)+'</td>'
+        + '<td style="padding:8px;text-align:center;font-weight:700;color:#0B5CAB;white-space:nowrap;">'+docmasterEsc(r.rev)+'</td>'
+        + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+docmasterEsc(r.revDate||"-")+'</td>'
+        + '<td style="padding:8px;text-align:center;">'+statusBadge(r.status)+'</td>'
+        + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+docmasterEsc(r.owner||"-")+'</td>'
+        + '<td style="padding:8px;text-align:left;font-size:12px;color:#5A6478;">'+docmasterEsc(r.reason||"-")+'</td>'
+        + '<td style="padding:8px;text-align:center;white-space:nowrap;">'
+        +   '<button type="button" class="docmaster-copybtn" data-path="'+docmasterEsc(r.path||"")+'" style="font-size:11px;padding:4px 8px;border:1px solid #C9D3E0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">📋 경로 복사</button>'
+        +   ' <button type="button" class="docmaster-delbtn" data-id="'+docmasterEsc(r._id)+'" title="이 문서 삭제" style="font-size:11px;padding:4px 8px;border:1px solid #E4B4B4;border-radius:6px;background:#fff;color:#C0392B;cursor:pointer;">🗑️</button>'
+        + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+  html += '<div style="font-size:11px;color:var(--text-mute);margin-top:8px;">※ 문서 파일은 사내 서버에 있습니다. <b>경로 복사</b> 후 파일 탐색기 주소창에 붙여넣어 여세요. (인터넷 페이지에서 사내 파일 직접 열기는 브라우저 보안상 차단됩니다)</div>';
+  html += '</div>';
+
+  el.innerHTML = html;
+
+  // 경로 복사 버튼
+  el.querySelectorAll(".docmaster-copybtn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var path = btn.getAttribute("data-path") || "";
+      if(!path){ return; }
+      docmasterCopy(path, btn);
+    });
+  });
+  // 삭제 버튼
+  el.querySelectorAll(".docmaster-delbtn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      docmasterDelete(btn.getAttribute("data-id"));
+    });
+  });
+
+  var stEl = document.getElementById("docmaster-status-text");
+  if(stEl){
+    var src = (docmasterSource==="sheet")
+      ? "🟢 공유(구글시트)"
+      : "🟡 내장샘플(백엔드 미연결)";
+    var note = stEl.getAttribute("data-note") || "";
+    stEl.textContent = src + " · 표시 " + rows.length + "건 / 전체 " + total + "건" + (note ? " · " + note : "");
+  }
+}
+
+function docmasterParseDate(s){
+  if(!s) return null;
+  var m = String(s).match(/(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
+  if(!m) return null;
+  var d = new Date(+m[1], +m[2]-1, +m[3]); d.setHours(0,0,0,0);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function docmasterCopy(text, btn){
+  var done = function(ok){
+    if(!btn) return;
+    var orig = btn.textContent;
+    btn.textContent = ok ? "✅ 복사됨" : "❌ 실패";
+    setTimeout(function(){ btn.textContent = orig; }, 1400);
+  };
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ done(true); }, function(){ docmasterCopyFallback(text, done); });
+    } else {
+      docmasterCopyFallback(text, done);
+    }
+  }catch(e){ docmasterCopyFallback(text, done); }
+}
+function docmasterCopyFallback(text, done){
+  try{
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    var ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    done(ok);
+  }catch(e){ done(false); }
+}
+
+function docmasterPrint(){
+  var content = document.getElementById("docmaster-content");
+  if(!content){ window.print(); return; }
+  var extraCSS = "\n    @page { size: A4 landscape; margin: 10mm; }\n"
+    + "    #print-area h2 { font-size:16px; margin:0 0 10px; }\n"
+    + "    #print-area .summary-row { display:none; }\n"
+    + "    #print-area table { width:100% !important; min-width:0 !important; font-size:9px; border-collapse:collapse; }\n"
+    + "    #print-area th, #print-area td { padding:4px 5px !important; border:1px solid #ccc; }\n"
+    + "    #print-area .docmaster-copybtn { display:none; }\n"
+    + "    #print-area .docmaster-delbtn { display:none; }\n"
+    + "    #print-area thead { display:table-header-group; }\n";
+  var stamp = new Date().toLocaleString("ko-KR");
+  openPrintWindow('<h2>문서 Master 목록 ('+stamp+')</h2>' + content.innerHTML, extraCSS, "문서 Master");
 }
 
 </script>
