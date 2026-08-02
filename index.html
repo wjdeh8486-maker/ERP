@@ -993,6 +993,7 @@
     </div>
     <div class="nav-item" data-view="quality"><span class="dot"></span>품질분석</div>
     <div class="nav-item" data-view="docmaster"><span class="dot"></span>📑 문서 Master</div>
+    <div class="nav-item" data-view="instr"><span class="dot"></span>🔧 계측기 관리</div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
     <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
     <div class="nav-item" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
@@ -1016,7 +1017,7 @@
       <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
       <div class="quick-links">
         <a href="https://wjdeh8486-maker.github.io/hole/" target="_blank" rel="noopener" class="ql-hole">🔍 HOLE체크</a>
-        <a href="https://wjdeh8486-maker.github.io/daysheet/" target="_blank" rel="noopener" class="ql-checklist">📋 체크리스트</a>
+        <a href="https://wjdeh8486-maker.github.io/daysheet/" target="_blank" rel="noopener" class="ql-checklist" id="ql-checklistLink" onclick="return todoOpenInline(event);" title="이 프로그램 안에서 바로 열기 (Ctrl+클릭은 새 탭)">📋 체크리스트</a>
         <a href="https://wjdeh8486-maker.github.io/calendar/" target="_blank" rel="noopener" class="ql-calendar">🗓️ 일정 달력</a>
         <a href="https://wjdeh8486-maker.github.io/NTL/" target="_blank" rel="noopener" class="ql-homepage">🏢 회사 홈페이지</a>
       </div>
@@ -1618,6 +1619,34 @@
     </div>
     <div class="view" id="view-docmaster">
       <div id="docmaster-content"></div>
+    </div>
+    <!-- ===================== 계측기 관리 VIEW ===================== -->
+    <div id="topbar-instr" class="topbar" style="display:none;">
+      <h1>🔧 계측기 관리</h1>
+      <div class="search-box" style="gap:8px;">
+        <input type="text" id="instr-search" placeholder="관리번호·계측기명·사용처 검색">
+        <select id="instr-calstatus" style="flex:0 0 130px;max-width:130px;">
+          <option value="all">교정상태 전체</option>
+          <option value="expired">🔴 만료</option>
+          <option value="soon">🟡 임박(30일)</option>
+          <option value="ok">🟢 정상</option>
+        </select>
+        <select id="instr-status" style="flex:0 0 120px;max-width:120px;">
+          <option value="use">사용중만</option>
+          <option value="all">전체(보관·폐기 포함)</option>
+          <option value="dispose">🗑️ 폐기만</option>
+        </select>
+      </div>
+      <div class="topbar-right">
+        <button type="button" id="instr-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 계측기 추가</button>
+        <button type="button" id="instr-calibBtn" style="background:#fff;color:#0B7A8A;border:1px solid #B7DDE3;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="검사장비 표준 교정주기표를 봅니다">📐 교정주기표</button>
+        <button type="button" id="instr-refreshBtn" title="구글시트에서 최신 목록을 다시 불러옵니다">🔄 새로고침</button>
+        <button type="button" id="instr-printBtn">🖨️ 인쇄</button>
+      </div>
+      <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 최근 교정일 + 교정주기(개월) → <b>차기 교정일 자동계산</b>. 만료(빨강)·임박 30일(노랑)로 표시됩니다. <span id="instr-status-text"></span></div>
+    </div>
+    <div class="view" id="view-instr">
+      <div id="instr-content"></div>
     </div>
     <!-- ===================== 검사이력조회 (품질검사관리 2단계) VIEW ===================== -->
     <div id="topbar-qchist" class="topbar" style="display:none;">
@@ -2691,6 +2720,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("topbar-overdue").style.display = target==="overdue" ? "flex" : "none";
     document.getElementById("topbar-quality").style.display = target==="quality" ? "flex" : "none";
     document.getElementById("topbar-docmaster").style.display = target==="docmaster" ? "flex" : "none";
+    document.getElementById("topbar-instr").style.display = target==="instr" ? "flex" : "none";
     document.getElementById("topbar-qchist").style.display = target==="qchist" ? "flex" : "none";
     document.getElementById("topbar-qcprio").style.display = target==="qcprio" ? "flex" : "none";
     document.getElementById("topbar-sales").style.display = target==="sales" ? "flex" : "none";
@@ -2729,6 +2759,10 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="docmaster"){
       if(!window.__docmasterInited){ window.__docmasterInited = true; docmasterInit(); }
       docmasterRender();
+    }
+    if(target==="instr"){
+      if(!window.__instrInited){ window.__instrInited = true; instrInit(); }
+      instrRender();
     }
     if(target==="management"){
       // 도번 조회 메뉴: 마지막으로 보던 탭으로 복원
@@ -9833,6 +9867,7 @@ function qcprioPrint(){
 // 필드: no(문서번호) name(문서명) cat(분류) rev(현재Rev) revDate(개정일)
 //       status(유효/개정중/폐지) owner(담당자) path(사내경로) reason(개정사유)
 var DOCMASTER_SAMPLE = [
+  { no:"", name:"검사장비관리대장 최신본", cat:"기타", rev:"Rev0", revDate:"2026-08-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\검사장비관리대장 최신본.xlsx", reason:"초기 등록(경로 수정 필요)" },
   { no:"QM-100", name:"품질매뉴얼 7.3제외 REV", cat:"QM", rev:"Rev0", revDate:"2023-09-01", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\01. 품질경영매뉴얼\\QM-100(품질매뉴얼)7.3제외 REV.xls", reason:"" },
   { no:"", name:"엔티엘 2015 품질경영매뉴얼", cat:"QM", rev:"Rev0", revDate:"2018-07-09", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\01. 품질경영매뉴얼\\엔티엘_2015 품질경영매뉴얼.hwp", reason:"" },
   { no:"", name:"엔티엘 품질‧환경‧안전‧보건 매뉴얼", cat:"QM", rev:"Rev0", revDate:"2024-04-03", status:"유효", owner:"품질팀", path:"\\\\Ntl\\5.품질팀\\품질문서\\0. ISO 9001& 사내표준화 자료\\00. ISO9001;2015 (최신)\\ISO 9001;2015\\01. 품질경영매뉴얼\\엔티엘_품질‧환경‧안전‧보건 매뉴얼.hwp", reason:"" },
@@ -10032,6 +10067,9 @@ var __docmasterSeq = 1;
 var docmasterSelected = {};        // 다중 선택 삭제용 (_id -> true)
 var docmasterVisibleIds = [];      // 현재 화면에 보이는 행 _id 목록
 var docmasterEditId = null;        // 수정 모드 대상 _id (null이면 추가 모드)
+var docmasterPage = 1;             // 현재 페이지
+var DOCMASTER_PAGE_SIZE = 50;      // 페이지당 행 수
+var docmasterFilteredRows = [];    // 필터+정렬된 전체 행(인쇄용)
 
 // 문서 Master 전용 Apps Script URL (기존 ERP와 동일한 웹앱 사용)
 function docmasterApiUrl(){
@@ -10054,10 +10092,10 @@ function docmasterInit(){
   var c  = document.getElementById("docmaster-cat");
   var st = document.getElementById("docmaster-status");
   var yr = document.getElementById("docmaster-year");
-  if(s)  s.addEventListener("input", docmasterRender);
-  if(c)  c.addEventListener("change", docmasterRender);
-  if(yr) yr.addEventListener("change", docmasterRender);
-  if(st) st.addEventListener("change", docmasterRender);
+  if(s)  s.addEventListener("input", function(){ docmasterPage=1; docmasterRender(); });
+  if(c)  c.addEventListener("change", function(){ docmasterPage=1; docmasterRender(); });
+  if(yr) yr.addEventListener("change", function(){ docmasterPage=1; docmasterRender(); });
+  if(st) st.addEventListener("change", function(){ docmasterPage=1; docmasterRender(); });
   var pb = document.getElementById("docmaster-printBtn");
   if(pb) pb.addEventListener("click", docmasterPrint);
   var ab = document.getElementById("docmaster-addBtn");
@@ -10238,6 +10276,146 @@ function docmasterOpenForm(editId){
   document.getElementById("dm-f-cancel").addEventListener("click", close);
   document.getElementById("dm-f-save").addEventListener("click", docmasterAddSubmit);
   var focusEl = document.getElementById(editing ? "dm-f-path" : "dm-f-name"); if(focusEl) focusEl.focus();
+}
+
+// ── 검사장비 표준 교정주기표 (프로그램 내장) ──────────────────
+var CALIB_CYCLE_TABLE = [
+  ["길이·치수 측정기", [
+    ["버니어 캘리퍼스","외경·내경·깊이·단차","12개월","외부교정",""],
+    ["마이크로미터(외측/내측/깊이)","치수","12개월","외부교정",""],
+    ["하이트 게이지","높이·금긋기","12개월","외부교정",""],
+    ["다이얼 게이지 · 인디케이터","변위·흔들림","12개월","외부교정",""],
+    ["실린더(보어) 게이지","내경","12개월","외부교정",""],
+    ["뎁스(깊이) 게이지","깊이","12개월","외부교정",""],
+    ["핀(플러그) 게이지","구멍 치수 합부","12개월","외부교정","마모 시 주기 무관 교체"],
+    ["링 게이지","외경 합부","12개월","외부교정",""],
+    ["나사 게이지(플러그/링)","나사 합부","12개월","외부교정",""],
+    ["게이지 블록(블록게이지)","길이 기준","12~36개월","외부교정","기준용·저사용 시 최대 36개월"],
+    ["스냅 게이지","치수 합부","12개월","외부교정",""],
+    ["틈새(필러) 게이지","간극","12개월","외부교정/내부검증",""]
+  ]],
+  ["각도·형상·표면", [
+    ["각도게이지 · 각도계","각도","12개월","외부교정",""],
+    ["표면조도 측정기","조도(Ra 등)","12개월","외부교정","표준편 확인 병행"],
+    ["진원도 · 윤곽 측정기","형상(진원·윤곽)","12개월","외부교정",""],
+    ["직각자(스퀘어) · 정반","직각·평면도","24~36개월","외부교정","안정적 → 주기 길게"]
+  ]],
+  ["물성", [
+    ["경도계(로크웰/비커스/브리넬)","경도","12개월","외부교정","표준경도편 포함 관리"]
+  ]],
+  ["정밀 검사장비", [
+    ["접촉식 3차원 측정기(CMM, 프로브식)","좌표·치수","12개월","외부교정","일상점검(게이지블록/스텝게이지) 별도"],
+    ["비접촉 3차원 측정기(광학·비전식)","좌표·치수","12개월","외부교정","일상점검(표준편/기준게이지) 별도"],
+    ["투영기(프로파일 프로젝터)","형상·치수","12개월","외부교정",""],
+    ["공구현미경 · 측정현미경","치수","12개월","외부교정",""],
+    ["비전(화상) 측정기","치수","12개월","외부교정",""]
+  ]],
+  ["시험·기능장비", [
+    ["기밀(리크) 시험기(가압·차압식)","누설(LEAK)","12개월","외부교정",""],
+    ["He TEST기(헬륨 리크 디텍터)","헬륨 누설(He)","12개월","외부교정","표준 리크(기준누설)로 사용 전 교정 · 기준누설기도 12~24개월 재교정"],
+    ["유량계 · FLOW 시험기","유량","12개월","외부교정",""],
+    ["압력계 · 압력게이지","압력(가압)","12개월","외부교정",""],
+    ["진공게이지","진공도","12개월","외부교정",""],
+    ["토크렌치 · 토크드라이버","체결 토크(BOLT)","12개월","외부교정","사용빈도 높으면 6개월"]
+  ]],
+  ["환경·전기·질량", [
+    ["전자저울 · 저울","질량","12개월","외부교정","법정계량기는 검정주기 별도"],
+    ["표준 분동","질량 기준","12~36개월","외부교정",""],
+    ["온·습도계","온도·습도","12개월","외부교정",""],
+    ["항온항습기 · 건조오븐","온도(균일도)","12개월","외부교정","온도 매핑 권장"],
+    ["멀티미터 · 전기계측기","전압·전류·저항","12개월","외부교정",""],
+    ["타이머 · 스톱워치","시간","12개월","외부교정/내부검증",""]
+  ]],
+  ["일반·참고용", [
+    ["강철자 · 줄자","길이(참고)","24개월 / 사용 전","내부검증","참고용은 '관리제외(참고)' 표기 가능"],
+    ["수준기(레벨)","수평","24개월","외부교정",""]
+  ]]
+];
+var CALIB_NOTES = [
+  "본 표의 주기는 일반적 권장(초기 설정) 기준입니다. 사용빈도·측정 중요도·제조사 권장·과거 교정이력을 근거로 조직이 설정·조정합니다(절대값 아님).",
+  "외부교정 = KOLAS 공인교정기관 등 국가/국제표준 소급성 확보. 내부검증 = 사내 기준기·상위 계측기로 확인.",
+  "신규 도입·수리 후·이상 발생 시에는 주기와 무관하게 재교정/재검증합니다.",
+  "교정성적서를 보관하고, 관리번호·교정 라벨(교정일·차기교정일)로 상태를 식별합니다.",
+  "교정 부적합(주기 경과·불합격) 발견 시 이전 측정결과의 유효성 영향을 검토하고 조치합니다."
+];
+
+function docmasterCalibTableHTML(){
+  var h = '<table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
+    + '<thead><tr style="background:#1F2A44;color:#fff;">'
+    + '<th style="padding:8px;border:1px solid #ccc;">구분</th>'
+    + '<th style="padding:8px;border:1px solid #ccc;text-align:left;">계측기·검사장비명</th>'
+    + '<th style="padding:8px;border:1px solid #ccc;">측정/검사 항목</th>'
+    + '<th style="padding:8px;border:1px solid #ccc;">표준 교정주기</th>'
+    + '<th style="padding:8px;border:1px solid #ccc;">교정 구분</th>'
+    + '<th style="padding:8px;border:1px solid #ccc;text-align:left;">비고</th></tr></thead><tbody>';
+  CALIB_CYCLE_TABLE.forEach(function(grp){
+    var cat = grp[0], items = grp[1];
+    items.forEach(function(it, i){
+      h += '<tr>';
+      if(i===0) h += '<td rowspan="'+items.length+'" style="padding:8px;border:1px solid #ccc;background:#E7EDF6;color:#2A4A73;font-weight:700;text-align:center;vertical-align:middle;">'+docmasterEsc(cat)+'</td>';
+      h += '<td style="padding:7px 8px;border:1px solid #ccc;text-align:left;">'+docmasterEsc(it[0])+'</td>'
+        + '<td style="padding:7px 8px;border:1px solid #ccc;text-align:center;">'+docmasterEsc(it[1])+'</td>'
+        + '<td style="padding:7px 8px;border:1px solid #ccc;text-align:center;font-weight:700;color:#0B5CAB;">'+docmasterEsc(it[2])+'</td>'
+        + '<td style="padding:7px 8px;border:1px solid #ccc;text-align:center;">'+docmasterEsc(it[3])+'</td>'
+        + '<td style="padding:7px 8px;border:1px solid #ccc;text-align:left;color:#5A6478;">'+docmasterEsc(it[4]||"")+'</td>'
+        + '</tr>';
+    });
+  });
+  h += '</tbody></table>';
+  h += '<div style="margin-top:10px;font-size:11.5px;color:#333;line-height:1.7;">'
+     + '<b>※ 적용 기준 (ISO 9001:2015 7.1.5 모니터링 및 측정 자원)</b><br>';
+  CALIB_NOTES.forEach(function(n,i){ h += (i+1)+". "+docmasterEsc(n)+"<br>"; });
+  h += '</div>';
+  return h;
+}
+
+function docmasterOpenCalibTable(){
+  var old = document.getElementById("docmaster-modal");
+  if(old) old.remove();
+  var wrap = document.createElement("div");
+  wrap.id = "docmaster-modal";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(20,28,45,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
+  wrap.innerHTML =
+    '<div style="background:#fff;border-radius:14px;max-width:920px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    + '<div style="background:#0B7A8A;color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;font-weight:700;font-size:15px;display:flex;justify-content:space-between;align-items:center;gap:10px;">'
+    +   '<span>📐 검사장비관리대장 최신본 · 표준 교정주기표</span>'
+    +   '<button type="button" id="dm-calib-close" style="background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-weight:700;">✕</button>'
+    + '</div>'
+    + '<div id="dm-calib-body" style="padding:18px;">' + docmasterCalibTableHTML() + '</div>'
+    + '<div style="padding:0 18px 18px;display:flex;justify-content:flex-end;gap:8px;">'
+    +   '<button type="button" id="dm-calib-register" style="padding:9px 16px;border:1px solid #0B7A8A;border-radius:8px;background:#fff;color:#0B7A8A;font-weight:700;cursor:pointer;">➕ 문서 Master에 등록</button>'
+    +   '<button type="button" id="dm-calib-print" style="padding:9px 16px;border:none;border-radius:8px;background:#0B5CAB;color:#fff;font-weight:700;cursor:pointer;">🖨️ 인쇄</button>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(wrap);
+  var close = function(){ wrap.remove(); };
+  wrap.addEventListener("click", function(e){ if(e.target===wrap) close(); });
+  document.getElementById("dm-calib-close").addEventListener("click", close);
+  document.getElementById("dm-calib-register").addEventListener("click", docmasterRegisterCalibDoc);
+  document.getElementById("dm-calib-print").addEventListener("click", function(){
+    var stamp = new Date().toLocaleString("ko-KR");
+    var css = "@page{size:A4 landscape;margin:10mm;} table{width:100%!important;font-size:9px;} th,td{padding:3px 5px!important;}";
+    openPrintWindow('<h2>검사장비관리대장 최신본 · 표준 교정주기표 ('+stamp+')</h2>' + docmasterCalibTableHTML(), css, "표준 교정주기표");
+  });
+}
+
+// '검사장비관리대장 최신본' 문서를 문서 Master에 초기 등록
+function docmasterRegisterCalibDoc(){
+  var d = new Date();
+  var today = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  var rec = docmasterNormalize({
+    no:"", name:"검사장비관리대장 최신본", cat:"기타", rev:"Rev0", revDate:today,
+    status:"유효", owner:"품질팀",
+    path:"\\\\Ntl\\5.품질팀\\검사장비관리대장 최신본.xlsx", reason:"초기 등록(경로 수정 필요)"
+  });
+  var idx = docmasterFindExisting(rec.no, rec.name);
+  if(idx >= 0){ alert("이미 '검사장비관리대장 최신본' 문서가 등록되어 있습니다."); return; }
+  rec._id = __docmasterSeq++;
+  docmasterData.push(rec);
+  docmasterRender();
+  docmasterPersist("검사장비관리대장 등록");
+  var m = document.getElementById("docmaster-modal"); if(m) m.remove();
+  alert("'검사장비관리대장 최신본' 문서를 등록했습니다.\n\n경로가 임시값이니, 목록에서 ✏️로 실제 파일 경로(사내 서버)로 수정해 주세요.");
 }
 
 // ── 중복 정리: 문서명이 같은 그룹은 개정일이 가장 늦은 1건만 남기고 나머지 삭제 ──
@@ -10529,6 +10707,64 @@ function docmasterCatMeta(cat){
 
 function docmasterEsc(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
+function docmasterTheadHTML(){
+  return '<thead><tr style="background:#1F2A44;color:#fff;">'
+    + '<th class="docmaster-selcol" style="padding:9px 6px;"><input type="checkbox" id="docmaster-selall" title="현재 페이지 전체 선택" style="cursor:pointer;transform:scale(1.15);"></th>'
+    + '<th style="padding:9px 8px;">분류</th><th style="padding:9px 8px;">문서번호</th>'
+    + '<th style="padding:9px 8px;text-align:left;">문서명</th><th style="padding:9px 8px;">현재 Rev</th>'
+    + '<th style="padding:9px 8px;">개정일</th><th style="padding:9px 8px;">상태</th>'
+    + '<th style="padding:9px 8px;">담당자</th><th style="padding:9px 8px;text-align:left;">개정사유</th>'
+    + '<th style="padding:9px 8px;">파일</th></tr></thead>';
+}
+function docmasterRowsHTML(list, curYear){
+  var out = '';
+  list.forEach(function(r, i){
+    var cm = docmasterCatMeta(r.cat);
+    var obsolete = (r.status==="폐지");
+    var rd = docmasterParseDate(r.revDate);
+    var thisYear = rd && (rd.getFullYear() === curYear);
+    var bg = thisYear ? '#FFF7DE' : (i%2 ? '#F8FAFC' : '');
+    out += '<tr style="border-bottom:1px solid #EEF1F5;'+(obsolete?'opacity:0.55;':'')+(bg?('background:'+bg+';'):'')+(thisYear?'box-shadow:inset 3px 0 0 #E5A400;':'')+'">'
+      + '<td class="docmaster-selcol" style="padding:8px 6px;text-align:center;"><input type="checkbox" class="docmaster-rowchk" data-id="'+docmasterEsc(r._id)+'"'+(docmasterSelected[r._id]?' checked':'')+' style="cursor:pointer;transform:scale(1.15);"></td>'
+      + '<td style="padding:8px;text-align:center;"><span style="background:'+cm.bg+';color:'+cm.color+';border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap;">'+docmasterEsc(cm.label.split(" ")[0])+'</span></td>'
+      + '<td style="padding:8px;text-align:center;font-weight:700;white-space:nowrap;">'+docmasterEsc(r.no)+'</td>'
+      + '<td style="padding:8px;text-align:left;">'+docmasterEsc(r.name)+'</td>'
+      + '<td style="padding:8px;text-align:center;font-weight:700;color:#0B5CAB;white-space:nowrap;">'+docmasterEsc(r.rev)+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;'+(thisYear?'color:#9A6A00;font-weight:700;':'')+'">'+docmasterEsc(r.revDate||"-")+(thisYear?' <span style="background:#F4C430;color:#5A3E00;border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700;">올해</span>':'')+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+statusBadge(r.status)+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+docmasterEsc(r.owner||"-")+'</td>'
+      + '<td style="padding:8px;text-align:left;font-size:12px;color:#5A6478;">'+docmasterEsc(r.reason||"-")+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;">'
+      +   '<button type="button" class="docmaster-copybtn" data-path="'+docmasterEsc(r.path||"")+'" style="font-size:11px;padding:4px 8px;border:1px solid #C9D3E0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">📋 경로 복사</button>'
+      +   ' <button type="button" class="docmaster-editbtn" data-id="'+docmasterEsc(r._id)+'" title="이 문서 수정" style="font-size:11px;padding:4px 8px;border:1px solid #BBD3F0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">✏️</button>'
+      +   ' <button type="button" class="docmaster-delbtn" data-id="'+docmasterEsc(r._id)+'" title="이 문서 삭제" style="font-size:11px;padding:4px 8px;border:1px solid #E4B4B4;border-radius:6px;background:#fff;color:#C0392B;cursor:pointer;">🗑️</button>'
+      + '</td></tr>';
+  });
+  return out;
+}
+// 공용 페이지바 HTML (module: 'docmaster' | 'instr')
+function pagerHTML(module, page, totalPages, totalRows, pageSize){
+  if(totalPages<=1) return '';
+  var from = (page-1)*pageSize+1, to = Math.min(page*pageSize, totalRows);
+  var btn = function(label, target, disabled, active){
+    return '<button type="button" class="pager-btn" data-module="'+module+'" data-page="'+target+'"'+(disabled?' disabled':'')
+      + ' style="min-width:32px;padding:5px 9px;border:1px solid '+(active?'#0B5CAB':'#C9D3E0')+';border-radius:6px;background:'+(active?'#0B5CAB':'#fff')+';color:'+(active?'#fff':(disabled?'#B7BECC':'#26324A'))+';font-weight:'+(active?'700':'500')+';cursor:'+(disabled?'default':'pointer')+';font-size:12px;">'+label+'</button>';
+  };
+  // 페이지 번호(현재 기준 앞뒤 2개)
+  var nums='', s=Math.max(1,page-2), e=Math.min(totalPages,page+2);
+  if(s>1) nums+=btn('1',1,false,page===1)+(s>2?'<span style="padding:0 2px;color:#9AA3B2;">…</span>':'');
+  for(var p=s;p<=e;p++) nums+=btn(String(p),p,false,p===page);
+  if(e<totalPages) nums+=(e<totalPages-1?'<span style="padding:0 2px;color:#9AA3B2;">…</span>':'')+btn(String(totalPages),totalPages,false,page===totalPages);
+  return '<div style="display:flex;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap;margin-top:12px;">'
+    + btn('« 처음',1,page===1,false) + btn('‹ 이전',page-1,page===1,false)
+    + nums
+    + btn('다음 ›',page+1,page===totalPages,false) + btn('마지막 »',totalPages,page===totalPages,false)
+    + '<span style="margin-left:8px;font-size:12px;color:var(--text-mute);">'+from+'–'+to+' / 총 '+totalRows+'건 (페이지 '+page+'/'+totalPages+')</span>'
+    + '</div>';
+}
+function docmasterPagerHTML(page, totalPages, totalRows, pageSize){ return pagerHTML('docmaster', page, totalPages, totalRows, pageSize); }
+function docmasterGoPage(p){ docmasterPage = p; docmasterRender(); var el=document.getElementById("docmaster-content"); if(el&&el.scrollIntoView) el.scrollIntoView({block:"start",behavior:"smooth"}); }
+
 function docmasterRender(){
   var el = document.getElementById("docmaster-content");
   if(!el) return;
@@ -10636,40 +10872,22 @@ function docmasterRender(){
       +   '<button type="button" id="docmaster-bulkDelBtn" disabled style="font-size:12px;padding:6px 12px;border:1px solid #E4B4B4;border-radius:7px;background:#fff;color:#C0392B;font-weight:700;cursor:pointer;opacity:0.5;">🗑️ 선택 삭제 (0)</button>'
       +   '<span id="docmaster-selinfo" style="font-size:12px;color:var(--text-mute);">체크박스로 여러 문서를 골라 한 번에 삭제할 수 있습니다.</span>'
       + '</div>';
+    docmasterFilteredRows = rows;
+    var _ps = DOCMASTER_PAGE_SIZE;
+    var _tp = Math.max(1, Math.ceil(rows.length/_ps));
+    if(docmasterPage>_tp) docmasterPage=_tp;
+    if(docmasterPage<1) docmasterPage=1;
+    var _start = (docmasterPage-1)*_ps;
+    var pageRows = rows.slice(_start, _start+_ps);
+
     html += '<div style="overflow-x:auto;"><table class="docmaster-table" style="width:100%;min-width:900px;border-collapse:collapse;font-size:13px;">'
-      + '<thead><tr style="background:#1F2A44;color:#fff;">'
-      + '<th class="docmaster-selcol" style="padding:9px 6px;"><input type="checkbox" id="docmaster-selall" title="현재 화면 전체 선택" style="cursor:pointer;transform:scale(1.15);"></th>'
-      + '<th style="padding:9px 8px;">분류</th><th style="padding:9px 8px;">문서번호</th>'
-      + '<th style="padding:9px 8px;text-align:left;">문서명</th><th style="padding:9px 8px;">현재 Rev</th>'
-      + '<th style="padding:9px 8px;">개정일</th><th style="padding:9px 8px;">상태</th>'
-      + '<th style="padding:9px 8px;">담당자</th><th style="padding:9px 8px;text-align:left;">개정사유</th>'
-      + '<th style="padding:9px 8px;">파일</th></tr></thead><tbody>';
+      + docmasterTheadHTML() + '<tbody>';
     var visibleIds = [];
-    rows.forEach(function(r, i){
-      visibleIds.push(String(r._id));
-      var cm = docmasterCatMeta(r.cat);
-      var obsolete = (r.status==="폐지");
-      var rd = docmasterParseDate(r.revDate);
-      var thisYear = rd && (rd.getFullYear() === curYear);   // 올해 개정된 문서
-      var bg = thisYear ? '#FFF7DE' : (i%2 ? '#F8FAFC' : '');
-      html += '<tr style="border-bottom:1px solid #EEF1F5;'+(obsolete?'opacity:0.55;':'')+(bg?('background:'+bg+';'):'')+(thisYear?'box-shadow:inset 3px 0 0 #E5A400;':'')+'">'
-        + '<td class="docmaster-selcol" style="padding:8px 6px;text-align:center;"><input type="checkbox" class="docmaster-rowchk" data-id="'+docmasterEsc(r._id)+'"'+(docmasterSelected[r._id]?' checked':'')+' style="cursor:pointer;transform:scale(1.15);"></td>'
-        + '<td style="padding:8px;text-align:center;"><span style="background:'+cm.bg+';color:'+cm.color+';border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap;">'+docmasterEsc(cm.label.split(" ")[0])+'</span></td>'
-        + '<td style="padding:8px;text-align:center;font-weight:700;white-space:nowrap;">'+docmasterEsc(r.no)+'</td>'
-        + '<td style="padding:8px;text-align:left;">'+docmasterEsc(r.name)+'</td>'
-        + '<td style="padding:8px;text-align:center;font-weight:700;color:#0B5CAB;white-space:nowrap;">'+docmasterEsc(r.rev)+'</td>'
-        + '<td style="padding:8px;text-align:center;white-space:nowrap;'+(thisYear?'color:#9A6A00;font-weight:700;':'')+'">'+docmasterEsc(r.revDate||"-")+(thisYear?' <span style="background:#F4C430;color:#5A3E00;border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700;">올해</span>':'')+'</td>'
-        + '<td style="padding:8px;text-align:center;">'+statusBadge(r.status)+'</td>'
-        + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+docmasterEsc(r.owner||"-")+'</td>'
-        + '<td style="padding:8px;text-align:left;font-size:12px;color:#5A6478;">'+docmasterEsc(r.reason||"-")+'</td>'
-        + '<td style="padding:8px;text-align:center;white-space:nowrap;">'
-        +   '<button type="button" class="docmaster-copybtn" data-path="'+docmasterEsc(r.path||"")+'" style="font-size:11px;padding:4px 8px;border:1px solid #C9D3E0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">📋 경로 복사</button>'
-        +   ' <button type="button" class="docmaster-editbtn" data-id="'+docmasterEsc(r._id)+'" title="이 문서 수정" style="font-size:11px;padding:4px 8px;border:1px solid #BBD3F0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">✏️</button>'
-        +   ' <button type="button" class="docmaster-delbtn" data-id="'+docmasterEsc(r._id)+'" title="이 문서 삭제" style="font-size:11px;padding:4px 8px;border:1px solid #E4B4B4;border-radius:6px;background:#fff;color:#C0392B;cursor:pointer;">🗑️</button>'
-        + '</td></tr>';
-    });
+    pageRows.forEach(function(r, i){ visibleIds.push(String(r._id)); });
+    html += docmasterRowsHTML(pageRows, curYear);
     docmasterVisibleIds = visibleIds;
     html += '</tbody></table></div>';
+    html += docmasterPagerHTML(docmasterPage, _tp, rows.length, _ps);
   }
   html += '<div style="font-size:11px;color:var(--text-mute);margin-top:8px;">※ <span style="background:#FFF7DE;box-shadow:inset 3px 0 0 #E5A400;padding:1px 8px;border-radius:3px;">노란 배경</span>은 <b>'+curYear+'년(올해) 개정</b>된 문서입니다. · 문서 파일은 사내 서버에 있습니다. <b>경로 복사</b> 후 파일 탐색기 주소창에 붙여넣어 여세요. (인터넷 페이지에서 사내 파일 직접 열기는 브라우저 보안상 차단됩니다)</div>';
   html += '</div>';
@@ -10720,6 +10938,13 @@ function docmasterRender(){
   // 선택 삭제 버튼
   var bulkBtn = document.getElementById("docmaster-bulkDelBtn");
   if(bulkBtn) bulkBtn.addEventListener("click", docmasterBulkDelete);
+  el.querySelectorAll(".pager-btn").forEach(function(b){
+    b.addEventListener("click", function(){
+      if(b.disabled) return;
+      var p=parseInt(b.getAttribute("data-page"),10);
+      if(b.getAttribute("data-module")==="docmaster") docmasterGoPage(p); else instrGoPage(p);
+    });
+  });
   docmasterUpdateBulkUI();
 
   var stEl = document.getElementById("docmaster-status-text");
@@ -10738,6 +10963,513 @@ function docmasterParseDate(s){
   if(!m) return null;
   var d = new Date(+m[1], +m[2]-1, +m[3]); d.setHours(0,0,0,0);
   return isNaN(d.getTime()) ? null : d;
+}
+
+/* ==================== 🔧 계측기 관리 ==================== */
+var INSTR_SAMPLE = [];
+var instrData = [];
+var instrSource = "sample";
+var __instrSeq = 1;
+var instrSelected = {};
+var instrVisibleIds = [];
+var instrPage = 1;
+var INSTR_PAGE_SIZE = 50;
+var instrFilteredRows = [];
+var instrEditId = null;
+
+function instrTag(list){ (list||[]).forEach(function(r){ if(r&&r._id==null) r._id=__instrSeq++; }); return list; }
+
+function instrInit(){
+  var bind=function(id,ev,fn){ var e=document.getElementById(id); if(e) e.addEventListener(ev,fn); };
+  bind("instr-search","input",function(){ instrPage=1; instrRender(); });
+  bind("instr-calstatus","change",function(){ instrPage=1; instrRender(); });
+  bind("instr-status","change",function(){ instrPage=1; instrRender(); });
+  bind("instr-addBtn","click",function(){ instrOpenForm(null); });
+  bind("instr-calibBtn","click",docmasterOpenCalibTable);
+  bind("instr-refreshBtn","click",function(){ instrLoadFromSheet(true); });
+  bind("instr-printBtn","click",instrPrint);
+  instrData = instrTag(INSTR_SAMPLE.map(function(r){ return Object.assign({},r); }));
+  instrSource = "sample";
+  instrRender();
+  instrLoadFromSheet(false);
+}
+
+function instrLoadFromSheet(userTriggered){
+  var url = docmasterApiUrl();
+  if(!url){ instrRender(); return; }
+  if(userTriggered) instrSetNote("불러오는 중…");
+  fetch(url + "?mode=instrMaster", { cache:"no-store" })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if(res && res.success && Array.isArray(res.rows)){
+        instrData = instrTag(res.rows.map(instrNormalize));
+        instrSource = "sheet"; instrSetNote("");
+      } else { instrSource = "sample"; }
+      instrRender();
+    })
+    .catch(function(){ instrSource = "sample"; instrRender(); });
+}
+
+function instrNormalize(r){
+  r = r || {};
+  return {
+    no:      r.no      || "",
+    name:    r.name    || "",
+    model:   r.model   || "",
+    maker:   r.maker   || "",
+    location:r.location|| "",
+    owner:   r.owner   || "",
+    cycle:   (r.cycle==null?"":String(r.cycle)).replace(/[^0-9]/g,""),
+    lastCal: docmasterFmtDate(r.lastCal),
+    lab:     r.lab     || "",
+    status:  r.status  || "사용",
+    note:    r.note    || "",
+    disposeDate:   docmasterFmtDate(r.disposeDate),
+    disposeReason: r.disposeReason || ""
+  };
+}
+
+// 차기 교정일 = 최근 교정일 + 주기(개월)
+function instrNextCal(lastCal, cycle){
+  var d = docmasterParseDate(lastCal);
+  var m = parseInt(cycle,10);
+  if(!d || !m) return "";
+  var n = new Date(d.getFullYear(), d.getMonth()+m, d.getDate());
+  return n.getFullYear()+"-"+String(n.getMonth()+1).padStart(2,"0")+"-"+String(n.getDate()).padStart(2,"0");
+}
+
+// 교정상태: expired(만료)/soon(임박30일)/ok(정상)/na(보관·폐기)/none(미입력)
+function instrCalStatus(r){
+  if(r.status==="폐기"||r.status==="보관") return { key:"na", next:instrNextCal(r.lastCal,r.cycle), days:null };
+  var next = instrNextCal(r.lastCal, r.cycle);
+  if(!next) return { key:"none", next:"", days:null };
+  var nd = docmasterParseDate(next);
+  var today = new Date(); today.setHours(0,0,0,0);
+  var days = Math.round((nd.getTime()-today.getTime())/86400000);
+  return { key:(days<0?"expired":(days<=30?"soon":"ok")), next:next, days:days };
+}
+
+function instrSaveToSheet(){
+  var url = docmasterApiUrl(); if(!url) return Promise.resolve(false);
+  var payload = instrData.map(function(r){ return { no:r.no,name:r.name,model:r.model,maker:r.maker,location:r.location,owner:r.owner,cycle:r.cycle,lastCal:r.lastCal,lab:r.lab,status:r.status,note:r.note,disposeDate:r.disposeDate,disposeReason:r.disposeReason }; });
+  return fetch(url, { method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body: JSON.stringify({ mode:"writeInstrMaster", rows:payload, updatedAt:new Date().toISOString() }) })
+    .then(function(){return true;}).catch(function(){return false;});
+}
+function instrSetNote(msg){ var e=document.getElementById("instr-status-text"); if(e&&msg!=null) e.setAttribute("data-note",msg); }
+
+function instrKpi(label,val,color){
+  return '<div style="flex:1 1 160px;min-width:150px;background:#fff;border:1px solid #E6EBF2;border-left:4px solid '+color+';border-radius:10px;padding:12px 14px;">'
+    + '<div style="font-size:12px;color:#5A6478;">'+label+'</div>'
+    + '<div style="font-size:22px;font-weight:800;color:'+color+';margin-top:2px;">'+val+'</div></div>';
+}
+function instrCalBadge(cs){
+  if(cs.key==="expired") return '<span style="background:#C0392B;color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap;">만료 '+(cs.days!=null?(Math.abs(cs.days)+"일↑"):"")+'</span>';
+  if(cs.key==="soon") return '<span style="background:#F4C430;color:#5A3E00;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap;">임박 '+cs.days+'일</span>';
+  if(cs.key==="ok") return '<span style="background:#E3F4E8;color:#1E7A3D;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;">정상</span>';
+  if(cs.key==="na") return '<span style="color:#8A93A6;font-size:11px;">-</span>';
+  return '<span style="color:#C0392B;font-size:11px;">주기·교정일 미입력</span>';
+}
+function instrStatusBadge(s){
+  var m={ "사용":["#E7F0FB","#0B5CAB"],"보관":["#EEEEEE","#666666"],"폐기":["#F3E0E0","#B03A2E"] };
+  var c=m[s]||["#EEEEEE","#555555"];
+  return '<span style="background:'+c[0]+';color:'+c[1]+';border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;">'+docmasterEsc(s||"-")+'</span>';
+}
+
+function instrTheadHTML(){
+  return '<thead><tr style="background:#1F2A44;color:#fff;">'
+    + '<th class="instr-selcol" style="padding:9px 6px;"><input type="checkbox" id="instr-selall" title="현재 페이지 전체 선택" style="cursor:pointer;transform:scale(1.15);"></th>'
+    + '<th style="padding:9px 8px;">관리번호</th><th style="padding:9px 8px;text-align:left;">계측기명</th>'
+    + '<th style="padding:9px 8px;">규격/모델</th><th style="padding:9px 8px;">사용처</th>'
+    + '<th style="padding:9px 8px;">주기</th><th style="padding:9px 8px;">최근 교정일</th>'
+    + '<th style="padding:9px 8px;">차기 교정일</th><th style="padding:9px 8px;">교정상태</th>'
+    + '<th style="padding:9px 8px;">상태</th><th style="padding:9px 8px;">관리</th></tr></thead>';
+}
+function instrRowsHTML(list){
+  var out='';
+  list.forEach(function(r,i){
+    var cs=instrCalStatus(r);
+    var bg=cs.key==="expired"?"#FCE8E6":(cs.key==="soon"?"#FFF7DE":(i%2?"#F8FAFC":""));
+    var accent=cs.key==="expired"?"box-shadow:inset 3px 0 0 #C0392B;":(cs.key==="soon"?"box-shadow:inset 3px 0 0 #E5A400;":"");
+    var dimmed=(r.status==="폐기"||r.status==="보관");
+    out += '<tr style="border-bottom:1px solid #EEF1F5;'+(dimmed?"opacity:0.55;":"")+(bg?("background:"+bg+";"):"")+accent+'">'
+      + '<td class="instr-selcol" style="padding:8px 6px;text-align:center;"><input type="checkbox" class="instr-rowchk" data-id="'+docmasterEsc(r._id)+'"'+(instrSelected[r._id]?" checked":"")+' style="cursor:pointer;transform:scale(1.15);"></td>'
+      + '<td style="padding:8px;text-align:center;font-weight:700;white-space:nowrap;">'+docmasterEsc(r.no||"-")+'</td>'
+      + '<td style="padding:8px;text-align:left;">'+docmasterEsc(r.name)+(r.maker?('<div style="font-size:11px;color:#8A93A6;">'+docmasterEsc(r.maker)+'</div>'):'')+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+docmasterEsc(r.model||"-")+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+docmasterEsc(r.location||"-")+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+(r.cycle?(docmasterEsc(r.cycle)+"개월"):"-")+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+docmasterEsc(r.lastCal||"-")+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;font-weight:700;">'+(r.status==="폐기"?('<span style="color:#B03A2E;font-weight:400;">폐기 '+docmasterEsc(r.disposeDate||"")+'</span>'):docmasterEsc(cs.next||"-"))+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+(r.status==="폐기"?('<span title="'+docmasterEsc(r.disposeReason||"")+'" style="background:#F3E0E0;color:#B03A2E;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;">폐기'+(r.disposeReason?" ⓘ":"")+'</span>'):instrCalBadge(cs))+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+instrStatusBadge(r.status)+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;">'
+      +   '<button type="button" class="instr-editbtn" data-id="'+docmasterEsc(r._id)+'" title="수정" style="font-size:11px;padding:4px 8px;border:1px solid #BBD3F0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">✏️</button>'
+      +   ' <button type="button" class="instr-delbtn" data-id="'+docmasterEsc(r._id)+'" title="삭제" style="font-size:11px;padding:4px 8px;border:1px solid #E4B4B4;border-radius:6px;background:#fff;color:#C0392B;cursor:pointer;">🗑️</button>'
+      + '</td></tr>';
+  });
+  return out;
+}
+function instrGoPage(p){ instrPage=p; instrRender(); var el=document.getElementById("instr-content"); if(el&&el.scrollIntoView) el.scrollIntoView({block:"start",behavior:"smooth"}); }
+
+function instrRender(){
+  var el=document.getElementById("instr-content"); if(!el) return;
+  var kw=((document.getElementById("instr-search")||{}).value||"").trim().toLowerCase();
+  var calFilter=(document.getElementById("instr-calstatus")||{}).value||"all";
+  var stMode=(document.getElementById("instr-status")||{}).value||"use";
+
+  var rows=instrData.slice();
+  if(stMode==="use") rows=rows.filter(function(r){ return r.status!=="폐기"&&r.status!=="보관"; });
+  else if(stMode==="dispose") rows=rows.filter(function(r){ return r.status==="폐기"; });
+  if(kw) rows=rows.filter(function(r){ return (String(r.no).toLowerCase().indexOf(kw)>=0)||(String(r.name).toLowerCase().indexOf(kw)>=0)||(String(r.location).toLowerCase().indexOf(kw)>=0); });
+  if(calFilter!=="all") rows=rows.filter(function(r){ return instrCalStatus(r).key===calFilter; });
+
+  var order={expired:0,soon:1,ok:2,none:3,na:4};
+  rows.sort(function(a,b){
+    var sa=instrCalStatus(a), sb=instrCalStatus(b);
+    if(order[sa.key]!==order[sb.key]) return order[sa.key]-order[sb.key];
+    return (sa.next||"9999").localeCompare(sb.next||"9999");
+  });
+
+  var useRows=instrData.filter(function(r){ return r.status!=="폐기"&&r.status!=="보관"; });
+  var cntExpired=useRows.filter(function(r){ return instrCalStatus(r).key==="expired"; }).length;
+  var cntSoon=useRows.filter(function(r){ return instrCalStatus(r).key==="soon"; }).length;
+
+  var html='';
+  html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">'
+    + instrKpi("총 계측기", instrData.length+"대", "#1F2A44")
+    + instrKpi("사용중", useRows.length+"대", "#0B5CAB")
+    + instrKpi("🟡 교정 임박(30일)", cntSoon+"건", "#B8860B")
+    + instrKpi("🔴 교정 만료", cntExpired+"건", "#C0392B")
+    + '</div>';
+
+  html += '<div class="table-wrap" style="padding:16px;">';
+  html += '<div class="instr-bulkbar" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">'
+    + '<button type="button" id="instr-batchCalBtn" disabled style="font-size:12px;padding:6px 12px;border:none;border-radius:7px;background:#0B7A8A;color:#fff;font-weight:700;cursor:pointer;opacity:0.5;">📅 선택 교정일 일괄 입력 (0)</button>'
+    + '<button type="button" id="instr-batchDispBtn" disabled style="font-size:12px;padding:6px 12px;border:1px solid #E0C0C0;border-radius:7px;background:#fff;color:#B03A2E;font-weight:700;cursor:pointer;opacity:0.5;">♻️ 선택 폐기 처리 (0)</button>'
+    + '<button type="button" id="instr-bulkDelBtn" disabled style="font-size:12px;padding:6px 12px;border:1px solid #E4B4B4;border-radius:7px;background:#fff;color:#C0392B;font-weight:700;cursor:pointer;opacity:0.5;">🗑️ 선택 삭제 (0)</button>'
+    + '<span id="instr-selinfo" style="font-size:12px;color:var(--text-mute);">외주 교정 후, 나간 계측기를 체크해 <b>교정일을 한 번에</b> 입력하세요.</span>'
+    + '</div>';
+
+  if(!rows.length){
+    html += '<div style="padding:40px;text-align:center;color:var(--text-mute);">표시할 계측기가 없습니다. <b>➕ 계측기 추가</b>로 등록하세요.</div>';
+  } else {
+    instrFilteredRows = rows;
+    var _ps = INSTR_PAGE_SIZE;
+    var _tp = Math.max(1, Math.ceil(rows.length/_ps));
+    if(instrPage>_tp) instrPage=_tp;
+    if(instrPage<1) instrPage=1;
+    var _start=(instrPage-1)*_ps;
+    var pageRows = rows.slice(_start, _start+_ps);
+
+    html += '<div style="overflow-x:auto;"><table style="width:100%;min-width:1050px;border-collapse:collapse;font-size:13px;">'
+      + instrTheadHTML() + '<tbody>';
+    var visibleIds=[];
+    pageRows.forEach(function(r){ visibleIds.push(String(r._id)); });
+    html += instrRowsHTML(pageRows);
+    instrVisibleIds=visibleIds;
+    html += '</tbody></table></div>';
+    html += pagerHTML('instr', instrPage, _tp, rows.length, _ps);
+  }
+  html += '<div style="font-size:11px;color:var(--text-mute);margin-top:8px;">※ <span style="background:#FCE8E6;box-shadow:inset 3px 0 0 #C0392B;padding:1px 8px;border-radius:3px;">빨강</span> 교정 만료 · <span style="background:#FFF7DE;box-shadow:inset 3px 0 0 #E5A400;padding:1px 8px;border-radius:3px;">노랑</span> 30일 내 임박 · 차기 교정일 = 최근 교정일 + 주기(개월) 자동계산. 성적서는 별도(엑셀) 관리.</div>';
+  html += '</div>';
+  el.innerHTML=html;
+
+  var stEl=document.getElementById("instr-status-text");
+  if(stEl){
+    var src=instrSource==="sheet"?"🟢 공유(구글시트)":"🟡 내장(백엔드 미연결)";
+    var note=stEl.getAttribute("data-note")||"";
+    stEl.textContent=src+" · 표시 "+rows.length+"대 / 전체 "+instrData.length+"대"+(note?(" · "+note):"");
+  }
+
+  el.querySelectorAll(".instr-editbtn").forEach(function(b){ b.addEventListener("click",function(){ instrOpenForm(b.getAttribute("data-id")); }); });
+  el.querySelectorAll(".instr-delbtn").forEach(function(b){ b.addEventListener("click",function(){ instrDelete(b.getAttribute("data-id")); }); });
+  el.querySelectorAll(".instr-rowchk").forEach(function(c){ c.addEventListener("change",function(){ var id=c.getAttribute("data-id"); if(c.checked) instrSelected[id]=true; else delete instrSelected[id]; instrUpdateBulkUI(); }); });
+  var selall=document.getElementById("instr-selall");
+  if(selall) selall.addEventListener("change",function(){ instrVisibleIds.forEach(function(id){ if(selall.checked) instrSelected[id]=true; else delete instrSelected[id]; }); el.querySelectorAll(".instr-rowchk").forEach(function(c){ c.checked=selall.checked; }); instrUpdateBulkUI(); });
+  var bd=document.getElementById("instr-bulkDelBtn"); if(bd) bd.addEventListener("click",instrBulkDelete);
+  var bc=document.getElementById("instr-batchCalBtn"); if(bc) bc.addEventListener("click",instrOpenBatchCal);
+  var bp=document.getElementById("instr-batchDispBtn"); if(bp) bp.addEventListener("click",instrOpenBatchDispose);
+  el.querySelectorAll(".pager-btn").forEach(function(b){
+    b.addEventListener("click", function(){
+      if(b.disabled) return;
+      var p=parseInt(b.getAttribute("data-page"),10);
+      if(b.getAttribute("data-module")==="instr") instrGoPage(p); else docmasterGoPage(p);
+    });
+  });
+  instrUpdateBulkUI();
+}
+
+function instrUpdateBulkUI(){
+  var n=Object.keys(instrSelected).length;
+  var b=document.getElementById("instr-bulkDelBtn");
+  if(b){ b.textContent="🗑️ 선택 삭제 ("+n+")"; b.disabled=(n===0); b.style.opacity=(n===0)?"0.5":"1"; }
+  var bc=document.getElementById("instr-batchCalBtn");
+  if(bc){ bc.textContent="📅 선택 교정일 일괄 입력 ("+n+")"; bc.disabled=(n===0); bc.style.opacity=(n===0)?"0.5":"1"; }
+  var bp=document.getElementById("instr-batchDispBtn");
+  if(bp){ bp.textContent="♻️ 선택 폐기 처리 ("+n+")"; bp.disabled=(n===0); bp.style.opacity=(n===0)?"0.5":"1"; }
+  var info=document.getElementById("instr-selinfo"); if(info) info.textContent=n>0?(n+"대 선택됨"):"외주 교정 후, 나간 계측기를 체크해 교정일을 한 번에 입력하세요.";
+  var sa=document.getElementById("instr-selall");
+  if(sa){ var vis=instrVisibleIds; var sv=vis.filter(function(id){return instrSelected[id];}).length; sa.checked=(vis.length>0&&sv===vis.length); sa.indeterminate=(sv>0&&sv<vis.length); }
+}
+
+// 선택 계측기 교정일 일괄 입력 모달
+function instrOpenBatchCal(){
+  var ids=Object.keys(instrSelected); if(!ids.length) return;
+  var old=document.getElementById("instr-modal"); if(old) old.remove();
+  var todayStr=(function(){ var n=new Date(); return n.getFullYear()+"-"+String(n.getMonth()+1).padStart(2,"0")+"-"+String(n.getDate()).padStart(2,"0"); })();
+  var inp="width:100%;padding:8px 10px;border:1px solid #C9D3E0;border-radius:8px;font-size:13px;box-sizing:border-box;";
+  var wrap=document.createElement("div"); wrap.id="instr-modal";
+  wrap.style.cssText="position:fixed;inset:0;background:rgba(20,28,45,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
+  wrap.innerHTML=
+    '<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    + '<div style="background:#0B7A8A;color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;font-weight:700;font-size:15px;">📅 선택 교정일 일괄 입력</div>'
+    + '<div style="padding:18px;display:flex;flex-direction:column;gap:12px;">'
+    + '<div style="font-size:12.5px;color:#5A6478;">선택한 <b>'+ids.length+'대</b>의 <b>최근 교정일</b>을 한 번에 입력합니다. 차기 교정일은 각 계측기 주기로 자동 재계산됩니다.</div>'
+    + '<div><div style="font-size:12.5px;color:#5A6478;margin-bottom:4px;">교정일 <span style="color:#C0392B;">*</span></div><input id="in-batch-date" type="date" value="'+todayStr+'" style="'+inp+'"></div>'
+    + '<div><div style="font-size:12.5px;color:#5A6478;margin-bottom:4px;">교정기관 <span style="color:#8A93A6;font-weight:400;">(비우면 기존 값 유지)</span></div><input id="in-batch-lab" style="'+inp+'" placeholder="예: ○○교정원(KOLAS)"></div>'
+    + '<div id="in-batch-err" style="color:#C0392B;font-size:12.5px;min-height:16px;"></div>'
+    + '<div style="display:flex;justify-content:flex-end;gap:8px;">'
+    +   '<button type="button" id="in-batch-cancel" style="padding:9px 16px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;">취소</button>'
+    +   '<button type="button" id="in-batch-apply" style="padding:9px 18px;border:none;border-radius:8px;background:#0B7A8A;color:#fff;font-weight:700;cursor:pointer;">'+ids.length+'대에 적용</button>'
+    + '</div></div></div>';
+  document.body.appendChild(wrap);
+  var close=function(){ wrap.remove(); };
+  wrap.addEventListener("click",function(e){ if(e.target===wrap) close(); });
+  document.getElementById("in-batch-cancel").addEventListener("click",close);
+  document.getElementById("in-batch-apply").addEventListener("click",function(){
+    var d=docmasterFmtDate(document.getElementById("in-batch-date").value);
+    var lab=String(document.getElementById("in-batch-lab").value||"").trim();
+    var err=document.getElementById("in-batch-err");
+    if(!d){ if(err) err.textContent="교정일을 입력하세요."; return; }
+    var s={}; ids.forEach(function(id){ s[id]=true; });
+    var cnt=0;
+    instrData.forEach(function(r){ if(s[String(r._id)]){ r.lastCal=d; if(lab) r.lab=lab; cnt++; } });
+    instrSelected={};
+    close(); instrRender(); instrPersist("일괄 교정일 입력");
+    alert(cnt+"대의 최근 교정일을 "+d+"로 일괄 입력했습니다.\n차기 교정일이 자동 재계산되었습니다.");
+  });
+}
+
+// 선택 계측기 일괄 폐기 처리 모달 (교정 중 폐기 판정 시)
+function instrOpenBatchDispose(){
+  var ids=Object.keys(instrSelected); if(!ids.length) return;
+  var old=document.getElementById("instr-modal"); if(old) old.remove();
+  var todayStr=(function(){ var n=new Date(); return n.getFullYear()+"-"+String(n.getMonth()+1).padStart(2,"0")+"-"+String(n.getDate()).padStart(2,"0"); })();
+  var inp="width:100%;padding:8px 10px;border:1px solid #C9D3E0;border-radius:8px;font-size:13px;box-sizing:border-box;";
+  var wrap=document.createElement("div"); wrap.id="instr-modal";
+  wrap.style.cssText="position:fixed;inset:0;background:rgba(20,28,45,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
+  wrap.innerHTML=
+    '<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    + '<div style="background:#B03A2E;color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;font-weight:700;font-size:15px;">♻️ 선택 폐기 처리</div>'
+    + '<div style="padding:18px;display:flex;flex-direction:column;gap:12px;">'
+    + '<div style="font-size:12.5px;color:#5A6478;">선택한 <b>'+ids.length+'대</b>를 <b>폐기</b> 처리합니다. 목록에서 지우지 않고 상태만 \'폐기\'로 바꿔 이력을 남기며, 교정 알림·사용중 목록에서 제외됩니다.</div>'
+    + '<div><div style="font-size:12.5px;color:#5A6478;margin-bottom:4px;">폐기일자 <span style="color:#C0392B;">*</span></div><input id="in-bd-date" type="date" value="'+todayStr+'" style="'+inp+'"></div>'
+    + '<div><div style="font-size:12.5px;color:#5A6478;margin-bottom:4px;">폐기사유 <span style="color:#8A93A6;font-weight:400;">(선택)</span></div><input id="in-bd-reason" style="'+inp+'" placeholder="예: 교정 불합격(정확도 미달), 수리 불가"></div>'
+    + '<div id="in-bd-err" style="color:#C0392B;font-size:12.5px;min-height:16px;"></div>'
+    + '<div style="display:flex;justify-content:flex-end;gap:8px;">'
+    +   '<button type="button" id="in-bd-cancel" style="padding:9px 16px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;">취소</button>'
+    +   '<button type="button" id="in-bd-apply" style="padding:9px 18px;border:none;border-radius:8px;background:#B03A2E;color:#fff;font-weight:700;cursor:pointer;">'+ids.length+'대 폐기</button>'
+    + '</div></div></div>';
+  document.body.appendChild(wrap);
+  var close=function(){ wrap.remove(); };
+  wrap.addEventListener("click",function(e){ if(e.target===wrap) close(); });
+  document.getElementById("in-bd-cancel").addEventListener("click",close);
+  document.getElementById("in-bd-apply").addEventListener("click",function(){
+    var d=docmasterFmtDate(document.getElementById("in-bd-date").value);
+    var reason=String(document.getElementById("in-bd-reason").value||"").trim();
+    var err=document.getElementById("in-bd-err");
+    if(!d){ if(err) err.textContent="폐기일자를 입력하세요."; return; }
+    var s={}; ids.forEach(function(id){ s[id]=true; });
+    var cnt=0;
+    instrData.forEach(function(r){ if(s[String(r._id)]){ r.status="폐기"; r.disposeDate=d; if(reason) r.disposeReason=reason; cnt++; } });
+    instrSelected={};
+    close(); instrRender(); instrPersist("일괄 폐기");
+    alert(cnt+"대를 폐기 처리했습니다.\n'🗑️ 폐기만' 필터로 폐기 이력을 확인할 수 있습니다.");
+  });
+}
+
+function instrFindExisting(no){
+  no=String(no||"").trim().toLowerCase();
+  if(!no) return -1;
+  for(var i=0;i<instrData.length;i++){ if(String(instrData[i].no||"").trim().toLowerCase()===no) return i; }
+  return -1;
+}
+
+function instrPersist(action){
+  if(instrSource!=="sheet"){ alert("계측기를 "+action+"했습니다.\n단, 공유 저장(구글시트)이 연결되지 않아 새로고침하면 사라집니다.\n(백엔드 연결 후 영구 저장됩니다)"); return; }
+  instrSetNote(action+" 저장 중…"); instrRender();
+  instrSaveToSheet().then(function(){ instrSetNote(action+" 저장 요청됨 ("+new Date().toLocaleTimeString("ko-KR")+")"); instrRender(); });
+}
+
+function instrDelete(id){
+  var idx=-1; for(var i=0;i<instrData.length;i++){ if(String(instrData[i]._id)===String(id)){ idx=i; break; } }
+  if(idx<0) return;
+  var r=instrData[idx];
+  if(!confirm("이 계측기를 삭제할까요?\n\n["+(r.no||"-")+"] "+r.name)) return;
+  instrData.splice(idx,1); delete instrSelected[String(id)]; instrRender(); instrPersist("삭제");
+}
+function instrBulkDelete(){
+  var ids=Object.keys(instrSelected); if(!ids.length) return;
+  if(!confirm("선택한 "+ids.length+"대를 삭제할까요?\n(되돌릴 수 없습니다)")) return;
+  var s={}; ids.forEach(function(id){ s[id]=true; });
+  instrData=instrData.filter(function(r){ return !s[String(r._id)]; });
+  instrSelected={}; instrRender(); instrPersist("선택 삭제");
+}
+
+function instrOpenForm(editId){
+  var old=document.getElementById("instr-modal"); if(old) old.remove();
+  var editing=(editId!=null); instrEditId=editing?String(editId):null;
+  var row=null;
+  if(editing){ for(var k=0;k<instrData.length;k++){ if(String(instrData[k]._id)===String(editId)){ row=instrData[k]; break; } } if(!row){ editing=false; instrEditId=null; } }
+  var v=function(f,d){ return editing?(row[f]||d||""):(d||""); };
+  var vLast=editing?((/^\d{4}-\d{2}-\d{2}$/.test(row.lastCal||""))?row.lastCal:""):"";
+  var vDisp=editing?((/^\d{4}-\d{2}-\d{2}$/.test(row.disposeDate||""))?row.disposeDate:""):"";
+  var todayStr=(function(){ var n=new Date(); return n.getFullYear()+"-"+String(n.getMonth()+1).padStart(2,"0")+"-"+String(n.getDate()).padStart(2,"0"); })();
+  var statusOpts=["사용","보관","폐기"].map(function(s){ return '<option'+(v("status","사용")===s?" selected":"")+'>'+s+'</option>'; }).join("");
+  var inp="width:100%;padding:8px 10px;border:1px solid #C9D3E0;border-radius:8px;font-size:13px;box-sizing:border-box;";
+  function fld(label,inner){ return '<div><div style="font-size:12.5px;color:#5A6478;margin-bottom:4px;">'+label+'</div>'+inner+'</div>'; }
+  var wrap=document.createElement("div"); wrap.id="instr-modal";
+  wrap.style.cssText="position:fixed;inset:0;background:rgba(20,28,45,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
+  wrap.innerHTML=
+    '<div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    + '<div style="background:#1F2A44;color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;font-weight:700;font-size:15px;">'+(editing?"✏️ 계측기 수정":"➕ 계측기 추가")+'</div>'
+    + '<div style="padding:18px;display:flex;flex-direction:column;gap:12px;">'
+    + '<div style="display:flex;gap:10px;"><div style="flex:1;">'+fld("관리번호",'<input id="in-no" value="'+docmasterEsc(v("no"))+'" style="'+inp+'" placeholder="예: M-001">')+'</div>'
+    +   '<div style="flex:2;">'+fld("계측기명 <span style=\'color:#C0392B\'>*</span>",'<input id="in-name" value="'+docmasterEsc(v("name"))+'" style="'+inp+'">')+'</div></div>'
+    + '<div style="display:flex;gap:10px;"><div style="flex:1;">'+fld("규격/모델",'<input id="in-model" value="'+docmasterEsc(v("model"))+'" style="'+inp+'">')+'</div>'
+    +   '<div style="flex:1;">'+fld("제조사",'<input id="in-maker" value="'+docmasterEsc(v("maker"))+'" style="'+inp+'">')+'</div></div>'
+    + '<div style="display:flex;gap:10px;"><div style="flex:1;">'+fld("사용처",'<input id="in-loc" value="'+docmasterEsc(v("location"))+'" style="'+inp+'">')+'</div>'
+    +   '<div style="flex:1;">'+fld("담당자",'<input id="in-owner" value="'+docmasterEsc(v("owner","품질팀"))+'" style="'+inp+'">')+'</div></div>'
+    + '<div style="display:flex;gap:10px;"><div style="flex:1;">'+fld("교정주기(개월)",'<input id="in-cycle" type="number" value="'+docmasterEsc(v("cycle","12"))+'" style="'+inp+'" placeholder="12">')+'</div>'
+    +   '<div style="flex:1;">'+fld("최근 교정일",'<input id="in-last" type="date" value="'+vLast+'" style="'+inp+'">')+'</div>'
+    +   '<div style="flex:1;">'+fld("차기 교정일(자동)",'<input id="in-next" readonly style="'+inp+'background:#F1F5FA;color:#0B5CAB;font-weight:700;">')+'</div></div>'
+    + '<div style="display:flex;gap:10px;"><div style="flex:1;">'+fld("교정기관",'<input id="in-lab" value="'+docmasterEsc(v("lab"))+'" style="'+inp+'">')+'</div>'
+    +   '<div style="flex:1;">'+fld("상태",'<select id="in-status" style="'+inp+'">'+statusOpts+'</select>')+'</div></div>'
+    + '<div id="in-dispose-box" style="display:'+(v("status")==="폐기"?"flex":"none")+';gap:10px;background:#FBEEEE;border:1px solid #EAD3D3;padding:10px;border-radius:8px;">'
+    +   '<div style="flex:1;">'+fld("폐기일자",'<input id="in-dispdate" type="date" value="'+vDisp+'" style="'+inp+'">')+'</div>'
+    +   '<div style="flex:2;">'+fld("폐기사유",'<input id="in-dispreason" value="'+docmasterEsc(v("disposeReason"))+'" style="'+inp+'" placeholder="예: 파손·수리불가, 정확도 미달, 노후">')+'</div>'
+    + '</div>'
+    + fld("비고",'<input id="in-note" value="'+docmasterEsc(v("note"))+'" style="'+inp+'" placeholder="(선택)">')
+    + '<div id="in-err" style="color:#C0392B;font-size:12.5px;min-height:16px;"></div>'
+    + '<div style="display:flex;justify-content:flex-end;gap:8px;">'
+    +   '<button type="button" id="in-cancel" style="padding:9px 16px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;">취소</button>'
+    +   '<button type="button" id="in-save" style="padding:9px 18px;border:none;border-radius:8px;background:#0B5CAB;color:#fff;font-weight:700;cursor:pointer;">'+(editing?"수정 저장":"저장")+'</button>'
+    + '</div></div></div>';
+  document.body.appendChild(wrap);
+  var close=function(){ instrEditId=null; wrap.remove(); };
+  wrap.addEventListener("click",function(e){ if(e.target===wrap) close(); });
+  document.getElementById("in-cancel").addEventListener("click",close);
+  document.getElementById("in-save").addEventListener("click",instrAddSubmit);
+  var upd=function(){ var nx=instrNextCal(document.getElementById("in-last").value, document.getElementById("in-cycle").value); document.getElementById("in-next").value=nx||"-"; };
+  document.getElementById("in-last").addEventListener("input",upd);
+  document.getElementById("in-cycle").addEventListener("input",upd);
+  var stSel=document.getElementById("in-status");
+  if(stSel) stSel.addEventListener("change",function(){
+    var box=document.getElementById("in-dispose-box");
+    if(stSel.value==="폐기"){
+      box.style.display="flex";
+      var dd=document.getElementById("in-dispdate"); if(dd && !dd.value) dd.value=todayStr;   // 기본 오늘
+    } else { box.style.display="none"; }
+  });
+  upd();
+  var focusEl=document.getElementById(editing?"in-last":"in-name"); if(focusEl) focusEl.focus();
+}
+
+function instrAddSubmit(){
+  var g=function(id){ var e=document.getElementById(id); return e?String(e.value).trim():""; };
+  var err=document.getElementById("in-err");
+  var name=g("in-name");
+  if(!name){ if(err) err.textContent="계측기명을 입력하세요."; return; }
+  var rec=instrNormalize({ no:g("in-no"),name:name,model:g("in-model"),maker:g("in-maker"),location:g("in-loc"),owner:g("in-owner"),cycle:g("in-cycle"),lastCal:g("in-last"),lab:g("in-lab"),status:g("in-status")||"사용",note:g("in-note"),disposeDate:g("in-dispdate"),disposeReason:g("in-dispreason") });
+  if(instrEditId!=null){
+    var ei=-1; for(var i=0;i<instrData.length;i++){ if(String(instrData[i]._id)===instrEditId){ ei=i; break; } }
+    if(ei>=0){ rec._id=instrData[ei]._id; instrData[ei]=rec; } else { rec._id=__instrSeq++; instrData.push(rec); }
+    instrEditId=null; var mE=document.getElementById("instr-modal"); if(mE) mE.remove(); instrRender(); instrPersist("수정"); return;
+  }
+  var action="추가";
+  var idx=instrFindExisting(rec.no);
+  if(idx>=0){
+    var old=instrData[idx];
+    if(!confirm("이미 등록된 관리번호입니다. 이 내용으로 갱신할까요?\n\n["+old.no+"] "+old.name+"\n\n[확인] 갱신 / [취소] 취소")) return;
+    rec._id=old._id; instrData[idx]=rec; action="갱신";
+  } else { rec._id=__instrSeq++; instrData.push(rec); }
+  var m=document.getElementById("instr-modal"); if(m) m.remove(); instrRender(); instrPersist(action);
+}
+
+// 여러 건 추가(붙여넣기): 관리번호[탭]계측기명[탭]모델[탭]제조사[탭]사용처[탭]담당자[탭]주기[탭]최근교정일[탭]교정기관[탭]상태[탭]비고
+function instrParseBulk(text){
+  var lines=String(text||"").split(/\r?\n/); var out=[];
+  lines.forEach(function(ln){
+    if(!ln.replace(/[\t,]/g,"").trim()) return;
+    var f=ln.indexOf("\t")>=0?ln.split("\t"):ln.split(",");
+    f=f.map(function(s){ return String(s).trim(); });
+    var rec = (f.length<=1)
+      ? { no:"", name:f[0]||"" }
+      : { no:f[0]||"", name:f[1]||"", model:f[2]||"", maker:f[3]||"", location:f[4]||"", owner:f[5]||"품질팀", cycle:f[6]||"12", lastCal:f[7]||"", lab:f[8]||"", status:f[9]||"사용", note:f[10]||"", disposeDate:f[11]||"", disposeReason:f[12]||"" };
+    rec=instrNormalize(rec); rec._valid=!!rec.name; out.push(rec);
+  });
+  return out;
+}
+function instrOpenBulk(){
+  var old=document.getElementById("instr-modal"); if(old) old.remove();
+  var wrap=document.createElement("div"); wrap.id="instr-modal";
+  wrap.style.cssText="position:fixed;inset:0;background:rgba(20,28,45,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
+  wrap.innerHTML=
+    '<div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    + '<div style="background:#0B7A8A;color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;font-weight:700;font-size:15px;">📥 계측기 여러 건 추가</div>'
+    + '<div style="padding:18px;display:flex;flex-direction:column;gap:12px;">'
+    + '<div style="font-size:12.5px;color:#5A6478;line-height:1.7;">한 줄에 계측기 1개, 엑셀에서 복사해 붙여넣으세요(탭 구분).<br>'
+    +   '열 순서: <b>관리번호 · 계측기명 · 규격/모델 · 제조사 · 사용처 · 담당자 · 교정주기(개월) · 최근교정일 · 교정기관 · 상태 · 비고</b><br>'
+    +   '<span style="color:#8A93A6;">※ 계측기명 필수. 빈 칸은 기본값(주기=12, 상태=사용, 담당자=품질팀). 같은 관리번호는 갱신됩니다.</span></div>'
+    + '<textarea id="in-bulk-text" style="width:100%;height:200px;padding:10px;border:1px solid #C9D3E0;border-radius:8px;font-size:12.5px;font-family:monospace;box-sizing:border-box;white-space:pre;overflow:auto;" placeholder="예)&#10;M-001\t접촉식 3차원 측정기\tCRYSTA\tMITUTOYO\t측정실\t품질팀\t12\t2026-03-15\tKOLAS기관\t사용"></textarea>'
+    + '<div id="in-bulk-preview" style="font-size:12.5px;color:#2A4A73;min-height:20px;"></div>'
+    + '<div style="display:flex;justify-content:flex-end;gap:8px;">'
+    +   '<button type="button" id="in-bulk-cancel" style="padding:9px 16px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;">취소</button>'
+    +   '<button type="button" id="in-bulk-import" disabled style="padding:9px 18px;border:none;border-radius:8px;background:#0B7A8A;color:#fff;font-weight:700;cursor:pointer;opacity:0.5;">가져오기</button>'
+    + '</div></div></div>';
+  document.body.appendChild(wrap);
+  var close=function(){ wrap.remove(); };
+  wrap.addEventListener("click",function(e){ if(e.target===wrap) close(); });
+  document.getElementById("in-bulk-cancel").addEventListener("click",close);
+  var ta=document.getElementById("in-bulk-text"), pv=document.getElementById("in-bulk-preview"), imp=document.getElementById("in-bulk-import");
+  var refresh=function(){
+    var recs=instrParseBulk(ta.value); var ok=recs.filter(function(r){return r._valid;}).length; var bad=recs.length-ok;
+    pv.innerHTML=recs.length?("가져올 계측기 <b>"+ok+"대</b>"+(bad?" · <span style='color:#C0392B;'>계측기명 누락 "+bad+"건 제외</span>":"")):"붙여넣으면 미리보기가 표시됩니다.";
+    imp.disabled=(ok===0); imp.style.opacity=(ok===0)?"0.5":"1"; imp.textContent="가져오기"+(ok?" ("+ok+"대)":"");
+  };
+  ta.addEventListener("input",refresh);
+  imp.addEventListener("click",function(){ instrBulkSubmit(ta.value); });
+  ta.focus(); refresh();
+}
+function instrBulkSubmit(text){
+  var recs=instrParseBulk(text).filter(function(r){ return r._valid; });
+  if(!recs.length) return;
+  var added=0, updated=0;
+  recs.forEach(function(rec){
+    delete rec._valid;
+    var idx=instrFindExisting(rec.no);
+    if(idx>=0){ rec._id=instrData[idx]._id; instrData[idx]=rec; updated++; }
+    else { rec._id=__instrSeq++; instrData.push(rec); added++; }
+  });
+  var m=document.getElementById("instr-modal"); if(m) m.remove();
+  instrRender(); instrPersist("여러 건 등록");
+  alert("여러 건 등록 완료\n\n추가 "+added+"대 · 갱신 "+updated+"대");
+}
+
+function instrPrint(){
+  var content=document.getElementById("instr-content"); if(!content){ window.print(); return; }
+  var css="@page{size:A4 landscape;margin:10mm;}"
+    + "#print-area table{width:100%!important;min-width:0!important;font-size:9px;border-collapse:collapse;}"
+    + "#print-area th,#print-area td{padding:4px 5px!important;border:1px solid #ccc;}"
+    + "#print-area .instr-selcol{display:none;} #print-area .instr-bulkbar{display:none;}"
+    + "#print-area .pager-btn{display:none;}"
+    + "#print-area .instr-editbtn,#print-area .instr-delbtn{display:none;} #print-area thead{display:table-header-group;}";
+  var stamp=new Date().toLocaleString("ko-KR");
+  var allRows=instrFilteredRows||[];
+  var fullTable='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
+    + instrTheadHTML() + '<tbody>' + instrRowsHTML(allRows) + '</tbody></table></div>';
+  openPrintWindow('<h2>계측기 관리대장 · 총 '+allRows.length+'대 ('+stamp+')</h2>'+fullTable, css, "계측기 관리");
 }
 
 function docmasterCopy(text, btn){
@@ -10779,9 +11511,14 @@ function docmasterPrint(){
     + "    #print-area .docmaster-delbtn { display:none; }\n"
     + "    #print-area .docmaster-selcol { display:none; }\n"
     + "    #print-area .docmaster-bulkbar { display:none; }\n"
+    + "    #print-area .pager-btn { display:none; }\n"
     + "    #print-area thead { display:table-header-group; }\n";
   var stamp = new Date().toLocaleString("ko-KR");
-  openPrintWindow('<h2>문서 Master 목록 ('+stamp+')</h2>' + content.innerHTML, extraCSS, "문서 Master");
+  var curYear = new Date().getFullYear();
+  var allRows = docmasterFilteredRows || [];
+  var fullTable = '<div style="overflow-x:auto;"><table class="docmaster-table" style="width:100%;border-collapse:collapse;font-size:13px;">'
+    + docmasterTheadHTML() + '<tbody>' + docmasterRowsHTML(allRows, curYear) + '</tbody></table></div>';
+  openPrintWindow('<h2>문서 Master 목록 · 총 '+allRows.length+'건 ('+stamp+')</h2>' + fullTable, extraCSS, "문서 Master");
 }
 
 </script>
@@ -10803,6 +11540,7 @@ function docmasterPrint(){
       <button id="help-closeBtn" type="button" style="border:1px solid #DDE1E8;background:#fff;border-radius:6px;padding:6px 16px;cursor:pointer;font-size:12px;">닫기 ✕</button>
     </div>
     <div style="font-size:12.5px;color:#2A2F3A;line-height:1.75;">
+      <div style="background:#EEF4FB;border:1px solid #D5E3F2;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:#2A4A73;">📌 <b>최근 업데이트: 2026-08-02</b> · 월별 현황(연/월 선택), 문서 Master(추가·개정·중복정리·연도필터·교정주기표), 계측기 관리(교정 자동관리) 반영</div>
       <div style="font-weight:400;color:#0B5CAB;margin-top:8px;">🔍 검색 문법 (모든 검색창 공통)</div>
       쉼표(,)는 OR 검색입니다. 예: <b>M200-005, M300-011</b> → 두 도번 모두 검색.<br>
       슬래시(/)는 AND(좁혀서) 검색입니다. 예: <b>유진/SHOWER</b> → 유진 결과 중 SHOWER 포함만.
@@ -10820,8 +11558,64 @@ function docmasterPrint(){
       <div style="font-weight:400;color:#0B5CAB;margin-top:12px;">🔄 데이터</div>
       상단 배너에 마지막 동기화 시각이 색으로 표시됩니다 (초록=10분 이내). 숫자가 다르면 새로고침으로 최신 데이터를 받아주세요.
       인쇄 버튼은 남색, 검색·조회 버튼은 연노랑입니다.
+
+      <div style="font-weight:400;color:#0B5CAB;margin-top:12px;">📊 월별 현황</div>
+      상단의 <b>연도·월 드롭다운</b>으로 2025~2026 원하는 달의 마감 현황을 볼 수 있습니다. 지난달을 고르면 그달 1일~말일 전체 기준(<b>· 마감</b>), 이번 달은 오늘까지 기준(<b>진행 중</b>)으로 계산됩니다. <b>[이번 달]</b> 버튼으로 현재 달로 되돌아갑니다.
+
+      <div style="font-weight:400;color:#0B5CAB;margin-top:12px;">📑 문서 Master</div>
+      품질문서의 현재 <b>Rev·개정일·상태</b>를 관리합니다. 상단에서 검색·분류·<b>연도</b>·상태로 필터하며, <b>올해 개정</b>된 문서는 노란 배경으로 표시됩니다.<br>
+      · <b>➕ 문서 추가/개정</b>: 이미 있는 <b>문서번호</b>를 넣으면 새로 추가하지 않고 그 문서를 갱신합니다. 경로는 탐색기 경로 그대로 붙여넣으세요.<br>
+      · <b>✏️ 수정</b>: 기존 값이 채워진 채 열립니다(경로만 바꿔 저장 가능). <b>🗑️</b> 및 체크박스 <b>선택 삭제</b>로 삭제.<br>
+      · <b>📥 여러 건 추가</b>: 엑셀에서 복사해 붙여넣어 여러 문서를 한 번에 등록.<br>
+      · <b>🧹 중복 정리</b>: 문서명이 같은 구버전을 지우고 최신 개정본만 남깁니다.<br>
+      · <b>📋 경로 복사</b> 후 파일 탐색기 주소창에 붙여넣어 사내 서버 파일을 엽니다. 변경은 구글시트에 공유 저장(🟢)되며 <b>🔄 새로고침</b>으로 최신 반영.
+
+      <div style="font-weight:400;color:#0B5CAB;margin-top:12px;">🔧 계측기 관리</div>
+      계측기·검사장비를 등록하면 <b>최근 교정일 + 교정주기(개월) → 차기 교정일이 자동 계산</b>됩니다. 🔴 <b>만료</b>·🟡 <b>임박(30일)</b>이 색으로 표시되고, 상단 KPI에 임박·만료 건수가 집계됩니다. 교정상태·상태·검색으로 필터합니다.<br>
+      · <b>➕ 추가 / ✏️ 수정</b>으로 개별 관리.<br>
+      · 외주 배치 교정: 대상 계측기를 <b>체크</b> → <b>📅 선택 교정일 일괄 입력</b>으로 교정일·교정기관을 한 번에 입력(차기 교정일 자동 재계산).<br>
+      · 폐기 판정: 대상을 체크 → <b>♻️ 선택 폐기 처리</b>로 폐기일·사유를 한 번에 입력. 폐기는 <b>삭제가 아니라 상태만 '폐기'</b>로 바꿔 이력을 남기며, 사용중 목록·교정 알림에서 제외됩니다. <b>[🗑️ 폐기만]</b> 필터로 폐기 이력 조회.<br>
+      · 각 행의 <b>🗑️는 기록 완전 삭제</b>라 폐기와 다릅니다. 성적서·사진은 엑셀에서 별도 관리합니다.<br>
+      · <b>📐 교정주기표</b>: 검사장비 표준 교정주기표 보기·인쇄, '검사장비관리대장 최신본' 문서 등록.
     </div>
   </div>
 </div>
+
+<!-- 체크리스트(할 일) 인라인 모달 -->
+<div id="todo-modal" style="display:none;position:fixed;inset:0;background:rgba(20,24,35,0.55);z-index:9998;padding:16px;">
+  <div style="max-width:1000px;height:88vh;margin:2vh auto 0;background:#fff;border-radius:12px;box-shadow:0 12px 48px rgba(0,0,0,0.4);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#33475E;color:#fff;">
+      <div style="font-weight:700;font-size:14px;">📋 할 일 · 체크리스트</div>
+      <div style="display:flex;gap:8px;">
+        <button type="button" id="todo-refresh" style="border:none;background:rgba(255,255,255,0.2);color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:700;font-size:12px;">🔄 새로고침</button>
+        <a href="https://wjdeh8486-maker.github.io/daysheet/" target="_blank" rel="noopener" style="text-decoration:none;background:rgba(255,255,255,0.2);color:#fff;border-radius:6px;padding:6px 12px;font-weight:700;font-size:12px;">🗗 새 탭</a>
+        <button type="button" id="todo-close" style="border:none;background:rgba(255,255,255,0.2);color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:700;font-size:12px;">닫기 ✕</button>
+      </div>
+    </div>
+    <iframe id="todo-frame" title="체크리스트" style="flex:1;width:100%;border:0;"></iframe>
+  </div>
+</div>
+<script>
+(function(){
+  var URL_ = "https://wjdeh8486-maker.github.io/daysheet/";
+  window.todoOpenInline = function(ev){
+    // Ctrl/Cmd/가운데클릭은 기존대로 새 탭
+    if(ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button===1)) return true;
+    if(ev && ev.preventDefault) ev.preventDefault();
+    var m = document.getElementById("todo-modal");
+    var f = document.getElementById("todo-frame");
+    if(f && !f.src) f.src = URL_;         // 최초 1회만 로드(이후 상태 유지)
+    if(m) m.style.display = "block";
+    return false;
+  };
+  function closeTodo(){ var m=document.getElementById("todo-modal"); if(m) m.style.display="none"; }
+  document.addEventListener("DOMContentLoaded", function(){
+    var c=document.getElementById("todo-close"); if(c) c.addEventListener("click", closeTodo);
+    var r=document.getElementById("todo-refresh"); if(r) r.addEventListener("click", function(){ var f=document.getElementById("todo-frame"); if(f) f.src = URL_ + "?t=" + Date.now(); });
+    var m=document.getElementById("todo-modal"); if(m) m.addEventListener("click", function(e){ if(e.target===m) closeTodo(); });
+    document.addEventListener("keydown", function(e){ if(e.key==="Escape") closeTodo(); });
+  });
+})();
+</script>
 </body>
 </html>
