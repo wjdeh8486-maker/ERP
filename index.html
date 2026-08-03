@@ -10498,6 +10498,74 @@ function docmasterDedupeClean(){
 //   · 2칸        → 문서명 | 경로
 //   · 3칸        → 문서번호 | 문서명 | 경로
 //   · 그 이상    → 분류 | 문서번호 | 문서명 | Rev | 개정일 | 상태 | 담당자 | 경로 | 개정사유
+// 드롭된 엑셀(.xlsx/.xls/.csv)을 여러 건 추가 형식 TSV로 변환해 붙여넣기 칸을 채움
+function docmasterAoaToBulkTSV(aoa){
+  if(!aoa || !aoa.length) return "";
+  var HMAP = [
+    { key:"cat",    pats:["분류","구분"] },
+    { key:"no",     pats:["문서번호","번호","문서no","docno"] },
+    { key:"name",   pats:["문서명","제목","명칭","문서이름"] },
+    { key:"rev",    pats:["rev","개정","버전","리비전","차수"] },
+    { key:"revDate",pats:["개정일","제개정","일자","날짜","date"] },
+    { key:"status", pats:["상태"] },
+    { key:"owner",  pats:["담당","작성","관리부서","부서"] },
+    { key:"path",   pats:["경로","파일경로","위치","링크","path"] },
+    { key:"reason", pats:["개정사유","사유","비고","note"] }
+  ];
+  function norm(s){ return String(s==null?"":s).replace(/\s+/g,"").toLowerCase(); }
+  var headerRow=-1, colmap={};
+  for(var i=0;i<Math.min(aoa.length,6);i++){
+    var row=aoa[i]||[]; var found={}; var hits=0;
+    row.forEach(function(cell,ci){
+      var n=norm(cell); if(!n) return;
+      HMAP.forEach(function(h){
+        if(found[h.key]!=null) return;
+        for(var p=0;p<h.pats.length;p++){ if(n.indexOf(norm(h.pats[p]))>=0){ found[h.key]=ci; hits++; break; } }
+      });
+    });
+    if(found.name!=null && hits>=2){ headerRow=i; colmap=found; break; }
+  }
+  var order=["cat","no","name","rev","revDate","status","owner","path","reason"];
+  var clean=function(v){ return String(v==null?"":v).replace(/[\t\n]/g," ").trim(); };
+  var lines=[];
+  if(headerRow>=0){
+    for(var r=headerRow+1;r<aoa.length;r++){
+      var row=aoa[r]||[];
+      if(row.join("").trim()==="") continue;
+      var vals=order.map(function(k){ var ci=colmap[k]; return clean((ci!=null)?row[ci]:""); });
+      if(vals[4]) vals[4]=normalizeDateValue(vals[4]) || vals[4];   // 개정일 정규화
+      lines.push(vals.join("\t"));
+    }
+  } else {
+    aoa.forEach(function(row){ if((row||[]).join("").trim()==="") return; lines.push((row||[]).map(clean).join("\t")); });
+  }
+  return lines.join("\n");
+}
+function docmasterHandleDroppedFiles(files){
+  var ta=document.getElementById("dm-bulk-text"); if(!ta) return;
+  var arr=Array.prototype.slice.call(files||[]); if(!arr.length) return;
+  var excel=arr.filter(function(f){ return /\.(xlsx|xls|csv)$/i.test(f.name); });
+  if(!excel.length){
+    alert("엑셀(.xlsx/.xls/.csv) 파일만 자동으로 가져올 수 있습니다.\n\nPDF·한글 같은 문서 파일 자체는 이 목록에 넣을 수 없습니다. 문서 Master는 파일을 '경로'로 연결하는 방식이라, 파일은 사내 서버에 두고 그 경로를 붙여넣거나, 문서 목록을 엑셀로 만들어 드래그해 주세요.");
+    return;
+  }
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해 주세요."); return; }
+  var f=excel[0];
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array"});
+      var ws=wb.Sheets[wb.SheetNames[0]];
+      var aoa=XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:""});
+      var tsv=docmasterAoaToBulkTSV(aoa);
+      if(!tsv){ alert("엑셀에서 읽을 데이터가 없습니다."); return; }
+      ta.value=tsv;
+      ta.dispatchEvent(new Event("input"));
+    }catch(err){ alert("엑셀을 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
+  };
+  reader.readAsArrayBuffer(f);
+}
+
 function docmasterParseBulk(text){
   var lines = String(text||"").split(/\r?\n/);
   var out = [];
@@ -10538,6 +10606,8 @@ function docmasterOpenBulk(){
     +   '· 전체형: 분류 [탭] 문서번호 [탭] 문서명 [탭] Rev [탭] 개정일 [탭] 상태 [탭] 담당자 [탭] 경로 [탭] 개정사유<br>'
     +   '<span style="color:#8A93A6;">※ 문서명·경로는 필수. 빈 칸은 기본값(분류=기타, Rev=Rev0, 상태=유효, 담당자=품질팀). 이미 있는 문서번호는 갱신됩니다.</span>'
     + '</div>'
+    + '<div id="dm-dropzone" style="border:2px dashed #B7DDE3;border-radius:10px;padding:16px;text-align:center;color:#0B7A8A;font-size:12.5px;cursor:pointer;background:#F4FBFC;">📄 엑셀(.xlsx/.xls/.csv) 파일을 여기로 <b>드래그</b>하거나 <b>클릭</b>해서 선택하면, 아래 칸이 자동으로 채워집니다</div>'
+    + '<input type="file" id="dm-file-input" accept=".xlsx,.xls,.csv" style="display:none;">'
     + '<textarea id="dm-bulk-text" style="width:100%;height:220px;padding:10px;border:1px solid #C9D3E0;border-radius:8px;font-size:12.5px;font-family:monospace;box-sizing:border-box;white-space:pre;overflow:auto;" '
     +   'placeholder="예)&#10;환경관리지침서\t\\\\Ntl\\5.품질팀\\...\\환경관리지침서.pdf&#10;작업표준\t\\\\Ntl\\5.품질팀\\생산자료\\작업표준.xlsx"></textarea>'
     + '<div id="dm-bulk-preview" style="font-size:12.5px;color:#2A4A73;min-height:20px;"></div>'
@@ -10567,6 +10637,17 @@ function docmasterOpenBulk(){
   };
   ta.addEventListener("input", refresh);
   imp.addEventListener("click", function(){ docmasterBulkSubmit(ta.value); });
+  // 엑셀 드래그&드롭 / 클릭 선택
+  var dz=document.getElementById("dm-dropzone");
+  var fin=document.getElementById("dm-file-input");
+  if(dz && fin){
+    dz.addEventListener("click", function(){ fin.click(); });
+    fin.addEventListener("change", function(){ docmasterHandleDroppedFiles(fin.files); fin.value=""; });
+  }
+  // 브라우저가 파일을 새 창으로 여는 기본 동작을 막고, 모달 안에 떨어뜨리면 가져오기
+  ["dragenter","dragover"].forEach(function(ev){ wrap.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); if(dz) dz.style.background="#E1F3F7"; }); });
+  ["dragleave"].forEach(function(ev){ wrap.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); if(dz) dz.style.background="#F4FBFC"; }); });
+  wrap.addEventListener("drop", function(e){ e.preventDefault(); e.stopPropagation(); if(dz) dz.style.background="#F4FBFC"; docmasterHandleDroppedFiles(e.dataTransfer && e.dataTransfer.files); });
   ta.focus();
   refresh();
 }
