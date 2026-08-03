@@ -9266,7 +9266,7 @@ const QC_COLS = [
   { key:"exterior",  label:"외관" },
   { key:"dimension", label:"치수" },
   { key:"bolt",      label:"BOLT" },
-  { key:"led",       label:"TC / PIN / LED"  },
+  { key:"led",       label:"LED"  },
   { key:"flow",      label:"FLOW" },
   { key:"leak",      label:"LEAK" },
   { key:"pressure",  label:"가압" },
@@ -10541,13 +10541,38 @@ function docmasterAoaToBulkTSV(aoa){
   }
   return lines.join("\n");
 }
+// 파일명에서 문서번호·문서명·Rev·개정일을 분리
+//  예) "ETSI-704-01 포장관리지침서_R2_20240830.xlsx"
+//      → no:ETSI-704-01, name:포장관리지침서, rev:Rev2, revDate:2024-08-30
+function docmasterParseFileName(fn){
+  var name=String(fn).replace(/\.[^.]+$/,"").trim();   // 확장자 제거
+  var no="", rev="", revDate="";
+  // 문서번호: 맨 앞의 코드 (영문2자+ 뒤에 -숫자 반복, 예 ETSI-704-01 / ETSI-802-004-004)
+  var mNo=name.match(/^([A-Za-z]{2,}(?:-\d+){1,})(?=[_\s]|$)/);
+  if(mNo){ no=mNo[1]; name=name.slice(mNo[0].length).replace(/^[_\s]+/,"").trim(); }
+  // 끝에서 Rev / 개정일을 순서 무관하게 반복 제거
+  var changed=true, guard=0;
+  while(changed && guard++<8){
+    changed=false;
+    var mRev=name.match(/[_\s]R(\d+)\s*$/i);
+    if(mRev){ if(!rev) rev="Rev"+mRev[1]; name=name.slice(0,mRev.index).trim(); changed=true; continue; }
+    var mD8=name.match(/[_\s](20\d{6})\s*$/);
+    if(mD8){ var d=mD8[1]; if(!revDate) revDate=d.slice(0,4)+"-"+d.slice(4,6)+"-"+d.slice(6,8); name=name.slice(0,mD8.index).trim(); changed=true; continue; }
+    var mD6=name.match(/[_\s](\d{2})(\d{2})(\d{2})\s*$/);
+    if(mD6){ var mm=+mD6[2], dd=+mD6[3]; if(mm>=1&&mm<=12&&dd>=1&&dd<=31){ if(!revDate) revDate="20"+mD6[1]+"-"+mD6[2]+"-"+mD6[3]; name=name.slice(0,mD6.index).trim(); changed=true; continue; } }
+  }
+  name=name.replace(/[_\s]+$/,"").replace(/^[_\s]+/,"").replace(/_+/g," ").trim();
+  return { no:no, name:name||String(fn).replace(/\.[^.]+$/,""), rev:rev||"Rev0", revDate:revDate };
+}
 function docmasterRegisterFilesAsRows(files, base){
   var ta=document.getElementById("dm-bulk-text"); if(!ta) return;
   base=String(base||"").trim().replace(/[\\/]+$/,"");
+  var clean=function(v){ return String(v==null?"":v).replace(/[\t\n]/g," ").trim(); };
   var lines=Array.prototype.slice.call(files).map(function(f){
-    var name=String(f.name).replace(/\.[^.]+$/,"");        // 확장자 뗀 문서명
-    var path=base ? (base + "\\" + f.name) : f.name;       // 폴더경로 + 파일명
-    return name.replace(/[\t\n]/g," ") + "\t" + path.replace(/[\t\n]/g," ");
+    var p=docmasterParseFileName(f.name);
+    var path=base ? (base + "\\" + f.name) : f.name;
+    // 전체형: 분류 · 문서번호 · 문서명 · Rev · 개정일 · 상태 · 담당자 · 경로 · 개정사유
+    return ["기타", clean(p.no), clean(p.name), clean(p.rev), clean(p.revDate), "유효", "품질팀", clean(path), ""].join("\t");
   });
   ta.value = (ta.value.trim() ? ta.value.replace(/\s*$/,"")+"\n" : "") + lines.join("\n");
   ta.dispatchEvent(new Event("input"));
