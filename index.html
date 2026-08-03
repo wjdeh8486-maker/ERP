@@ -12430,6 +12430,13 @@ function schedInit(){
   if(typeof instrInit==="function" && !window.__instrInited){ window.__instrInited=true; instrInit(); }
   var content=document.getElementById("sched-content");
   if(content) content.addEventListener("click", function(e){
+    var nav=(e.target.closest)?e.target.closest(".sched-nav-in"):null;
+    if(nav){ var n=nav.getAttribute("data-nav");
+      if(n==="prev") schedMonthDate=new Date(schedMonthDate.getFullYear(),schedMonthDate.getMonth()-1,1);
+      else if(n==="next") schedMonthDate=new Date(schedMonthDate.getFullYear(),schedMonthDate.getMonth()+1,1);
+      else schedMonthDate=new Date();
+      schedRender(); return;
+    }
     var chip=(e.target.closest)?e.target.closest(".sched-chip"):null;
     if(chip && chip.getAttribute("data-eid")){ schedOpenForm(chip.getAttribute("data-eid"),null,null); return; }
     if(chip && chip.getAttribute("data-due")){ schedFromDue(chip.getAttribute("data-due"), chip.getAttribute("data-duelabel")||""); return; }
@@ -12478,6 +12485,12 @@ function schedRender(){
   var today=new Date(); var isThisMonth=(today.getFullYear()===y&&today.getMonth()===m); var todayD=today.getDate();
   var dows=["일","월","화","수","목","금","토"];
   var html='<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:10px;">';
+  html+='<div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:10px;">'
+    + '<button type="button" class="sched-nav-in" data-nav="prev" style="width:32px;height:32px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;font-weight:800;font-size:16px;">‹</button>'
+    + '<span style="font-weight:800;font-size:19px;color:#1F2A44;min-width:130px;text-align:center;">'+y+'년 '+(m+1)+'월</span>'
+    + '<button type="button" class="sched-nav-in" data-nav="next" style="width:32px;height:32px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;font-weight:800;font-size:16px;">›</button>'
+    + '<button type="button" class="sched-nav-in" data-nav="today" style="height:32px;padding:0 12px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;font-weight:700;font-size:12px;">오늘</button>'
+    + '</div>';
   html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">';
   dows.forEach(function(d,i){ html+='<div style="text-align:center;font-weight:700;font-size:12px;padding:4px 0;color:'+(i===0?"#C0392B":(i===6?"#0B5CAB":"#5A6478"))+';">'+d+'</div>'; });
   for(var b=0;b<first;b++){ html+='<div style="min-height:104px;background:#FAFBFC;border-radius:8px;"></div>'; }
