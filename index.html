@@ -1644,6 +1644,7 @@
       </div>
       <div class="topbar-right">
         <button type="button" id="instr-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 계측기 추가</button>
+        <button type="button" id="instr-bulkAddBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="엑셀 대장을 복사해 한 번에 등록">📥 여러 건 추가</button>
         <button type="button" id="instr-calibBtn" style="background:#fff;color:#0B7A8A;border:1px solid #B7DDE3;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="검사장비 표준 교정주기표를 봅니다">📐 교정주기표</button>
         <button type="button" id="instr-refreshBtn" title="구글시트에서 최신 목록을 다시 불러옵니다">🔄 새로고침</button>
         <button type="button" id="instr-printBtn">🖨️ 인쇄</button>
@@ -10208,7 +10209,9 @@ function docmasterNormalize(r){
     status: r.status || "유효",
     owner:  r.owner  || "",
     path:   r.path   || "",
-    reason: r.reason || ""
+    reason: r.reason || "",
+    _deleted: (String(r._deleted||"").trim()==="1")?"1":"",
+    _deletedAt: r._deletedAt || ""
   };
 }
 
@@ -10218,7 +10221,8 @@ function docmasterSaveToSheet(){
   if(!url) return Promise.resolve(false);
   var payload = docmasterData.map(function(r){
     return { no:r.no, name:r.name, cat:r.cat, rev:r.rev, revDate:r.revDate,
-             status:r.status, owner:r.owner, path:r.path, reason:r.reason };
+             status:r.status, owner:r.owner, path:r.path, reason:r.reason,
+             _deleted:r._deleted||"", _deletedAt:r._deletedAt||"" };
   });
   return fetch(url, {
     method:"POST",
@@ -10664,14 +10668,10 @@ function docmasterAddSubmit(){
 }
 
 function docmasterDelete(id){
-  var idx = -1;
-  for(var i=0;i<docmasterData.length;i++){ if(String(docmasterData[i]._id)===String(id)){ idx=i; break; } }
-  if(idx<0) return;
-  var r = docmasterData[idx];
-  if(!confirm("이 문서를 목록에서 삭제할까요?\n\n["+(r.no||"-")+"] "+r.name)) return;
-  docmasterData.splice(idx,1);
-  docmasterRender();
-  docmasterPersist("삭제");
+  var r=null; for(var i=0;i<docmasterData.length;i++){ if(String(docmasterData[i]._id)===String(id)){ r=docmasterData[i]; break; } }
+  if(!r) return;
+  if(!confirm("이 문서를 삭제할까요? (휴지통으로 이동, 복원 가능)\n\n["+(r.no||"-")+"] "+r.name)) return;
+  trashSoftDelete("docmaster",[id]);
 }
 
 // 변경사항을 시트에 저장하고 상태를 안내
@@ -10717,13 +10717,9 @@ function docmasterUpdateBulkUI(){
 function docmasterBulkDelete(){
   var ids = Object.keys(docmasterSelected);
   if(!ids.length) return;
-  if(!confirm("선택한 " + ids.length + "건의 문서를 목록에서 삭제할까요?\n\n(삭제 후 되돌릴 수 없습니다)")) return;
-  var idset = {};
-  ids.forEach(function(id){ idset[id] = true; });
-  docmasterData = docmasterData.filter(function(r){ return !idset[String(r._id)]; });
+  if(!confirm("선택한 " + ids.length + "건을 삭제할까요?\n\n휴지통으로 이동하며 복원할 수 있습니다.")) return;
   docmasterSelected = {};
-  docmasterRender();
-  docmasterPersist("선택 삭제");
+  trashSoftDelete("docmaster", ids);
 }
 
 function docmasterCatMeta(cat){
@@ -10739,6 +10735,90 @@ function docmasterCatMeta(cat){
 }
 
 function docmasterEsc(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+/* ===== 공용 휴지통 / 되돌리기 (문서 Master · 계측기 · 고객부적합) ===== */
+var TRASH = {
+  docmaster: { get:function(){return docmasterData;}, set:function(a){docmasterData=a;}, title:"문서 Master",
+    label:function(r){return "["+(r.no||"-")+"] "+(r.name||"");}, render:function(){docmasterRender();}, persist:function(a){docmasterPersist(a);} },
+  instr: { get:function(){return instrData;}, set:function(a){instrData=a;}, title:"계측기 관리",
+    label:function(r){return "["+(r.no||"-")+"] "+(r.name||"");}, render:function(){instrRender();}, persist:function(a){instrPersist(a);} },
+  nc: { get:function(){return ncData;}, set:function(a){ncData=a;}, title:"고객부적합",
+    label:function(r){return (r.date||"")+" "+(r.customer||"")+" "+(r.partNo||"")+" — "+String(r.content||"").slice(0,20);}, render:function(){ncRender();}, persist:function(a){ncPersist(a);} }
+};
+function trashIsDeleted(r){ return String(r._deleted||"")==="1"; }
+var __lastDelete = { module:null, ids:[] };
+
+function trashSoftDelete(module, ids){
+  if(!ids||!ids.length) return;
+  var t=TRASH[module], data=t.get(), now=new Date().toISOString();
+  var idset={}; ids.forEach(function(id){ idset[String(id)]=true; });
+  var n=0;
+  data.forEach(function(r){ if(idset[String(r._id)] && !trashIsDeleted(r)){ r._deleted="1"; r._deletedAt=now; n++; } });
+  __lastDelete={ module:module, ids:ids.slice() };
+  t.render(); t.persist("삭제");
+  trashShowUndo(module, n);
+}
+function trashRestore(module, ids){
+  var t=TRASH[module], data=t.get();
+  var idset={}; (ids||[]).forEach(function(id){ idset[String(id)]=true; });
+  data.forEach(function(r){ if(idset[String(r._id)] && trashIsDeleted(r)){ r._deleted=""; r._deletedAt=""; } });
+  t.render(); t.persist("복원");
+}
+function trashPurge(module, ids){
+  var t=TRASH[module];
+  var idset={}; (ids||[]).forEach(function(id){ idset[String(id)]=true; });
+  t.set(t.get().filter(function(r){ return !idset[String(r._id)]; }));
+  t.render(); t.persist("영구삭제");
+}
+function trashShowUndo(module, count){
+  var old=document.getElementById("undo-toast"); if(old) old.remove();
+  if(!count) return;
+  var d=document.createElement("div"); d.id="undo-toast";
+  d.style.cssText="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:10000;background:#1F2A44;color:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,0.35);display:flex;align-items:center;gap:12px;font-size:13px;";
+  d.innerHTML='<span>🗑️ '+count+'건 삭제됨</span>'
+    + '<button type="button" id="undo-btn" style="background:#F4C430;color:#3a2c00;border:none;border-radius:7px;padding:6px 12px;font-weight:700;cursor:pointer;">되돌리기</button>'
+    + '<button type="button" id="undo-close" style="background:transparent;color:#B9C2D6;border:none;cursor:pointer;font-size:16px;">✕</button>';
+  document.body.appendChild(d);
+  var to=setTimeout(function(){ if(d.parentNode) d.remove(); }, 8000);
+  document.getElementById("undo-btn").addEventListener("click", function(){ clearTimeout(to); if(__lastDelete.module===module) trashRestore(module, __lastDelete.ids); d.remove(); });
+  document.getElementById("undo-close").addEventListener("click", function(){ clearTimeout(to); d.remove(); });
+}
+function trashOpen(module){
+  var t=TRASH[module];
+  var old=document.getElementById("trash-modal"); if(old) old.remove();
+  var deleted=t.get().filter(trashIsDeleted).sort(function(a,b){ return String(b._deletedAt||"").localeCompare(String(a._deletedAt||"")); });
+  var rowsHTML = deleted.length ? deleted.map(function(r){
+    var dt = r._deletedAt ? (new Date(r._deletedAt)).toLocaleString("ko-KR") : "";
+    return '<tr style="border-bottom:1px solid #EEF1F5;">'
+      + '<td style="padding:8px;text-align:left;">'+docmasterEsc(t.label(r))+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;color:#8A93A6;font-size:11px;">'+docmasterEsc(dt)+'</td>'
+      + '<td style="padding:8px;text-align:center;white-space:nowrap;">'
+      +   '<button type="button" class="trash-restore" data-id="'+docmasterEsc(r._id)+'" style="font-size:11px;padding:4px 10px;border:1px solid #9CC7A6;border-radius:6px;background:#fff;color:#1E7E45;font-weight:700;cursor:pointer;">↩ 복원</button>'
+      +   ' <button type="button" class="trash-purge" data-id="'+docmasterEsc(r._id)+'" style="font-size:11px;padding:4px 10px;border:1px solid #E4B4B4;border-radius:6px;background:#fff;color:#C0392B;cursor:pointer;">영구삭제</button>'
+      + '</td></tr>';
+  }).join("") : '<tr><td colspan="3" style="padding:30px;text-align:center;color:#8A93A6;">휴지통이 비어 있습니다.</td></tr>';
+  var wrap=document.createElement("div"); wrap.id="trash-modal";
+  wrap.style.cssText="position:fixed;inset:0;background:rgba(20,28,45,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
+  wrap.innerHTML=
+    '<div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:86vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    + '<div style="background:#5A3E7A;color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;font-weight:700;font-size:15px;display:flex;justify-content:space-between;align-items:center;">'
+    +   '<span>🗑️ 휴지통 · '+t.title+' ('+deleted.length+')</span>'
+    +   '<button type="button" id="trash-close" style="background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-weight:700;">닫기 ✕</button>'
+    + '</div>'
+    + '<div style="padding:8px 18px;font-size:12px;color:#5A6478;">삭제한 항목이 보관됩니다. <b>복원</b>은 목록으로 되돌리고, <b>영구삭제</b>는 완전히 제거합니다.'
+    +   (deleted.length? ' <button type="button" id="trash-restore-all" style="margin-left:6px;font-size:11px;padding:3px 10px;border:1px solid #9CC7A6;border-radius:6px;background:#fff;color:#1E7E45;font-weight:700;cursor:pointer;">전체 복원</button>':'')
+    + '</div>'
+    + '<div style="padding:0 18px 18px;"><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="background:#F1EEF7;color:#5A3E7A;"><th style="padding:8px;text-align:left;">항목</th><th style="padding:8px;">삭제 시각</th><th style="padding:8px;">관리</th></tr></thead><tbody>'+rowsHTML+'</tbody></table></div>'
+    + '</div>';
+  document.body.appendChild(wrap);
+  var close=function(){ wrap.remove(); };
+  wrap.addEventListener("click",function(e){ if(e.target===wrap) close(); });
+  document.getElementById("trash-close").addEventListener("click",close);
+  var ra=document.getElementById("trash-restore-all");
+  if(ra) ra.addEventListener("click",function(){ trashRestore(module, deleted.map(function(r){return r._id;})); close(); });
+  wrap.querySelectorAll(".trash-restore").forEach(function(b){ b.addEventListener("click",function(){ trashRestore(module,[b.getAttribute("data-id")]); trashOpen(module); }); });
+  wrap.querySelectorAll(".trash-purge").forEach(function(b){ b.addEventListener("click",function(){ if(confirm("이 항목을 완전히 삭제할까요? (복원 불가)")){ trashPurge(module,[b.getAttribute("data-id")]); trashOpen(module); } }); });
+}
 
 function docmasterTheadHTML(){
   return '<thead><tr style="background:#1F2A44;color:#fff;">'
@@ -10820,7 +10900,7 @@ function docmasterRender(){
     yearSel.value = selYear;
   }
 
-  var rows = docmasterData.slice();
+  var rows = docmasterData.slice().filter(function(r){ return !trashIsDeleted(r); });
   if(stMode === "valid") rows = rows.filter(function(r){ return r.status !== "폐지"; });
 
   // 문서명 중복 제거: 같은 문서명은 개정일(최종일)이 가장 늦은 1건만 남김
@@ -10867,7 +10947,7 @@ function docmasterRender(){
   });
 
   // KPI
-  var total = docmasterData.length;
+  var total = docmasterData.filter(function(r){ return !trashIsDeleted(r); }).length;
   var validCnt = docmasterData.filter(function(r){return r.status==="유효";}).length;
   var editingCnt = docmasterData.filter(function(r){return r.status==="개정중";}).length;
   var obsoleteCnt = docmasterData.filter(function(r){return r.status==="폐지";}).length;
@@ -10901,8 +10981,9 @@ function docmasterRender(){
   if(rows.length===0){
     html += '<div style="padding:30px;text-align:center;color:var(--text-mute);">조건에 맞는 문서가 없습니다.</div>';
   } else {
-    html += '<div class="docmaster-bulkbar" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+    html += '<div class="docmaster-bulkbar" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">'
       +   '<button type="button" id="docmaster-bulkDelBtn" disabled style="font-size:12px;padding:6px 12px;border:1px solid #E4B4B4;border-radius:7px;background:#fff;color:#C0392B;font-weight:700;cursor:pointer;opacity:0.5;">🗑️ 선택 삭제 (0)</button>'
+      +   '<button type="button" id="docmaster-trashBtn" style="font-size:12px;padding:6px 12px;border:1px solid #D9C4EC;border-radius:7px;background:#fff;color:#5A3E7A;font-weight:700;cursor:pointer;">🗑️ 휴지통</button>'
       +   '<span id="docmaster-selinfo" style="font-size:12px;color:var(--text-mute);">체크박스로 여러 문서를 골라 한 번에 삭제할 수 있습니다.</span>'
       + '</div>';
     docmasterFilteredRows = rows;
@@ -10971,6 +11052,8 @@ function docmasterRender(){
   // 선택 삭제 버튼
   var bulkBtn = document.getElementById("docmaster-bulkDelBtn");
   if(bulkBtn) bulkBtn.addEventListener("click", docmasterBulkDelete);
+  var trBtn = document.getElementById("docmaster-trashBtn");
+  if(trBtn) trBtn.addEventListener("click", function(){ trashOpen("docmaster"); });
   el.querySelectorAll(".pager-btn").forEach(function(b){
     b.addEventListener("click", function(){
       if(b.disabled) return;
@@ -11018,6 +11101,7 @@ function instrInit(){
   bind("instr-calstatus","change",function(){ instrPage=1; instrRender(); });
   bind("instr-status","change",function(){ instrPage=1; instrRender(); });
   bind("instr-addBtn","click",function(){ instrOpenForm(null); });
+  bind("instr-bulkAddBtn","click",instrOpenBulk);
   bind("instr-calibBtn","click",docmasterOpenCalibTable);
   bind("instr-refreshBtn","click",function(){ instrLoadFromSheet(true); });
   bind("instr-printBtn","click",instrPrint);
@@ -11058,7 +11142,9 @@ function instrNormalize(r){
     status:  r.status  || "사용",
     note:    r.note    || "",
     disposeDate:   docmasterFmtDate(r.disposeDate),
-    disposeReason: r.disposeReason || ""
+    disposeReason: r.disposeReason || "",
+    _deleted: (String(r._deleted||"").trim()==="1")?"1":"",
+    _deletedAt: r._deletedAt || ""
   };
 }
 
@@ -11084,7 +11170,7 @@ function instrCalStatus(r){
 
 function instrSaveToSheet(){
   var url = docmasterApiUrl(); if(!url) return Promise.resolve(false);
-  var payload = instrData.map(function(r){ return { no:r.no,name:r.name,model:r.model,maker:r.maker,location:r.location,owner:r.owner,cycle:r.cycle,lastCal:r.lastCal,lab:r.lab,status:r.status,note:r.note,disposeDate:r.disposeDate,disposeReason:r.disposeReason }; });
+  var payload = instrData.map(function(r){ return { no:r.no,name:r.name,model:r.model,maker:r.maker,location:r.location,owner:r.owner,cycle:r.cycle,lastCal:r.lastCal,lab:r.lab,status:r.status,note:r.note,disposeDate:r.disposeDate,disposeReason:r.disposeReason,_deleted:r._deleted||"",_deletedAt:r._deletedAt||"" }; });
   return fetch(url, { method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=utf-8"},
     body: JSON.stringify({ mode:"writeInstrMaster", rows:payload, updatedAt:new Date().toISOString() }) })
     .then(function(){return true;}).catch(function(){return false;});
@@ -11151,7 +11237,7 @@ function instrRender(){
   var calFilter=(document.getElementById("instr-calstatus")||{}).value||"all";
   var stMode=(document.getElementById("instr-status")||{}).value||"use";
 
-  var rows=instrData.slice();
+  var rows=instrData.slice().filter(function(r){ return !trashIsDeleted(r); });
   if(stMode==="use") rows=rows.filter(function(r){ return r.status!=="폐기"&&r.status!=="보관"; });
   else if(stMode==="dispose") rows=rows.filter(function(r){ return r.status==="폐기"; });
   if(kw) rows=rows.filter(function(r){ return (String(r.no).toLowerCase().indexOf(kw)>=0)||(String(r.name).toLowerCase().indexOf(kw)>=0)||(String(r.location).toLowerCase().indexOf(kw)>=0); });
@@ -11164,13 +11250,14 @@ function instrRender(){
     return (sa.next||"9999").localeCompare(sb.next||"9999");
   });
 
-  var useRows=instrData.filter(function(r){ return r.status!=="폐기"&&r.status!=="보관"; });
+  var liveAll=instrData.filter(function(r){ return !trashIsDeleted(r); });
+  var useRows=liveAll.filter(function(r){ return r.status!=="폐기"&&r.status!=="보관"; });
   var cntExpired=useRows.filter(function(r){ return instrCalStatus(r).key==="expired"; }).length;
   var cntSoon=useRows.filter(function(r){ return instrCalStatus(r).key==="soon"; }).length;
 
   var html='';
   html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">'
-    + instrKpi("총 계측기", instrData.length+"대", "#1F2A44")
+    + instrKpi("총 계측기", liveAll.length+"대", "#1F2A44")
     + instrKpi("사용중", useRows.length+"대", "#0B5CAB")
     + instrKpi("🟡 교정 임박(30일)", cntSoon+"건", "#B8860B")
     + instrKpi("🔴 교정 만료", cntExpired+"건", "#C0392B")
@@ -11181,6 +11268,7 @@ function instrRender(){
     + '<button type="button" id="instr-batchCalBtn" disabled style="font-size:12px;padding:6px 12px;border:none;border-radius:7px;background:#0B7A8A;color:#fff;font-weight:700;cursor:pointer;opacity:0.5;">📅 선택 교정일 일괄 입력 (0)</button>'
     + '<button type="button" id="instr-batchDispBtn" disabled style="font-size:12px;padding:6px 12px;border:1px solid #E0C0C0;border-radius:7px;background:#fff;color:#B03A2E;font-weight:700;cursor:pointer;opacity:0.5;">♻️ 선택 폐기 처리 (0)</button>'
     + '<button type="button" id="instr-bulkDelBtn" disabled style="font-size:12px;padding:6px 12px;border:1px solid #E4B4B4;border-radius:7px;background:#fff;color:#C0392B;font-weight:700;cursor:pointer;opacity:0.5;">🗑️ 선택 삭제 (0)</button>'
+    + '<button type="button" id="instr-trashBtn" style="font-size:12px;padding:6px 12px;border:1px solid #D9C4EC;border-radius:7px;background:#fff;color:#5A3E7A;font-weight:700;cursor:pointer;">🗑️ 휴지통</button>'
     + '<span id="instr-selinfo" style="font-size:12px;color:var(--text-mute);">외주 교정 후, 나간 계측기를 체크해 <b>교정일을 한 번에</b> 입력하세요.</span>'
     + '</div>';
 
@@ -11212,7 +11300,7 @@ function instrRender(){
   if(stEl){
     var src=instrSource==="sheet"?"🟢 공유(구글시트)":"🟡 내장(백엔드 미연결)";
     var note=stEl.getAttribute("data-note")||"";
-    stEl.textContent=src+" · 표시 "+rows.length+"대 / 전체 "+instrData.length+"대"+(note?(" · "+note):"");
+    stEl.textContent=src+" · 표시 "+rows.length+"대 / 전체 "+liveAll.length+"대"+(note?(" · "+note):"");
   }
 
   el.querySelectorAll(".instr-editbtn").forEach(function(b){ b.addEventListener("click",function(){ instrOpenForm(b.getAttribute("data-id")); }); });
@@ -11221,6 +11309,7 @@ function instrRender(){
   var selall=document.getElementById("instr-selall");
   if(selall) selall.addEventListener("change",function(){ instrVisibleIds.forEach(function(id){ if(selall.checked) instrSelected[id]=true; else delete instrSelected[id]; }); el.querySelectorAll(".instr-rowchk").forEach(function(c){ c.checked=selall.checked; }); instrUpdateBulkUI(); });
   var bd=document.getElementById("instr-bulkDelBtn"); if(bd) bd.addEventListener("click",instrBulkDelete);
+  var itr=document.getElementById("instr-trashBtn"); if(itr) itr.addEventListener("click",function(){ trashOpen("instr"); });
   var bc=document.getElementById("instr-batchCalBtn"); if(bc) bc.addEventListener("click",instrOpenBatchCal);
   var bp=document.getElementById("instr-batchDispBtn"); if(bp) bp.addEventListener("click",instrOpenBatchDispose);
   el.querySelectorAll(".pager-btn").forEach(function(b){
@@ -11336,19 +11425,12 @@ function instrPersist(action){
 }
 
 function instrDelete(id){
-  var idx=-1; for(var i=0;i<instrData.length;i++){ if(String(instrData[i]._id)===String(id)){ idx=i; break; } }
-  if(idx<0) return;
-  var r=instrData[idx];
-  if(!confirm("이 계측기를 삭제할까요?\n\n["+(r.no||"-")+"] "+r.name)) return;
-  instrData.splice(idx,1); delete instrSelected[String(id)]; instrRender(); instrPersist("삭제");
+  var r=null; for(var i=0;i<instrData.length;i++){ if(String(instrData[i]._id)===String(id)){ r=instrData[i]; break; } }
+  if(!r) return;
+  if(!confirm("이 계측기를 삭제할까요? (휴지통으로 이동, 복원 가능)\n\n["+(r.no||"-")+"] "+r.name)) return;
+  delete instrSelected[String(id)]; trashSoftDelete("instr",[id]);
 }
-function instrBulkDelete(){
-  var ids=Object.keys(instrSelected); if(!ids.length) return;
-  if(!confirm("선택한 "+ids.length+"대를 삭제할까요?\n(되돌릴 수 없습니다)")) return;
-  var s={}; ids.forEach(function(id){ s[id]=true; });
-  instrData=instrData.filter(function(r){ return !s[String(r._id)]; });
-  instrSelected={}; instrRender(); instrPersist("선택 삭제");
-}
+function instrBulkDelete(){ var ids=Object.keys(instrSelected); if(!ids.length) return; if(!confirm("선택한 "+ids.length+"대를 삭제할까요?\n\n휴지통으로 이동하며 복원할 수 있습니다.")) return; instrSelected={}; trashSoftDelete("instr", ids); }
 
 function instrOpenForm(editId){
   var old=document.getElementById("instr-modal"); if(old) old.remove();
@@ -11440,7 +11522,9 @@ function instrParseBulk(text){
     var rec = (f.length<=1)
       ? { no:"", name:f[0]||"" }
       : { no:f[0]||"", name:f[1]||"", model:f[2]||"", maker:f[3]||"", location:f[4]||"", owner:f[5]||"품질팀", cycle:f[6]||"12", lastCal:f[7]||"", lab:f[8]||"", status:f[9]||"사용", note:f[10]||"", disposeDate:f[11]||"", disposeReason:f[12]||"" };
-    rec=instrNormalize(rec); rec._valid=!!rec.name; out.push(rec);
+    rec=instrNormalize(rec); rec._valid=!!rec.name;
+    if(rec.status==="폐기" && !rec.disposeDate && rec.lastCal){ rec.disposeDate=rec.lastCal; rec.disposeReason=rec.disposeReason||"폐기(대장 이전)"; }
+    out.push(rec);
   });
   return out;
 }
@@ -11561,7 +11645,9 @@ function ncNormalize(r){
     doneDate: docmasterFmtDate(r.doneDate),
     reportDate: docmasterFmtDate(r.reportDate),
     validation: r.validation||"",
-    note: r.note||""
+    note: r.note||"",
+    _deleted: (String(r._deleted||"").trim()==="1")?"1":"",
+    _deletedAt: r._deletedAt || ""
   };
 }
 function ncHasVal(v){ var s=String(v==null?"":v).trim(); return s!==""&&s!=="-"; }
@@ -11581,7 +11667,7 @@ function ncJudge(r){
 }
 function ncSaveToSheet(){
   var url=docmasterApiUrl(); if(!url) return Promise.resolve(false);
-  var payload=ncData.map(function(r){ return {date:r.date,customer:r.customer,partNo:r.partNo,partName:r.partName,finder:r.finder,qty:r.qty,content:r.content,temp:r.temp,treatment:r.treatment,owner:r.owner,doneDate:r.doneDate,reportDate:r.reportDate,validation:r.validation,note:r.note}; });
+  var payload=ncData.map(function(r){ return {date:r.date,customer:r.customer,partNo:r.partNo,partName:r.partName,finder:r.finder,qty:r.qty,content:r.content,temp:r.temp,treatment:r.treatment,owner:r.owner,doneDate:r.doneDate,reportDate:r.reportDate,validation:r.validation,note:r.note,_deleted:r._deleted||"",_deletedAt:r._deletedAt||""}; });
   return fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeNcMaster",rows:payload,updatedAt:new Date().toISOString()})}).then(function(){return true;}).catch(function(){return false;});
 }
 function ncSetNote(msg){ var e=document.getElementById("nc-status-text"); if(e&&msg!=null) e.setAttribute("data-note",msg); }
@@ -11627,15 +11713,16 @@ function ncRender(){
   var el=document.getElementById("nc-content"); if(!el) return;
   var kw=((document.getElementById("nc-search")||{}).value||"").trim().toLowerCase();
   var stf=(document.getElementById("nc-status")||{}).value||"all";
-  var rows=ncData.slice();
+  var rows=ncData.slice().filter(function(r){ return !trashIsDeleted(r); });
   if(kw) rows=rows.filter(function(r){ return (String(r.partNo).toLowerCase().indexOf(kw)>=0)||(String(r.customer).toLowerCase().indexOf(kw)>=0)||(String(r.content).toLowerCase().indexOf(kw)>=0); });
   if(stf==="open") rows=rows.filter(function(r){ return !ncJudge(r).closed; });
   else if(stf==="overdue") rows=rows.filter(function(r){ return ncJudge(r).overdue; });
   else if(stf==="closed") rows=rows.filter(function(r){ return ncJudge(r).closed; });
   rows.sort(function(a,b){ var ja=ncJudge(a),jb=ncJudge(b); if(ja.overdue!==jb.overdue) return ja.overdue?-1:1; if(ja.closed!==jb.closed) return ja.closed?1:-1; return String(b.date||"").localeCompare(String(a.date||"")); });
-  var tot=ncData.length;
-  var openCnt=ncData.filter(function(r){ return !ncJudge(r).closed; }).length;
-  var overdueCnt=ncData.filter(function(r){ return ncJudge(r).overdue; }).length;
+  var live=ncData.filter(function(r){ return !trashIsDeleted(r); });
+  var tot=live.length;
+  var openCnt=live.filter(function(r){ return !ncJudge(r).closed; }).length;
+  var overdueCnt=live.filter(function(r){ return ncJudge(r).overdue; }).length;
   var closeRate=tot>0?Math.round(((tot-openCnt)/tot)*100):0;
   var html='';
   html+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">'
@@ -11647,6 +11734,7 @@ function ncRender(){
   html+='<div class="table-wrap" style="padding:16px;">';
   html+='<div class="nc-bulkbar" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">'
     + '<button type="button" id="nc-bulkDelBtn" disabled style="font-size:12px;padding:6px 12px;border:1px solid #E4B4B4;border-radius:7px;background:#fff;color:#C0392B;font-weight:700;cursor:pointer;opacity:0.5;">🗑️ 선택 삭제 (0)</button>'
+    + '<button type="button" id="nc-trashBtn" style="font-size:12px;padding:6px 12px;border:1px solid #D9C4EC;border-radius:7px;background:#fff;color:#5A3E7A;font-weight:700;cursor:pointer;">🗑️ 휴지통</button>'
     + '<span id="nc-selinfo" style="font-size:12px;color:var(--text-mute);">체크박스로 여러 건을 골라 한 번에 삭제할 수 있습니다.</span>'
     + '</div>';
   if(!rows.length){
@@ -11666,13 +11754,14 @@ function ncRender(){
   html+='</div>';
   el.innerHTML=html;
   var stEl=document.getElementById("nc-status-text");
-  if(stEl){ var src=ncSource==="sheet"?"🟢 공유(구글시트)":"🟡 내장(백엔드 미연결)"; var note=stEl.getAttribute("data-note")||""; stEl.textContent=src+" · 표시 "+rows.length+"건 / 전체 "+ncData.length+"건"+(note?(" · "+note):""); }
+  if(stEl){ var src=ncSource==="sheet"?"🟢 공유(구글시트)":"🟡 내장(백엔드 미연결)"; var note=stEl.getAttribute("data-note")||""; stEl.textContent=src+" · 표시 "+rows.length+"건 / 전체 "+live.length+"건"+(note?(" · "+note):""); }
   el.querySelectorAll(".nc-editbtn").forEach(function(b){ b.addEventListener("click",function(){ ncOpenForm(b.getAttribute("data-id")); }); });
   el.querySelectorAll(".nc-delbtn").forEach(function(b){ b.addEventListener("click",function(){ ncDelete(b.getAttribute("data-id")); }); });
   el.querySelectorAll(".nc-rowchk").forEach(function(c){ c.addEventListener("change",function(){ var id=c.getAttribute("data-id"); if(c.checked) ncSelected[id]=true; else delete ncSelected[id]; ncUpdateBulkUI(); }); });
   var selall=document.getElementById("nc-selall");
   if(selall) selall.addEventListener("change",function(){ ncVisibleIds.forEach(function(id){ if(selall.checked) ncSelected[id]=true; else delete ncSelected[id]; }); el.querySelectorAll(".nc-rowchk").forEach(function(c){ c.checked=selall.checked; }); ncUpdateBulkUI(); });
   var bd=document.getElementById("nc-bulkDelBtn"); if(bd) bd.addEventListener("click",ncBulkDelete);
+  var ntr=document.getElementById("nc-trashBtn"); if(ntr) ntr.addEventListener("click",function(){ trashOpen("nc"); });
   el.querySelectorAll(".pager-btn").forEach(function(b){ b.addEventListener("click",function(){ if(b.disabled) return; var p=parseInt(b.getAttribute("data-page"),10); if(b.getAttribute("data-module")==="nc") ncGoPage(p); }); });
   ncUpdateBulkUI();
 }
@@ -11682,8 +11771,8 @@ function ncUpdateBulkUI(){
   var info=document.getElementById("nc-selinfo"); if(info) info.textContent=n>0?(n+"건 선택됨"):"체크박스로 여러 건을 골라 한 번에 삭제할 수 있습니다.";
   var sa=document.getElementById("nc-selall"); if(sa){ var vis=ncVisibleIds; var sv=vis.filter(function(id){return ncSelected[id];}).length; sa.checked=(vis.length>0&&sv===vis.length); sa.indeterminate=(sv>0&&sv<vis.length); }
 }
-function ncDelete(id){ var idx=-1; for(var i=0;i<ncData.length;i++){ if(String(ncData[i]._id)===String(id)){ idx=i; break; } } if(idx<0) return; var r=ncData[idx]; if(!confirm("이 건을 삭제할까요?\n\n"+(r.date||"")+" "+(r.customer||"")+" "+(r.partNo||""))) return; ncData.splice(idx,1); delete ncSelected[String(id)]; ncRender(); ncPersist("삭제"); }
-function ncBulkDelete(){ var ids=Object.keys(ncSelected); if(!ids.length) return; if(!confirm("선택한 "+ids.length+"건을 삭제할까요?\n(되돌릴 수 없습니다)")) return; var s={}; ids.forEach(function(id){ s[id]=true; }); ncData=ncData.filter(function(r){ return !s[String(r._id)]; }); ncSelected={}; ncRender(); ncPersist("선택 삭제"); }
+function ncDelete(id){ var r=null; for(var i=0;i<ncData.length;i++){ if(String(ncData[i]._id)===String(id)){ r=ncData[i]; break; } } if(!r) return; if(!confirm("이 건을 삭제할까요? (휴지통으로 이동, 복원 가능)\n\n"+(r.date||"")+" "+(r.customer||"")+" "+(r.partNo||""))) return; delete ncSelected[String(id)]; trashSoftDelete("nc",[id]); }
+function ncBulkDelete(){ var ids=Object.keys(ncSelected); if(!ids.length) return; if(!confirm("선택한 "+ids.length+"건을 삭제할까요?\n\n휴지통으로 이동하며 복원할 수 있습니다.")) return; ncSelected={}; trashSoftDelete("nc", ids); }
 function ncOpenForm(editId){
   var old=document.getElementById("nc-modal"); if(old) old.remove();
   var editing=(editId!=null); ncEditId=editing?String(editId):null;
