@@ -9266,7 +9266,7 @@ const QC_COLS = [
   { key:"exterior",  label:"외관" },
   { key:"dimension", label:"치수" },
   { key:"bolt",      label:"BOLT" },
-  { key:"led",       label:"LED"  },
+  { key:"led",       label:"TC / PIN / LED"  },
   { key:"flow",      label:"FLOW" },
   { key:"leak",      label:"LEAK" },
   { key:"pressure",  label:"가압" },
@@ -10541,29 +10541,52 @@ function docmasterAoaToBulkTSV(aoa){
   }
   return lines.join("\n");
 }
+function docmasterRegisterFilesAsRows(files, base){
+  var ta=document.getElementById("dm-bulk-text"); if(!ta) return;
+  base=String(base||"").trim().replace(/[\\/]+$/,"");
+  var lines=Array.prototype.slice.call(files).map(function(f){
+    var name=String(f.name).replace(/\.[^.]+$/,"");        // 확장자 뗀 문서명
+    var path=base ? (base + "\\" + f.name) : f.name;       // 폴더경로 + 파일명
+    return name.replace(/[\t\n]/g," ") + "\t" + path.replace(/[\t\n]/g," ");
+  });
+  ta.value = (ta.value.trim() ? ta.value.replace(/\s*$/,"")+"\n" : "") + lines.join("\n");
+  ta.dispatchEvent(new Event("input"));
+  if(!base){
+    var bp=document.getElementById("dm-basepath");
+    if(bp){ bp.style.borderColor="#C0392B"; bp.focus(); }
+    setTimeout(function(){ alert("파일명은 넣었지만 '폴더 경로'가 비어 있어 경로가 파일명만으로 되어 있습니다.\n위의 📁 폴더 경로에 탐색기 주소를 붙여넣은 뒤, 다시 파일을 드래그하면 전체 경로가 채워집니다."); }, 50);
+  }
+}
 function docmasterHandleDroppedFiles(files){
   var ta=document.getElementById("dm-bulk-text"); if(!ta) return;
   var arr=Array.prototype.slice.call(files||[]); if(!arr.length) return;
-  var excel=arr.filter(function(f){ return /\.(xlsx|xls|csv)$/i.test(f.name); });
-  if(!excel.length){
-    alert("엑셀(.xlsx/.xls/.csv) 파일만 자동으로 가져올 수 있습니다.\n\nPDF·한글 같은 문서 파일 자체는 이 목록에 넣을 수 없습니다. 문서 Master는 파일을 '경로'로 연결하는 방식이라, 파일은 사내 서버에 두고 그 경로를 붙여넣거나, 문서 목록을 엑셀로 만들어 드래그해 주세요.");
+  var base=(document.getElementById("dm-basepath")||{}).value || "";
+  var sheets=arr.filter(function(f){ return /\.(xlsx|xls|csv)$/i.test(f.name); });
+  // 엑셀 1개만 → '목록(대장)'일 수 있으니 먼저 파싱 시도. 유효행 없으면 '파일 등록'으로 처리.
+  if(arr.length===1 && sheets.length===1){
+    if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해 주세요."); return; }
+    var f=arr[0];
+    var reader=new FileReader();
+    reader.onload=function(e){
+      var tsv="";
+      try{
+        var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array"});
+        var ws=wb.Sheets[wb.SheetNames[0]];
+        var aoa=XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:""});
+        tsv=docmasterAoaToBulkTSV(aoa);
+      }catch(err){ tsv=""; }
+      var validCnt = tsv ? docmasterParseBulk(tsv).filter(function(r){ return r._valid; }).length : 0;
+      if(validCnt>0){                         // 진짜 문서 목록 → 채우기
+        ta.value=tsv; ta.dispatchEvent(new Event("input"));
+      } else {                                // 목록이 아니라 문서 파일 하나 → 파일 등록
+        docmasterRegisterFilesAsRows([f], base);
+      }
+    };
+    reader.readAsArrayBuffer(f);
     return;
   }
-  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해 주세요."); return; }
-  var f=excel[0];
-  var reader=new FileReader();
-  reader.onload=function(e){
-    try{
-      var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array"});
-      var ws=wb.Sheets[wb.SheetNames[0]];
-      var aoa=XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:""});
-      var tsv=docmasterAoaToBulkTSV(aoa);
-      if(!tsv){ alert("엑셀에서 읽을 데이터가 없습니다."); return; }
-      ta.value=tsv;
-      ta.dispatchEvent(new Event("input"));
-    }catch(err){ alert("엑셀을 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
-  };
-  reader.readAsArrayBuffer(f);
+  // 여러 파일(또는 문서 파일들) → 파일명으로 등록
+  docmasterRegisterFilesAsRows(arr, base);
 }
 
 function docmasterParseBulk(text){
@@ -10606,8 +10629,12 @@ function docmasterOpenBulk(){
     +   '· 전체형: 분류 [탭] 문서번호 [탭] 문서명 [탭] Rev [탭] 개정일 [탭] 상태 [탭] 담당자 [탭] 경로 [탭] 개정사유<br>'
     +   '<span style="color:#8A93A6;">※ 문서명·경로는 필수. 빈 칸은 기본값(분류=기타, Rev=Rev0, 상태=유효, 담당자=품질팀). 이미 있는 문서번호는 갱신됩니다.</span>'
     + '</div>'
-    + '<div id="dm-dropzone" style="border:2px dashed #B7DDE3;border-radius:10px;padding:16px;text-align:center;color:#0B7A8A;font-size:12.5px;cursor:pointer;background:#F4FBFC;">📄 엑셀(.xlsx/.xls/.csv) 파일을 여기로 <b>드래그</b>하거나 <b>클릭</b>해서 선택하면, 아래 칸이 자동으로 채워집니다</div>'
-    + '<input type="file" id="dm-file-input" accept=".xlsx,.xls,.csv" style="display:none;">'
+    + '<div id="dm-dropzone" style="border:2px dashed #B7DDE3;border-radius:10px;padding:16px;text-align:center;color:#0B7A8A;font-size:12.5px;cursor:pointer;background:#F4FBFC;">📄 <b>문서 파일들을 여기로 드래그</b>하면 파일명으로 등록됩니다 (아래 폴더 경로 + 파일명 = 경로).<br>엑셀 <b>목록(대장)</b> 파일이면 자동으로 컬럼을 인식합니다. 클릭해서 선택도 가능.</div>'
+    + '<div style="display:flex;align-items:center;gap:8px;">'
+    +   '<span style="font-size:12px;color:#5A6478;white-space:nowrap;">📁 폴더 경로</span>'
+    +   '<input type="text" id="dm-basepath" placeholder="예: \\\\Ntl\\5.품질팀\\품질문서\\...  (탐색기 주소창 경로 붙여넣기)" style="flex:1;padding:7px 10px;border:1px solid #C9D3E0;border-radius:8px;font-size:12px;box-sizing:border-box;">'
+    + '</div>'
+    + '<input type="file" id="dm-file-input" accept=".xlsx,.xls,.csv,.pdf,.doc,.docx,.hwp,.ppt,.pptx" multiple style="display:none;">'
     + '<textarea id="dm-bulk-text" style="width:100%;height:220px;padding:10px;border:1px solid #C9D3E0;border-radius:8px;font-size:12.5px;font-family:monospace;box-sizing:border-box;white-space:pre;overflow:auto;" '
     +   'placeholder="예)&#10;환경관리지침서\t\\\\Ntl\\5.품질팀\\...\\환경관리지침서.pdf&#10;작업표준\t\\\\Ntl\\5.품질팀\\생산자료\\작업표준.xlsx"></textarea>'
     + '<div id="dm-bulk-preview" style="font-size:12.5px;color:#2A4A73;min-height:20px;"></div>'
