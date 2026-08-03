@@ -9267,7 +9267,7 @@ const QC_COLS = [
   { key:"exterior",  label:"외관" },
   { key:"dimension", label:"치수" },
   { key:"bolt",      label:"BOLT" },
-  { key:"led",       label:"LED"  },
+  { key:"led",       label:"TC/PIN/LED"  },
   { key:"flow",      label:"FLOW" },
   { key:"leak",      label:"LEAK" },
   { key:"pressure",  label:"가압" },
@@ -11403,11 +11403,13 @@ function instrRender(){
   if(kw) rows=rows.filter(function(r){ return (String(r.no).toLowerCase().indexOf(kw)>=0)||(String(r.name).toLowerCase().indexOf(kw)>=0)||(String(r.location).toLowerCase().indexOf(kw)>=0); });
   if(calFilter!=="all") rows=rows.filter(function(r){ return instrCalStatus(r).key===calFilter; });
 
-  var order={expired:0,soon:1,ok:2,none:3,na:4};
+  // 관리번호 오름차순 (NTL-01-001 → 054). 번호 없는 건 뒤로.
   rows.sort(function(a,b){
-    var sa=instrCalStatus(a), sb=instrCalStatus(b);
-    if(order[sa.key]!==order[sb.key]) return order[sa.key]-order[sb.key];
-    return (sa.next||"9999").localeCompare(sb.next||"9999");
+    var na=String(a.no||"").trim(), nb=String(b.no||"").trim();
+    if(!na && !nb) return 0;
+    if(!na) return 1;
+    if(!nb) return -1;
+    return na.localeCompare(nb, undefined, {numeric:true, sensitivity:"base"});
   });
 
   var liveAll=instrData.filter(function(r){ return !trashIsDeleted(r); });
