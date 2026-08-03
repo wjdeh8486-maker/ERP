@@ -991,6 +991,7 @@
     <div class="nav-group" id="navgroup-qchist">
       <div class="nav-item nav-sub" data-view="qcprio"><span class="dot"></span>📋 검사 요청서</div>
     </div>
+    <div class="nav-item" data-view="sched"><span class="dot"></span>📅 일정 달력</div>
     <div class="nav-item" data-view="quality" data-navgroup="quality"><span class="dot"></span>품질분석<span class="nav-caret" data-caret="quality">▾</span></div>
     <div class="nav-group" id="navgroup-quality">
       <div class="nav-item nav-sub" data-view="nc"><span class="dot"></span>⚠ 고객부적합관리</div>
@@ -1677,6 +1678,31 @@
     </div>
     <div class="view" id="view-nc">
       <div id="nc-content"></div>
+    </div>
+    <!-- ===================== 일정 달력 VIEW ===================== -->
+    <div id="topbar-sched" class="topbar" style="display:none;">
+      <h1>📅 일정 달력</h1>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <button type="button" id="sched-prev" style="padding:6px 10px;border:1px solid #C9D3E0;border-radius:7px;background:#fff;cursor:pointer;font-weight:700;">‹</button>
+        <button type="button" id="sched-today" style="padding:6px 10px;border:1px solid #C9D3E0;border-radius:7px;background:#fff;cursor:pointer;font-weight:700;">오늘</button>
+        <button type="button" id="sched-next" style="padding:6px 10px;border:1px solid #C9D3E0;border-radius:7px;background:#fff;cursor:pointer;font-weight:700;">›</button>
+        <span id="sched-monthlabel" style="font-weight:800;font-size:15px;color:#1F2A44;margin-left:6px;"></span>
+      </div>
+      <div class="topbar-right">
+        <button type="button" id="sched-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 일정 추가</button>
+        <button type="button" id="sched-refreshBtn" title="공유 달력에서 최신 일정을 다시 불러옵니다">🔄 새로고침</button>
+      </div>
+      <div style="width:100%;display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#5A6478;margin-top:-2px;">
+        <label style="cursor:pointer;"><input type="checkbox" id="sched-t-manual" checked> 📅 공유일정(검수·연차·납기 등)</label>
+        <label style="cursor:pointer;"><input type="checkbox" id="sched-t-cal" checked> 🔧 계측기 교정</label>
+        <label style="cursor:pointer;"><input type="checkbox" id="sched-t-due"> 📦 ERP납기(클릭=전일 출장검수)</label>
+        <label style="cursor:pointer;"><input type="checkbox" id="sched-t-holiday" checked> 🎌 공휴일</label>
+        <input type="checkbox" id="sched-t-nc" style="display:none;">
+        <span id="sched-status-text" style="margin-left:auto;color:#8A93A6;"></span>
+      </div>
+    </div>
+    <div class="view" id="view-sched">
+      <div id="sched-content"></div>
     </div>
     <!-- ===================== 검사이력조회 (품질검사관리 2단계) VIEW ===================== -->
     <div id="topbar-qchist" class="topbar" style="display:none;">
@@ -2752,6 +2778,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     document.getElementById("topbar-docmaster").style.display = target==="docmaster" ? "flex" : "none";
     document.getElementById("topbar-instr").style.display = target==="instr" ? "flex" : "none";
     document.getElementById("topbar-nc").style.display = target==="nc" ? "flex" : "none";
+    document.getElementById("topbar-sched").style.display = target==="sched" ? "flex" : "none";
     document.getElementById("topbar-qchist").style.display = target==="qchist" ? "flex" : "none";
     document.getElementById("topbar-qcprio").style.display = target==="qcprio" ? "flex" : "none";
     document.getElementById("topbar-sales").style.display = target==="sales" ? "flex" : "none";
@@ -2798,6 +2825,10 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="nc"){
       if(!window.__ncInited){ window.__ncInited = true; ncInit(); }
       ncRender();
+    }
+    if(target==="sched"){
+      if(!window.__schedInited){ window.__schedInited = true; schedInit(); }
+      schedRender();
     }
     if(target==="management"){
       // 도번 조회 메뉴: 마지막으로 보던 탭으로 복원
@@ -9267,7 +9298,7 @@ const QC_COLS = [
   { key:"exterior",  label:"외관" },
   { key:"dimension", label:"치수" },
   { key:"bolt",      label:"BOLT" },
-  { key:"led",       label:"TC/PIN/LED"  },
+  { key:"led",       label:"LED"  },
   { key:"flow",      label:"FLOW" },
   { key:"leak",      label:"LEAK" },
   { key:"pressure",  label:"가압" },
@@ -11283,6 +11314,7 @@ function instrLoadFromSheet(userTriggered){
         instrSource = "sheet"; instrSetNote("");
       } else { instrSource = "sample"; }
       instrRender();
+      if(typeof schedMaybeRefresh==="function") schedMaybeRefresh();
     })
     .catch(function(){ instrSource = "sample"; instrRender(); });
 }
@@ -11788,6 +11820,7 @@ function ncLoadFromSheet(userTriggered){
       if(res && res.success && Array.isArray(res.rows)){ ncData=ncTag(res.rows.map(ncNormalize)); ncSource="sheet"; ncSetNote(""); }
       else { ncSource="sample"; }
       ncRender();
+      if(typeof schedMaybeRefresh==="function") schedMaybeRefresh();
     })
     .catch(function(){ ncSource="sample"; ncRender(); });
 }
@@ -12038,6 +12071,503 @@ function ncPrint(){
   var full='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'+ncTheadHTML()+'<tbody>'+ncRowsHTML(allRows)+'</tbody></table></div>';
   openPrintWindow('<h2>고객부적합 관리대장 · 총 '+allRows.length+'건 ('+stamp+')</h2>'+full, css, "고객부적합");
 }
+
+/* ==================== 📅 일정 달력 (기존 공유 달력 API 연동) ==================== */
+var SCHED_API = "https://script.google.com/macros/s/AKfycbwQfFAsBjvAr_xBQSvc5AwdqiwDK0sA3DmQy4zKfwTCE7VQQENWAkvIucGF9xvvikswxw/exec";
+var schedEvents = [];      // 공유 달력 이벤트 [{id,date,text,fileUrl}]
+var schedLoaded = false;
+var schedMonthDate = new Date();
+var schedEditId = null;
+// 출장검수 대상 도번 접두어(현재 검수 이력 기반). 필요 시 조정.
+var SCHED_INSPECT_PREFIXES = ["QXP","BL","HB","B0","JB","BP","AP","A0","HM","HL","HJR","FJD"];
+// ── 대한민국 공휴일 2024~2040 (음력·대체공휴일 계산 반영) ──
+var SCHED_HOLIDAYS={
+"2024-01-01":"신정",
+"2024-02-09":"설날연휴",
+"2024-02-10":"설날",
+"2024-02-11":"설날연휴",
+"2024-02-12":"설날 대체휴일",
+"2024-03-01":"삼일절",
+"2024-05-01":"근로자의날",
+"2024-05-05":"어린이날",
+"2024-05-06":"어린이날 대체휴일",
+"2024-05-15":"부처님오신날",
+"2024-06-06":"현충일",
+"2024-08-15":"광복절",
+"2024-09-16":"추석연휴",
+"2024-09-17":"추석",
+"2024-09-18":"추석연휴",
+"2024-10-03":"개천절",
+"2024-10-09":"한글날",
+"2024-12-25":"성탄절",
+"2025-01-01":"신정",
+"2025-01-28":"설날연휴",
+"2025-01-29":"설날",
+"2025-01-30":"설날연휴",
+"2025-03-01":"삼일절",
+"2025-03-03":"삼일절 대체휴일",
+"2025-05-01":"근로자의날",
+"2025-05-05":"어린이날",
+"2025-06-06":"현충일",
+"2025-08-15":"광복절",
+"2025-10-03":"개천절",
+"2025-10-05":"추석연휴",
+"2025-10-06":"추석",
+"2025-10-07":"추석연휴",
+"2025-10-08":"추석 대체휴일",
+"2025-10-09":"한글날",
+"2025-12-25":"성탄절",
+"2026-01-01":"신정",
+"2026-02-16":"설날연휴",
+"2026-02-17":"설날",
+"2026-02-18":"설날연휴",
+"2026-03-01":"삼일절",
+"2026-03-02":"삼일절 대체휴일",
+"2026-05-01":"근로자의날",
+"2026-05-05":"어린이날",
+"2026-05-24":"부처님오신날",
+"2026-05-25":"부처님오신날 대체휴일",
+"2026-06-06":"현충일",
+"2026-08-15":"광복절",
+"2026-08-17":"광복절 대체휴일",
+"2026-09-24":"추석연휴",
+"2026-09-25":"추석",
+"2026-09-26":"추석연휴",
+"2026-10-03":"개천절",
+"2026-10-05":"개천절 대체휴일",
+"2026-10-09":"한글날",
+"2026-12-25":"성탄절",
+"2027-01-01":"신정",
+"2027-02-06":"설날연휴",
+"2027-02-07":"설날",
+"2027-02-08":"설날연휴",
+"2027-02-09":"설날 대체휴일",
+"2027-03-01":"삼일절",
+"2027-05-01":"근로자의날",
+"2027-05-05":"어린이날",
+"2027-05-13":"부처님오신날",
+"2027-06-06":"현충일",
+"2027-08-15":"광복절",
+"2027-08-16":"광복절 대체휴일",
+"2027-09-14":"추석연휴",
+"2027-09-15":"추석",
+"2027-09-16":"추석연휴",
+"2027-10-03":"개천절",
+"2027-10-04":"개천절 대체휴일",
+"2027-10-09":"한글날",
+"2027-10-11":"한글날 대체휴일",
+"2027-12-25":"성탄절",
+"2027-12-27":"성탄절 대체휴일",
+"2028-01-01":"신정",
+"2028-01-26":"설날연휴",
+"2028-01-27":"설날",
+"2028-01-28":"설날연휴",
+"2028-03-01":"삼일절",
+"2028-05-01":"근로자의날",
+"2028-05-02":"부처님오신날",
+"2028-05-05":"어린이날",
+"2028-06-06":"현충일",
+"2028-08-15":"광복절",
+"2028-10-02":"추석연휴",
+"2028-10-03":"개천절",
+"2028-10-04":"추석연휴",
+"2028-10-09":"한글날",
+"2028-12-25":"성탄절",
+"2029-01-01":"신정",
+"2029-02-12":"설날연휴",
+"2029-02-13":"설날",
+"2029-02-14":"설날연휴",
+"2029-03-01":"삼일절",
+"2029-05-01":"근로자의날",
+"2029-05-05":"어린이날",
+"2029-05-07":"어린이날 대체휴일",
+"2029-05-20":"부처님오신날",
+"2029-05-21":"부처님오신날 대체휴일",
+"2029-06-06":"현충일",
+"2029-08-15":"광복절",
+"2029-09-21":"추석연휴",
+"2029-09-22":"추석",
+"2029-09-23":"추석연휴",
+"2029-09-24":"추석 대체휴일",
+"2029-10-03":"개천절",
+"2029-10-09":"한글날",
+"2029-12-25":"성탄절",
+"2030-01-01":"신정",
+"2030-02-02":"설날연휴",
+"2030-02-03":"설날",
+"2030-02-04":"설날연휴",
+"2030-02-05":"설날 대체휴일",
+"2030-03-01":"삼일절",
+"2030-05-01":"근로자의날",
+"2030-05-05":"어린이날",
+"2030-05-06":"어린이날 대체휴일",
+"2030-05-09":"부처님오신날",
+"2030-06-06":"현충일",
+"2030-08-15":"광복절",
+"2030-09-11":"추석연휴",
+"2030-09-12":"추석",
+"2030-09-13":"추석연휴",
+"2030-10-03":"개천절",
+"2030-10-09":"한글날",
+"2030-12-25":"성탄절",
+"2031-01-01":"신정",
+"2031-01-22":"설날연휴",
+"2031-01-23":"설날",
+"2031-01-24":"설날연휴",
+"2031-03-01":"삼일절",
+"2031-03-03":"삼일절 대체휴일",
+"2031-05-01":"근로자의날",
+"2031-05-05":"어린이날",
+"2031-05-28":"부처님오신날",
+"2031-06-06":"현충일",
+"2031-08-15":"광복절",
+"2031-09-30":"추석연휴",
+"2031-10-01":"추석",
+"2031-10-02":"추석연휴",
+"2031-10-03":"개천절",
+"2031-10-09":"한글날",
+"2031-12-25":"성탄절",
+"2032-01-01":"신정",
+"2032-02-10":"설날연휴",
+"2032-02-11":"설날",
+"2032-02-12":"설날연휴",
+"2032-03-01":"삼일절",
+"2032-05-01":"근로자의날",
+"2032-05-05":"어린이날",
+"2032-05-16":"부처님오신날",
+"2032-05-17":"부처님오신날 대체휴일",
+"2032-06-06":"현충일",
+"2032-08-15":"광복절",
+"2032-08-16":"광복절 대체휴일",
+"2032-09-18":"추석연휴",
+"2032-09-19":"추석",
+"2032-09-20":"추석연휴",
+"2032-09-21":"추석 대체휴일",
+"2032-10-03":"개천절",
+"2032-10-04":"개천절 대체휴일",
+"2032-10-09":"한글날",
+"2032-10-11":"한글날 대체휴일",
+"2032-12-25":"성탄절",
+"2032-12-27":"성탄절 대체휴일",
+"2033-01-01":"신정",
+"2033-01-30":"설날연휴",
+"2033-01-31":"설날",
+"2033-02-01":"설날연휴",
+"2033-02-02":"설날 대체휴일",
+"2033-03-01":"삼일절",
+"2033-05-01":"근로자의날",
+"2033-05-05":"어린이날",
+"2033-05-06":"부처님오신날",
+"2033-06-06":"현충일",
+"2033-08-15":"광복절",
+"2033-09-07":"추석연휴",
+"2033-09-08":"추석",
+"2033-09-09":"추석연휴",
+"2033-10-03":"개천절",
+"2033-10-09":"한글날",
+"2033-10-10":"한글날 대체휴일",
+"2033-12-25":"성탄절",
+"2033-12-26":"성탄절 대체휴일",
+"2034-01-01":"신정",
+"2034-02-18":"설날연휴",
+"2034-02-19":"설날",
+"2034-02-20":"설날연휴",
+"2034-02-21":"설날 대체휴일",
+"2034-03-01":"삼일절",
+"2034-05-01":"근로자의날",
+"2034-05-05":"어린이날",
+"2034-05-25":"부처님오신날",
+"2034-06-06":"현충일",
+"2034-08-15":"광복절",
+"2034-09-26":"추석연휴",
+"2034-09-27":"추석",
+"2034-09-28":"추석연휴",
+"2034-10-03":"개천절",
+"2034-10-09":"한글날",
+"2034-12-25":"성탄절",
+"2035-01-01":"신정",
+"2035-02-07":"설날연휴",
+"2035-02-08":"설날",
+"2035-02-09":"설날연휴",
+"2035-03-01":"삼일절",
+"2035-05-01":"근로자의날",
+"2035-05-05":"어린이날",
+"2035-05-07":"어린이날 대체휴일",
+"2035-05-15":"부처님오신날",
+"2035-06-06":"현충일",
+"2035-08-15":"광복절",
+"2035-09-15":"추석연휴",
+"2035-09-16":"추석",
+"2035-09-17":"추석연휴",
+"2035-09-18":"추석 대체휴일",
+"2035-10-03":"개천절",
+"2035-10-09":"한글날",
+"2035-12-25":"성탄절",
+"2036-01-01":"신정",
+"2036-01-27":"설날연휴",
+"2036-01-28":"설날",
+"2036-01-29":"설날연휴",
+"2036-01-30":"설날 대체휴일",
+"2036-03-01":"삼일절",
+"2036-03-03":"삼일절 대체휴일",
+"2036-05-01":"근로자의날",
+"2036-05-03":"부처님오신날",
+"2036-05-05":"어린이날",
+"2036-05-06":"부처님오신날 대체휴일",
+"2036-06-06":"현충일",
+"2036-08-15":"광복절",
+"2036-10-03":"개천절",
+"2036-10-04":"추석",
+"2036-10-05":"추석연휴",
+"2036-10-06":"추석 대체휴일",
+"2036-10-09":"한글날",
+"2036-12-25":"성탄절",
+"2037-01-01":"신정",
+"2037-02-14":"설날연휴",
+"2037-02-15":"설날",
+"2037-02-16":"설날연휴",
+"2037-02-17":"설날 대체휴일",
+"2037-03-01":"삼일절",
+"2037-03-02":"삼일절 대체휴일",
+"2037-05-01":"근로자의날",
+"2037-05-05":"어린이날",
+"2037-05-22":"부처님오신날",
+"2037-06-06":"현충일",
+"2037-08-15":"광복절",
+"2037-08-17":"광복절 대체휴일",
+"2037-09-23":"추석연휴",
+"2037-09-24":"추석",
+"2037-09-25":"추석연휴",
+"2037-10-03":"개천절",
+"2037-10-05":"개천절 대체휴일",
+"2037-10-09":"한글날",
+"2037-12-25":"성탄절",
+"2038-01-01":"신정",
+"2038-02-03":"설날연휴",
+"2038-02-04":"설날",
+"2038-02-05":"설날연휴",
+"2038-03-01":"삼일절",
+"2038-05-01":"근로자의날",
+"2038-05-05":"어린이날",
+"2038-05-11":"부처님오신날",
+"2038-06-06":"현충일",
+"2038-08-15":"광복절",
+"2038-08-16":"광복절 대체휴일",
+"2038-09-12":"추석연휴",
+"2038-09-13":"추석",
+"2038-09-14":"추석연휴",
+"2038-09-15":"추석 대체휴일",
+"2038-10-03":"개천절",
+"2038-10-04":"개천절 대체휴일",
+"2038-10-09":"한글날",
+"2038-10-11":"한글날 대체휴일",
+"2038-12-25":"성탄절",
+"2038-12-27":"성탄절 대체휴일",
+"2039-01-01":"신정",
+"2039-01-23":"설날연휴",
+"2039-01-24":"설날",
+"2039-01-25":"설날연휴",
+"2039-01-26":"설날 대체휴일",
+"2039-03-01":"삼일절",
+"2039-04-30":"부처님오신날",
+"2039-05-01":"근로자의날",
+"2039-05-02":"부처님오신날 대체휴일",
+"2039-05-05":"어린이날",
+"2039-06-06":"현충일",
+"2039-08-15":"광복절",
+"2039-10-01":"추석연휴",
+"2039-10-02":"추석",
+"2039-10-03":"개천절",
+"2039-10-04":"추석 대체휴일",
+"2039-10-09":"한글날",
+"2039-10-10":"한글날 대체휴일",
+"2039-12-25":"성탄절",
+"2039-12-26":"성탄절 대체휴일",
+"2040-01-01":"신정",
+"2040-02-11":"설날연휴",
+"2040-02-12":"설날",
+"2040-02-13":"설날연휴",
+"2040-02-14":"설날 대체휴일",
+"2040-03-01":"삼일절",
+"2040-05-01":"근로자의날",
+"2040-05-05":"어린이날",
+"2040-05-07":"어린이날 대체휴일",
+"2040-05-18":"부처님오신날",
+"2040-06-06":"현충일",
+"2040-08-15":"광복절",
+"2040-09-20":"추석연휴",
+"2040-09-21":"추석",
+"2040-09-22":"추석연휴",
+"2040-10-03":"개천절",
+"2040-10-09":"한글날",
+"2040-12-25":"성탄절"
+};
+
+
+function schedEsc(t){ return docmasterEsc(t); }
+function schedChk(id){ var e=document.getElementById(id); return e? e.checked : true; }
+function schedCatOf(text){
+  var t=String(text||"");
+  if(t.indexOf("검수")>=0) return {key:"검수",color:"#ffffff",bg:"#2563eb"};
+  if(t.indexOf("연차")>=0) return {key:"연차",color:"#166534",bg:"#dcfce7"};
+  if(t.indexOf("반차")>=0) return {key:"반차",color:"#854d0e",bg:"#fef9c3"};
+  if(t.indexOf("훈련")>=0||t.indexOf("교육")>=0) return {key:"교육",color:"#3730a3",bg:"#e0e7ff"};
+  if(t.indexOf("이슈")>=0) return {key:"이슈",color:"#ffffff",bg:"#ef4444"};
+  if(t.indexOf("납기")>=0||t.indexOf("납품")>=0) return {key:"납기",color:"#ffffff",bg:"#2563eb"};
+  return {key:"기타",color:"#334155",bg:"#eef2f7"};
+}
+
+function schedInit(){
+  var bind=function(id,ev,fn){ var e=document.getElementById(id); if(e) e.addEventListener(ev,fn); };
+  bind("sched-prev","click",function(){ schedMonthDate=new Date(schedMonthDate.getFullYear(),schedMonthDate.getMonth()-1,1); schedRender(); });
+  bind("sched-next","click",function(){ schedMonthDate=new Date(schedMonthDate.getFullYear(),schedMonthDate.getMonth()+1,1); schedRender(); });
+  bind("sched-today","click",function(){ schedMonthDate=new Date(); schedRender(); });
+  bind("sched-addBtn","click",function(){ schedOpenForm(null,null,null); });
+  bind("sched-refreshBtn","click",function(){ schedLoad(true); });
+  ["sched-t-manual","sched-t-cal","sched-t-due","sched-t-nc","sched-t-holiday"].forEach(function(id){ bind(id,"change",schedRender); });
+  if(typeof instrInit==="function" && !window.__instrInited){ window.__instrInited=true; instrInit(); }
+  var content=document.getElementById("sched-content");
+  if(content) content.addEventListener("click", function(e){
+    var chip=(e.target.closest)?e.target.closest(".sched-chip"):null;
+    if(chip && chip.getAttribute("data-eid")){ schedOpenForm(chip.getAttribute("data-eid"),null,null); return; }
+    if(chip && chip.getAttribute("data-due")){ schedFromDue(chip.getAttribute("data-due"), chip.getAttribute("data-duelabel")||""); return; }
+    var day=(e.target.closest)?e.target.closest(".sched-day"):null;
+    if(day){ schedOpenForm(null, day.getAttribute("data-date"), null); }
+  });
+  schedRender();
+  schedLoad(false);
+}
+function schedLoad(userTriggered){
+  if(userTriggered) schedSetNote("불러오는 중…");
+  fetch(SCHED_API, {cache:"no-store"})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      schedEvents = Array.isArray(data) ? data.map(function(e){ return {id:String(e.id==null?"":e.id), date:String(e.date||"").trim(), text:String(e.text||""), fileUrl:e.fileUrl||""}; }) : [];
+      schedLoaded=true; schedSetNote(null); schedRender();
+    })
+    .catch(function(){ schedSetNote("공유 달력 연결 실패 — 새로고침 해보세요"); schedRender(); });
+}
+function schedSetNote(msg){ var e=document.getElementById("sched-status-text"); if(e) e.textContent=(schedLoaded?"🟢 공유 달력 연동":"🟡 연결 대기")+" · 일정 "+schedEvents.length+"건"+(msg?(" · "+msg):""); }
+function schedApiPost(payload, after){
+  fetch(SCHED_API, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(payload) })
+    .then(function(){ if(after) after(); }).catch(function(){ if(after) after(); });
+}
+function schedReloadSoon(){ schedLoad(false); setTimeout(function(){ schedLoad(false); }, 1600); }
+
+function schedCollectEvents(y,m,show){
+  var byDay={};
+  function add(day,ev){ if(!byDay[day]) byDay[day]=[]; byDay[day].push(ev); }
+  function inMonth(ds){ var d=docmasterParseDate(ds); return (d && d.getFullYear()===y && d.getMonth()===m)? d.getDate() : null; }
+  if(show.manual){ schedEvents.forEach(function(e){ if(/-00$/.test(e.date)) return; var dd=inMonth(e.date); if(dd){ var c=schedCatOf(e.text); add(dd,{eid:e.id, order:0, label:e.text, full:e.text, color:c.color, bg:c.bg}); } }); }
+  if(show.cal && typeof instrData!=="undefined"){ instrData.forEach(function(r){ if(trashIsDeleted(r)) return; if(r.status==="폐기"||r.status==="보관") return; var dd=inMonth(instrNextCal(r.lastCal,r.cycle)); if(dd) add(dd,{order:1,label:"🔧 "+(r.name||r.no||"교정"),full:"교정예정: ["+(r.no||"")+"] "+(r.name||""),color:"#0B7A8A",bg:"#E4F5F7"}); }); }
+  if(show.due && typeof mainGetCalendarRows==="function"){ try{ mainGetCalendarRows().forEach(function(r){ if(!r.dueDate) return; var dd=inMonth(r.dueDate); if(dd){ var lbl=(r.drawingNo||r.orderNo||""); add(dd,{due:String(r.dueDate).slice(0,10), duelabel:lbl, order:2, label:"📦 "+lbl, full:"납기: "+(r.orderNo||"")+" · 클릭 → 전일 출장검수 등록", color:"#1F2A44", bg:"#E7ECF4"}); } }); }catch(e){} }
+  Object.keys(byDay).forEach(function(k){ byDay[k].sort(function(a,b){ return (a.order||9)-(b.order||9); }); });
+  return byDay;
+}
+function schedRender(){
+  var el=document.getElementById("sched-content"); if(!el) return;
+  var y=schedMonthDate.getFullYear(), m=schedMonthDate.getMonth();
+  var label=document.getElementById("sched-monthlabel"); if(label) label.textContent=y+"년 "+(m+1)+"월";
+  var show={ manual:schedChk("sched-t-manual"), cal:schedChk("sched-t-cal"), due:schedChk("sched-t-due"), nc:false };
+  var showHol=schedChk("sched-t-holiday");
+  var byDay=schedCollectEvents(y,m,show);
+  var first=new Date(y,m,1).getDay();
+  var dim=new Date(y,m+1,0).getDate();
+  var today=new Date(); var isThisMonth=(today.getFullYear()===y&&today.getMonth()===m); var todayD=today.getDate();
+  var dows=["일","월","화","수","목","금","토"];
+  var html='<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:10px;">';
+  html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">';
+  dows.forEach(function(d,i){ html+='<div style="text-align:center;font-weight:700;font-size:12px;padding:4px 0;color:'+(i===0?"#C0392B":(i===6?"#0B5CAB":"#5A6478"))+';">'+d+'</div>'; });
+  for(var b=0;b<first;b++){ html+='<div style="min-height:104px;background:#FAFBFC;border-radius:8px;"></div>'; }
+  for(var day=1;day<=dim;day++){
+    var evs=byDay[day]||[];
+    var dow=(first+day-1)%7;
+    var isToday=isThisMonth&&day===todayD;
+    var dateStr=y+"-"+String(m+1).padStart(2,"0")+"-"+String(day).padStart(2,"0");
+    var hol=(showHol && typeof SCHED_HOLIDAYS!=="undefined")?(SCHED_HOLIDAYS[dateStr]||""):"";
+    var numColor=hol?"#C0392B":(dow===0?"#C0392B":(dow===6?"#0B5CAB":"#26324A"));
+    html+='<div class="sched-day" data-date="'+dateStr+'" style="min-height:104px;border:1px solid #EEF1F5;border-radius:8px;padding:4px;cursor:pointer;'+(isToday?"outline:2px solid #0B5CAB;background:#F5FAFF;":(hol?"background:#FEF2F2;":""))+'">';
+    html+='<div style="font-size:12px;font-weight:700;color:'+numColor+';margin-bottom:2px;">'+day+(isToday?' <span style="font-size:9px;color:#0B5CAB;">오늘</span>':'')+'</div>';
+    if(hol){ html+='<div class="sched-chip" title="'+schedEsc(hol)+'" style="font-size:10.5px;line-height:1.35;padding:1px 5px;margin-bottom:2px;border-radius:5px;background:#FDE2E2;color:#B3261E;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🎌 '+schedEsc(hol)+'</div>'; }
+    evs.slice(0,5).forEach(function(ev){
+      var attrs=''; var clickable=false;
+      if(ev.eid){ attrs=' data-eid="'+schedEsc(ev.eid)+'"'; clickable=true; }
+      else if(ev.due){ attrs=' data-due="'+schedEsc(ev.due)+'" data-duelabel="'+schedEsc(ev.duelabel||"")+'"'; clickable=true; }
+      html+='<div class="sched-chip"'+attrs+' title="'+schedEsc(ev.full||ev.label)+'" style="font-size:10.5px;line-height:1.35;padding:1px 5px;margin-bottom:2px;border-radius:5px;background:'+ev.bg+';color:'+ev.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(clickable?"cursor:pointer;":"")+'">'+schedEsc(ev.label)+'</div>';
+    });
+    if(evs.length>5) html+='<div style="font-size:10px;color:#8A93A6;">+'+(evs.length-5)+'건 더</div>';
+    html+='</div>';
+  }
+  html+='</div>';
+  html+='<div style="margin-top:8px;font-size:11px;color:var(--text-mute);">빈 날짜 클릭=일정 추가 · 공유일정 클릭=수정/삭제 · 📦ERP납기 클릭=전일에 출장검수 자동 등록. 🔧교정은 계측기 데이터에서 자동 표시.</div>';
+  html+='</div>';
+  el.innerHTML=html;
+  schedSetNote(null);
+}
+function schedOpenForm(editId, presetDate, presetText){
+  var old=document.getElementById("sched-modal"); if(old) old.remove();
+  var editing=(editId!=null); schedEditId=editing?String(editId):null;
+  var ev=null; if(editing){ for(var k=0;k<schedEvents.length;k++){ if(String(schedEvents[k].id)===String(editId)){ ev=schedEvents[k]; break; } } if(!ev){ editing=false; schedEditId=null; } }
+  var vDate = editing ? String(ev.date).slice(0,10) : (presetDate||"");
+  var vText = editing ? ev.text : (presetText||"");
+  var inp="width:100%;padding:8px 10px;border:1px solid #C9D3E0;border-radius:8px;font-size:13px;box-sizing:border-box;";
+  var tags=["연차","반차","출장검수","개인일정","훈련","이슈","납기"];
+  var tagBtns=tags.map(function(t){ return '<button type="button" class="sc-tag" data-tag="'+t+'" style="font-size:11px;padding:4px 9px;border:1px solid #C9D3E0;border-radius:14px;background:#fff;cursor:pointer;">'+t+'</button>'; }).join(" ");
+  function fld(l,i){ return '<div><div style="font-size:12.5px;color:#5A6478;margin-bottom:4px;">'+l+'</div>'+i+'</div>'; }
+  var wrap=document.createElement("div"); wrap.id="sched-modal";
+  wrap.style.cssText="position:fixed;inset:0;background:rgba(20,28,45,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
+  wrap.innerHTML=
+    '<div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+    + '<div style="background:#1F2A44;color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;font-weight:700;font-size:15px;">'+(editing?"✏️ 일정 수정":"➕ 일정 추가")+'</div>'
+    + '<div style="padding:18px;display:flex;flex-direction:column;gap:12px;">'
+    + fld("날짜 <span style=\'color:#C0392B\'>*</span>",'<input id="sc-f-date" type="date" value="'+vDate+'" style="'+inp+'">')
+    + '<div><div style="font-size:12.5px;color:#5A6478;margin-bottom:4px;">빠른 입력 (내용에 추가됩니다)</div><div style="display:flex;gap:5px;flex-wrap:wrap;">'+tagBtns+'</div></div>'
+    + fld("내용 <span style=\'color:#C0392B\'>*</span>",'<textarea id="sc-f-text" style="'+inp+'height:70px;resize:vertical;" placeholder="예: 홍길동 연차 / 개인사정   또는   QXP831248 검수/26-98 챔버-리드">'+schedEsc(vText)+'</textarea>')
+    + '<div style="font-size:11px;color:#8A93A6;">※ 내용에 <b>검수</b>=파랑, <b>연차</b>=초록, <b>반차</b>=노랑, <b>이슈</b>=빨강, <b>납기</b>=파랑 으로 자동 색상. (기존 달력과 동일)</div>'
+    + '<div id="sc-f-err" style="color:#C0392B;font-size:12.5px;min-height:16px;"></div>'
+    + '<div style="display:flex;justify-content:space-between;gap:8px;">'
+    +   '<div>'+(editing?'<button type="button" id="sc-f-del" style="padding:9px 14px;border:1px solid #E4B4B4;border-radius:8px;background:#fff;color:#C0392B;font-weight:700;cursor:pointer;">🗑️ 삭제</button>':'')+'</div>'
+    +   '<div style="display:flex;gap:8px;"><button type="button" id="sc-f-cancel" style="padding:9px 16px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;">취소</button>'
+    +   '<button type="button" id="sc-f-save" style="padding:9px 18px;border:none;border-radius:8px;background:#0B5CAB;color:#fff;font-weight:700;cursor:pointer;">'+(editing?"수정 저장":"저장")+'</button></div>'
+    + '</div></div></div>';
+  document.body.appendChild(wrap);
+  var close=function(){ schedEditId=null; wrap.remove(); };
+  wrap.addEventListener("click",function(e){ if(e.target===wrap) close(); });
+  document.getElementById("sc-f-cancel").addEventListener("click",close);
+  document.getElementById("sc-f-save").addEventListener("click",schedAddSubmit);
+  var delB=document.getElementById("sc-f-del"); if(delB) delB.addEventListener("click",function(){ schedDelete(schedEditId); });
+  wrap.querySelectorAll(".sc-tag").forEach(function(b){ b.addEventListener("click",function(){ var ta=document.getElementById("sc-f-text"); var tag=b.getAttribute("data-tag"); var cur=ta.value.replace(/\s+$/,""); ta.value=(cur?cur+" ":"")+tag+" "; ta.focus(); }); });
+  var fe=document.getElementById("sc-f-text"); if(fe) fe.focus();
+}
+function schedAddSubmit(){
+  var g=function(id){ var e=document.getElementById(id); return e?String(e.value).trim():""; };
+  var err=document.getElementById("sc-f-err");
+  var date=g("sc-f-date"), text=g("sc-f-text");
+  if(!date){ if(err) err.textContent="날짜를 입력하세요."; return; }
+  if(!text){ if(err) err.textContent="내용을 입력하세요."; return; }
+  var done=function(){ var m=document.getElementById("sched-modal"); if(m) m.remove(); schedEditId=null; schedReloadSoon(); };
+  if(schedEditId!=null){
+    var fileUrl=""; for(var i=0;i<schedEvents.length;i++){ if(String(schedEvents[i].id)===schedEditId){ fileUrl=schedEvents[i].fileUrl||""; break; } }
+    if(err) err.textContent="저장 중…";
+    schedApiPost({action:"update", id:schedEditId, date:date, text:text, fileUrl:fileUrl}, done);
+  } else {
+    if(err) err.textContent="저장 중…";
+    schedApiPost({action:"add", date:date, text:text}, done);
+  }
+}
+function schedDelete(id){
+  if(!id) return;
+  if(!confirm("이 일정을 삭제할까요?\n(공유 달력에서도 삭제됩니다)")) return;
+  schedApiPost({action:"delete", id:id}, function(){ var m=document.getElementById("sched-modal"); if(m) m.remove(); schedEditId=null; schedReloadSoon(); });
+}
+// ERP 납기 클릭 → 그 전날에 '출장검수' 일정 등록(폼 프리필)
+function schedFromDue(dueDate, label){
+  var d=docmasterParseDate(dueDate); if(!d) return;
+  var p=new Date(d.getFullYear(), d.getMonth(), d.getDate()-1);
+  var ds=p.getFullYear()+"-"+String(p.getMonth()+1).padStart(2,"0")+"-"+String(p.getDate()).padStart(2,"0");
+  schedOpenForm(null, ds, (String(label||"").trim()+" 검수").trim());
+}
+function schedMaybeRefresh(){ var v=document.getElementById("view-sched"); if(v && v.classList.contains("active") && typeof schedRender==="function") schedRender(); }
 
 function docmasterCopy(text, btn){
   var done = function(ok){
