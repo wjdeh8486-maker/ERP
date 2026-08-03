@@ -3828,16 +3828,15 @@ function excelSerialToDateStr(serial){
 // 이보다 작은 숫자는 날짜가 아닌 값(수량 등)일 가능성이 커서 변환하지 않는다.
 const DATE_SERIAL_MIN = 20000, DATE_SERIAL_MAX = 110000;
 /* 월/일만 적힌 납기의 연도 추정
-   기준 연도는 ORDER NO 앞 2자리(예: 26- → 2026). 없으면 올해.
-   기준 연도가 올해인데 적힌 달이 이미 지난 달이면, 아직 납품 안 된 건이므로 내년 납기로 본다.
-     오늘이 2026-07-22 일 때
-       "7/15"  → 7월은 지나지 않음 → 2026-07-15
-       "1/15"  → 1월은 지남        → 2027-01-15
-   기준 연도가 과거(예: 25- 주문)면 지난 이력이므로 그대로 둔다. */
+   ORDER NO 앞 2자리(예: 26- → 2026)가 있으면 그 연도를 "그대로" 사용한다.
+   (지난 달이어도 밀지 않는다 — 26- 주문이면 2026년 납기이고, 지났으면 그게 곧 지연 건이다.)
+   ORDER NO가 없을 때만: 올해 기준으로 보되, 적힌 달이 이미 지났으면 내년 납기로 본다. */
 function resolveMonthDayYear(month, hintYear){
+  const hy = Number(hintYear);
+  if(hy) return hy;                          // ORDER NO 연도가 있으면 그대로 사용(보정 안 함)
   const now = new Date();
-  const base = Number(hintYear) || now.getFullYear();
-  if(base === now.getFullYear() && month < (now.getMonth() + 1)) return base + 1;
+  const base = now.getFullYear();
+  if(month < (now.getMonth() + 1)) return base + 1;   // ORDER NO 없을 때만: 지난 달이면 내년
   return base;
 }
 function normalizeDateValue(v, hintYear){
