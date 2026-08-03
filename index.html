@@ -985,13 +985,13 @@
     <div class="nav-group" id="navgroup-main">
       <div class="nav-item nav-sub" data-view="management"><span class="dot"></span>🔎 도번 조회</div>
       <div class="nav-item nav-sub" data-view="waitinsp"><span class="dot"></span>검사대기현황</div>
+      <div class="nav-item nav-sub" data-view="sched"><span class="dot"></span>📅 일정 달력</div>
     </div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
     <div class="nav-item" data-view="qchist" data-navgroup="qchist"><span class="dot"></span>🧪 검사이력조회<span class="nav-caret" data-caret="qchist">▾</span></div>
     <div class="nav-group" id="navgroup-qchist">
       <div class="nav-item nav-sub" data-view="qcprio"><span class="dot"></span>📋 검사 요청서</div>
     </div>
-    <div class="nav-item" data-view="sched"><span class="dot"></span>📅 일정 달력</div>
     <div class="nav-item" data-view="quality" data-navgroup="quality"><span class="dot"></span>품질분석<span class="nav-caret" data-caret="quality">▾</span></div>
     <div class="nav-group" id="navgroup-quality">
       <div class="nav-item nav-sub" data-view="nc"><span class="dot"></span>⚠ 고객부적합관리</div>
@@ -1690,13 +1690,14 @@
       </div>
       <div class="topbar-right">
         <button type="button" id="sched-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 일정 추가</button>
+        <button type="button" id="sched-cleanHolBtn" style="background:#fff;color:#B3261E;border:1px solid #E4B4B4;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="수동으로 입력한 공휴일을 삭제(자동 공휴일이 대신 표시됩니다)">🎌 공휴일 정리</button>
         <button type="button" id="sched-refreshBtn" title="공유 달력에서 최신 일정을 다시 불러옵니다">🔄 새로고침</button>
       </div>
       <div style="width:100%;display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#5A6478;margin-top:-2px;">
         <label style="cursor:pointer;"><input type="checkbox" id="sched-t-manual" checked> 📅 공유일정(검수·연차·납기 등)</label>
-        <label style="cursor:pointer;"><input type="checkbox" id="sched-t-cal" checked> 🔧 계측기 교정</label>
         <label style="cursor:pointer;"><input type="checkbox" id="sched-t-due"> 📦 ERP납기(클릭=전일 출장검수)</label>
         <label style="cursor:pointer;"><input type="checkbox" id="sched-t-holiday" checked> 🎌 공휴일</label>
+        <input type="checkbox" id="sched-t-cal" style="display:none;">
         <input type="checkbox" id="sched-t-nc" style="display:none;">
         <span id="sched-status-text" style="margin-left:auto;color:#8A93A6;"></span>
       </div>
@@ -12424,6 +12425,7 @@ function schedInit(){
   bind("sched-today","click",function(){ schedMonthDate=new Date(); schedRender(); });
   bind("sched-addBtn","click",function(){ schedOpenForm(null,null,null); });
   bind("sched-refreshBtn","click",function(){ schedLoad(true); });
+  bind("sched-cleanHolBtn","click",schedCleanupHolidays);
   ["sched-t-manual","sched-t-cal","sched-t-due","sched-t-nc","sched-t-holiday"].forEach(function(id){ bind(id,"change",schedRender); });
   if(typeof instrInit==="function" && !window.__instrInited){ window.__instrInited=true; instrInit(); }
   var content=document.getElementById("sched-content");
@@ -12468,7 +12470,7 @@ function schedRender(){
   var el=document.getElementById("sched-content"); if(!el) return;
   var y=schedMonthDate.getFullYear(), m=schedMonthDate.getMonth();
   var label=document.getElementById("sched-monthlabel"); if(label) label.textContent=y+"년 "+(m+1)+"월";
-  var show={ manual:schedChk("sched-t-manual"), cal:schedChk("sched-t-cal"), due:schedChk("sched-t-due"), nc:false };
+  var show={ manual:schedChk("sched-t-manual"), cal:false, due:schedChk("sched-t-due"), nc:false };
   var showHol=schedChk("sched-t-holiday");
   var byDay=schedCollectEvents(y,m,show);
   var first=new Date(y,m,1).getDay();
@@ -12568,6 +12570,28 @@ function schedFromDue(dueDate, label){
   schedOpenForm(null, ds, (String(label||"").trim()+" 검수").trim());
 }
 function schedMaybeRefresh(){ var v=document.getElementById("view-sched"); if(v && v.classList.contains("active") && typeof schedRender==="function") schedRender(); }
+
+// 수동 입력된 공휴일 이벤트 감지(자동 공휴일 표에 이미 있는 것만) → 정리 대상
+function schedIsManualHoliday(e){
+  var t=String(e.text||"").trim(); if(!t) return false;
+  if(/검수|연차|반차|납기|납품|이슈|사원|대리|과장|팀장|입사|훈련|휴가|실사|평가|교육|점검|미납|대책|방문|접수|선거|제헌|보건|안전/.test(t)) return false;
+  var d=String(e.date||"").slice(0,10);
+  var inTable=(typeof SCHED_HOLIDAYS!=="undefined") && SCHED_HOLIDAYS[d];
+  var holWords=/신정|설날|추석|삼일절|어린이날|현충일|광복절|개천절|한글날|성탄절|부처님|근로자|노동절|대체|대\.?휴|임\.?휴|연휴/;
+  return !!inTable && (holWords.test(t) || t.length<=5);
+}
+function schedCleanupHolidays(){
+  var targets=schedEvents.filter(schedIsManualHoliday);
+  if(!targets.length){ alert("정리할 수동 공휴일이 없습니다.\n(자동 공휴일 표에 이미 포함된 항목만 정리하며, 선거일·제헌절 등은 건드리지 않습니다.)"); return; }
+  var sample=targets.slice(0,12).map(function(e){ return "· "+e.date+" "+e.text; }).join("\n");
+  if(!confirm("수동으로 입력된 공휴일 "+targets.length+"건을 공유 달력에서 삭제합니다.\n(자동 공휴일이 대신 표시되므로 안전합니다)\n\n"+sample+(targets.length>12?"\n…":"")+"\n\n진행할까요?")) return;
+  var i=0, btn=document.getElementById("sched-cleanHolBtn"); if(btn){ btn.disabled=true; btn.textContent="정리 중…"; }
+  (function delNext(){
+    if(i>=targets.length){ if(btn){ btn.disabled=false; btn.textContent="🎌 공휴일 정리"; } alert(targets.length+"건 정리 완료."); schedReloadSoon(); return; }
+    if(btn) btn.textContent="정리 중… ("+(i+1)+"/"+targets.length+")";
+    schedApiPost({action:"delete", id:targets[i].id}, function(){ i++; setTimeout(delNext, 120); });
+  })();
+}
 
 function docmasterCopy(text, btn){
   var done = function(ok){
