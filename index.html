@@ -2803,9 +2803,12 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="waitinsp"){
       runBusy(initWaitInspView);   // 검사대기는 자동 최신화가 걸려 있으므로 항상 갱신
     }
-    if(target==="quality" && !window.__qualityInited){
-      window.__qualityInited = true;
-      runBusy(initQualityView);
+    if(target==="quality"){
+      if(typeof ncInit==="function" && !window.__ncInited){ window.__ncInited = true; ncInit(); }
+      if(!window.__qualityInited){
+        window.__qualityInited = true;
+        runBusy(initQualityView);
+      }
     }
     if(target==="qchist" && !window.__qchistInited){
       window.__qchistInited = true;
@@ -4896,6 +4899,10 @@ function fetchQualityData(){
     } else {
       if(!qualityRawData[CUSTOMER_NC_KEY]) qualityRawData[CUSTOMER_NC_KEY] = [];
       warnings.push("고객부적합관리대장 탭 없음");
+    }
+    // 통합: 고객부적합 관리대장(ncData)이 있으면 그걸 우선 사용 (한 소스로 관리)
+    if(window.__ncInited && typeof ncData!=="undefined" && ncData.some(function(r){ return !trashIsDeleted(r); }) && typeof ncToQualityRows==="function"){
+      qualityRawData[CUSTOMER_NC_KEY] = ncToQualityRows();
     }
     cacheSetQualityData();
     cacheSet("qualityLastSync", Date.now());
@@ -11876,7 +11883,7 @@ function ncKpi(label,val,color){ return '<div style="flex:1 1 150px;min-width:14
 function ncTheadHTML(){
   return '<thead><tr style="background:#1F2A44;color:#fff;">'
     + '<th class="nc-selcol" style="padding:9px 6px;"><input type="checkbox" id="nc-selall" title="현재 페이지 전체 선택" style="cursor:pointer;transform:scale(1.15);"></th>'
-    + '<th style="padding:9px 8px;">접수일</th><th style="padding:9px 8px;">고객사</th><th style="padding:9px 8px;">품번</th>'
+    + '<th style="padding:9px 8px;">접수일</th><th style="padding:9px 8px;">발견자</th><th style="padding:9px 8px;">품번</th>'
     + '<th style="padding:9px 8px;text-align:left;">부적합 내용</th><th style="padding:9px 8px;">수량</th>'
     + '<th style="padding:9px 8px;text-align:left;">시정조치</th><th style="padding:9px 8px;">담당</th>'
     + '<th style="padding:9px 8px;">진행상태</th><th style="padding:9px 8px;">관리</th></tr></thead>';
@@ -11890,7 +11897,7 @@ function ncRowsHTML(list){
     out+='<tr style="border-bottom:1px solid #EEF1F5;'+(bg?("background:"+bg+";"):"")+accent+'">'
       + '<td class="nc-selcol" style="padding:8px 6px;text-align:center;"><input type="checkbox" class="nc-rowchk" data-id="'+docmasterEsc(r._id)+'"'+(ncSelected[r._id]?" checked":"")+' style="cursor:pointer;transform:scale(1.15);"></td>'
       + '<td style="padding:8px;text-align:center;white-space:nowrap;">'+docmasterEsc(r.date||"-")+'</td>'
-      + '<td style="padding:8px;text-align:center;">'+docmasterEsc(r.customer||"-")+'</td>'
+      + '<td style="padding:8px;text-align:center;">'+docmasterEsc(r.finder||"-")+'</td>'
       + '<td style="padding:8px;text-align:center;font-weight:700;white-space:nowrap;">'+docmasterEsc(r.partNo||"-")+'</td>'
       + '<td style="padding:8px;text-align:left;">'+docmasterEsc(r.content||"-")+'</td>'
       + '<td style="padding:8px;text-align:center;">'+docmasterEsc(r.qty||"-")+'</td>'
@@ -11910,7 +11917,7 @@ function ncRender(){
   var kw=((document.getElementById("nc-search")||{}).value||"").trim().toLowerCase();
   var stf=(document.getElementById("nc-status")||{}).value||"all";
   var rows=ncData.slice().filter(function(r){ return !trashIsDeleted(r); });
-  if(kw) rows=rows.filter(function(r){ return (String(r.partNo).toLowerCase().indexOf(kw)>=0)||(String(r.customer).toLowerCase().indexOf(kw)>=0)||(String(r.content).toLowerCase().indexOf(kw)>=0); });
+  if(kw) rows=rows.filter(function(r){ return (String(r.partNo).toLowerCase().indexOf(kw)>=0)||(String(r.finder).toLowerCase().indexOf(kw)>=0)||(String(r.content).toLowerCase().indexOf(kw)>=0); });
   if(stf==="open") rows=rows.filter(function(r){ return !ncJudge(r).closed; });
   else if(stf==="overdue") rows=rows.filter(function(r){ return ncJudge(r).overdue; });
   else if(stf==="closed") rows=rows.filter(function(r){ return ncJudge(r).closed; });
@@ -11960,6 +11967,7 @@ function ncRender(){
   var ntr=document.getElementById("nc-trashBtn"); if(ntr) ntr.addEventListener("click",function(){ trashOpen("nc"); });
   el.querySelectorAll(".pager-btn").forEach(function(b){ b.addEventListener("click",function(){ if(b.disabled) return; var p=parseInt(b.getAttribute("data-page"),10); if(b.getAttribute("data-module")==="nc") ncGoPage(p); }); });
   ncUpdateBulkUI();
+  if(typeof syncNcToQuality==="function") syncNcToQuality();
 }
 function ncUpdateBulkUI(){
   var n=Object.keys(ncSelected).length;
@@ -12071,6 +12079,39 @@ function ncPrint(){
   var allRows=ncFilteredRows||[];
   var full='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'+ncTheadHTML()+'<tbody>'+ncRowsHTML(allRows)+'</tbody></table></div>';
   openPrintWindow('<h2>고객부적합 관리대장 · 총 '+allRows.length+'건 ('+stamp+')</h2>'+full, css, "고객부적합");
+}
+
+// ── 고객부적합 관리대장(ncData) → 품질분석 데이터로 통합 ──
+// 품질분석(고객부적합/시정조치/재발관리)이 옛 엑셀 시트 대신 이 데이터를 쓰게 한다.
+function ncToQualityRows(){
+  if(typeof ncData==="undefined") return [];
+  return ncData.filter(function(r){ return !trashIsDeleted(r); }).map(function(r){
+    var d=(typeof parseQualityDate==="function") ? parseQualityDate(r.date) : null;
+    return {
+      date: d,
+      partNo: String(r.partNo||"").trim(),
+      partName: String(r.partName||"").trim(),
+      sn: "", method: "",
+      finder: String(r.finder||"").trim(),
+      qty: Number(String(r.qty||"").replace(/[^0-9.]/g,""))||0,
+      content: String(r.content||"").trim(),
+      treatment: String(r.treatment||"").trim(),
+      note: String(r.note||"").trim(),
+      temp: String(r.temp||"").trim(),
+      doneDate: String(r.doneDate||"").trim(),
+      reportDate: String(r.reportDate||"").trim(),
+      validation: String(r.validation||"").trim(),
+      isDev: String(r.finder||"").indexOf("개발")>=0
+    };
+  }).filter(function(r){ return r.date; });
+}
+function syncNcToQuality(){
+  if(typeof qualityRawData==="undefined" || typeof CUSTOMER_NC_KEY==="undefined") return;
+  if(typeof ncData==="undefined" || !window.__ncInited) return;
+  if(!ncData.some(function(r){ return !trashIsDeleted(r); })) return;   // 로딩 중(빈 상태)엔 덮어쓰지 않음
+  qualityRawData[CUSTOMER_NC_KEY]=ncToQualityRows();
+  var qv=document.getElementById("view-quality");
+  if(qv && qv.classList.contains("active") && typeof renderQualityAll==="function"){ try{ renderQualityAll(); }catch(e){} }
 }
 
 /* ==================== 📅 일정 달력 (기존 공유 달력 API 연동) ==================== */
