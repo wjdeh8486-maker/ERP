@@ -77,6 +77,14 @@
   /* 소메뉴 그룹: display:contents로 감싸서 접고/펴기 (모바일 가로 메뉴 레이아웃도 유지됨) */
   .nav-group{ display:contents; }
   .nav-group.closed{ display:none; }
+  .nav-dd{ display:contents; }
+  @media (min-width:861px){
+    .side-nav{ overflow:visible; }
+    .nav-dd{ display:flex; position:relative; flex:0 0 auto; }
+    .nav-dd > .nav-group{ position:absolute; top:100%; left:0; min-width:200px; background:var(--navy-dark); border:1px solid #2A3556; border-top:none; border-radius:0 0 10px 10px; box-shadow:0 12px 30px rgba(0,0,0,.45); z-index:60; display:flex; flex-direction:column; padding:5px 0; }
+    .nav-dd > .nav-group.closed{ display:none; }
+    .nav-dd > .nav-group .nav-item.nav-sub{ justify-content:flex-start; padding:11px 20px 11px 20px; width:100%; box-sizing:border-box; white-space:nowrap; }
+  }
   .nav-caret{ margin-left:auto; font-size:12px; color:#7F8CAD; padding:8px 12px; margin:-6px -6px -6px 0; border-radius:4px; flex:none; cursor:pointer; }
   .nav-caret:hover{ background:rgba(255,255,255,.12); color:#fff; }
   .nav-caret:hover{ background:#2A3556; color:#fff; }
@@ -976,30 +984,30 @@
 <div class="app-shell">
   <div class="side-nav" id="sideNav">
     <div class="brand">NTL QMS Portal<small>Quality Management System</small></div>
-    <div class="nav-item active" data-view="summary" data-navgroup="summary"><span class="dot"></span>📊 월별 현황<span class="nav-caret" data-caret="summary">▾</span></div>
+    <div class="nav-dd"><div class="nav-item active" data-view="summary" data-navgroup="summary"><span class="dot"></span>📊 월별 현황<span class="nav-caret" data-caret="summary">▾</span></div>
     <div class="nav-group" id="navgroup-summary">
       <div class="nav-item nav-sub" data-view="weekly"><span class="dot"></span>🚚 주간 출하</div>
       <div class="nav-item nav-sub" data-view="overdue"><span class="dot"></span>지연 LIST</div>
-    </div>
-    <div class="nav-item" data-view="main" data-navgroup="main"><span class="dot"></span>MAIN 대시보드<span class="nav-caret" data-caret="main">▾</span></div>
+    </div></div>
+    <div class="nav-dd"><div class="nav-item" data-view="main" data-navgroup="main"><span class="dot"></span>MAIN 대시보드<span class="nav-caret" data-caret="main">▾</span></div>
     <div class="nav-group" id="navgroup-main">
       <div class="nav-item nav-sub" data-view="management"><span class="dot"></span>🔎 도번 조회</div>
       <div class="nav-item nav-sub" data-view="waitinsp"><span class="dot"></span>검사대기현황</div>
       <div class="nav-item nav-sub" data-view="sched"><span class="dot"></span>📅 일정 달력</div>
-    </div>
+    </div></div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
-    <div class="nav-item" data-view="qchist" data-navgroup="qchist"><span class="dot"></span>🧪 검사이력조회<span class="nav-caret" data-caret="qchist">▾</span></div>
+    <div class="nav-dd"><div class="nav-item" data-view="qchist" data-navgroup="qchist"><span class="dot"></span>🧪 검사이력조회<span class="nav-caret" data-caret="qchist">▾</span></div>
     <div class="nav-group" id="navgroup-qchist">
       <div class="nav-item nav-sub" data-view="qcprio"><span class="dot"></span>📋 검사 요청서</div>
-    </div>
-    <div class="nav-item" data-view="quality" data-navgroup="quality"><span class="dot"></span>품질분석<span class="nav-caret" data-caret="quality">▾</span></div>
+    </div></div>
+    <div class="nav-dd"><div class="nav-item" data-view="quality" data-navgroup="quality"><span class="dot"></span>품질분석<span class="nav-caret" data-caret="quality">▾</span></div>
     <div class="nav-group" id="navgroup-quality">
       <div class="nav-item nav-sub" data-view="nc"><span class="dot"></span>⚠ 고객부적합관리</div>
-    </div>
-    <div class="nav-item" data-view="docmaster" data-navgroup="docmaster"><span class="dot"></span>📑 문서 Master<span class="nav-caret" data-caret="docmaster">▾</span></div>
+    </div></div>
+    <div class="nav-dd"><div class="nav-item" data-view="docmaster" data-navgroup="docmaster"><span class="dot"></span>📑 문서 Master<span class="nav-caret" data-caret="docmaster">▾</span></div>
     <div class="nav-group" id="navgroup-docmaster">
       <div class="nav-item nav-sub" data-view="instr"><span class="dot"></span>🔧 계측기 관리</div>
-    </div>
+    </div></div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
     <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
     <div class="nav-item" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
@@ -2233,6 +2241,13 @@ document.querySelectorAll(".nav-caret").forEach(caret => {
     const name = caret.dataset.caret;
     const group = document.getElementById("navgroup-" + name);
     setNavGroup(name, group.classList.contains("closed"));
+  });
+});
+// 데스크톱: 소메뉴 항목이나 바깥을 클릭하면 열린 드롭다운을 닫는다 (캐럿은 위에서 stopPropagation 처리됨)
+document.addEventListener("click", function(){
+  if(window.innerWidth < 861) return;
+  document.querySelectorAll(".nav-dd > .nav-group:not(.closed)").forEach(function(g){
+    setNavGroup(g.id.replace("navgroup-",""), false);
   });
 });
 /* ============ 통합검색 ============
