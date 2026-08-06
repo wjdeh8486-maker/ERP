@@ -12347,12 +12347,12 @@ function insInit(){
 function insRender(){
   var el=document.getElementById("insrep-content"); if(!el) return;
   var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
-  // 유형 탭 활성표시
+    // 유형 탭 활성표시
   document.querySelectorAll(".insrep-type").forEach(function(b){
     var on=b.getAttribute("data-type")===insType;
     b.style.background=on?"#0B5CAB":"#fff"; b.style.color=on?"#fff":"#26324A";
   });
-  // 2행 헤더
+    // 2행 헤더
   var head1="", head2="";
   cfg.groups.forEach(function(g){
     if(g.subs){
@@ -12362,10 +12362,20 @@ function insRender(){
       head1+='<th rowspan="2" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;white-space:nowrap;">'+insEsc(g.label)+(g.leaf.chk?('<br><span style="font-size:10px;color:#5A6478;">'+g.leaf.chk+'</span>'):'')+'</th>';
     }
   });
-  // 데이터 입력 행
+    // 데이터 입력 행
   var body="";
   if(!rows.length){ body='<tr><td colspan="'+(leaves.length+1)+'" style="padding:20px;text-align:center;color:#8A93A6;">행이 없습니다. ➕ 행 추가 또는 📷 스캔으로 시작하세요.</td></tr>'; }
+  
   rows.forEach(function(row,ri){
+    // [양품수 자동 계산] 렌더링 시점에 검사수 - 부적합수 자동 계산
+    var totalQty = Number(row.insCnt) || 0;
+    var defectQty = 0;
+    leaves.forEach(function(lf) {
+      if (lf.kind === "num" && lf.key !== "insCnt" && lf.key !== "goodCnt") {
+        defectQty += (Number(row[lf.key]) || 0);
+      }
+    });
+    row.goodCnt = Math.max(0, totalQty - defectQty);
     var tds="";
     leaves.forEach(function(c){
       var v=row[c.key];
@@ -12381,13 +12391,18 @@ function insRender(){
         cell=c.opts.map(function(o){ var on=sel.indexOf(o)>=0; return '<label style="margin-right:8px;white-space:nowrap;font-size:12px;color:#1C2320;cursor:pointer;"><input type="checkbox" data-ri="'+ri+'" data-key="'+c.key+'" data-opt="'+o+'" '+(on?"checked":"")+'> '+o+'</label>'; }).join("");
       } else {
         var typ=c.kind==="num"?"number":(c.kind==="date"?"date":"text");
-        cell='<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'" style="width:100%;border:none;background:transparent;font-size:12px;color:#1C2320;'+(c.kind==="num"?"text-align:center;":"")+'"'+(c.kind==="draw"?' placeholder="도번"':"")+'>';
+        // 양품수(goodCnt) 항목은 직접 수정 불가(readonly) 처리 및 배경색 구분
+        var isGood = (c.key === "goodCnt");
+        var extraAttr = isGood ? ' readonly tabindex="-1" ' : '';
+        var bgStyle = isGood ? 'background:#F0F4F8;color:#1C2320;font-weight:bold;' : 'background:transparent;color:#1C2320;';
+
+        cell='<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'"'+extraAttr+' style="width:100%;border:none;'+bgStyle+'font-size:12px;'+(c.kind==="num"?"text-align:center;":"")+'"'+(c.kind==="draw"?' placeholder="도번"':"")+'>';
       }
       tds+='<td style="border:1px solid #E6EBF2;padding:2px 4px;min-width:'+(c.w*6)+'px;">'+cell+'</td>';
     });
     tds+='<td style="border:1px solid #E6EBF2;text-align:center;"><button type="button" class="insrep-del" data-ri="'+ri+'" style="border:none;background:transparent;color:#C0392B;cursor:pointer;font-size:14px;">✕</button></td>';
     body+='<tr>'+tds+'</tr>';
-  });
+  });  
   el.innerHTML=
     '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px;overflow-x:auto;">'
     + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">'+insEsc(cfg.title)+'</div>'
@@ -12408,6 +12423,7 @@ function insRender(){
     +     '• <b>📥 엑셀 다운로드</b>로 작성한 일보를 엑셀 파일로 내려받습니다.'
     +   '</div>'
     + '</div>';
+    
   // 이벤트 바인딩
   el.querySelectorAll("input,select").forEach(function(inp){
     var ev=(inp.type==="checkbox"||inp.tagName==="SELECT")?"change":"input";
@@ -12423,13 +12439,28 @@ function insRender(){
       } else {
         r[key]=(inp.type==="checkbox")?inp.checked:inp.value;
       }
+      // [실시간 자동 계산] 수치 변경 시 양품수 필드 실시간 업데이트
+      var changedLeaf = leaves.find(function(c) { return c.key === key; });
+      if (changedLeaf && changedLeaf.kind === "num" && key !== "goodCnt") {
+        var tot = Number(r.insCnt) || 0;
+        var def = 0;
+        leaves.forEach(function(lf) {
+          if (lf.kind === "num" && lf.key !== "insCnt" && lf.key !== "goodCnt") {
+            def += (Number(r[lf.key]) || 0);
+          }
+        });
+        r.goodCnt = Math.max(0, tot - def);
+        var goodInput = el.querySelector('input[data-ri="'+ri+'"][data-key="goodCnt"]');
+        if (goodInput) goodInput.value = r.goodCnt;
+      }
+
       // 도번 입력 시 자동채움
-      var leaf=insLeaves().find(function(c){ return c.key===key; });
+      var leaf=leaves.find(function(c){ return c.key===key; });
       if(leaf && leaf.kind==="draw"){ insAutoFill(ri); }
       insSaveLocal();
     });
   });
-  el.querySelectorAll(".insrep-del").forEach(function(b){ b.addEventListener("click",function(){ insState[insType].rows.splice(+b.getAttribute("data-ri"),1); insRender(); insSaveLocal(); }); });
+    el.querySelectorAll(".insrep-del").forEach(function(b){ b.addEventListener("click",function(){ insState[insType].rows.splice(+b.getAttribute("data-ri"),1); insRender(); insSaveLocal(); }); });
 }
 // 도번으로 생산공정현황에서 품명/수량 참고 (검사수 비었으면 수량 채움)
 function insAutoFill(ri){
