@@ -103,6 +103,7 @@
   }
   .gs-inline-btn:hover{ filter:brightness(1.08); transform:translateY(-1px); }
   .gs-inline-btn:active{ transform:translateY(0); }
+  .gs-scan-btn{ background:#0B7A8A; color:#fff; margin-left:6px; }
   .search-box{flex:1;min-width:200px;display:flex;gap:8px;}
   .search-box input{flex:1;padding:9px 12px;border-radius:6px;border:none;font-size:14px;}
   .search-box button{padding:9px 16px;border-radius:6px;border:none;background:#3A3A3A;color:#fff;font-weight:600;cursor:pointer;white-space:nowrap;}
@@ -981,6 +982,16 @@
     </div>
   </div>
 </div>
+<!-- QR/바코드 스캔 모달 -->
+<div id="scan-overlay" style="display:none;position:fixed;inset:0;background:rgba(10,15,20,0.92);z-index:10000;flex-direction:column;align-items:center;justify-content:center;padding:16px;">
+  <div style="color:#fff;font-weight:700;font-size:16px;margin-bottom:10px;">📷 QR / 바코드를 화면 안에 비추세요</div>
+  <div id="scan-reader" style="width:min(92vw,420px);border-radius:14px;overflow:hidden;background:#000;"></div>
+  <div id="scan-msg" style="color:#B9C2D6;font-size:13px;margin-top:12px;min-height:18px;text-align:center;"></div>
+  <div style="display:flex;gap:8px;margin-top:14px;">
+    <button id="scan-manual" type="button" style="background:#2A3556;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;">⌨ 직접 입력</button>
+    <button id="scan-close" type="button" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;">닫기</button>
+  </div>
+</div>
 <div class="app-shell">
   <div class="side-nav" id="sideNav">
     <div class="brand">NTL QMS Portal<small>Quality Management System</small></div>
@@ -1018,7 +1029,7 @@
     <!-- ===================== MAIN VIEW ===================== -->
     <div id="topbar-summary" class="topbar">
       <h1>📊 월별 현황</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="search-box" style="gap:8px;">
         <select id="summary-year" style="flex:0 0 100px;max-width:100px;"></select>
         <select id="summary-month" style="flex:0 0 90px;max-width:90px;"></select>
@@ -1028,7 +1039,7 @@
     </div>
     <div id="topbar-main" class="topbar" style="display:none;">
       <h1>MAIN 대시보드</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="quick-links">
         <a href="https://wjdeh8486-maker.github.io/hole/" target="_blank" rel="noopener" class="ql-hole">🔍 HOLE체크</a>
         <a href="https://wjdeh8486-maker.github.io/daysheet/" target="_blank" rel="noopener" class="ql-checklist" id="ql-checklistLink" onclick="return todoOpenInline(event);" title="이 프로그램 안에서 바로 열기 (Ctrl+클릭은 새 탭)">📋 체크리스트</a>
@@ -1307,7 +1318,7 @@
     <!-- ===================== MANAGEMENT(관리항목 현황) VIEW ===================== -->
     <div id="topbar-management" class="topbar" style="display:none;">
       <h1>🔎 도번 조회</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="search-box">
         <input id="management-searchInput" type="text" placeholder="도번·품명·품번·ORDER NO·PROJECT NO·고객사 검색 (쉼표=OR, 공백=AND)">
         <button id="management-searchBtn">🔍 검색</button>
@@ -1347,7 +1358,7 @@
     <!-- ===================== WAITINSP(검사대기현황) VIEW ===================== -->
     <div id="topbar-waitinsp" class="topbar" style="display:none;">
       <h1>검사대기현황</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="search-box">
         <input id="waitinsp-searchInput" type="text" placeholder="도번 · ORDER NO · PROJECT NO · 고객사 검색">
         <button id="waitinsp-searchBtn">🔍 검색</button>
@@ -1373,7 +1384,7 @@
     <!-- ===================== HISTORY(도번 이력) VIEW ===================== -->
     <div id="topbar-history" class="topbar" style="display:none;">
       <h1>🔎 도번 조회</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="search-box">
         <input id="history-searchInput" type="text" placeholder="도번·품명·품번·ORDER NO·PROJECT NO 검색 (쉼표로 여러 개)">
         <button id="history-searchBtn">🔍 검색</button>
@@ -1398,7 +1409,7 @@
     <!-- ===================== WEEKLY(주간 출하) VIEW ===================== -->
     <div id="topbar-weekly" class="topbar" style="display:none;">
       <h1>주간 출하 예정</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div style="display:flex;gap:8px;margin-left:auto;">
         <button id="weekly-printBtn">🖨️ 인쇄</button>
         <button id="weekly-downloadBtn" type="button" class="tb-download-btn">📥 다운로드</button>
@@ -1411,7 +1422,7 @@
     <!-- ===================== OVERDUE(지연 LIST) VIEW ===================== -->
     <div id="topbar-overdue" class="topbar" style="display:none;">
       <h1>지연 LIST</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="search-box">
         <input id="overdue-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
         <button id="overdue-searchBtn">🔍 검색</button>
@@ -1470,7 +1481,7 @@
     <!-- ===================== INVENTORY VIEW ===================== -->
     <div id="topbar-inventory" class="topbar" style="display:none;">
       <h1>입출고 · 재고관리</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <span class="sync-toggle" id="inv-syncToggle" style="margin-left:auto;">구글시트 연동 ▾</span>
     </div>
     <div class="sync-panel" id="inv-syncPanel">
@@ -1561,7 +1572,7 @@
     <!-- ===================== QUALITY VIEW ===================== -->
     <div id="topbar-quality" class="topbar" style="display:none;">
       <h1>품질분석</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="topbar-right">
         <button id="quality-printBtn">🖨️ 인쇄</button>
         <button id="quality-excelBtn" type="button" class="tb-download-btn">📥 다운로드</button>
@@ -1600,7 +1611,7 @@
     <!-- ===================== 문서 Master (품질문서 관리) VIEW ===================== -->
     <div id="topbar-docmaster" class="topbar" style="display:none;">
       <h1>📑 문서 Master</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="search-box">
         <input id="docmaster-search" type="text" placeholder="문서번호·문서명·담당자 검색">
         <select id="docmaster-cat" style="flex:0 0 150px;max-width:150px;">
@@ -1716,7 +1727,7 @@
     <!-- ===================== 검사이력조회 (품질검사관리 2단계) VIEW ===================== -->
     <div id="topbar-qchist" class="topbar" style="display:none;">
       <h1>🧪 검사이력조회</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="search-box">
         <input id="qchist-partNo" type="text" placeholder="도번 (예: 61031-00)">
         <input id="qchist-sn" type="text" placeholder="S/N (예: 186) — 선택" style="flex:0 0 160px;max-width:160px;">
@@ -1744,7 +1755,7 @@
     <!-- ===================== 검사 우선순위 (AI) VIEW ===================== -->
     <div id="topbar-qcprio" class="topbar" style="display:none;">
       <h1>📋 검사 요청서</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="search-box">
         <select id="qcprio-customer"><option value="">전체 고객사</option></select>
         <select id="qcprio-process">
@@ -1770,7 +1781,7 @@
     <!-- ===================== SALES(매출현황) VIEW ===================== -->
     <div id="topbar-sales" class="topbar" style="display:none;">
       <h1>매출현황</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="topbar-right">
         <button id="sales-printBtn">🖨️ 인쇄</button>
         <button id="sales-excelBtn" type="button" class="tb-download-btn">📥 다운로드</button>
@@ -1838,7 +1849,7 @@
     <!-- ===================== VENDOR(거래처 관리) VIEW ===================== -->
     <div id="topbar-vendor" class="topbar" style="display:none;">
       <h1>거래처 관리</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="search-box">
         <input id="vendor-searchInput" type="text" placeholder="기존도번, 품번, 품명, 고객사, PROJECT NO 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
         <button id="vendor-searchBtn">🔍 검색</button>
@@ -1861,7 +1872,7 @@
     <!-- ===================== UPLOAD VIEW ===================== -->
     <div id="topbar-upload" class="topbar" style="display:none;">
       <h1>📤 데이터 업로드</h1>
-      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button>
+      <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div style="width:100%;font-size:12px;color:#B9C2D6;margin-top:-4px;">
         NAS의 엑셀 파일을 아래 해당 카드에 드래그하면 <b style="color:#FFD400;">구글시트 파일 ID를 유지한 채 내용만 덮어쓰기</b>합니다. API 주소 변경이 필요 없습니다.
       </div>
@@ -2679,6 +2690,68 @@ function gsClose(){
   const ov = document.getElementById("gs-overlay");
   if(ov) ov.classList.remove("open");
 }
+
+/* ===== QR/바코드 스캔 → 생산지시번호(생산공정현황 C열) → 도번 → 통합검색 ===== */
+var __scanner = null;
+function scanLoadLib(){
+  return new Promise(function(resolve, reject){
+    if(window.Html5Qrcode) return resolve();
+    var s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
+    s.onload=function(){ resolve(); };
+    s.onerror=function(){ reject(new Error("스캔 라이브러리 로드 실패")); };
+    document.head.appendChild(s);
+  });
+}
+function scanOpen(){
+  var ov=document.getElementById("scan-overlay"); if(!ov) return;
+  var msg=document.getElementById("scan-msg");
+  ov.style.display="flex";
+  if(msg) msg.textContent="카메라 준비 중…";
+  scanLoadLib().then(function(){
+    __scanner=new Html5Qrcode("scan-reader");
+    return __scanner.start({facingMode:"environment"}, {fps:10, qrbox:{width:240,height:240}},
+      function(decoded){ scanHandle(decoded); }, function(){});
+  }).then(function(){ if(msg) msg.textContent="QR을 사각형 안에 맞추면 자동으로 인식됩니다."; })
+    .catch(function(){ if(msg) msg.textContent="카메라를 열 수 없습니다. (깃허브 HTTPS 주소로 열고, 카메라 권한을 허용했는지 확인하세요)"; });
+}
+function scanStop(){
+  if(__scanner){
+    try{ __scanner.stop().then(function(){ try{__scanner.clear();}catch(_){ } __scanner=null; }).catch(function(){ __scanner=null; }); }
+    catch(_){ __scanner=null; }
+  }
+}
+function scanClose(){ scanStop(); var ov=document.getElementById("scan-overlay"); if(ov) ov.style.display="none"; }
+// 생산지시번호(또는 임의 스캔값) → 도번 변환
+function scanResolveDrawing(code){
+  code=String(code||"").trim();
+  if(!code || typeof processData==="undefined" || !processData.length) return null;
+  var norm=function(s){ return String(s==null?"":s).trim(); };
+  var i,k;
+  for(i=0;i<processData.length;i++){ var p=processData[i];
+    for(k in p){ if(/지시/.test(k) && norm(p[k])===code) return {drawing:norm(p["도면번호"]), row:p}; } }
+  for(i=0;i<processData.length;i++){ var q=processData[i];
+    for(k in q){ if(norm(q[k])===code) return {drawing:norm(q["도면번호"]), row:q}; } }
+  return null;
+}
+function scanHandle(code){
+  code=String(code||"").trim(); if(!code) return;
+  scanClose();
+  var res=scanResolveDrawing(code);
+  var term=(res && res.drawing) ? res.drawing : code;
+  gsOpen();
+  var inp=document.getElementById("gs-input"); if(inp) inp.value=term;
+  if(typeof gsRender==="function") gsRender(term);
+  if(!(res && res.drawing)){
+    var body=document.getElementById("gs-body");
+    if(body){ var note=document.createElement("div"); note.style.cssText="font-size:12px;color:#8a6d00;background:#FFF6D6;border:1px solid #E0C34A;border-radius:6px;padding:6px 10px;margin-bottom:8px;"; note.textContent="스캔값 '"+code+"' 로 생산지시번호를 못 찾아, 그대로 검색했습니다. (생산공정현황이 로드됐는지 확인하세요)"; body.insertBefore(note, body.firstChild); }
+  }
+}
+(function(){
+  var sc=document.getElementById("scan-close"); if(sc) sc.addEventListener("click", scanClose);
+  var sm=document.getElementById("scan-manual"); if(sm) sm.addEventListener("click", function(){ var v=prompt("번호를 직접 입력하세요 (생산지시번호 또는 도번)"); if(v) scanHandle(v); });
+  var ov=document.getElementById("scan-overlay"); if(ov) ov.addEventListener("click", function(e){ if(e.target===ov) scanClose(); });
+})();
 
 (function(){
   function bindGs(){
