@@ -2737,9 +2737,30 @@ function scanOpen(){
   scanLoadLib().then(function(){
     __scanner=new Html5Qrcode("scan-reader");
     return __scanner.start({facingMode:"environment"}, {fps:10, qrbox:{width:240,height:240}},
-      function(decoded){ scanHandle(decoded); }, function(){});
-  }).then(function(){ if(msg) msg.textContent="QR을 사각형 안에 맞추면 자동으로 인식됩니다."; })
+      function(decoded){ scanOnDecode(decoded); }, function(){});
+  }).then(function(){ if(msg) msg.textContent = window.__scanContinuous ? "연속 스캔 중 — 계속 찍으세요. 다 되면 [닫기]." : "QR을 사각형 안에 맞추면 자동으로 인식됩니다."; })
     .catch(function(){ if(msg) msg.textContent="카메라를 열 수 없습니다. (깃허브 HTTPS 주소로 열고, 카메라 권한을 허용했는지 확인하세요)"; });
+}
+// 스캔 인식 분배: 연속모드(검사일보)면 카메라 유지하며 행 누적, 아니면 기존 단발 처리
+var __scanLast="", __scanLastTime=0;
+function scanBeep(){
+  try{ var ac=new (window.AudioContext||window.webkitAudioContext)(); var o=ac.createOscillator(); var g=ac.createGain();
+    o.type="square"; o.frequency.value=880; o.connect(g); g.connect(ac.destination); g.gain.value=0.05;
+    o.start(); setTimeout(function(){ o.stop(); ac.close(); }, 90); }catch(e){}
+}
+function scanOnDecode(decoded){
+  var code=String(decoded||"").trim(); if(!code) return;
+  if(window.__scanContinuous && window.__insScanTarget){
+    var now=Date.now();
+    if(code===__scanLast && (now-__scanLastTime)<1500) return; // 같은 코드 연속 오인식 무시
+    __scanLast=code; __scanLastTime=now;
+    if(typeof insScanReceive==="function") insScanReceive(code);
+    scanBeep();
+    var msg=document.getElementById("scan-msg");
+    if(msg){ var res=(typeof scanResolveDrawing==="function")?scanResolveDrawing(code):null; var d=(res&&res.drawing)?res.drawing:code; var n=(insState&&insState[insType])?insState[insType].rows.length:0; msg.textContent="✔ 추가: "+d+" · 총 "+n+"행 (계속 찍으세요)"; }
+    return;
+  }
+  scanHandle(code);
 }
 function scanStop(){
   if(__scanner){
@@ -2747,7 +2768,7 @@ function scanStop(){
     catch(_){ __scanner=null; }
   }
 }
-function scanClose(){ scanStop(); var ov=document.getElementById("scan-overlay"); if(ov) ov.style.display="none"; }
+function scanClose(){ scanStop(); var ov=document.getElementById("scan-overlay"); if(ov) ov.style.display="none"; window.__scanContinuous=false; window.__insScanTarget=false; __scanLast=""; }
 // 생산공정현황이 아직 없으면 즉시 불러온다(특히 모바일에서 메인 로드 전 스캔 대비)
 function scanEnsureProcessData(){
   if(typeof processData!=="undefined" && processData.length) return Promise.resolve();
@@ -12274,6 +12295,7 @@ var INS_CFG = {
       {label:"치수 조치완료일", leaf:{key:"actDate", kind:"date", w:12}},
       {label:"LEAK", leaf:{key:"leak", kind:"check", chk:"LEAK", w:8}},
       {label:"FLOW", leaf:{key:"flow", kind:"check", chk:"FLOW", w:8}},
+      {label:"진공", leaf:{key:"vac", kind:"check", chk:"진공", w:8}},
       {label:"가압/수압", leaf:{key:"press", kind:"seg", opts:["가압","수압"], w:12}}
     ]
   }
@@ -12317,10 +12339,10 @@ function insRender(){
   var head1="", head2="";
   cfg.groups.forEach(function(g){
     if(g.subs){
-      head1+='<th colspan="'+g.subs.length+'" style="border:1px solid #C9D3E0;background:#EEF3FA;padding:5px;">'+insEsc(g.label)+'</th>';
-      g.subs.forEach(function(s){ head2+='<th style="border:1px solid #C9D3E0;background:#F5F8FC;padding:4px;font-weight:600;white-space:nowrap;">'+insEsc(s.label)+'</th>'; });
+      head1+='<th colspan="'+g.subs.length+'" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;">'+insEsc(g.label)+'</th>';
+      g.subs.forEach(function(s){ head2+='<th style="border:1px solid #C9D3E0;background:#F5F8FC;color:#26324A;padding:4px;font-weight:600;white-space:nowrap;">'+insEsc(s.label)+'</th>'; });
     } else {
-      head1+='<th rowspan="2" style="border:1px solid #C9D3E0;background:#EEF3FA;padding:5px;white-space:nowrap;">'+insEsc(g.label)+(g.leaf.chk?('<br><span style="font-size:10px;color:#5A6478;">'+g.leaf.chk+'</span>'):'')+'</th>';
+      head1+='<th rowspan="2" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;white-space:nowrap;">'+insEsc(g.label)+(g.leaf.chk?('<br><span style="font-size:10px;color:#5A6478;">'+g.leaf.chk+'</span>'):'')+'</th>';
     }
   });
   // 데이터 입력 행
@@ -12335,11 +12357,11 @@ function insRender(){
       if(c.kind==="check"){
         cell='<input type="checkbox" data-ri="'+ri+'" data-key="'+c.key+'" '+(v?"checked":"")+'>';
       } else if(c.kind==="seg"){
-        cell='<select data-ri="'+ri+'" data-key="'+c.key+'" style="width:100%;border:none;background:transparent;font-size:12px;"><option value=""></option>'+
+        cell='<select data-ri="'+ri+'" data-key="'+c.key+'" style="width:100%;border:none;background:transparent;font-size:12px;color:#1C2320;"><option value=""></option>'+
           c.opts.map(function(o){ return '<option'+(v===o?" selected":"")+'>'+o+'</option>'; }).join("")+'</select>';
       } else {
         var typ=c.kind==="num"?"number":(c.kind==="date"?"date":"text");
-        cell='<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'" style="width:100%;border:none;background:transparent;font-size:12px;'+(c.kind==="num"?"text-align:center;":"")+'"'+(c.kind==="draw"?' placeholder="도번"':"")+'>';
+        cell='<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'" style="width:100%;border:none;background:transparent;font-size:12px;color:#1C2320;'+(c.kind==="num"?"text-align:center;":"")+'"'+(c.kind==="draw"?' placeholder="도번"':"")+'>';
       }
       tds+='<td style="border:1px solid #E6EBF2;padding:2px 4px;min-width:'+(c.w*6)+'px;">'+cell+'</td>';
     });
@@ -12382,8 +12404,9 @@ function insAutoFill(ri){
 // 스캔 → 생산지시번호→도번 → 행 추가(도번+수량)
 function insScanAdd(){
   if(typeof scanOpen!=="function"){ alert("스캔 기능을 사용할 수 없습니다."); return; }
-  window.__insScanTarget=true;
-  scanOpen();
+  window.__insScanTarget=true; window.__scanContinuous=true;
+  if(typeof scanEnsureProcessData==="function"){ scanEnsureProcessData().then(function(){ scanOpen(); }); }
+  else { scanOpen(); }
 }
 // scanHandle에서 검사일보 화면이면 이 함수로 넘겨받음
 function insScanReceive(code){
