@@ -12266,7 +12266,7 @@ var INS_CFG = {
       {label:"No.",   leaf:{key:"no",   kind:"no",   w:5}},
       {label:"도 번", leaf:{key:"draw", kind:"draw", w:16}},
       {label:"S/N",   leaf:{key:"sn",   kind:"text", w:12}},
-      {label:"구 분", leaf:{key:"seg",  kind:"seg",  opts:["재고","분출","검수"], w:16}},
+      {label:"구 분", leaf:{key:"seg",  kind:"checks",  opts:["재고","분출","검수"], w:22}},
       {label:"검사수",leaf:{key:"insCnt", kind:"num", w:7}},
       {label:"양품수",leaf:{key:"goodCnt",kind:"num", w:7}},
       {label:"공정검사", leaf:{key:"pin", kind:"check", chk:"PIN", w:8}},
@@ -12359,6 +12359,9 @@ function insRender(){
       } else if(c.kind==="seg"){
         cell='<select data-ri="'+ri+'" data-key="'+c.key+'" style="width:100%;border:none;background:transparent;font-size:12px;color:#1C2320;"><option value=""></option>'+
           c.opts.map(function(o){ return '<option'+(v===o?" selected":"")+'>'+o+'</option>'; }).join("")+'</select>';
+      } else if(c.kind==="checks"){
+        var sel=String(v||"").split(",");
+        cell=c.opts.map(function(o){ var on=sel.indexOf(o)>=0; return '<label style="margin-right:8px;white-space:nowrap;font-size:12px;color:#1C2320;cursor:pointer;"><input type="checkbox" data-ri="'+ri+'" data-key="'+c.key+'" data-opt="'+o+'" '+(on?"checked":"")+'> '+o+'</label>'; }).join("");
       } else {
         var typ=c.kind==="num"?"number":(c.kind==="date"?"date":"text");
         cell='<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'" style="width:100%;border:none;background:transparent;font-size:12px;color:#1C2320;'+(c.kind==="num"?"text-align:center;":"")+'"'+(c.kind==="draw"?' placeholder="도번"':"")+'>';
@@ -12380,7 +12383,15 @@ function insRender(){
     inp.addEventListener(ev,function(){
       var ri=+inp.getAttribute("data-ri"), key=inp.getAttribute("data-key");
       var r=insState[insType].rows[ri]; if(!r) return;
-      r[key]=(inp.type==="checkbox")?inp.checked:inp.value;
+      var opt=inp.getAttribute("data-opt");
+      if(opt){
+        var cur=String(r[key]||"").split(",").filter(Boolean);
+        var idx=cur.indexOf(opt);
+        if(inp.checked){ if(idx<0) cur.push(opt); } else { if(idx>=0) cur.splice(idx,1); }
+        r[key]=cur.join(",");
+      } else {
+        r[key]=(inp.type==="checkbox")?inp.checked:inp.value;
+      }
       // 도번 입력 시 자동채움
       var leaf=insLeaves().find(function(c){ return c.key===key; });
       if(leaf && leaf.kind==="draw"){ insAutoFill(ri); }
@@ -12446,6 +12457,7 @@ function insExport(){
       var v=row[c.key];
       if(c.kind==="check") return (c.chk||"")+(v?"■":"□");
       if(c.kind==="seg"){ return (c.opts||[]).map(function(o){ return o+(v===o?"■":"□"); }).join(" "); }
+      if(c.kind==="checks"){ var sel=String(v||"").split(","); return (c.opts||[]).map(function(o){ return o+(sel.indexOf(o)>=0?"■":"□"); }).join(" "); }
       if(c.kind==="num") return (String(v||"").trim()==="")?"":Number(v);
       return v||"";
     });
