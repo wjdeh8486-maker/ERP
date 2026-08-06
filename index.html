@@ -1739,7 +1739,8 @@
         <span style="font-size:12px;color:#5A6478;">검사일자</span>
         <input type="date" id="insrep-date" style="padding:6px 8px;border:1px solid #C9D3E0;border-radius:7px;font-size:12px;">
         <button type="button" id="insrep-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 행 추가</button>
-        <button type="button" id="insrep-scanBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">📷 스캔 추가</button>
+        <input type="text" id="insrep-scanInput" placeholder="🔫 스캐너로 여기 찍기 (PC)" autocomplete="off" style="width:170px;padding:8px 10px;border:1px solid #0B7A8A;border-radius:8px;font-size:12px;color:#1C2320;" title="USB/블루투스 스캐너로 이 칸을 클릭한 뒤 찍으면 자동으로 행이 추가됩니다">
+        <button type="button" id="insrep-scanBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">📷 카메라</button>
         <button type="button" id="insrep-clearBtn" style="background:#fff;color:#C0392B;border:1px solid #E4B4B4;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">비우기</button>
         <button type="button" id="insrep-cloudSaveBtn" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="구글시트에 저장 — 다른 기기에서 불러올 수 있습니다">☁ 공유저장</button>
         <button type="button" id="insrep-cloudLoadBtn" style="background:#fff;color:#5A3E7A;border:1px solid #D9C4EC;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="다른 기기에서 저장한 내용을 불러옵니다">☁ 불러오기</button>
@@ -2748,9 +2749,11 @@ function scanBeep(){
     o.type="square"; o.frequency.value=880; o.connect(g); g.connect(ac.destination); g.gain.value=0.05;
     o.start(); setTimeout(function(){ o.stop(); ac.close(); }, 90); }catch(e){}
 }
+function insrepActive(){ var v=document.getElementById("view-insrep"); return !!(v && v.classList.contains("active")); }
 function scanOnDecode(decoded){
   var code=String(decoded||"").trim(); if(!code) return;
-  if(window.__scanContinuous && window.__insScanTarget){
+  // 검사 일보 화면이 열려 있으면(플래그와 무관하게) 스캔은 항상 검사 일보로 → 통합검색으로 새지 않음
+  if(window.__insScanTarget || insrepActive()){
     var now=Date.now();
     if(code===__scanLast && (now-__scanLastTime)<1500) return; // 같은 코드 연속 오인식 무시
     __scanLast=code; __scanLastTime=now;
@@ -2796,8 +2799,8 @@ function scanHandle(code){
   var msg=document.getElementById("scan-msg"); if(msg) msg.textContent="조회 중… ("+code+")";
   scanEnsureProcessData().then(function(){
     scanClose();
-    // 검사 일보에서 스캔한 경우: 행 추가로 넘김
-    if(window.__insScanTarget){ window.__insScanTarget=false; if(typeof insScanReceive==="function"){ insScanReceive(code); return; } }
+    // 검사 일보 화면이면 통합검색으로 가지 않고 행 추가
+    if(window.__insScanTarget || insrepActive()){ if(typeof insScanReceive==="function"){ insScanReceive(code); return; } }
     var res=scanResolveDrawing(code);
     var term=(res && res.drawing) ? res.drawing : code;
     gsOpen();
@@ -12318,6 +12321,20 @@ function insInit(){
   bind("insrep-cloudLoadBtn","click",insCloudLoad);
   bind("insrep-inspector","input",insSaveLocal);
   bind("insrep-date","change",insSaveLocal);
+  // PC 스캐너(키보드형) 입력: 찍으면 값+Enter → 행 추가, 연속 가능
+  var scanInp=document.getElementById("insrep-scanInput");
+  if(scanInp){
+    scanInp.addEventListener("keydown",function(e){
+      if(e.key==="Enter" || e.keyCode===13){
+        e.preventDefault();
+        var code=String(scanInp.value||"").trim();
+        scanInp.value="";
+        if(!code) return;
+        var add=function(){ if(typeof insScanReceive==="function") insScanReceive(code); insSetStatus("✔ 스캐너 추가: "+code); scanInp.focus(); };
+        if(typeof scanEnsureProcessData==="function"){ scanEnsureProcessData().then(add); } else { add(); }
+      }
+    });
+  }
   // 유형 탭
   document.querySelectorAll(".insrep-type").forEach(function(b){
     b.addEventListener("click",function(){ insType=b.getAttribute("data-type"); insRender(); insSaveLocal(); });
@@ -12384,7 +12401,8 @@ function insRender(){
     +   '<div><b>☁ 불러오기</b> — 다른 기기에서 <b>공유저장한 내용을 가져옵니다.</b></div>'
     +   '<div style="margin-top:6px;color:#5A6478;">예) PC에서 작성 → <b>☁ 공유저장</b> → 현장 태블릿에서 <b>☁ 불러오기</b> → 이어서 작성.</div>'
     +   '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #CBD8EA;color:#5A6478;">'
-    +     '• <b>📷 스캔 추가</b>: 카메라로 QR을 계속 찍으면 행이 자동으로 쌓입니다(연속 스캔). 다 찍으면 [닫기].<br>'
+    +     '• <b>🔫 스캐너로 여기 찍기(PC)</b>: 그 입력칸을 클릭한 뒤 USB/블루투스 스캐너로 찍으면 자동으로 행이 추가됩니다(연속 가능, 카메라 불필요).<br>'
+    +     '• <b>📷 카메라</b>: 폰·태블릿에서 QR을 계속 찍으면 행이 자동으로 쌓입니다(연속 스캔). 다 찍으면 [닫기].<br>'
     +     '• 도번을 입력/스캔하면 검사수 등이 자동 채워지고, 각 칸은 직접 수정할 수 있습니다.<br>'
     +     '• 체크박스는 엑셀에서 <b>■/□</b> 로, 구분·가압/수압 등은 선택한 항목만 ■ 로 출력됩니다.<br>'
     +     '• <b>📥 엑셀 다운로드</b>로 작성한 일보를 엑셀 파일로 내려받습니다.'
