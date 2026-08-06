@@ -2722,30 +2722,43 @@ function scanStop(){
   }
 }
 function scanClose(){ scanStop(); var ov=document.getElementById("scan-overlay"); if(ov) ov.style.display="none"; }
-// 생산지시번호(또는 임의 스캔값) → 도번 변환
+// 생산공정현황이 아직 없으면 즉시 불러온다(특히 모바일에서 메인 로드 전 스캔 대비)
+function scanEnsureProcessData(){
+  if(typeof processData!=="undefined" && processData.length) return Promise.resolve();
+  var url=(typeof mainApiUrl!=="undefined" && mainApiUrl) ? mainApiUrl : (typeof docmasterApiUrl==="function"?docmasterApiUrl():"");
+  if(!url) return Promise.resolve();
+  return fetch(url + "?dataset=" + encodeURIComponent("생산공정현황"), {cache:"no-store"})
+    .then(function(r){ return r.json(); })
+    .then(function(res){ if(res && res.success && Array.isArray(res.rows)){ processData=res.rows; } })
+    .catch(function(){});
+}
+// 생산지시번호(또는 임의 스캔값) → 도번 변환 (대소문자·공백 무시)
 function scanResolveDrawing(code){
-  code=String(code||"").trim();
-  if(!code || typeof processData==="undefined" || !processData.length) return null;
-  var norm=function(s){ return String(s==null?"":s).trim(); };
+  var target=String(code||"").trim().toUpperCase().replace(/\s+/g,"");
+  if(!target || typeof processData==="undefined" || !processData.length) return null;
+  var norm=function(s){ return String(s==null?"":s).trim().toUpperCase().replace(/\s+/g,""); };
   var i,k;
   for(i=0;i<processData.length;i++){ var p=processData[i];
-    for(k in p){ if(/지시/.test(k) && norm(p[k])===code) return {drawing:norm(p["도면번호"]), row:p}; } }
+    for(k in p){ if(/지시/.test(k) && norm(p[k])===target) return {drawing:String(p["도면번호"]||"").trim(), row:p}; } }
   for(i=0;i<processData.length;i++){ var q=processData[i];
-    for(k in q){ if(norm(q[k])===code) return {drawing:norm(q["도면번호"]), row:q}; } }
+    for(k in q){ if(norm(q[k])===target) return {drawing:String(q["도면번호"]||"").trim(), row:q}; } }
   return null;
 }
 function scanHandle(code){
   code=String(code||"").trim(); if(!code) return;
-  scanClose();
-  var res=scanResolveDrawing(code);
-  var term=(res && res.drawing) ? res.drawing : code;
-  gsOpen();
-  var inp=document.getElementById("gs-input"); if(inp) inp.value=term;
-  if(typeof gsRender==="function") gsRender(term);
-  if(!(res && res.drawing)){
-    var body=document.getElementById("gs-body");
-    if(body){ var note=document.createElement("div"); note.style.cssText="font-size:12px;color:#8a6d00;background:#FFF6D6;border:1px solid #E0C34A;border-radius:6px;padding:6px 10px;margin-bottom:8px;"; note.textContent="스캔값 '"+code+"' 로 생산지시번호를 못 찾아, 그대로 검색했습니다. (생산공정현황이 로드됐는지 확인하세요)"; body.insertBefore(note, body.firstChild); }
-  }
+  var msg=document.getElementById("scan-msg"); if(msg) msg.textContent="조회 중… ("+code+")";
+  scanEnsureProcessData().then(function(){
+    scanClose();
+    var res=scanResolveDrawing(code);
+    var term=(res && res.drawing) ? res.drawing : code;
+    gsOpen();
+    var inp=document.getElementById("gs-input"); if(inp) inp.value=term;
+    if(typeof gsRender==="function") gsRender(term);
+    if(!(res && res.drawing)){
+      var body=document.getElementById("gs-body");
+      if(body){ var note=document.createElement("div"); note.style.cssText="font-size:12px;color:#8a6d00;background:#FFF6D6;border:1px solid #E0C34A;border-radius:6px;padding:6px 10px;margin-bottom:8px;"; note.textContent="스캔값 '"+code+"' 로 생산지시번호를 못 찾아, 그대로 검색했습니다. (생산공정현황이 로드됐는지 확인하세요)"; body.insertBefore(note, body.firstChild); }
+    }
+  });
 }
 (function(){
   var sc=document.getElementById("scan-close"); if(sc) sc.addEventListener("click", scanClose);
