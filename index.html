@@ -1748,6 +1748,7 @@
         <button type="button" id="insrep-cloudSaveBtn" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="구글시트에 저장 — 다른 기기에서 불러올 수 있습니다">☁ 공유저장</button>
         <button type="button" id="insrep-cloudLoadBtn" style="background:#fff;color:#5A3E7A;border:1px solid #D9C4EC;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="다른 기기에서 저장한 내용을 불러옵니다">☁ 불러오기</button>
         <button type="button" id="insrep-exportBtn" style="background:#1E7A46;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button>
+        <button type="button" id="insrep-ncAlertBtn" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="현재 일보의 부적합을 전체 사용자에게 즉시 알립니다">🔔 부적합 알림 전송</button>
       </div>
       <div style="width:100%;text-align:right;font-size:11.5px;color:#8A93A6;margin-top:-2px;"><span id="insrep-status">💾 입력하면 이 기기에 자동 저장됩니다</span></div>
     </div>
@@ -12348,6 +12349,7 @@ function insInit(){
   bind("insrep-addBtn","click",function(){ if(insType==="processin") return; insState[insType].rows.push(insBlankRow()); insRender(); insSaveLocal(); });
   bind("insrep-scanBtn","click",function(){ insScanAdd(); });
   bind("insrep-exportBtn","click",insExport);
+  bind("insrep-ncAlertBtn","click",ncAlertSendCurrent);
   bind("insrep-clearBtn","click",function(){ if(insType==="processin"){ if(confirm("공정입고 비고를 모두 지울까요?")){ insProcInMemo={}; insSaveLocal(); insRender(); } return; } if(confirm("현재 일보의 입력 행을 모두 지울까요?")){ insState[insType].rows=[]; insRender(); insSaveLocal(); } });
   bind("insrep-cloudSaveBtn","click",insCloudSave);
   bind("insrep-cloudLoadBtn","click",insCloudLoad);
@@ -12803,6 +12805,16 @@ function ncAlertShow(a){
   setTimeout(kill, 20000);
 }
 
+function ncAlertSendCurrent(){
+  var t=insType;
+  if(t==="processin"){ alert("공정입고 화면에서는 부적합 알림 전송이 없습니다."); return; }
+  var rows=(insState[t]&&insState[t].rows)||[], cnt=0;
+  rows.forEach(function(r){ if(insRowDefect_(t,r) && String((r&&r.draw)||"").trim()) cnt++; });
+  if(!cnt){ insSetStatus("전송할 부적합이 없습니다."); alert("현재 일보에 부적합(수량>0)이 없습니다."); return; }
+  if(!confirm("현재 ["+insTypeLabel(t)+"] 일보의 부적합 "+cnt+"건을 전체 사용자에게 알릴까요?")) return;
+  ncAlertBroadcastType(t);
+  insSetStatus("🔔 부적합 알림 전송됨 ("+cnt+"건)");
+}
 function ncAlertInit(){
   if(__ncAlertStarted) return; __ncAlertStarted=true;
   try{ if(!localStorage.getItem(NCALERT_LS_TS)) localStorage.setItem(NCALERT_LS_TS, String(Date.now())); }catch(e){}
