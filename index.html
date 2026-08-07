@@ -2752,6 +2752,19 @@ function scanBeep(){
     o.type="square"; o.frequency.value=880; o.connect(g); g.connect(ac.destination); g.gain.value=0.05;
     o.start(); setTimeout(function(){ o.stop(); ac.close(); }, 90); }catch(e){}
 }
+var __insToastTimer=null;
+function insScanToast(text){
+  var el=document.getElementById("ins-scan-toast");
+  if(!el){
+    el=document.createElement("div"); el.id="ins-scan-toast";
+    el.style.cssText="position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;background:rgba(11,92,171,0.96);color:#fff;font-size:20px;font-weight:800;padding:18px 34px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,0.35);pointer-events:none;letter-spacing:1px;transition:opacity .25s;opacity:0;";
+    document.body.appendChild(el);
+  }
+  el.textContent="✔ "+text;
+  el.style.opacity="1";
+  if(__insToastTimer) clearTimeout(__insToastTimer);
+  __insToastTimer=setTimeout(function(){ el.style.opacity="0"; }, 2000);
+}
 function insrepActive(){ var v=document.getElementById("view-insrep"); return !!(v && v.classList.contains("active")); }
 function scanOnDecode(decoded){
   var code=String(decoded||"").trim(); if(!code) return;
@@ -2761,7 +2774,7 @@ function scanOnDecode(decoded){
     if(code===__scanLast && (now-__scanLastTime)<1500) return; // 같은 코드 연속 오인식 무시
     __scanLast=code; __scanLastTime=now;
     if(typeof insScanReceive==="function") insScanReceive(code);
-    scanBeep();
+    scanBeep(); insScanToast("인식 완료");
     var msg=document.getElementById("scan-msg");
     if(msg){ var res=(typeof scanResolveDrawing==="function")?scanResolveDrawing(code):null; var d=(res&&res.drawing)?res.drawing:code; var n=(insState&&insState[insType])?insState[insType].rows.length:0; msg.textContent="✔ 추가: "+d+" · 총 "+n+"행 (계속 찍으세요)"; }
     return;
@@ -12318,12 +12331,18 @@ var insType = "incoming";
 var insState = { incoming:{rows:[]}, shipping:{rows:[]}, measureS:{rows:[]}, measureL:{rows:[]} };
 var insProcInSource = null;   // 공정입고 집계용 공유 버퍼(null이면 로컬 insState 사용)
 var insProcInMemo   = {};     // 도번 -> { m:측정실비고, c:크린룸비고 }
+var insMetaByType = { incoming:{inspector:"",date:""}, shipping:{inspector:"",date:""}, measureS:{inspector:"",date:""}, measureL:{inspector:"",date:""} };  // 검사자/검사일자 유형별 분리
 
 function insCfg(){ return INS_CFG[insType]; }
 function insLeaves(cfg){ cfg=cfg||insCfg(); var out=[]; cfg.groups.forEach(function(g){ if(g.subs){ g.subs.forEach(function(s){ out.push(s); }); } else { out.push(g.leaf); } }); return out; }
 function insEsc(t){ return docmasterEsc(t); }
 function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); return r; }
 
+function insSyncMetaInputs(){
+  var meta=insMetaByType[insType]||{inspector:"",date:""};
+  var ip=document.getElementById("insrep-inspector"); if(ip) ip.value=meta.inspector||"";
+  var dt=document.getElementById("insrep-date"); if(dt) dt.value=meta.date||"";
+}
 function insInit(){
   var bind=function(id,ev,fn){ var e=document.getElementById(id); if(e) e.addEventListener(ev,fn); };
   bind("insrep-addBtn","click",function(){ if(insType==="processin") return; insState[insType].rows.push(insBlankRow()); insRender(); insSaveLocal(); });
@@ -12332,8 +12351,8 @@ function insInit(){
   bind("insrep-clearBtn","click",function(){ if(insType==="processin"){ if(confirm("공정입고 비고를 모두 지울까요?")){ insProcInMemo={}; insSaveLocal(); insRender(); } return; } if(confirm("현재 일보의 입력 행을 모두 지울까요?")){ insState[insType].rows=[]; insRender(); insSaveLocal(); } });
   bind("insrep-cloudSaveBtn","click",insCloudSave);
   bind("insrep-cloudLoadBtn","click",insCloudLoad);
-  bind("insrep-inspector","input",insSaveLocal);
-  bind("insrep-date","change",insSaveLocal);
+  bind("insrep-inspector","input",function(){ if(insMetaByType[insType]) insMetaByType[insType].inspector=this.value; insSaveLocal(); });
+  bind("insrep-date","change",function(){ if(insMetaByType[insType]) insMetaByType[insType].date=this.value; insSaveLocal(); });
   // PC 스캐너(키보드형) 입력: 찍으면 값+Enter → 행 추가, 연속 가능
   var scanInp=document.getElementById("insrep-scanInput");
   if(scanInp){
@@ -12350,11 +12369,12 @@ function insInit(){
   }
   // 유형 탭
   document.querySelectorAll(".insrep-type").forEach(function(b){
-    b.addEventListener("click",function(){ insType=b.getAttribute("data-type"); insRender(); insSaveLocal(); });
+    b.addEventListener("click",function(){ insType=b.getAttribute("data-type"); insSyncMetaInputs(); insRender(); insSaveLocal(); });
   });
   // 기기 내 저장본 복구 (없을 때만 빈 행 시드)
   insRestoreLocal();
   if(insType!=="processin" && !insState[insType].rows.length){ for(var i=0;i<3;i++) insState[insType].rows.push(insBlankRow()); }
+  insSyncMetaInputs();
   insRender();
 }
 function insRender(){
@@ -12576,17 +12596,20 @@ function insExport(){
 // 완료수량 계산에 쓰는 컬럼을 유형별로 명시 → 신규 컬럼(예: 기능검사수)이 늘어도 수량이 틀어지지 않음.
 var INS_DONE_SPEC = {
   incoming: { good:"goodCnt", date:"actDate", defects:["d_scr","d_dnt","d_stn","d_etc","p_fst","p_mis"] },
-  measureS: { good:"goodCnt", date:"actDate", defects:["d_gen","d_tol","d_mis"] },   // 치수 기준
-  measureL: { good:"goodCnt", date:"actDate", defects:["d_gen","d_tol","d_mis"] }    // 치수 기준
+  measureS: { good:"goodCnt", date:"actDate", defects:["d_gen","d_tol","d_mis"], minus:["fnBad"] },   // 치수완료 - 기능부적합
+  measureL: { good:"goodCnt", date:"actDate", defects:["d_gen","d_tol","d_mis"], minus:["fnBad"] }    // 치수완료 - 기능부적합
 };
 function insRowDone_(row, cfgKey){
   if(!row) return 0;
   var spec = INS_DONE_SPEC[cfgKey]; if(!spec) return 0;
   var good = Number(row[spec.good]||0)||0;
   var hasDate = String(row[spec.date]||"").trim()!=="";
-  var defects = 0;
-  if(hasDate){ spec.defects.forEach(function(k){ defects += (Number(row[k]||0)||0); }); }
-  return good + defects;
+  var add = 0;
+  if(hasDate && spec.defects){ spec.defects.forEach(function(k){ add += (Number(row[k]||0)||0); }); }
+  var minus = 0;
+  if(spec.minus){ spec.minus.forEach(function(k){ minus += (Number(row[k]||0)||0); }); }  // 기능부적합은 바로 입고 불가 → 제외
+  var v = good + add - minus;
+  return v>0 ? v : 0;
 }
 function insSumByDraw_(rows, cfgKey, map){
   (rows||[]).forEach(function(r){
@@ -12613,14 +12636,14 @@ function insRenderProcessIn(el){
   var rows=insProcInCompute_();
   var srcNote=insProcInSource?"공유 최신본 기준":"이 기기 작성분 기준 (☁불러오기로 전 공정 최신본 집계)";
   var h=''
-   +'<div style="margin-bottom:8px;font-size:12px;color:#5A6478;">완료수량 = 양품수 + (조치완료일 작성 시 부적합수). '
-   +'측정실입고=수입검사 완료 · 크린룸입고=측정실 소/대 완료(치수 기준). <b>'+insEsc(srcNote)+'</b></div>'
+   +'<div style="margin-bottom:8px;font-size:12px;color:#26324A;">완료수량 = 양품수 + (조치완료일 작성 시 부적합수). '
+   +'측정실입고=수입검사 완료 · 크린룸입고=측정실 소/대 완료(치수완료 - 기능부적합). <b>'+insEsc(srcNote)+'</b></div>'
    +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:640px;font-size:13px;"><thead><tr>'
-   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;padding:7px;white-space:nowrap;">품번(도번)</th>'
-   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;padding:7px;white-space:nowrap;">측정실입고 수량</th>'
-   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;padding:7px;white-space:nowrap;">비고</th>'
-   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;padding:7px;white-space:nowrap;">크린룸입고 수량</th>'
-   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;padding:7px;white-space:nowrap;">비고</th>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">품번(도번)</th>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">측정실입고 수량</th>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">비고</th>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">크린룸입고 수량</th>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">비고</th>'
    +'</tr></thead><tbody>';
   if(!rows.length){
     h+='<tr><td colspan="5" style="border:1px solid #C9D3E0;padding:16px;text-align:center;color:#8A93A6;">집계할 완료 데이터가 없습니다. 상단 ☁불러오기로 최신 검사 일보를 받아오세요.</td></tr>';
@@ -12688,7 +12711,7 @@ function insExportProcessIn(){
 /* ===== 검사 일보 자동저장 (기기 내 localStorage) + 공유 저장 (구글시트) ===== */
 var INSREP_LS_KEY = "ntl_insrep_v1";
 function insSnapshot(){
-  return { insType:insType, insState:insState, procMemo:insProcInMemo,
+  return { insType:insType, insState:insState, procMemo:insProcInMemo, metaByType:insMetaByType,
     inspector:(document.getElementById("insrep-inspector")||{}).value||"",
     date:(document.getElementById("insrep-date")||{}).value||"",
     savedAt:new Date().toISOString() };
@@ -12700,6 +12723,8 @@ function insApplySnapshot(snap){
     if(snap.insState.measure && Array.isArray(snap.insState.measure.rows) && snap.insState.measure.rows.length && !(insState.measureS.rows && insState.measureS.rows.length)){ insState.measureS = snap.insState.measure; }
   }
   if(snap.procMemo && typeof snap.procMemo==="object") insProcInMemo=snap.procMemo;
+  if(snap.metaByType && typeof snap.metaByType==="object"){ ["incoming","shipping","measureS","measureL"].forEach(function(k){ if(snap.metaByType[k]) insMetaByType[k]=snap.metaByType[k]; }); }
+  else if(snap.insType && insMetaByType[snap.insType]){ insMetaByType[snap.insType]={inspector:snap.inspector||"",date:snap.date||""}; }
   if(snap.insType==="measure") insType="measureS";
   else if(snap.insType==="processin") insType="processin";
   else if(snap.insType && INS_CFG[snap.insType]) insType=snap.insType;
@@ -12745,8 +12770,8 @@ function insCloudLoad(){
          var when=data.savedAt?new Date(data.savedAt).toLocaleString("ko-KR"):"-";
          if(!confirm("["+label+"] 공유 저장본을 불러오면 현재 ["+label+"] 작성분을 덮어씁니다. 진행할까요?\n(저장 시각: "+when+")")){ insSetStatus(""); return; }
          insState[t]={rows:data.rows};
-         var ip=document.getElementById("insrep-inspector"); if(ip&&data.inspector!=null) ip.value=data.inspector;
-         var dt=document.getElementById("insrep-date"); if(dt&&data.date!=null) dt.value=data.date;
+         if(insMetaByType[t]) insMetaByType[t]={inspector:data.inspector||"",date:data.date||""};
+         insSyncMetaInputs();
          insRender(); insSaveLocal(); insSetStatus("☁ ["+label+"] 불러옴");
          return;
        }
