@@ -12315,7 +12315,14 @@ var insState = { incoming:{rows:[]}, shipping:{rows:[]}, measureS:{rows:[]}, mea
 
 function insCfg(){ return INS_CFG[insType]; }
 function insLeaves(cfg){ cfg=cfg||insCfg(); var out=[]; cfg.groups.forEach(function(g){ if(g.subs){ g.subs.forEach(function(s){ out.push(s); }); } else { out.push(g.leaf); } }); return out; }
-function insEsc(t){ return docmasterEsc(t); }
+
+// 📌 안전한 이스케이프 함수 (docmasterEsc 미정의 시 자체 방어 처리)
+function insEsc(t){
+  if (typeof docmasterEsc === "function") return docmasterEsc(t);
+  if (t == null) return "";
+  return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); return r; }
 
 function insInit(){
@@ -12328,6 +12335,7 @@ function insInit(){
   bind("insrep-cloudLoadBtn","click",insCloudLoad);
   bind("insrep-inspector","input",insSaveLocal);
   bind("insrep-date","change",insSaveLocal);
+  
   // PC 스캐너(키보드형) 입력: 찍으면 값+Enter → 행 추가, 연속 가능
   var scanInp=document.getElementById("insrep-scanInput");
   if(scanInp){
@@ -12351,6 +12359,7 @@ function insInit(){
   if(!insState[insType].rows.length){ for(var i=0;i<3;i++) insState[insType].rows.push(insBlankRow()); }
   insRender();
 }
+
 function insRender(){
   var el=document.getElementById("insrep-content"); if(!el) return;
   var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
@@ -12398,7 +12407,6 @@ function insRender(){
         cell=c.opts.map(function(o){ var on=sel.indexOf(o)>=0; return '<label style="margin-right:8px;white-space:nowrap;font-size:12px;color:#1C2320;cursor:pointer;"><input type="checkbox" data-ri="'+ri+'" data-key="'+c.key+'" data-opt="'+o+'" '+(on?"checked":"")+'> '+o+'</label>'; }).join("");
       } else {
         var typ=c.kind==="num"?"number":(c.kind==="date"?"date":"text");
-        // 양품수(goodCnt) 항목은 직접 수정 불가(readonly) 처리 및 배경색 구분
         var isGood = (c.key === "goodCnt");
         var extraAttr = isGood ? ' readonly tabindex="-1" ' : '';
         var bgStyle = isGood ? 'background:#F0F4F8;color:#1C2320;font-weight:bold;' : 'background:transparent;color:#1C2320;';
@@ -12467,9 +12475,9 @@ function insRender(){
       insSaveLocal();
     });
   });
-    el.querySelectorAll(".insrep-del").forEach(function(b){ b.addEventListener("click",function(){ insState[insType].rows.splice(+b.getAttribute("data-ri"),1); insRender(); insSaveLocal(); }); });
+  el.querySelectorAll(".insrep-del").forEach(function(b){ b.addEventListener("click",function(){ insState[insType].rows.splice(+b.getAttribute("data-ri"),1); insRender(); insSaveLocal(); }); });
 }
-// 도번으로 생산공정현황에서 품명/수량 참고 (검사수 비었으면 수량 채움)
+
 function insAutoFill(ri){
   var r=insState[insType].rows[ri]; if(!r) return;
   var draw=String(r.draw||"").trim(); if(!draw || typeof processData==="undefined" || !processData.length) return;
@@ -12481,14 +12489,14 @@ function insAutoFill(ri){
     insRender();
   }
 }
-// 스캔 → 생산지시번호→도번 → 행 추가(도번+수량)
+
 function insScanAdd(){
   if(typeof scanOpen!=="function"){ alert("스캔 기능을 사용할 수 없습니다."); return; }
   window.__insScanTarget=true; window.__scanContinuous=true;
   if(typeof scanEnsureProcessData==="function"){ scanEnsureProcessData().then(function(){ scanOpen(); }); }
   else { scanOpen(); }
 }
-// scanHandle에서 검사일보 화면이면 이 함수로 넘겨받음
+
 function insScanReceive(code){
   var res=(typeof scanResolveDrawing==="function")?scanResolveDrawing(code):null;
   var draw=(res&&res.drawing)?res.drawing:code;
@@ -12502,7 +12510,6 @@ function insScanReceive(code){
   showScanToast("✅ 인식 완료: " + draw);
 }
 
-// 📌 인식 완료 안내 팝업 생성 함수
 function showScanToast(msg){
   var toast = document.createElement("div");
   toast.textContent = msg;
@@ -12514,7 +12521,7 @@ function showScanToast(msg){
     setTimeout(function(){ if(toast.parentNode) toast.parentNode.removeChild(toast); }, 400);
   }, 1500);
 }
-// 엑셀 내보내기 (xlsx-js-style: 병합·테두리·체크박스)
+
 function insExport(){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
   var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
@@ -12522,20 +12529,19 @@ function insExport(){
   var dateV=(document.getElementById("insrep-date")||{}).value||"";
   var nCols=leaves.length;
   var aoa=[];
-  // 0: 제목
+  
   aoa.push([cfg.title].concat(Array(nCols-1).fill("")));
-  // 1: 검사자/검사일자 (오른쪽)
   var info=Array(nCols).fill("");
   info[Math.max(0,nCols-3)]="검사자: "+insp; info[Math.max(0,nCols-1)]="검사일자: "+dateV;
   aoa.push(info);
-  // 2-3: 헤더 (부모/자식)
+  
   var h1=[], h2=[];
   cfg.groups.forEach(function(g){
     if(g.subs){ h1.push(g.label); for(var i=1;i<g.subs.length;i++) h1.push(""); g.subs.forEach(function(s){ h2.push(s.label); }); }
     else { h1.push(g.label + (g.leaf.chk?(" ("+g.leaf.chk+")"):"")); h2.push(""); }
   });
   aoa.push(h1); aoa.push(h2);
-  // 4~: 데이터
+  
   rows.forEach(function(row,ri){
     var line=leaves.map(function(c){
       if(c.kind==="no") return ri+1;
@@ -12549,9 +12555,9 @@ function insExport(){
     aoa.push(line);
   });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
-  // 병합
+  
   var merges=[];
-  merges.push({s:{r:0,c:0},e:{r:0,c:nCols-1}}); // 제목
+  merges.push({s:{r:0,c:0},e:{r:0,c:nCols-1}});
   var col=0;
   cfg.groups.forEach(function(g){
     if(g.subs){ merges.push({s:{r:2,c:col},e:{r:2,c:col+g.subs.length-1}}); col+=g.subs.length; }
@@ -12559,7 +12565,7 @@ function insExport(){
   });
   ws["!merges"]=merges;
   ws["!cols"]=leaves.map(function(c){ return {wch:c.w||8}; });
-  // 스타일
+  
   var thin={style:"thin",color:{rgb:"FFB9C2D6"}};
   var border={top:thin,bottom:thin,left:thin,right:thin};
   var range=XLSX.utils.decode_range(ws["!ref"]);
@@ -12590,7 +12596,6 @@ function insSnapshot(){
 function insApplySnapshot(snap){
   if(!snap) return;
   if(snap.insState){ ["incoming","shipping","measureS","measureL"].forEach(function(k){ if(snap.insState[k] && Array.isArray(snap.insState[k].rows)) insState[k]=snap.insState[k]; });
-    // 구버전 호환: 예전 '측정실(단일)' 저장본을 소형으로 이관 (작업 중 데이터 유실 방지)
     if(snap.insState.measure && Array.isArray(snap.insState.measure.rows) && snap.insState.measure.rows.length && !(insState.measureS.rows && insState.measureS.rows.length)){ insState.measureS = snap.insState.measure; }
   }
   if(snap.insType==="measure") insType="measureS";
@@ -12606,7 +12611,7 @@ function insRestoreLocal(){
 }
 function insSetStatus(msg){ var e=document.getElementById("insrep-status"); if(e) e.textContent=msg||""; }
 function insTypeLabel(t){ t=t||insType; return ({incoming:"수입검사",shipping:"출하검사",measureS:"측정실 소형",measureL:"측정실 대형"})[t]||t; }
-/* 공유저장: 현재 유형(페이지)만 저장 — 백엔드가 유형별 행에 따로 저장하므로 다른 유형은 절대 건드리지 않음 */
+
 function insCloudSave(){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
   var t=insType, label=insTypeLabel(t);
@@ -12622,7 +12627,7 @@ function insCloudSave(){
    .then(function(){ insSetStatus("☁ ["+label+"] 공유 저장됨 "+new Date().toLocaleTimeString("ko-KR")); })
    .catch(function(){ insSetStatus("["+label+"] 공유 저장 실패 — 네트워크 확인"); });
 }
-/* 불러오기: 현재 유형(페이지)만 불러옴 — 다른 유형 작업분은 건드리지 않음 */
+
 function insCloudLoad(){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
   var t=insType, label=insTypeLabel(t);
@@ -12644,11 +12649,13 @@ function insCloudLoad(){
      insSetStatus("["+label+"] 공유 저장본이 없습니다.");
    }).catch(function(){ insSetStatus("["+label+"] 불러오기 실패 — 네트워크 확인"); });
 }
+
 // ── 고객부적합 관리대장(ncData) → 품질분석 데이터로 통합 ──
-// 품질분석(고객부적합/시정조치/재발관리)이 옛 엑셀 시트 대신 이 데이터를 쓰게 한다.
 function ncToQualityRows(){
   if(typeof ncData==="undefined") return [];
-  return ncData.filter(function(r){ return !trashIsDeleted(r); }).map(function(r){
+  // 📌 trashIsDeleted 미정의 방어 처리
+  var safeDeleted = function(r){ return typeof trashIsDeleted === "function" ? trashIsDeleted(r) : false; };
+  return ncData.filter(function(r){ return !safeDeleted(r); }).map(function(r){
     var d=(typeof parseQualityDate==="function") ? parseQualityDate(r.date) : null;
     return {
       date: d,
@@ -12666,17 +12673,19 @@ function ncToQualityRows(){
       validation: String(r.validation||"").trim(),
       isDev: String(r.finder||"").indexOf("개발")>=0
     };
-  }).filter(function(r){ return r.date && r.qty>0; });   // 수량>0 실제 부적합만 품질분석 집계 (요청 등 수량 없는 건 제외)
+  }).filter(function(r){ return r.date && r.qty>0; });
 }
+
 function syncNcToQuality(){
   if(typeof qualityRawData==="undefined" || typeof CUSTOMER_NC_KEY==="undefined") return;
   if(typeof ncData==="undefined" || !window.__ncInited) return;
-  if(!ncData.some(function(r){ return !trashIsDeleted(r); })) return;   // 로딩 중(빈 상태)엔 덮어쓰지 않음
+  // 📌 trashIsDeleted 미정의 방어 처리
+  var safeDeleted = function(r){ return typeof trashIsDeleted === "function" ? trashIsDeleted(r) : false; };
+  if(!ncData.some(function(r){ return !safeDeleted(r); })) return;
   qualityRawData[CUSTOMER_NC_KEY]=ncToQualityRows();
   var qv=document.getElementById("view-quality");
   if(qv && qv.classList.contains("active") && typeof renderQualityAll==="function"){ try{ renderQualityAll(); }catch(e){} }
 }
-
 /* ==================== 📅 일정 달력 (기존 공유 달력 API 연동) ==================== */
 var SCHED_API = "https://script.google.com/macros/s/AKfycbwQfFAsBjvAr_xBQSvc5AwdqiwDK0sA3DmQy4zKfwTCE7VQQENWAkvIucGF9xvvikswxw/exec";
 var schedEvents = [];      // 공유 달력 이벤트 [{id,date,text,fileUrl}]
