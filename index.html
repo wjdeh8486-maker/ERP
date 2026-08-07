@@ -12261,7 +12261,7 @@ function ncPrint(){
 var INS_MEASURE_GROUPS = [
       {label:"No.",   leaf:{key:"no",   kind:"no",   w:5}},
       {label:"도 번", leaf:{key:"draw", kind:"draw", w:16}},
-      {label:"S/N",   leaf:{key:"sn",   kind:"text", w:12}},
+      {label:"S/N",   leaf:{key:"sn",   kind:"text", w:55}},
       {label:"자동/수동", leaf:{key:"mode", kind:"seg", opts:["자동","수동"], w:12}},
       {label:"치수검사수", leaf:{key:"insCnt", kind:"num", w:8}},
       {label:"치수양품수", leaf:{key:"goodCnt",kind:"num", w:8}},
@@ -12284,7 +12284,7 @@ var INS_CFG = {
     groups:[
       {label:"No.",   leaf:{key:"no",     kind:"no",   w:5}},
       {label:"도 번", leaf:{key:"draw",   kind:"draw", w:16}},
-      {label:"S/N",   leaf:{key:"sn",     kind:"text", w:12}},
+      {label:"S/N",   leaf:{key:"sn",     kind:"text", w:55}},
       {label:"거래처",leaf:{key:"vendor", kind:"text", w:10}},
       {label:"검사수",leaf:{key:"insCnt", kind:"num",  w:7}},
       {label:"양품수",leaf:{key:"goodCnt",kind:"num",  w:7}},
@@ -12304,7 +12304,7 @@ var INS_CFG = {
     groups:[
       {label:"No.",   leaf:{key:"no",   kind:"no",   w:5}},
       {label:"도 번", leaf:{key:"draw", kind:"draw", w:16}},
-      {label:"S/N",   leaf:{key:"sn",   kind:"text", w:12}},
+      {label:"S/N",   leaf:{key:"sn",   kind:"text", w:55}},
       {label:"구 분", leaf:{key:"seg",  kind:"checks",  opts:["재고","분출","검수"], w:22}},
       {label:"검사수",leaf:{key:"insCnt", kind:"num", w:7}},
       {label:"양품수",leaf:{key:"goodCnt",kind:"num", w:7}},
@@ -12707,6 +12707,110 @@ function insExportProcessIn(){
   var stamp=""+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"_"+pad(d.getHours())+pad(d.getMinutes());
   XLSX.writeFile(wb,"공정입고_"+stamp+".xlsx");
 }
+/* ==================== 🔔 부적합 실시간 알림 (전체 브로드캐스트) ==================== */
+// 검사 일보 ☁공유저장 시, 부적합이 있는 행을 알림으로 백엔드에 올리고
+// 시스템을 열고 있는 모든 사람이 20초 폴링으로 팝업을 받는다. (공정/도번/부적합수량/유형)
+var NCALERT_LS_TS = "ntl_ncalert_ts_v1";
+var __ncAlertSeen = {};
+var __ncAlertStarted = false;
+
+// 유형별 부적합 라벨 맵 (예: d_gen->일반치수, fnBad->기능부적합)
+function insDefectLabelMap(cfgKey){
+  var cfg = INS_CFG[cfgKey]; if(!cfg) return {};
+  var map={};
+  cfg.groups.forEach(function(g){
+    if(g.subs){ g.subs.forEach(function(s){ map[s.key]=s.label; }); }
+    else if(g.leaf){ map[g.leaf.key]=g.label; }
+  });
+  return map;
+}
+function insIsDefectKey_(k){ return k.indexOf("d_")===0 || k.indexOf("p_")===0 || k==="fnBad"; }
+
+// 한 행의 부적합 요약 {qty, types} 또는 null
+function insRowDefect_(cfgKey, row){
+  var map=insDefectLabelMap(cfgKey), qty=0, parts=[];
+  Object.keys(row||{}).forEach(function(k){
+    if(!insIsDefectKey_(k)) return;
+    var n=Number(row[k]||0)||0;
+    if(n>0){ qty+=n; parts.push((map[k]||k)+" "+n); }
+  });
+  return qty>0 ? { qty:qty, types:parts.join(", ") } : null;
+}
+
+// 현재 유형(t)의 부적합 행들을 알림으로 전송
+function ncAlertBroadcastType(t){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return;
+  if(t==="processin") return;
+  var rows=(insState[t]&&insState[t].rows)||[];
+  var by=(insMetaByType[t]&&insMetaByType[t].inspector)||"";
+  var proc=insTypeLabel(t);
+  var alerts=[];
+  rows.forEach(function(r){
+    var d=insRowDefect_(t, r); if(!d) return;
+    var draw=String((r&&r.draw)||"").trim(); if(!draw) return;
+    alerts.push({ proc:proc, draw:draw, qty:d.qty, types:d.types, by:by });
+  });
+  if(!alerts.length) return;
+  fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify({mode:"writeNcAlert", alerts:alerts})}).catch(function(){});
+}
+
+// 폴링: 새 부적합 알림을 받아 팝업
+function ncAlertPoll(){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return;
+  fetch(url+"?mode=ncAlerts",{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){
+    if(!res||!res.success||!Array.isArray(res.alerts)) return;
+    var lastTs=0; try{ lastTs=Number(localStorage.getItem(NCALERT_LS_TS)||0)||0; }catch(e){}
+    var maxTs=lastTs;
+    res.alerts.slice().sort(function(a,b){return (a.ts||0)-(b.ts||0);}).forEach(function(a){
+      var ts=Number(a.ts||0)||0;
+      if(ts>lastTs && !__ncAlertSeen[a.id]){
+        __ncAlertSeen[a.id]=1; ncAlertShow(a);
+        if(ts>maxTs) maxTs=ts;
+      }
+    });
+    if(maxTs>lastTs){ try{ localStorage.setItem(NCALERT_LS_TS, String(maxTs)); }catch(e){} }
+  }).catch(function(){});
+}
+
+function ncAlertShow(a){
+  var wrap=document.getElementById("ncalert-wrap");
+  if(!wrap){
+    wrap=document.createElement("div"); wrap.id="ncalert-wrap";
+    wrap.style.cssText="position:fixed;right:16px;top:16px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:360px;";
+    document.body.appendChild(wrap);
+  }
+  var when=a.ts?new Date(Number(a.ts)).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}):"";
+  var card=document.createElement("div");
+  card.style.cssText="background:#fff;border:1px solid #E4B4B4;border-left:6px solid #C0392B;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.18);padding:12px 14px;font-size:13px;color:#26324A;";
+  card.innerHTML=
+     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
+    +  '<b style="color:#C0392B;font-size:14px;">\uD83D\uDD14 부적합 발생</b>'
+    +  '<span style="color:#8A93A6;font-size:11px;">'+insEsc(when)+'</span>'
+    +'</div>'
+    +'<div style="line-height:1.7;">'
+    +  '<div><b>공정</b> : '+insEsc(a.proc||"-")+'</div>'
+    +  '<div><b>도번</b> : '+insEsc(a.draw||"-")+'</div>'
+    +  '<div><b>부적합 수량</b> : <b style="color:#C0392B;">'+insEsc(String(a.qty||0))+'</b></div>'
+    +  '<div><b>유형</b> : '+insEsc(a.types||"-")+'</div>'
+    +  (a.by?('<div style="color:#5A6478;">검사자 : '+insEsc(a.by)+'</div>'):'')
+    +'</div>'
+    +'<div style="text-align:right;margin-top:6px;"><button type="button" style="border:none;background:#F0F4F8;color:#26324A;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">닫기</button></div>';
+  var kill=function(){ if(card.parentNode) card.parentNode.removeChild(card); };
+  card.querySelector("button").addEventListener("click", kill);
+  wrap.appendChild(card);
+  try{ if(typeof scanBeep==="function") scanBeep(); }catch(e){}
+  setTimeout(kill, 20000);
+}
+
+function ncAlertInit(){
+  if(__ncAlertStarted) return; __ncAlertStarted=true;
+  try{ if(!localStorage.getItem(NCALERT_LS_TS)) localStorage.setItem(NCALERT_LS_TS, String(Date.now())); }catch(e){}
+  ncAlertPoll();
+  setInterval(ncAlertPoll, 20000);
+}
+if(document.readyState==="loading"){ document.addEventListener("DOMContentLoaded", function(){ setTimeout(ncAlertInit, 1500); }); }
+else { setTimeout(ncAlertInit, 1500); }
 
 /* ===== 검사 일보 자동저장 (기기 내 localStorage) + 공유 저장 (구글시트) ===== */
 var INSREP_LS_KEY = "ntl_insrep_v1";
@@ -12745,6 +12849,7 @@ function insCloudSave(){
   var t=insType, label=insTypeLabel(t);
   if(t==="processin"){ insProcInCloudSave(); return; }
   insSaveLocal(); insSetStatus("☁ ["+label+"] 저장 중…");
+  ncAlertBroadcastType(t);   // 부적합 있으면 전체 알림 전송
   var payload={
     rows:(insState[t]&&insState[t].rows)?insState[t].rows:[],
     inspector:(document.getElementById("insrep-inspector")||{}).value||"",
