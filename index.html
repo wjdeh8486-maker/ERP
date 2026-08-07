@@ -1733,6 +1733,7 @@
         <button type="button" class="insrep-type" data-type="shipping" style="padding:7px 12px;border:1px solid #C9D3E0;border-radius:8px;cursor:pointer;font-weight:700;">출하검사</button>
         <button type="button" class="insrep-type" data-type="measureS" style="padding:7px 12px;border:1px solid #C9D3E0;border-radius:8px;cursor:pointer;font-weight:700;">측정실(치수·기능) 소형</button>
         <button type="button" class="insrep-type" data-type="measureL" style="padding:7px 12px;border:1px solid #C9D3E0;border-radius:8px;cursor:pointer;font-weight:700;">측정실(치수·기능) 대형</button>
+        <button type="button" class="insrep-type" data-type="processin" style="padding:7px 12px;border:1px solid #C9D3E0;border-radius:8px;cursor:pointer;font-weight:700;">공정입고</button>
         <span aria-hidden="true" style="width:1px;height:22px;background:#D8DEE8;margin:0 2px;flex:0 0 auto;"></span>
         <button type="button" id="insrep-clearBtn" style="background:#fff;color:#C0392B;border:1px solid #E4B4B4;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;">비우기</button>
       </div>
@@ -12245,28 +12246,30 @@ function ncPrint(){
 // 유형별 컬럼 구성. group.subs 있으면 2행 헤더(부모+자식), 없으면 leaf 하나.
 // kind: no(자동번호) · draw(도번,자동채움) · text · num · date · check(체크박스) · seg(선택 체크)
 var INS_MEASURE_GROUPS = [
-  {label:"No.",    leaf:{key:"no",   kind:"no",   w:5}},
-  {label:"도 번", leaf:{key:"draw", kind:"draw", w:16}},
-  {label:"S/N",   leaf:{key:"sn",   kind:"text", w:12}},
-  {label:"자동/수동", leaf:{key:"mode", kind:"seg", opts:["자동","수동"], w:12}},
-  {label:"치수검사수", leaf:{key:"insCnt", kind:"num", w:8}},
-  {label:"치수양품수", leaf:{key:"goodCnt",kind:"num", w:8}},
-  {label:"부적합", subs:[
-    {key:"d_gen",label:"일반치수",kind:"num",w:7},{key:"d_tol",label:"공차치수",kind:"num",w:7},
-    {key:"d_mis",label:"누락",kind:"num",w:5}]},
-  {label:"치수 조치내용",   leaf:{key:"act", kind:"text", w:16}},
-  {label:"치수 조치완료일", leaf:{key:"actDate", kind:"date", w:12}},
-  {label:"LEAK", leaf:{key:"leak", kind:"check", w:8}},
-  {label:"FLOW", leaf:{key:"flow", kind:"check", w:8}},
-  {label:"진공", leaf:{key:"vac", kind:"check", w:8}},
-  {label:"가압/수압", leaf:{key:"press", kind:"seg", opts:["가압","수압"], w:14}}
+      {label:"No.",   leaf:{key:"no",   kind:"no",   w:5}},
+      {label:"도 번", leaf:{key:"draw", kind:"draw", w:16}},
+      {label:"S/N",   leaf:{key:"sn",   kind:"text", w:12}},
+      {label:"자동/수동", leaf:{key:"mode", kind:"seg", opts:["자동","수동"], w:12}},
+      {label:"치수검사수", leaf:{key:"insCnt", kind:"num", w:8}},
+      {label:"치수양품수", leaf:{key:"goodCnt",kind:"num", w:8}},
+      {label:"부적합", subs:[
+        {key:"d_gen",label:"일반치수",kind:"num",w:7},{key:"d_tol",label:"공차치수",kind:"num",w:7},
+        {key:"d_mis",label:"누락",kind:"num",w:5}]},
+      {label:"치수 조치내용",   leaf:{key:"act", kind:"text", w:16}},
+      {label:"치수 조치완료일", leaf:{key:"actDate", kind:"date", w:12}},
+      {label:"LEAK", leaf:{key:"leak", kind:"check", w:8}},
+      {label:"FLOW", leaf:{key:"flow", kind:"check", w:8}},
+      {label:"진공", leaf:{key:"vac", kind:"check", w:8}},
+      {label:"가압/수압", leaf:{key:"press", kind:"seg", opts:["가압","수압"], w:14}},
+      {label:"기능검사수", leaf:{key:"fnCnt",  kind:"num", w:8}},
+      {label:"기능양품수", leaf:{key:"fnGood", kind:"num", w:8}},
+      {label:"기능부적합", leaf:{key:"fnBad",  kind:"num", w:8}}
 ];
-
 var INS_CFG = {
   incoming: {
     title:"수입 검사 일보", sheet:"수입검사일보", file:"수입검사일보",
     groups:[
-      {label:"No.",    leaf:{key:"no",     kind:"no",   w:5}},
+      {label:"No.",   leaf:{key:"no",     kind:"no",   w:5}},
       {label:"도 번", leaf:{key:"draw",   kind:"draw", w:16}},
       {label:"S/N",   leaf:{key:"sn",     kind:"text", w:12}},
       {label:"거래처",leaf:{key:"vendor", kind:"text", w:10}},
@@ -12286,10 +12289,10 @@ var INS_CFG = {
   shipping: {
     title:"출하 검사 일보", sheet:"출하검사일보", file:"출하검사일보",
     groups:[
-      {label:"No.",    leaf:{key:"no",   kind:"no",   w:5}},
+      {label:"No.",   leaf:{key:"no",   kind:"no",   w:5}},
       {label:"도 번", leaf:{key:"draw", kind:"draw", w:16}},
       {label:"S/N",   leaf:{key:"sn",   kind:"text", w:12}},
-      {label:"구 분", leaf:{key:"seg",  kind:"checks", opts:["재고","분출","검수"], w:22}},
+      {label:"구 분", leaf:{key:"seg",  kind:"checks",  opts:["재고","분출","검수"], w:22}},
       {label:"검사수",leaf:{key:"insCnt", kind:"num", w:7}},
       {label:"양품수",leaf:{key:"goodCnt",kind:"num", w:7}},
       {label:"공정검사", leaf:{key:"pin", kind:"check", chk:"PIN", w:8}},
@@ -12311,102 +12314,74 @@ var INS_CFG = {
     groups: INS_MEASURE_GROUPS
   }
 };
-
 var insType = "incoming";
 var insState = { incoming:{rows:[]}, shipping:{rows:[]}, measureS:{rows:[]}, measureL:{rows:[]} };
+var insProcInSource = null;   // 공정입고 집계용 공유 버퍼(null이면 로컬 insState 사용)
+var insProcInMemo   = {};     // 도번 -> { m:측정실비고, c:크린룸비고 }
 
-function insCfg(){ return INS_CFG[insType] || INS_CFG.incoming; }
-function insLeaves(cfg){
-  cfg = cfg || insCfg();
-  var out = [];
-  if(!cfg || !cfg.groups) return out;
-  cfg.groups.forEach(function(g){
-    if(g.subs){ g.subs.forEach(function(s){ out.push(s); }); }
-    else if(g.leaf) { out.push(g.leaf); }
-  });
-  return out;
-}
-
-// 📌 안전한 이스케이프 함수
-function insEsc(t){
-  if (typeof docmasterEsc === "function") return docmasterEsc(t);
-  if (t == null) return "";
-  return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function insBlankRow(){
-  var r = {};
-  insLeaves().forEach(function(c){ r[c.key] = (c.kind === "check") ? false : ""; });
-  return r;
-}
+function insCfg(){ return INS_CFG[insType]; }
+function insLeaves(cfg){ cfg=cfg||insCfg(); var out=[]; cfg.groups.forEach(function(g){ if(g.subs){ g.subs.forEach(function(s){ out.push(s); }); } else { out.push(g.leaf); } }); return out; }
+function insEsc(t){ return docmasterEsc(t); }
+function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); return r; }
 
 function insInit(){
-  var bind = function(id, ev, fn){ var e = document.getElementById(id); if(e) e.addEventListener(ev, fn); };
-  bind("insrep-addBtn", "click", function(){ if(!insState[insType]) insState[insType] = {rows:[]}; insState[insType].rows.push(insBlankRow()); insRender(); insSaveLocal(); });
-  bind("insrep-scanBtn", "click", function(){ insScanAdd(); });
-  bind("insrep-exportBtn", "click", insExport);
-  bind("insrep-clearBtn", "click", function(){ if(confirm("현재 일보의 입력 행을 모두 지울까요?")){ insState[insType].rows = []; insRender(); insSaveLocal(); } });
-  bind("insrep-cloudSaveBtn", "click", insCloudSave);
-  bind("insrep-cloudLoadBtn", "click", insCloudLoad);
-  bind("insrep-inspector", "input", insSaveLocal);
-  bind("insrep-date", "change", insSaveLocal);
-  
-  // PC 스캐너(키보드형) 입력
-  var scanInp = document.getElementById("insrep-scanInput");
+  var bind=function(id,ev,fn){ var e=document.getElementById(id); if(e) e.addEventListener(ev,fn); };
+  bind("insrep-addBtn","click",function(){ if(insType==="processin") return; insState[insType].rows.push(insBlankRow()); insRender(); insSaveLocal(); });
+  bind("insrep-scanBtn","click",function(){ insScanAdd(); });
+  bind("insrep-exportBtn","click",insExport);
+  bind("insrep-clearBtn","click",function(){ if(insType==="processin"){ if(confirm("공정입고 비고를 모두 지울까요?")){ insProcInMemo={}; insSaveLocal(); insRender(); } return; } if(confirm("현재 일보의 입력 행을 모두 지울까요?")){ insState[insType].rows=[]; insRender(); insSaveLocal(); } });
+  bind("insrep-cloudSaveBtn","click",insCloudSave);
+  bind("insrep-cloudLoadBtn","click",insCloudLoad);
+  bind("insrep-inspector","input",insSaveLocal);
+  bind("insrep-date","change",insSaveLocal);
+  // PC 스캐너(키보드형) 입력: 찍으면 값+Enter → 행 추가, 연속 가능
+  var scanInp=document.getElementById("insrep-scanInput");
   if(scanInp){
-    scanInp.addEventListener("keydown", function(e){
-      if(e.key === "Enter" || e.keyCode === 13){
+    scanInp.addEventListener("keydown",function(e){
+      if(e.key==="Enter" || e.keyCode===13){
         e.preventDefault();
-        var code = String(scanInp.value || "").trim();
-        scanInp.value = "";
+        var code=String(scanInp.value||"").trim();
+        scanInp.value="";
         if(!code) return;
-        var add = function(){ if(typeof insScanReceive === "function") insScanReceive(code); insSetStatus("✔ 스캐너 추가: " + code); scanInp.focus(); };
-        if(typeof scanEnsureProcessData === "function"){ scanEnsureProcessData().then(add); } else { add(); }
+        var add=function(){ if(typeof insScanReceive==="function") insScanReceive(code); insSetStatus("✔ 스캐너 추가: "+code); scanInp.focus(); };
+        if(typeof scanEnsureProcessData==="function"){ scanEnsureProcessData().then(add); } else { add(); }
       }
     });
   }
-  
   // 유형 탭
   document.querySelectorAll(".insrep-type").forEach(function(b){
-    b.addEventListener("click", function(){ insType = b.getAttribute("data-type"); insRender(); insSaveLocal(); });
+    b.addEventListener("click",function(){ insType=b.getAttribute("data-type"); insRender(); insSaveLocal(); });
   });
-  
-  // 기기 내 저장본 복구
+  // 기기 내 저장본 복구 (없을 때만 빈 행 시드)
   insRestoreLocal();
-  if(!insState[insType]) insState[insType] = {rows:[]};
-  if(!insState[insType].rows.length){ for(var i = 0; i < 3; i++) insState[insType].rows.push(insBlankRow()); }
+  if(insType!=="processin" && !insState[insType].rows.length){ for(var i=0;i<3;i++) insState[insType].rows.push(insBlankRow()); }
   insRender();
 }
-
 function insRender(){
-  var el = document.getElementById("insrep-content"); if(!el) return;
-  var cfg = insCfg(), leaves = insLeaves(cfg);
-  if(!insState[insType]) insState[insType] = {rows:[]};
-  var rows = insState[insType].rows;
-
-  // 유형 탭 활성표시
+  var el=document.getElementById("insrep-content"); if(!el) return;
+  // 유형 탭 활성표시 (공정입고 포함 전 탭)
   document.querySelectorAll(".insrep-type").forEach(function(b){
-    var on = b.getAttribute("data-type") === insType;
-    b.style.background = on ? "#0B5CAB" : "#fff";
-    b.style.color = on ? "#fff" : "#26324A";
+    var on=b.getAttribute("data-type")===insType;
+    b.style.background=on?"#0B5CAB":"#fff"; b.style.color=on?"#fff":"#26324A";
   });
-
-  // 2행 헤더
-  var head1 = "", head2 = "";
+  if(insType==="processin"){ insRenderProcessIn(el); return; }
+  var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
+    // 2행 헤더
+  var head1="", head2="";
   cfg.groups.forEach(function(g){
     if(g.subs){
-      head1 += '<th colspan="' + g.subs.length + '" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;">' + insEsc(g.label) + '</th>';
-      g.subs.forEach(function(s){ head2 += '<th style="border:1px solid #C9D3E0;background:#F5F8FC;color:#26324A;padding:4px;font-weight:600;white-space:nowrap;">' + insEsc(s.label) + '</th>'; });
+      head1+='<th colspan="'+g.subs.length+'" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;">'+insEsc(g.label)+'</th>';
+      g.subs.forEach(function(s){ head2+='<th style="border:1px solid #C9D3E0;background:#F5F8FC;color:#26324A;padding:4px;font-weight:600;white-space:nowrap;">'+insEsc(s.label)+'</th>'; });
     } else {
-      head1 += '<th rowspan="2" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;white-space:nowrap;">' + insEsc(g.label) + (g.leaf.chk ? ('<br><span style="font-size:10px;color:#5A6478;">' + g.leaf.chk + '</span>') : '') + '</th>';
+      head1+='<th rowspan="2" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;white-space:nowrap;">'+insEsc(g.label)+(g.leaf.chk?('<br><span style="font-size:10px;color:#5A6478;">'+g.leaf.chk+'</span>'):'')+'</th>';
     }
   });
-
-  // 데이터 입력 행
-  var body = "";
-  if(!rows.length){ body = '<tr><td colspan="' + (leaves.length + 1) + '" style="padding:20px;text-align:center;color:#8A93A6;">행이 없습니다. ➕ 행 추가 또는 📷 스캔으로 시작하세요.</td></tr>'; }
+    // 데이터 입력 행
+  var body="";
+  if(!rows.length){ body='<tr><td colspan="'+(leaves.length+1)+'" style="padding:20px;text-align:center;color:#8A93A6;">행이 없습니다. ➕ 행 추가 또는 📷 스캔으로 시작하세요.</td></tr>'; }
   
-  rows.forEach(function(row, ri){
+  rows.forEach(function(row,ri){
+    // [양품수 자동 계산] 렌더링 시점에 검사수 - 부적합수 자동 계산
     var totalQty = Number(row.insCnt) || 0;
     var defectQty = 0;
     leaves.forEach(function(lf) {
@@ -12415,39 +12390,38 @@ function insRender(){
       }
     });
     row.goodCnt = Math.max(0, totalQty - defectQty);
-    
-    var tds = "";
+    var tds="";
     leaves.forEach(function(c){
-      var v = row[c.key];
-      if(c.kind === "no"){ tds += '<td style="border:1px solid #E6EBF2;text-align:center;color:#5A6478;">' + (ri + 1) + '</td>'; return; }
-      var cell = "";
-      if(c.kind === "check"){
-        cell = '<input type="checkbox" data-ri="' + ri + '" data-key="' + c.key + '" ' + (v ? "checked" : "") + '>';
-      } else if(c.kind === "seg"){
-        cell = '<select data-ri="' + ri + '" data-key="' + c.key + '" style="width:100%;border:none;background:transparent;font-size:12px;color:#1C2320;"><option value=""></option>' +
-          c.opts.map(function(o){ return '<option' + (v === o ? " selected" : "") + '>' + o + '</option>'; }).join("") + '</select>';
-      } else if(c.kind === "checks"){
-        var sel = String(v || "").split(",");
-        cell = c.opts.map(function(o){ var on = sel.indexOf(o) >= 0; return '<label style="margin-right:8px;white-space:nowrap;font-size:12px;color:#1C2320;cursor:pointer;"><input type="checkbox" data-ri="' + ri + '" data-key="' + c.key + '" data-opt="' + o + '" ' + (on ? "checked" : "") + '> ' + o + '</label>'; }).join("");
+      var v=row[c.key];
+      if(c.kind==="no"){ tds+='<td style="border:1px solid #E6EBF2;text-align:center;color:#5A6478;">'+(ri+1)+'</td>'; return; }
+      var cell="";
+      if(c.kind==="check"){
+        cell='<input type="checkbox" data-ri="'+ri+'" data-key="'+c.key+'" '+(v?"checked":"")+'>';
+      } else if(c.kind==="seg"){
+        cell='<select data-ri="'+ri+'" data-key="'+c.key+'" style="width:100%;border:none;background:transparent;font-size:12px;color:#1C2320;"><option value=""></option>'+
+          c.opts.map(function(o){ return '<option'+(v===o?" selected":"")+'>'+o+'</option>'; }).join("")+'</select>';
+      } else if(c.kind==="checks"){
+        var sel=String(v||"").split(",");
+        cell=c.opts.map(function(o){ var on=sel.indexOf(o)>=0; return '<label style="margin-right:8px;white-space:nowrap;font-size:12px;color:#1C2320;cursor:pointer;"><input type="checkbox" data-ri="'+ri+'" data-key="'+c.key+'" data-opt="'+o+'" '+(on?"checked":"")+'> '+o+'</label>'; }).join("");
       } else {
-        var typ = c.kind === "num" ? "number" : (c.kind === "date" ? "date" : "text");
+        var typ=c.kind==="num"?"number":(c.kind==="date"?"date":"text");
+        // 양품수(goodCnt) 항목은 직접 수정 불가(readonly) 처리 및 배경색 구분
         var isGood = (c.key === "goodCnt");
         var extraAttr = isGood ? ' readonly tabindex="-1" ' : '';
         var bgStyle = isGood ? 'background:#F0F4F8;color:#1C2320;font-weight:bold;' : 'background:transparent;color:#1C2320;';
 
-        cell = '<input type="' + typ + '" data-ri="' + ri + '" data-key="' + c.key + '" value="' + insEsc(v) + '"' + extraAttr + ' style="width:100%;border:none;' + bgStyle + 'font-size:12px;' + (c.kind === "num" ? "text-align:center;" : "") + '"' + (c.kind === "draw" ? ' placeholder="도번"' : "") + '>';
+        cell='<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'"'+extraAttr+' style="width:100%;border:none;'+bgStyle+'font-size:12px;'+(c.kind==="num"?"text-align:center;":"")+'"'+(c.kind==="draw"?' placeholder="도번"':"")+'>';
       }
-      tds += '<td style="border:1px solid #E6EBF2;padding:2px 4px;min-width:' + (c.w * 6) + 'px;">' + cell + '</td>';
+      tds+='<td style="border:1px solid #E6EBF2;padding:2px 4px;min-width:'+(c.w*6)+'px;">'+cell+'</td>';
     });
-    tds += '<td style="border:1px solid #E6EBF2;text-align:center;"><button type="button" class="insrep-del" data-ri="' + ri + '" style="border:none;background:transparent;color:#C0392B;cursor:pointer;font-size:14px;">✕</button></td>';
-    body += '<tr>' + tds + '</tr>';
+    tds+='<td style="border:1px solid #E6EBF2;text-align:center;"><button type="button" class="insrep-del" data-ri="'+ri+'" style="border:none;background:transparent;color:#C0392B;cursor:pointer;font-size:14px;">✕</button></td>';
+    body+='<tr>'+tds+'</tr>';
   });  
-
-  el.innerHTML =
+  el.innerHTML=
     '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px;overflow-x:auto;">'
-    + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">' + insEsc(cfg.title) + '</div>'
+    + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">'+insEsc(cfg.title)+'</div>'
     + '<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">도번을 입력/스캔하면 자동으로 채워지고, 각 칸은 직접 수정할 수 있습니다. 체크박스는 엑셀에서 ■/□ 로 나옵니다.</div>'
-    + '<table style="border-collapse:collapse;font-size:12px;min-width:100%;"><thead><tr>' + head1 + '<th rowspan="2" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;">삭제</th></tr><tr>' + head2 + '</tr></thead><tbody>' + body + '</tbody></table>'
+    + '<table style="border-collapse:collapse;font-size:12px;min-width:100%;"><thead><tr>'+head1+'<th rowspan="2" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;">삭제</th></tr><tr>'+head2+'</tr></thead><tbody>'+body+'</tbody></table>'
     + '</div>'
     + '<div style="background:#F6FAFF;border:1px solid #D6E4F5;border-radius:12px;padding:14px 16px;margin-top:12px;font-size:12.5px;color:#33415C;line-height:1.75;">'
     +   '<div style="font-weight:800;color:#1F2A44;margin-bottom:6px;">📌 저장·사용 안내</div>'
@@ -12466,22 +12440,20 @@ function insRender(){
     
   // 이벤트 바인딩
   el.querySelectorAll("input,select").forEach(function(inp){
-    var ev = (inp.type === "checkbox" || inp.tagName === "SELECT") ? "change" : "input";
-    inp.addEventListener(ev, function(){
-      var ri = +inp.getAttribute("data-ri"), key = inp.getAttribute("data-key");
-      var r = insState[insType].rows[ri]; if(!r) return;
-      var opt = inp.getAttribute("data-opt");
-      
+    var ev=(inp.type==="checkbox"||inp.tagName==="SELECT")?"change":"input";
+    inp.addEventListener(ev,function(){
+      var ri=+inp.getAttribute("data-ri"), key=inp.getAttribute("data-key");
+      var r=insState[insType].rows[ri]; if(!r) return;
+      var opt=inp.getAttribute("data-opt");
       if(opt){
-        var cur = String(r[key] || "").split(",").filter(Boolean);
-        var idx = cur.indexOf(opt);
-        if(inp.checked){ if(idx < 0) cur.push(opt); } else { if(idx >= 0) cur.splice(idx, 1); }
-        r[key] = cur.join(",");
+        var cur=String(r[key]||"").split(",").filter(Boolean);
+        var idx=cur.indexOf(opt);
+        if(inp.checked){ if(idx<0) cur.push(opt); } else { if(idx>=0) cur.splice(idx,1); }
+        r[key]=cur.join(",");
       } else {
-        r[key] = (inp.type === "checkbox") ? inp.checked : inp.value;
+        r[key]=(inp.type==="checkbox")?inp.checked:inp.value;
       }
-      
-      // 실시간 양품수 업데이트
+      // [실시간 자동 계산] 수치 변경 시 양품수 필드 실시간 업데이트
       var changedLeaf = leaves.find(function(c) { return c.key === key; });
       if (changedLeaf && changedLeaf.kind === "num" && key !== "goodCnt") {
         var tot = Number(r.insCnt) || 0;
@@ -12492,249 +12464,329 @@ function insRender(){
           }
         });
         r.goodCnt = Math.max(0, tot - def);
-        var goodInput = el.querySelector('input[data-ri="' + ri + '"][data-key="goodCnt"]');
+        var goodInput = el.querySelector('input[data-ri="'+ri+'"][data-key="goodCnt"]');
         if (goodInput) goodInput.value = r.goodCnt;
       }
 
-      // 도번 입력 시 자동채움 (전체 재렌더링 없이 DOM 직접 반영)
-      var leaf = leaves.find(function(c){ return c.key === key; });
-      if(leaf && leaf.kind === "draw"){ insAutoFill(ri); }
+      // 도번 입력 시 자동채움
+      var leaf=leaves.find(function(c){ return c.key===key; });
+      if(leaf && leaf.kind==="draw"){ insAutoFill(ri); }
       insSaveLocal();
     });
   });
-
-  el.querySelectorAll(".insrep-del").forEach(function(b){
-    b.addEventListener("click", function(){
-      insState[insType].rows.splice(+b.getAttribute("data-ri"), 1);
-      insRender();
-      insSaveLocal();
-    });
-  });
+    el.querySelectorAll(".insrep-del").forEach(function(b){ b.addEventListener("click",function(){ insState[insType].rows.splice(+b.getAttribute("data-ri"),1); insRender(); insSaveLocal(); }); });
 }
-
+// 도번으로 생산공정현황에서 품명/수량 참고 (검사수 비었으면 수량 채움)
 function insAutoFill(ri){
-  var r = (insState[insType] && insState[insType].rows) ? insState[insType].rows[ri] : null;
-  if(!r) return;
-  var draw = String(r.draw || "").trim();
-  if(!draw || typeof processData === "undefined" || !Array.isArray(processData) || !processData.length) return;
-  
-  var norm = function(s){ return String(s == null ? "" : s).trim().toUpperCase(); };
-  var hit = null;
-  for(var i = 0; i < processData.length; i++){
-    if(norm(processData[i]["도면번호"]) === norm(draw)){ hit = processData[i]; break; }
-  }
-  
+  var r=insState[insType].rows[ri]; if(!r) return;
+  var draw=String(r.draw||"").trim(); if(!draw || typeof processData==="undefined" || !processData.length) return;
+  var norm=function(s){ return String(s==null?"":s).trim().toUpperCase(); };
+  var hit=null;
+  for(var i=0;i<processData.length;i++){ if(norm(processData[i]["도면번호"])===norm(draw)){ hit=processData[i]; break; } }
   if(hit){
-    if(("insCnt" in r) && !String(r.insCnt || "").trim()){
-      r.insCnt = hit["수량"] || "";
-      var insCntInput = document.querySelector('#insrep-content input[data-ri="' + ri + '"][data-key="insCnt"]');
-      if(insCntInput) insCntInput.value = r.insCnt;
-    }
+    if(("insCnt" in r) && !String(r.insCnt||"").trim()){ r.insCnt=hit["수량"]||""; }
+    insRender();
   }
 }
-
+// 스캔 → 생산지시번호→도번 → 행 추가(도번+수량)
 function insScanAdd(){
-  if(typeof scanOpen !== "function"){ alert("스캔 기능을 사용할 수 없습니다."); return; }
-  window.__insScanTarget = true; window.__scanContinuous = true;
-  if(typeof scanEnsureProcessData === "function"){ scanEnsureProcessData().then(function(){ scanOpen(); }); }
+  if(typeof scanOpen!=="function"){ alert("스캔 기능을 사용할 수 없습니다."); return; }
+  window.__insScanTarget=true; window.__scanContinuous=true;
+  if(typeof scanEnsureProcessData==="function"){ scanEnsureProcessData().then(function(){ scanOpen(); }); }
   else { scanOpen(); }
 }
-
+// scanHandle에서 검사일보 화면이면 이 함수로 넘겨받음
 function insScanReceive(code){
-  var res = (typeof scanResolveDrawing === "function") ? scanResolveDrawing(code) : null;
-  var draw = (res && res.drawing) ? res.drawing : code;
-  var row = insBlankRow(); row.draw = draw;
-  if(res && res.row && ("insCnt" in row)){ row.insCnt = res.row["수량"] || ""; }
-  if(!insState[insType]) insState[insType] = {rows:[]};
+  if(insType==="processin") return;
+  var res=(typeof scanResolveDrawing==="function")?scanResolveDrawing(code):null;
+  var draw=(res&&res.drawing)?res.drawing:code;
+  var row=insBlankRow(); row.draw=draw;
+  if(res&&res.row&&("insCnt" in row)){ row.insCnt=res.row["수량"]||""; }
   insState[insType].rows.push(row);
   insRender();
   insSaveLocal();
-
-  showScanToast("✅ 인식 완료: " + draw);
 }
-
-function showScanToast(msg){
-  var toast = document.createElement("div");
-  toast.textContent = msg;
-  toast.style.cssText = "position:fixed; top:30px; left:50%; transform:translateX(-50%); background:#2ECC71; color:#fff; padding:12px 24px; border-radius:30px; font-weight:bold; font-size:15px; z-index:99999; box-shadow:0 4px 12px rgba(0,0,0,0.2); transition:opacity 0.4s ease;";
-  document.body.appendChild(toast);
-  
-  setTimeout(function(){
-    toast.style.opacity = "0";
-    setTimeout(function(){ if(toast.parentNode) toast.parentNode.removeChild(toast); }, 400);
-  }, 3000);
-}
-
+// 엑셀 내보내기 (xlsx-js-style: 병합·테두리·체크박스)
 function insExport(){
-  if(typeof XLSX === "undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
-  var cfg = insCfg(), leaves = insLeaves(cfg);
-  if(!insState[insType]) insState[insType] = {rows:[]};
-  var rows = insState[insType].rows;
-  var insp = (document.getElementById("insrep-inspector") || {}).value || "";
-  var dateV = (document.getElementById("insrep-date") || {}).value || "";
-  var nCols = leaves.length;
-  var aoa = [];
-  
-  aoa.push([cfg.title].concat(Array(nCols - 1).fill("")));
-  var info = Array(nCols).fill("");
-  info[Math.max(0, nCols - 3)] = "검사자: " + insp;
-  info[Math.max(0, nCols - 1)] = "검사일자: " + dateV;
+  if(insType==="processin"){ insExportProcessIn(); return; }
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
+  var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
+  var insp=(document.getElementById("insrep-inspector")||{}).value||"";
+  var dateV=(document.getElementById("insrep-date")||{}).value||"";
+  var nCols=leaves.length;
+  var aoa=[];
+  // 0: 제목
+  aoa.push([cfg.title].concat(Array(nCols-1).fill("")));
+  // 1: 검사자/검사일자 (오른쪽)
+  var info=Array(nCols).fill("");
+  info[Math.max(0,nCols-3)]="검사자: "+insp; info[Math.max(0,nCols-1)]="검사일자: "+dateV;
   aoa.push(info);
-  
-  var h1 = [], h2 = [];
+  // 2-3: 헤더 (부모/자식)
+  var h1=[], h2=[];
   cfg.groups.forEach(function(g){
-    if(g.subs){ h1.push(g.label); for(var i = 1; i < g.subs.length; i++) h1.push(""); g.subs.forEach(function(s){ h2.push(s.label); }); }
-    else { h1.push(g.label + (g.leaf.chk ? (" (" + g.leaf.chk + ")") : "")); h2.push(""); }
+    if(g.subs){ h1.push(g.label); for(var i=1;i<g.subs.length;i++) h1.push(""); g.subs.forEach(function(s){ h2.push(s.label); }); }
+    else { h1.push(g.label + (g.leaf.chk?(" ("+g.leaf.chk+")"):"")); h2.push(""); }
   });
   aoa.push(h1); aoa.push(h2);
-  
-  rows.forEach(function(row, ri){
-    var line = leaves.map(function(c){
-      if(c.kind === "no") return ri + 1;
-      var v = row[c.key];
-      if(c.kind === "check") return (c.chk || "") + (v ? "■" : "□");
-      if(c.kind === "seg"){ return (c.opts || []).map(function(o){ return o + (v === o ? "■" : "□"); }).join(" "); }
-      if(c.kind === "checks"){ var sel = String(v || "").split(","); return (c.opts || []).map(function(o){ return o + (sel.indexOf(o) >= 0 ? "■" : "□"); }).join(" "); }
-      if(c.kind === "num") return (String(v || "").trim() === "") ? "" : Number(v);
-      return v || "";
+  // 4~: 데이터
+  rows.forEach(function(row,ri){
+    var line=leaves.map(function(c){
+      if(c.kind==="no") return ri+1;
+      var v=row[c.key];
+      if(c.kind==="check") return (c.chk||"")+(v?"■":"□");
+      if(c.kind==="seg"){ return (c.opts||[]).map(function(o){ return o+(v===o?"■":"□"); }).join(" "); }
+      if(c.kind==="checks"){ var sel=String(v||"").split(","); return (c.opts||[]).map(function(o){ return o+(sel.indexOf(o)>=0?"■":"□"); }).join(" "); }
+      if(c.kind==="num") return (String(v||"").trim()==="")?"":Number(v);
+      return v||"";
     });
     aoa.push(line);
   });
-  var ws = XLSX.utils.aoa_to_sheet(aoa);
-  
-  var merges = [];
-  merges.push({s:{r:0,c:0}, e:{r:0,c:nCols - 1}});
-  var col = 0;
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  // 병합
+  var merges=[];
+  merges.push({s:{r:0,c:0},e:{r:0,c:nCols-1}}); // 제목
+  var col=0;
   cfg.groups.forEach(function(g){
-    if(g.subs){ merges.push({s:{r:2,c:col}, e:{r:2,c:col + g.subs.length - 1}}); col += g.subs.length; }
-    else { merges.push({s:{r:2,c:col}, e:{r:3,c:col}}); col += 1; }
+    if(g.subs){ merges.push({s:{r:2,c:col},e:{r:2,c:col+g.subs.length-1}}); col+=g.subs.length; }
+    else { merges.push({s:{r:2,c:col},e:{r:3,c:col}}); col+=1; }
   });
-  ws["!merges"] = merges;
-  ws["!cols"] = leaves.map(function(c){ return {wch: c.w || 8}; });
-  
-  var thin = {style:"thin", color:{rgb:"FFB9C2D6"}};
-  var border = {top:thin, bottom:thin, left:thin, right:thin};
-  var range = XLSX.utils.decode_range(ws["!ref"]);
-  for(var R = range.s.r; R <= range.e.r; R++){
-    for(var C = range.s.c; C <= range.e.c; C++){
-      var addr = XLSX.utils.encode_cell({r:R, c:C}); var cell = ws[addr]; if(!cell){ cell = {t:"s", v:""}; ws[addr] = cell; }
-      var st = { font:{name:"맑은 고딕", sz: R === 0 ? 14 : 10, bold:(R <= 3)}, alignment:{horizontal:(R === 0 ? "center" : "center"), vertical:"center", wrapText:true}, border:border };
-      if(R === 0){ st.border = undefined; st.alignment.horizontal = "center"; }
-      if(R >= 2 && R <= 3){ st.fill = {patternType:"solid", fgColor:{rgb:"FFEEF3FA"}}; }
-      cell.s = st;
+  ws["!merges"]=merges;
+  ws["!cols"]=leaves.map(function(c){ return {wch:c.w||8}; });
+  // 스타일
+  var thin={style:"thin",color:{rgb:"FFB9C2D6"}};
+  var border={top:thin,bottom:thin,left:thin,right:thin};
+  var range=XLSX.utils.decode_range(ws["!ref"]);
+  for(var R=range.s.r;R<=range.e.r;R++){
+    for(var C=range.s.c;C<=range.e.c;C++){
+      var addr=XLSX.utils.encode_cell({r:R,c:C}); var cell=ws[addr]; if(!cell){ cell={t:"s",v:""}; ws[addr]=cell; }
+      var st={ font:{name:"맑은 고딕",sz:R===0?14:10,bold:(R<=3)}, alignment:{horizontal:(R===0?"center":"center"),vertical:"center",wrapText:true}, border:border };
+      if(R===0){ st.border=undefined; st.alignment.horizontal="center"; }
+      if(R>=2&&R<=3){ st.fill={patternType:"solid",fgColor:{rgb:"FFEEF3FA"}}; }
+      cell.s=st;
     }
   }
-  var wb = XLSX.utils.book_new();
+  var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, cfg.sheet);
-  var pad = function(n){ return String(n).padStart(2, "0"); };
-  var d = new Date(); var stamp = "" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + "_" + pad(d.getHours()) + pad(d.getMinutes());
-  XLSX.writeFile(wb, cfg.file + "_" + stamp + ".xlsx");
+  var pad=function(n){ return String(n).padStart(2,"0"); };
+  var d=new Date(); var stamp=""+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"_"+pad(d.getHours())+pad(d.getMinutes());
+  XLSX.writeFile(wb, cfg.file+"_"+stamp+".xlsx");
+}
+/* ==================== 📥 공정입고 (검사 일보 완료수량 자동 집계) ==================== */
+// 완료수량 = 양품수 + (조치완료일 작성 시 부적합수 합). 측정실입고=수입검사 완료 · 크린룸입고=측정실 소/대 완료.
+// 완료수량 계산에 쓰는 컬럼을 유형별로 명시 → 신규 컬럼(예: 기능검사수)이 늘어도 수량이 틀어지지 않음.
+var INS_DONE_SPEC = {
+  incoming: { good:"goodCnt", date:"actDate", defects:["d_scr","d_dnt","d_stn","d_etc","p_fst","p_mis"] },
+  measureS: { good:"goodCnt", date:"actDate", defects:["d_gen","d_tol","d_mis"] },   // 치수 기준
+  measureL: { good:"goodCnt", date:"actDate", defects:["d_gen","d_tol","d_mis"] }    // 치수 기준
+};
+function insRowDone_(row, cfgKey){
+  if(!row) return 0;
+  var spec = INS_DONE_SPEC[cfgKey]; if(!spec) return 0;
+  var good = Number(row[spec.good]||0)||0;
+  var hasDate = String(row[spec.date]||"").trim()!=="";
+  var defects = 0;
+  if(hasDate){ spec.defects.forEach(function(k){ defects += (Number(row[k]||0)||0); }); }
+  return good + defects;
+}
+function insSumByDraw_(rows, cfgKey, map){
+  (rows||[]).forEach(function(r){
+    var d=String((r&&r.draw)||"").trim(); if(!d) return;
+    var q=insRowDone_(r,cfgKey); if(!q) return;
+    map[d]=(map[d]||0)+q;
+  });
+}
+function insProcInCompute_(){
+  var src = insProcInSource || {
+    incoming:(insState.incoming&&insState.incoming.rows)||[],
+    measureS:(insState.measureS&&insState.measureS.rows)||[],
+    measureL:(insState.measureL&&insState.measureL.rows)||[]
+  };
+  var meas={}, clean={};
+  insSumByDraw_(src.incoming,"incoming",meas);   // 수입검사 완료 → 측정실 입고
+  insSumByDraw_(src.measureS,"measureS",clean);  // 측정실 소형 완료 → 크린룸 입고
+  insSumByDraw_(src.measureL,"measureL",clean);  // 측정실 대형 완료 → 크린룸 입고
+  var seen={}; Object.keys(meas).forEach(function(d){seen[d]=1;}); Object.keys(clean).forEach(function(d){seen[d]=1;});
+  return Object.keys(seen).sort(function(a,b){return a.localeCompare(b,undefined,{numeric:true});})
+    .map(function(d){ return {draw:d, meas:meas[d]||0, clean:clean[d]||0}; });
+}
+function insRenderProcessIn(el){
+  var rows=insProcInCompute_();
+  var srcNote=insProcInSource?"공유 최신본 기준":"이 기기 작성분 기준 (☁불러오기로 전 공정 최신본 집계)";
+  var h=''
+   +'<div style="margin-bottom:8px;font-size:12px;color:#5A6478;">완료수량 = 양품수 + (조치완료일 작성 시 부적합수). '
+   +'측정실입고=수입검사 완료 · 크린룸입고=측정실 소/대 완료(치수 기준). <b>'+insEsc(srcNote)+'</b></div>'
+   +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:640px;font-size:13px;"><thead><tr>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;padding:7px;white-space:nowrap;">품번(도번)</th>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;padding:7px;white-space:nowrap;">측정실입고 수량</th>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;padding:7px;white-space:nowrap;">비고</th>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;padding:7px;white-space:nowrap;">크린룸입고 수량</th>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;padding:7px;white-space:nowrap;">비고</th>'
+   +'</tr></thead><tbody>';
+  if(!rows.length){
+    h+='<tr><td colspan="5" style="border:1px solid #C9D3E0;padding:16px;text-align:center;color:#8A93A6;">집계할 완료 데이터가 없습니다. 상단 ☁불러오기로 최신 검사 일보를 받아오세요.</td></tr>';
+  } else {
+    rows.forEach(function(r){
+      var m=insProcInMemo[r.draw]||{m:"",c:""};
+      h+='<tr>'
+       +'<td style="border:1px solid #DDE1E8;padding:6px;font-weight:600;white-space:nowrap;">'+insEsc(r.draw)+'</td>'
+       +'<td style="border:1px solid #DDE1E8;padding:6px;text-align:center;">'+(r.meas||"")+'</td>'
+       +'<td style="border:1px solid #DDE1E8;padding:3px;"><input type="text" class="procin-m" data-d="'+insEsc(r.draw)+'" value="'+insEsc(m.m||"")+'" style="width:100%;min-width:90px;padding:5px 6px;border:1px solid #C9D3E0;border-radius:6px;font-size:12px;box-sizing:border-box;"></td>'
+       +'<td style="border:1px solid #DDE1E8;padding:6px;text-align:center;">'+(r.clean||"")+'</td>'
+       +'<td style="border:1px solid #DDE1E8;padding:3px;"><input type="text" class="procin-c" data-d="'+insEsc(r.draw)+'" value="'+insEsc(m.c||"")+'" style="width:100%;min-width:90px;padding:5px 6px;border:1px solid #C9D3E0;border-radius:6px;font-size:12px;box-sizing:border-box;"></td>'
+       +'</tr>';
+    });
+  }
+  h+='</tbody></table></div>';
+  el.innerHTML=h;
+  el.querySelectorAll(".procin-m").forEach(function(inp){ inp.addEventListener("input",function(){ var d=inp.getAttribute("data-d"); if(!insProcInMemo[d])insProcInMemo[d]={m:"",c:""}; insProcInMemo[d].m=inp.value; insSaveLocal(); }); });
+  el.querySelectorAll(".procin-c").forEach(function(inp){ inp.addEventListener("input",function(){ var d=inp.getAttribute("data-d"); if(!insProcInMemo[d])insProcInMemo[d]={m:"",c:""}; insProcInMemo[d].c=inp.value; insSaveLocal(); }); });
+}
+function insProcInCloudSave(){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
+  insSaveLocal(); insSetStatus("\u2601 [공정입고 비고] 저장 중\u2026");
+  var payload={ memo:insProcInMemo, savedAt:new Date().toISOString() };
+  fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify({mode:"writeInsrepMaster", key:"processin", json:JSON.stringify(payload)})})
+   .then(function(){ insSetStatus("\u2601 [공정입고 비고] 공유 저장됨 "+new Date().toLocaleTimeString("ko-KR")); })
+   .catch(function(){ insSetStatus("[공정입고] 저장 실패 \u2014 네트워크 확인"); });
+}
+function insProcInCloudLoad(){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
+  insSetStatus("\u2601 [공정입고] 불러오는 중\u2026");
+  var get=function(k){ return fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(k),{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return null;}); };
+  Promise.all([get("processin"),get("incoming"),get("measureS"),get("measureL")]).then(function(res){
+    var pull=function(x){ if(x&&x.success&&x.json){ try{ return JSON.parse(x.json); }catch(e){} } return null; };
+    var mo=pull(res[0]); if(mo&&mo.memo&&typeof mo.memo==="object") insProcInMemo=mo.memo;
+    var inc=pull(res[1]),ms=pull(res[2]),ml=pull(res[3]);
+    insProcInSource={ incoming:(inc&&Array.isArray(inc.rows))?inc.rows:[], measureS:(ms&&Array.isArray(ms.rows))?ms.rows:[], measureL:(ml&&Array.isArray(ml.rows))?ml.rows:[] };
+    insSaveLocal(); insRender(); insSetStatus("\u2601 [공정입고] 최신 완료수량+비고 불러옴 "+new Date().toLocaleTimeString("ko-KR"));
+  }).catch(function(){ insSetStatus("[공정입고] 불러오기 실패 \u2014 네트워크 확인"); });
+}
+function insExportProcessIn(){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
+  var rows=insProcInCompute_();
+  var aoa=[["공정입고 현황","","","",""],["품번(도번)","측정실입고 수량","비고","크린룸입고 수량","비고"]];
+  rows.forEach(function(r){ var m=insProcInMemo[r.draw]||{m:"",c:""}; aoa.push([r.draw, r.meas||"", m.m||"", r.clean||"", m.c||""]); });
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:4}}];
+  ws["!cols"]=[{wch:18},{wch:14},{wch:18},{wch:14},{wch:18}];
+  var thin={style:"thin",color:{rgb:"FFB9C2D6"}},border={top:thin,bottom:thin,left:thin,right:thin};
+  var range=XLSX.utils.decode_range(ws["!ref"]);
+  for(var R=range.s.r;R<=range.e.r;R++){ for(var C=range.s.c;C<=range.e.c;C++){
+    var addr=XLSX.utils.encode_cell({r:R,c:C}),cell=ws[addr]; if(!cell){cell={t:"s",v:""};ws[addr]=cell;}
+    var st={ font:{name:"맑은 고딕",sz:R===0?14:11,bold:(R<=1)}, alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:border };
+    if(R===0) st.border=undefined;
+    if(R===1) st.fill={patternType:"solid",fgColor:{rgb:"FFEEF3FA"}};
+    cell.s=st;
+  }}
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"공정입고");
+  var pad=function(n){return String(n).padStart(2,"0");},d=new Date();
+  var stamp=""+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"_"+pad(d.getHours())+pad(d.getMinutes());
+  XLSX.writeFile(wb,"공정입고_"+stamp+".xlsx");
 }
 
 /* ===== 검사 일보 자동저장 (기기 내 localStorage) + 공유 저장 (구글시트) ===== */
 var INSREP_LS_KEY = "ntl_insrep_v1";
 function insSnapshot(){
-  return { insType: insType, insState: insState,
-    inspector: (document.getElementById("insrep-inspector") || {}).value || "",
-    date: (document.getElementById("insrep-date") || {}).value || "",
-    savedAt: new Date().toISOString() };
+  return { insType:insType, insState:insState, procMemo:insProcInMemo,
+    inspector:(document.getElementById("insrep-inspector")||{}).value||"",
+    date:(document.getElementById("insrep-date")||{}).value||"",
+    savedAt:new Date().toISOString() };
 }
 function insApplySnapshot(snap){
   if(!snap) return;
-  if(snap.insState){
-    ["incoming", "shipping", "measureS", "measureL"].forEach(function(k){
-      if(snap.insState[k] && Array.isArray(snap.insState[k].rows)) insState[k] = snap.insState[k];
-    });
-    if(snap.insState.measure && Array.isArray(snap.insState.measure.rows) && snap.insState.measure.rows.length && !(insState.measureS.rows && insState.measureS.rows.length)){
-      insState.measureS = snap.insState.measure;
-    }
+  if(snap.insState){ ["incoming","shipping","measureS","measureL"].forEach(function(k){ if(snap.insState[k] && Array.isArray(snap.insState[k].rows)) insState[k]=snap.insState[k]; });
+    // 구버전 호환: 예전 '측정실(단일)' 저장본을 소형으로 이관 (작업 중 데이터 유실 방지)
+    if(snap.insState.measure && Array.isArray(snap.insState.measure.rows) && snap.insState.measure.rows.length && !(insState.measureS.rows && insState.measureS.rows.length)){ insState.measureS = snap.insState.measure; }
   }
-  if(snap.insType === "measure") insType = "measureS";
-  else if(snap.insType && INS_CFG[snap.insType]) insType = snap.insType;
-  var insp = document.getElementById("insrep-inspector"); if(insp && snap.inspector != null) insp.value = snap.inspector;
-  var dt = document.getElementById("insrep-date"); if(dt && snap.date != null) dt.value = snap.date;
+  if(snap.procMemo && typeof snap.procMemo==="object") insProcInMemo=snap.procMemo;
+  if(snap.insType==="measure") insType="measureS";
+  else if(snap.insType==="processin") insType="processin";
+  else if(snap.insType && INS_CFG[snap.insType]) insType=snap.insType;
+  var insp=document.getElementById("insrep-inspector"); if(insp && snap.inspector!=null) insp.value=snap.inspector;
+  var dt=document.getElementById("insrep-date"); if(dt && snap.date!=null) dt.value=snap.date;
 }
 function insSaveLocal(){
-  try{ localStorage.setItem(INSREP_LS_KEY, JSON.stringify(insSnapshot())); insSetStatus("💾 자동저장됨 " + new Date().toLocaleTimeString("ko-KR")); }catch(e){}
+  try{ localStorage.setItem(INSREP_LS_KEY, JSON.stringify(insSnapshot())); insSetStatus("💾 자동저장됨 "+new Date().toLocaleTimeString("ko-KR")); }catch(e){}
 }
 function insRestoreLocal(){
-  try{ var s = localStorage.getItem(INSREP_LS_KEY); if(s) insApplySnapshot(JSON.parse(s)); }catch(e){}
+  try{ var s=localStorage.getItem(INSREP_LS_KEY); if(s) insApplySnapshot(JSON.parse(s)); }catch(e){}
 }
-function insSetStatus(msg){ var e = document.getElementById("insrep-status"); if(e) e.textContent = msg || ""; }
-function insTypeLabel(t){ t = t || insType; return ({incoming:"수입검사", shipping:"출하검사", measureS:"측정실 소형", measureL:"측정실 대형"})[t] || t; }
-
+function insSetStatus(msg){ var e=document.getElementById("insrep-status"); if(e) e.textContent=msg||""; }
+function insTypeLabel(t){ t=t||insType; return ({incoming:"수입검사",shipping:"출하검사",measureS:"측정실 소형",measureL:"측정실 대형",processin:"공정입고"})[t]||t; }
+/* 공유저장: 현재 유형(페이지)만 저장 — 백엔드가 유형별 행에 따로 저장하므로 다른 유형은 절대 건드리지 않음 */
 function insCloudSave(){
-  var url = (typeof docmasterApiUrl === "function") ? docmasterApiUrl() : ""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
-  var t = insType, label = insTypeLabel(t);
-  insSaveLocal(); insSetStatus("☁ [" + label + "] 저장 중…");
-  var payload = {
-    rows: (insState[t] && insState[t].rows) ? insState[t].rows : [],
-    inspector: (document.getElementById("insrep-inspector") || {}).value || "",
-    date: (document.getElementById("insrep-date") || {}).value || "",
-    savedAt: new Date().toISOString()
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
+  var t=insType, label=insTypeLabel(t);
+  if(t==="processin"){ insProcInCloudSave(); return; }
+  insSaveLocal(); insSetStatus("☁ ["+label+"] 저장 중…");
+  var payload={
+    rows:(insState[t]&&insState[t].rows)?insState[t].rows:[],
+    inspector:(document.getElementById("insrep-inspector")||{}).value||"",
+    date:(document.getElementById("insrep-date")||{}).value||"",
+    savedAt:new Date().toISOString()
   };
-  fetch(url, {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=utf-8"},
-    body: JSON.stringify({mode:"writeInsrepMaster", key:t, json:JSON.stringify(payload)})})
-   .then(function(){ insSetStatus("☁ [" + label + "] 공유 저장됨 " + new Date().toLocaleTimeString("ko-KR")); })
-   .catch(function(){ insSetStatus("[" + label + "] 공유 저장 실패 — 네트워크 확인"); });
+  fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify({mode:"writeInsrepMaster", key:t, json:JSON.stringify(payload)})})
+   .then(function(){ insSetStatus("☁ ["+label+"] 공유 저장됨 "+new Date().toLocaleTimeString("ko-KR")); })
+   .catch(function(){ insSetStatus("["+label+"] 공유 저장 실패 — 네트워크 확인"); });
 }
-
+/* 불러오기: 현재 유형(페이지)만 불러옴 — 다른 유형 작업분은 건드리지 않음 */
 function insCloudLoad(){
-  var url = (typeof docmasterApiUrl === "function") ? docmasterApiUrl() : ""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
-  var t = insType, label = insTypeLabel(t);
-  insSetStatus("☁ [" + label + "] 불러오는 중…");
-  fetch(url + "?mode=insrepMaster&key=" + encodeURIComponent(t), {cache:"no-store"}).then(function(r){ return r.json(); })
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
+  var t=insType, label=insTypeLabel(t);
+  if(t==="processin"){ insProcInCloudLoad(); return; }
+  insSetStatus("☁ ["+label+"] 불러오는 중…");
+  fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(t),{cache:"no-store"}).then(function(r){ return r.json(); })
    .then(function(res){
      if(res && res.success && res.json){
-       var data = null; try{ data = JSON.parse(res.json); }catch(e){}
+       var data=null; try{ data=JSON.parse(res.json); }catch(e){}
        if(data && Array.isArray(data.rows)){
-         var when = data.savedAt ? new Date(data.savedAt).toLocaleString("ko-KR") : "-";
-         if(!confirm("[" + label + "] 공유 저장본을 불러오면 현재 [" + label + "] 작성분을 덮어씁니다. 진행할까요?\n(저장 시각: " + when + ")")){ insSetStatus(""); return; }
-         insState[t] = {rows: data.rows};
-         var ip = document.getElementById("insrep-inspector"); if(ip && data.inspector != null) ip.value = data.inspector;
-         var dt = document.getElementById("insrep-date"); if(dt && data.date != null) dt.value = data.date;
-         insRender(); insSaveLocal(); insSetStatus("☁ [" + label + "] 불러옴");
+         var when=data.savedAt?new Date(data.savedAt).toLocaleString("ko-KR"):"-";
+         if(!confirm("["+label+"] 공유 저장본을 불러오면 현재 ["+label+"] 작성분을 덮어씁니다. 진행할까요?\n(저장 시각: "+when+")")){ insSetStatus(""); return; }
+         insState[t]={rows:data.rows};
+         var ip=document.getElementById("insrep-inspector"); if(ip&&data.inspector!=null) ip.value=data.inspector;
+         var dt=document.getElementById("insrep-date"); if(dt&&data.date!=null) dt.value=data.date;
+         insRender(); insSaveLocal(); insSetStatus("☁ ["+label+"] 불러옴");
          return;
        }
      }
-     insSetStatus("[" + label + "] 공유 저장본이 없습니다.");
-   }).catch(function(){ insSetStatus("[" + label + "] 불러오기 실패 — 네트워크 확인"); });
+     insSetStatus("["+label+"] 공유 저장본이 없습니다.");
+   }).catch(function(){ insSetStatus("["+label+"] 불러오기 실패 — 네트워크 확인"); });
 }
-
 // ── 고객부적합 관리대장(ncData) → 품질분석 데이터로 통합 ──
+// 품질분석(고객부적합/시정조치/재발관리)이 옛 엑셀 시트 대신 이 데이터를 쓰게 한다.
 function ncToQualityRows(){
-  if(typeof ncData === "undefined" || !Array.isArray(ncData)) return [];
-  var safeDeleted = function(r){ return typeof trashIsDeleted === "function" ? trashIsDeleted(r) : false; };
-  return ncData.filter(function(r){ return !safeDeleted(r); }).map(function(r){
-    var d = (typeof parseQualityDate === "function") ? parseQualityDate(r.date) : null;
+  if(typeof ncData==="undefined") return [];
+  return ncData.filter(function(r){ return !trashIsDeleted(r); }).map(function(r){
+    var d=(typeof parseQualityDate==="function") ? parseQualityDate(r.date) : null;
     return {
       date: d,
-      partNo: String(r.partNo || "").trim(),
-      partName: String(r.partName || "").trim(),
+      partNo: String(r.partNo||"").trim(),
+      partName: String(r.partName||"").trim(),
       sn: "", method: "",
-      finder: String(r.finder || "").trim(),
-      qty: Number(String(r.qty || "").replace(/[^0-9.]/g, "")) || 0,
-      content: String(r.content || "").trim(),
-      treatment: String(r.treatment || "").trim(),
-      note: String(r.note || "").trim(),
-      temp: String(r.temp || "").trim(),
-      doneDate: String(r.doneDate || "").trim(),
-      reportDate: String(r.reportDate || "").trim(),
-      validation: String(r.validation || "").trim(),
-      isDev: String(r.finder || "").indexOf("개발") >= 0
+      finder: String(r.finder||"").trim(),
+      qty: Number(String(r.qty||"").replace(/[^0-9.]/g,""))||0,
+      content: String(r.content||"").trim(),
+      treatment: String(r.treatment||"").trim(),
+      note: String(r.note||"").trim(),
+      temp: String(r.temp||"").trim(),
+      doneDate: String(r.doneDate||"").trim(),
+      reportDate: String(r.reportDate||"").trim(),
+      validation: String(r.validation||"").trim(),
+      isDev: String(r.finder||"").indexOf("개발")>=0
     };
-  }).filter(function(r){ return r.date && r.qty > 0; });
+  }).filter(function(r){ return r.date && r.qty>0; });   // 수량>0 실제 부적합만 품질분석 집계 (요청 등 수량 없는 건 제외)
+}
+function syncNcToQuality(){
+  if(typeof qualityRawData==="undefined" || typeof CUSTOMER_NC_KEY==="undefined") return;
+  if(typeof ncData==="undefined" || !window.__ncInited) return;
+  if(!ncData.some(function(r){ return !trashIsDeleted(r); })) return;   // 로딩 중(빈 상태)엔 덮어쓰지 않음
+  qualityRawData[CUSTOMER_NC_KEY]=ncToQualityRows();
+  var qv=document.getElementById("view-quality");
+  if(qv && qv.classList.contains("active") && typeof renderQualityAll==="function"){ try{ renderQualityAll(); }catch(e){} }
 }
 
-function syncNcToQuality(){
-  if(typeof qualityRawData === "undefined" || typeof CUSTOMER_NC_KEY === "undefined") return;
-  if(typeof ncData === "undefined" || !window.__ncInited) return;
-  var safeDeleted = function(r){ return typeof trashIsDeleted === "function" ? trashIsDeleted(r) : false; };
-  if(!ncData.some(function(r){ return !safeDeleted(r); })) return;
-  qualityRawData[CUSTOMER_NC_KEY] = ncToQualityRows();
-  var qv = document.getElementById("view-quality");
-  if(qv && qv.classList.contains("active") && typeof renderQualityAll === "function"){ try{ renderQualityAll(); }catch(e){} }
-}
 /* ==================== 📅 일정 달력 (기존 공유 달력 API 연동) ==================== */
 var SCHED_API = "https://script.google.com/macros/s/AKfycbwQfFAsBjvAr_xBQSvc5AwdqiwDK0sA3DmQy4zKfwTCE7VQQENWAkvIucGF9xvvikswxw/exec";
 var schedEvents = [];      // 공유 달력 이벤트 [{id,date,text,fileUrl}]
