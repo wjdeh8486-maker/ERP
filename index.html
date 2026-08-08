@@ -1749,6 +1749,11 @@
         <button type="button" id="insrep-cloudLoadBtn" style="background:#fff;color:#5A3E7A;border:1px solid #D9C4EC;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="다른 기기에서 저장한 내용을 불러옵니다">☁ 불러오기</button>
         <button type="button" id="insrep-exportBtn" style="background:#1E7A46;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button>
         <button type="button" id="insrep-ncAlertBtn" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="현재 일보의 부적합을 전체 사용자에게 즉시 알립니다">🔔 부적합 알림 전송</button>
+        <span id="insrep-dayWrap" style="display:inline-flex;align-items:center;gap:6px;">
+          <span style="font-size:12px;color:#5A6478;">날짜</span>
+          <select id="insrep-dayFilter" style="padding:7px 8px;border:1px solid #C9D3E0;border-radius:7px;font-size:12px;"><option value="all">전체</option></select>
+          <button type="button" id="insrep-printBtn" style="background:#334155;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">🖨 인쇄</button>
+        </span>
       </div>
       <div style="width:100%;text-align:right;font-size:11.5px;color:#8A93A6;margin-top:-2px;"><span id="insrep-status">💾 입력하면 이 기기에 자동 저장됩니다</span></div>
     </div>
@@ -12261,6 +12266,7 @@ function ncPrint(){
 // kind: no(자동번호) · draw(도번,자동채움) · text · num · date · check(체크박스) · seg(선택 체크)
 var INS_MEASURE_GROUPS = [
       {label:"No.",   leaf:{key:"no",   kind:"no",   w:5}},
+      {label:"검사일", leaf:{key:"insDate", kind:"date", w:11}},
       {label:"도 번", leaf:{key:"draw", kind:"draw", w:16}},
       {label:"S/N",   leaf:{key:"sn",   kind:"text", w:55}},
       {label:"자동/수동", leaf:{key:"mode", kind:"seg", opts:["자동","수동"], w:12}},
@@ -12284,6 +12290,7 @@ var INS_CFG = {
     title:"수입 검사 일보", sheet:"수입검사일보", file:"수입검사일보",
     groups:[
       {label:"No.",   leaf:{key:"no",     kind:"no",   w:5}},
+      {label:"검사일", leaf:{key:"insDate", kind:"date", w:11}},
       {label:"도 번", leaf:{key:"draw",   kind:"draw", w:16}},
       {label:"S/N",   leaf:{key:"sn",     kind:"text", w:55}},
       {label:"거래처",leaf:{key:"vendor", kind:"text", w:10}},
@@ -12304,6 +12311,7 @@ var INS_CFG = {
     title:"출하 검사 일보", sheet:"출하검사일보", file:"출하검사일보",
     groups:[
       {label:"No.",   leaf:{key:"no",   kind:"no",   w:5}},
+      {label:"검사일", leaf:{key:"insDate", kind:"date", w:11}},
       {label:"도 번", leaf:{key:"draw", kind:"draw", w:16}},
       {label:"S/N",   leaf:{key:"sn",   kind:"text", w:55}},
       {label:"구 분", leaf:{key:"seg",  kind:"checks",  opts:["재고","분출","검수"], w:22}},
@@ -12333,11 +12341,13 @@ var insState = { incoming:{rows:[]}, shipping:{rows:[]}, measureS:{rows:[]}, mea
 var insProcInSource = null;   // 공정입고 집계용 공유 버퍼(null이면 로컬 insState 사용)
 var insProcInMemo   = {};     // 도번 -> { m:측정실비고, c:크린룸비고 }
 var insMetaByType = { incoming:{inspector:"",date:""}, shipping:{inspector:"",date:""}, measureS:{inspector:"",date:""}, measureL:{inspector:"",date:""} };  // 검사자/검사일자 유형별 분리
+var insDayFilter = "all";  // 검사 일보 날짜 필터
 
 function insCfg(){ return INS_CFG[insType]; }
 function insLeaves(cfg){ cfg=cfg||insCfg(); var out=[]; cfg.groups.forEach(function(g){ if(g.subs){ g.subs.forEach(function(s){ out.push(s); }); } else { out.push(g.leaf); } }); return out; }
 function insEsc(t){ return docmasterEsc(t); }
-function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); return r; }
+function insDefaultDate_(){ try{ var m=insMetaByType[insType]; if(m&&m.date) return m.date; }catch(e){} var d=new Date(),p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
+function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); if("insDate" in r) r.insDate=insDefaultDate_(); return r; }
 
 function insSyncMetaInputs(){
   var meta=insMetaByType[insType]||{inspector:"",date:""};
@@ -12350,6 +12360,8 @@ function insInit(){
   bind("insrep-scanBtn","click",function(){ insScanAdd(); });
   bind("insrep-exportBtn","click",insExport);
   bind("insrep-ncAlertBtn","click",ncAlertSendCurrent);
+  bind("insrep-printBtn","click",insPrintDay);
+  var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; insRender(); });
   bind("insrep-clearBtn","click",function(){ if(insType==="processin"){ if(confirm("공정입고 비고를 모두 지울까요?")){ insProcInMemo={}; insSaveLocal(); insRender(); } return; } if(confirm("현재 일보의 입력 행을 모두 지울까요?")){ insState[insType].rows=[]; insRender(); insSaveLocal(); } });
   bind("insrep-cloudSaveBtn","click",insCloudSave);
   bind("insrep-cloudLoadBtn","click",insCloudLoad);
@@ -12386,7 +12398,9 @@ function insRender(){
     var on=b.getAttribute("data-type")===insType;
     b.style.background=on?"#0B5CAB":"#fff"; b.style.color=on?"#fff":"#26324A";
   });
+  var __dw=document.getElementById("insrep-dayWrap"); if(__dw) __dw.style.display=(insType==="processin")?"none":"inline-flex";
   if(insType==="processin"){ insRenderProcessIn(el); return; }
+  insUpdateDayFilter();
   var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
     // 2행 헤더
   var head1="", head2="";
@@ -12402,6 +12416,7 @@ function insRender(){
   var body="";
   if(!rows.length){ body='<tr><td colspan="'+(leaves.length+1)+'" style="padding:20px;text-align:center;color:#8A93A6;">행이 없습니다. ➕ 행 추가 또는 📷 스캔으로 시작하세요.</td></tr>'; }
   
+  var __dispNo=0;
   rows.forEach(function(row,ri){
     // [양품수 자동 계산] 렌더링 시점에 검사수 - 부적합수 자동 계산
     var totalQty = Number(row.insCnt) || 0;
@@ -12412,10 +12427,12 @@ function insRender(){
       }
     });
     row.goodCnt = Math.max(0, totalQty - defectQty);
+    if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter) return;
+    __dispNo++;
     var tds="";
     leaves.forEach(function(c){
       var v=row[c.key];
-      if(c.kind==="no"){ tds+='<td style="border:1px solid #E6EBF2;text-align:center;color:#5A6478;">'+(ri+1)+'</td>'; return; }
+      if(c.kind==="no"){ tds+='<td style="border:1px solid #E6EBF2;text-align:center;color:#5A6478;">'+__dispNo+'</td>'; return; }
       var cell="";
       if(c.kind==="check"){
         cell='<input type="checkbox" data-ri="'+ri+'" data-key="'+c.key+'" '+(v?"checked":"")+'>';
@@ -12439,6 +12456,7 @@ function insRender(){
     tds+='<td style="border:1px solid #E6EBF2;text-align:center;"><button type="button" class="insrep-del" data-ri="'+ri+'" style="border:none;background:transparent;color:#C0392B;cursor:pointer;font-size:14px;">✕</button></td>';
     body+='<tr>'+tds+'</tr>';
   });  
+  if(!body){ body='<tr><td colspan="'+(leaves.length+1)+'" style="padding:20px;text-align:center;color:#8A93A6;">해당 날짜에 행이 없습니다.</td></tr>'; }
   el.innerHTML=
     '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px;overflow-x:auto;">'
     + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">'+insEsc(cfg.title)+'</div>'
@@ -12532,7 +12550,10 @@ function insScanReceive(code){
 function insExport(){
   if(insType==="processin"){ insExportProcessIn(); return; }
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
-  var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
+  var cfg=insCfg(), leaves=insLeaves(cfg);
+  var __all=insState[insType].rows||[];
+  var rows=(insDayFilter==="all")?__all:__all.filter(function(r){ return String(r.insDate||"")===insDayFilter; });
+  if(!rows.length){ alert("선택한 날짜에 내보낼 행이 없습니다."); return; }
   var insp=(document.getElementById("insrep-inspector")||{}).value||"";
   var dateV=(document.getElementById("insrep-date")||{}).value||"";
   var nCols=leaves.length;
@@ -12591,7 +12612,84 @@ function insExport(){
   XLSX.utils.book_append_sheet(wb, ws, cfg.sheet);
   var pad=function(n){ return String(n).padStart(2,"0"); };
   var d=new Date(); var stamp=""+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"_"+pad(d.getHours())+pad(d.getMinutes());
-  XLSX.writeFile(wb, cfg.file+"_"+stamp+".xlsx");
+  var dtag=(insDayFilter==="all")?stamp:insDayFilter.replace(/-/g,"");
+  XLSX.writeFile(wb, cfg.file+"_"+dtag+".xlsx");
+}
+/* ==================== 🖨 검사 일보 일별 인쇄 + 날짜 필터 ==================== */
+// 행별 검사일(insDate)로 한 달치를 누적하고, 날짜별로 보기/인쇄한다.
+function insUpdateDayFilter(){
+  var sel=document.getElementById("insrep-dayFilter"); if(!sel) return;
+  var rows=(insState[insType]&&insState[insType].rows)||[];
+  var set={}; rows.forEach(function(r){ var d=String((r&&r.insDate)||"").trim(); if(d) set[d]=1; });
+  var dates=Object.keys(set).sort(function(a,b){ return b.localeCompare(a); });   // 최신 날짜 위로
+  if(insDayFilter!=="all" && !set[insDayFilter]) insDayFilter="all";
+  sel.innerHTML='<option value="all">전체 ('+rows.length+')</option>'+dates.map(function(d){
+    var c=rows.filter(function(r){ return String(r.insDate||"")===d; }).length;
+    return '<option value="'+insEsc(d)+'"'+(insDayFilter===d?" selected":"")+'>'+insEsc(d)+' ('+c+')</option>';
+  }).join("");
+  sel.value=insDayFilter;
+}
+
+// 인쇄용 셀 표시값(정적 텍스트)
+function insCellText_(c, row, i){
+  var v=row[c.key];
+  if(c.kind==="no") return String((i||0)+1);
+  if(c.kind==="check") return v?"■":"□";
+  if(c.kind==="seg") return String(v==null?"":v);
+  if(c.kind==="checks"){ var sel=String(v||"").split(",").filter(Boolean); return c.opts.map(function(o){ return (sel.indexOf(o)>=0?"■":"□")+" "+o; }).join("  "); }
+  return String(v==null?"":v);
+}
+
+// 일별 인쇄: 날짜 필터가 '전체'면 날짜별로 페이지 분할, 특정 날짜면 그 날만
+function insPrintDay(){
+  if(insType==="processin"){ alert("공정입고 화면은 인쇄 대상이 아닙니다."); return; }
+  var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows||[];
+  var keyOf=function(r){ return String((r&&r.insDate)||"").trim() || "(날짜미지정)"; };
+  var groups;
+  if(insDayFilter!=="all"){
+    var list=rows.filter(function(r){ return String(r.insDate||"")===insDayFilter; });
+    if(!list.length){ alert("선택한 날짜에 행이 없습니다."); return; }
+    groups=[{date:insDayFilter, rows:list}];
+  } else {
+    var map={}; rows.forEach(function(r){ var k=keyOf(r); (map[k]=map[k]||[]).push(r); });
+    var keys=Object.keys(map).sort();
+    if(!keys.length){ alert("인쇄할 행이 없습니다."); return; }
+    groups=keys.map(function(k){ return {date:k, rows:map[k]}; });
+  }
+  // 헤더(2행) 구성
+  var head1="", head2="";
+  cfg.groups.forEach(function(g){
+    if(g.subs){ head1+='<th colspan="'+g.subs.length+'">'+insEsc(g.label)+'</th>'; g.subs.forEach(function(s){ head2+='<th>'+insEsc(s.label)+'</th>'; }); }
+    else { head1+='<th rowspan="2">'+insEsc(g.label)+(g.leaf&&g.leaf.chk?(' ('+g.leaf.chk+')'):'')+'</th>'; }
+  });
+  var inspector=(insMetaByType[insType]&&insMetaByType[insType].inspector)||"";
+  var sections=groups.map(function(gr){
+    var body="";
+    gr.rows.forEach(function(r,i){
+      var tds="";
+      leaves.forEach(function(c){ tds+='<td'+((c.kind==="num"||c.kind==="no")?' class="c"':'')+'>'+insEsc(insCellText_(c,r,i))+'</td>'; });
+      body+='<tr>'+tds+'</tr>';
+    });
+    return '<section>'
+      + '<div class="rh"><span class="rt">'+insEsc(cfg.title)+'</span>'
+      +   '<span class="rm">검사일 : '+insEsc(gr.date)+' &nbsp;&nbsp; 검사자 : '+insEsc(inspector||"-")+' &nbsp;&nbsp; 건수 : '+gr.rows.length+'</span></div>'
+      + '<table><thead><tr>'+head1+'</tr><tr>'+head2+'</tr></thead><tbody>'+body+'</tbody></table>'
+      + '</section>';
+  }).join("");
+  var css="@page{size:A4 landscape;margin:10mm;}"
+    +"body{font-family:'맑은 고딕',AppleSDGothicNeo,sans-serif;color:#111;margin:0;padding:8px;}"
+    +"section{page-break-after:always;}section:last-child{page-break-after:auto;}"
+    +".rh{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 6px;padding-bottom:4px;border-bottom:2px solid #333;}"
+    +".rt{font-size:18px;font-weight:800;}.rm{font-size:12px;color:#333;}"
+    +"table{border-collapse:collapse;width:100%;font-size:10.5px;table-layout:fixed;}"
+    +"th,td{border:1px solid #777;padding:3px 4px;text-align:center;word-break:break-all;}"
+    +"thead th{background:#EEF3FA;}td.c{text-align:center;}"
+    +"@media print{.noprint{display:none;}}";
+  var w=window.open("","_blank");
+  if(!w){ alert("팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요."); return; }
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+insEsc(cfg.title)+'</title><style>'+css+'</style></head><body>'+sections+'</body></html>');
+  w.document.close(); w.focus();
+  setTimeout(function(){ try{ w.print(); }catch(e){} }, 400);
 }
 /* ==================== 📥 공정입고 (검사 일보 완료수량 자동 집계) ==================== */
 // 완료수량 = 양품수 + (조치완료일 작성 시 부적합수 합). 측정실입고=수입검사 완료 · 크린룸입고=측정실 소/대 완료.
