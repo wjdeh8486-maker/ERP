@@ -12620,95 +12620,94 @@ function insExport(){
   XLSX.writeFile(wb, cfg.file+"_"+dtag+".xlsx");
 }
 /* ==================== 📋 마스터 양식(붙여넣기용) 내보내기 ==================== */
-// 검사 일보 데이터를 검사종합(마스터) 시트의 컬럼 순서 그대로 뽑아, 그 시트에 바로 붙여넣게 한다.
-// 날짜 필터가 특정일이면 그 날짜만, '전체'면 전부.
+// 검사 일보 → 검사종합(마스터) 시트 컬럼 순서대로. 탭에 따라 여러 시트로 나눠 담는다.
+//  수입검사 → [수입검사(외관)] + (TAP 체크 행) [공정검사(치수,BOLT,LED) 체결란]
+//  측정실  → [공정검사(치수,BOLT,LED) 치수] + (기능 행) [수입검사(기능)]
+//  출하검사 → [출하검사]
 function insMNum_(v){ var s=String(v==null?"":v).trim(); return s===""?"":Number(v); }
 function insMInt_(v){ var n=Number(v); return isNaN(n)?0:n; }
+function insMDefects_(r){ var d=insMInt_(r.insCnt)-insMInt_(r.goodCnt); return d>0?d:0; }
+
+// 마스터 실제 헤더 순서
+var _COL_OUT = ["도 번","S/N","외주 업체","검사일","검사자","검사수","양품수","부적합수","기 스","찍 힘","얼 룩","누 락","기 타","비 고","조치 완료일","조치 내용","재검사일","재검사자","재검수","재검 양품","재검 부적합","LED 촬영"];
+var _COL_PROC= ["도 번","S/N","검사일","검사자","자동 / 수동","검사수","양품수","부적합수","일반 치수","공차 치수","누 락","기 타","비 고","조치 완료일","조치 내용","재검사일","재검사자","재검수","재검 양품","재검 부적합","체결 검사일자","체결 검사자","체결수","체결 부적합","LED 촬영"];
+var _COL_SHIP= ["도 번","S/N","검사일","검사자","검사수","양품수","부적합수","기 스","찍 힘","얼 룩","누 락","기 타","비 고","조치 완료일","조치 내용","재검사일","재검사자","재검수","재검 양품","재검 부적합","실사(숨김필터)"];
+var _COL_FUNC= ["도 번","S/N","업 체","검사자","검사수","양품수","LEAK","LEAK 검사일","FLOW 검사일","가압 / 수압 검사일","진공 검사일","조치 완료일","조치 내용","재검사자","재검수","재검 양품","재검 LEAK"];
+
+// 수입검사(외관): 전체 행
+function _rowOut(r,c){
+  return [ r.draw||"", r.sn||"", r.vendor||"", r.insDate||"", c.insp||"",
+    insMNum_(r.insCnt), insMNum_(r.goodCnt), insMDefects_(r),
+    insMNum_(r.d_scr), insMNum_(r.d_dnt), insMNum_(r.d_stn), insMNum_(r.p_mis), insMNum_(r.d_etc),
+    "", r.actDate||"", r.act||"", "","","","","", (r.led?(r.insDate||""):"") ];
+}
+// 수입검사 TAP → 공정검사 '체결란'만 채움 (도번·S/N·체결검사일·체결검사자·체결수·체결부적합·LED촬영)
+function _rowProcTap(r,c){
+  var bad=insMInt_(r.p_fst)+insMInt_(r.p_mis);   // 체결 + 누락 부적합 합
+  return [ r.draw||"", r.sn||"", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "","","","","", r.insDate||"", c.insp||"", insMNum_(r.insCnt), (bad>0?bad:""), (r.led?(r.insDate||""):"") ];
+}
+// 측정실 치수 → 공정검사 치수란
+function _rowProcDim(r,c){
+  return [ r.draw||"", r.sn||"", r.insDate||"", c.insp||"", r.mode||"",
+    insMNum_(r.insCnt), insMNum_(r.goodCnt), insMDefects_(r),
+    insMNum_(r.d_gen), insMNum_(r.d_tol), insMNum_(r.d_mis), "", "", r.actDate||"", r.act||"",
+    "","","","","", "","","","", "" ];
+}
+// 출하검사
+function _rowShip(r,c){
+  return [ r.draw||"", r.sn||"", r.insDate||"", c.insp||"",
+    insMNum_(r.insCnt), insMNum_(r.goodCnt), insMDefects_(r),
+    insMNum_(r.d_scr), insMNum_(r.d_dnt), insMNum_(r.d_stn), "", insMNum_(r.d_etc),
+    "", r.actDate||"", r.act||"", "","","","","", "" ];
+}
+// 측정실 기능 → 수입검사(기능). 검사일은 각 항목 체크한 날(=검사일)
+function _rowFunc(r,c){
+  var pressDate=(String(r.press||"").trim()!=="")?(r.insDate||""):"";
+  return [ r.draw||"", r.sn||"", "", c.insp||"", insMNum_(r.fnCnt), insMNum_(r.fnGood),
+    (r.leak?"■":""), (r.leak?(r.insDate||""):""), (r.flow?(r.insDate||""):""), pressDate, (r.vac?(r.insDate||""):""),
+    "", "", "", "", "", "" ];
+}
+function _hasFunc(r){ return insMInt_(r.fnCnt)>0 || r.leak || r.flow || r.vac || String(r.press||"").trim()!==""; }
+
 var INS_MASTER = {
-  // 수입검사 → 수입검사(외관)
-  incoming: { sheet:"수입검사(외관)", cols:[
-    ["도 번",       function(r,c){ return r.draw||""; }],
-    ["S/N",         function(r,c){ return r.sn||""; }],
-    ["외주 업체",   function(r,c){ return r.vendor||""; }],
-    ["검사일",       function(r,c){ return r.insDate||""; }],
-    ["검사자",       function(r,c){ return c.insp||""; }],
-    ["검사수",       function(r,c){ return insMNum_(r.insCnt); }],
-    ["양품수",       function(r,c){ return insMNum_(r.goodCnt); }],
-    ["부적합수",     function(r,c){ var d=insMInt_(r.insCnt)-insMInt_(r.goodCnt); return d>0?d:0; }],
-    ["기 스",       function(r,c){ return insMNum_(r.d_scr); }],
-    ["찍 힘",       function(r,c){ return insMNum_(r.d_dnt); }],
-    ["얼 룩",       function(r,c){ return insMNum_(r.d_stn); }],
-    ["누 락",       function(r,c){ return insMNum_(r.p_mis); }],
-    ["기 타",       function(r,c){ return insMNum_(r.d_etc); }],
-    ["비 고",       function(r,c){ return ""; }],
-    ["조치 완료일", function(r,c){ return r.actDate||""; }],
-    ["조치 내용",   function(r,c){ return r.act||""; }],
-    ["재검사일",function(){return"";}],["재검사자",function(){return"";}],["재검수",function(){return"";}],
-    ["재검 양품",function(){return"";}],["재검 부적합",function(){return"";}],["LED 촬영",function(){return"";}]
-  ]},
-  // 출하검사 → 출하검사
-  shipping: { sheet:"출하검사", cols:[
-    ["도 번",       function(r,c){ return r.draw||""; }],
-    ["S/N",         function(r,c){ return r.sn||""; }],
-    ["검사일",       function(r,c){ return r.insDate||""; }],
-    ["검사자",       function(r,c){ return c.insp||""; }],
-    ["검사수",       function(r,c){ return insMNum_(r.insCnt); }],
-    ["양품수",       function(r,c){ return insMNum_(r.goodCnt); }],
-    ["부적합수",     function(r,c){ var d=insMInt_(r.insCnt)-insMInt_(r.goodCnt); return d>0?d:0; }],
-    ["기 스",       function(r,c){ return insMNum_(r.d_scr); }],
-    ["찍 힘",       function(r,c){ return insMNum_(r.d_dnt); }],
-    ["얼 룩",       function(r,c){ return insMNum_(r.d_stn); }],
-    ["누 락",       function(r,c){ return ""; }],
-    ["기 타",       function(r,c){ return insMNum_(r.d_etc); }],
-    ["비 고",       function(r,c){ return ""; }],
-    ["조치 완료일", function(r,c){ return r.actDate||""; }],
-    ["조치 내용",   function(r,c){ return r.act||""; }],
-    ["재검사일",function(){return"";}],["재검사자",function(){return"";}],["재검수",function(){return"";}],
-    ["재검 양품",function(){return"";}],["재검 부적합",function(){return"";}],["실사(숨김필터)",function(){return"";}]
-  ]},
-  // 측정실 소/대(치수) → 공정검사(치수,BOLT,LED)
-  measure: { sheet:"공정검사(치수,BOLT,LED)", cols:[
-    ["도 번",       function(r,c){ return r.draw||""; }],
-    ["S/N",         function(r,c){ return r.sn||""; }],
-    ["검사일",       function(r,c){ return r.insDate||""; }],
-    ["검사자",       function(r,c){ return c.insp||""; }],
-    ["자동 / 수동", function(r,c){ return r.mode||""; }],
-    ["검사수",       function(r,c){ return insMNum_(r.insCnt); }],
-    ["양품수",       function(r,c){ return insMNum_(r.goodCnt); }],
-    ["부적합수",     function(r,c){ var d=insMInt_(r.insCnt)-insMInt_(r.goodCnt); return d>0?d:0; }],
-    ["일반 치수",   function(r,c){ return insMNum_(r.d_gen); }],
-    ["공차 치수",   function(r,c){ return insMNum_(r.d_tol); }],
-    ["누 락",       function(r,c){ return insMNum_(r.d_mis); }],
-    ["기 타",       function(r,c){ return ""; }],
-    ["비 고",       function(r,c){ return ""; }],
-    ["조치 완료일", function(r,c){ return r.actDate||""; }],
-    ["조치 내용",   function(r,c){ return r.act||""; }],
-    ["재검사일",function(){return"";}],["재검사자",function(){return"";}],["재검수",function(){return"";}],
-    ["재검 양품",function(){return"";}],["재검 부적합",function(){return"";}],
-    ["체결 검사일자",function(){return"";}],["체결 검사자",function(){return"";}],["체결수",function(){return"";}],
-    ["체결 부적합",function(){return"";}],["LED 촬영",function(){return"";}]
-  ]}
+  incoming: [
+    { sheet:"수입검사(외관)",            header:_COL_OUT,  row:_rowOut,     filter:null },
+    { sheet:"공정검사(치수,BOLT,LED)",   header:_COL_PROC, row:_rowProcTap, filter:function(r){ return !!r.tap; } }
+  ],
+  shipping: [
+    { sheet:"출하검사",                  header:_COL_SHIP, row:_rowShip,    filter:null }
+  ],
+  measure: [
+    { sheet:"공정검사(치수,BOLT,LED)",   header:_COL_PROC, row:_rowProcDim, filter:null },
+    { sheet:"수입검사(기능)",            header:_COL_FUNC, row:_rowFunc,    filter:_hasFunc }
+  ]
 };
 function insMasterKey_(){ return (insType==="measureS"||insType==="measureL")?"measure":insType; }
 function insExportMaster(){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
-  var mk=insMasterKey_(); var spec=INS_MASTER[mk];
-  if(!spec){ alert("이 화면은 마스터 양식 내보내기가 없습니다."); return; }
+  var specs=INS_MASTER[insMasterKey_()];
+  if(!specs){ alert("이 화면은 마스터 양식 내보내기가 없습니다."); return; }
   var all=(insState[insType]&&insState[insType].rows)||[];
   var rows=(insDayFilter==="all")?all:all.filter(function(r){ return String(r.insDate||"")===insDayFilter; });
   if(!rows.length){ alert("선택한 날짜에 내보낼 행이 없습니다."); return; }
   var ctx={ insp:(insMetaByType[insType]&&insMetaByType[insType].inspector)||"" };
-  var header=spec.cols.map(function(col){ return col[0]; });
-  var aoa=[header];
-  rows.forEach(function(r){ aoa.push(spec.cols.map(function(col){ return col[1](r, ctx); })); });
-  var ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"]=spec.cols.map(function(col){ return {wch: Math.max(8, String(col[0]).length+4)}; });
-  var wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, spec.sheet.replace(/[\/\\\?\*\[\]:]/g,"_").slice(0,31));
+  var wb=XLSX.utils.book_new(); var made=0; var summary=[];
+  specs.forEach(function(sp){
+    var rs=sp.filter?rows.filter(sp.filter):rows;
+    if(!rs.length) return;
+    var aoa=[sp.header]; rs.forEach(function(r){ aoa.push(sp.row(r,ctx)); });
+    var ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=sp.header.map(function(h){ return {wch:Math.max(8,String(h).length+3)}; });
+    XLSX.utils.book_append_sheet(wb, ws, sp.sheet.replace(/[\/\\\?\*\[\]:]/g,"_").slice(0,31));
+    made++; summary.push(sp.sheet+"("+rs.length+")");
+  });
+  if(!made){ alert("내보낼 데이터가 없습니다."); return; }
   var dtag=(insDayFilter==="all")?"전체":insDayFilter.replace(/-/g,"");
-  XLSX.writeFile(wb, spec.sheet+"_"+dtag+"_붙여넣기용.xlsx");
-  insSetStatus("📋 마스터 양식("+spec.sheet+") 내보냄 — "+rows.length+"행");
+  XLSX.writeFile(wb, "붙여넣기용_"+insTypeLabel(insType)+"_"+dtag+".xlsx");
+  insSetStatus("📋 붙여넣기용 내보냄 — "+summary.join(", "));
 }
+
 /* ==================== 🖨 검사 일보 일별 인쇄 + 날짜 필터 ==================== */
 // 행별 검사일(insDate)로 한 달치를 누적하고, 날짜별로 보기/인쇄한다.
 function insUpdateDayFilter(){
