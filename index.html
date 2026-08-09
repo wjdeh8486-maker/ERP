@@ -1007,6 +1007,7 @@
       <div class="nav-item nav-sub" data-view="sched"><span class="dot"></span>📅 일정 달력</div>
     </div></div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
+    <div class="nav-item" data-view="insrep"><span class="dot"></span>🧾 검사 일보</div>
     <div class="nav-dd"><div class="nav-item" data-view="qchist" data-navgroup="qchist"><span class="dot"></span>🧪 검사이력조회<span class="nav-caret" data-caret="qchist">▾</span></div>
     <div class="nav-group" id="navgroup-qchist">
       <div class="nav-item nav-sub" data-view="qcprio"><span class="dot"></span>📋 검사 요청서</div>
@@ -1019,7 +1020,6 @@
     <div class="nav-group" id="navgroup-docmaster">
       <div class="nav-item nav-sub" data-view="instr"><span class="dot"></span>🔧 계측기 관리</div>
     </div></div>
-    <div class="nav-item" data-view="insrep"><span class="dot"></span>🧾 검사 일보</div>
     <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
     <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
     <div class="nav-item" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
@@ -1737,6 +1737,10 @@
         #topbar-insrep .topbar-right button, #topbar-insrep > div button{ font-size:12px; padding:7px 9px; }
         #topbar-insrep #insrep-scanInput{ width:150px; }
       }
+      #topbar-insrep .ins-dd{ position:relative; display:inline-block; }
+      #topbar-insrep .ins-dd-menu{ position:absolute; top:calc(100% + 5px); left:0; z-index:1600; background:#fff; border:1px solid #C9D3E0; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.18); padding:6px; min-width:190px; display:none; flex-direction:column; gap:5px; }
+      #topbar-insrep .ins-dd-menu.open{ display:flex; }
+      #topbar-insrep .ins-dd-menu button{ width:100%; box-sizing:border-box; text-align:left; }
     </style>
     <div id="topbar-insrep" class="topbar" style="display:none;">
       <h1>🧾 검사 일보</h1>
@@ -1757,29 +1761,35 @@
         <span style="font-size:12px;color:#5A6478;">검사일자</span>
         <input type="date" id="insrep-date" style="padding:6px 8px;border:1px solid #C9D3E0;border-radius:7px;font-size:12px;">
         <span aria-hidden="true" style="width:1px;height:22px;background:#D8DEE8;margin:0 2px;flex:0 0 auto;"></span>
-        <button type="button" id="insrep-ncAlertBtn" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="현재 일보의 부적합을 전체 사용자에게 즉시 알립니다">🔔 부적합 알림</button>
-        <button type="button" id="insrep-unrBtn" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="부적합이 있으나 조치완료일이 비어있는 항목 보기">⚠ 미조치 부적합</button>
+        <button type="button" id="insrep-ncAlertBtn" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer;" title="현재 일보의 부적합을 전체 사용자에게 즉시 알립니다">🔔 부적합 알림</button>
+        <button type="button" id="insrep-unrBtn" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer;" title="부적합이 있으나 조치완료일이 비어있는 항목 보기">⚠ 미조치 부적합</button>
       </div>
-      <div class="topbar-right" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%;margin-left:0;justify-content:space-between;">
-        <div class="ins-grp" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          <button type="button" id="insrep-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 행 추가</button>
-          <button type="button" id="insrep-formBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="모바일/태블릿에서 편한 입력 팝업">📝 입력</button>
-          <input type="text" id="insrep-scanInput" placeholder="🔫 스캐너로 여기 찍기 (PC)" autocomplete="off" style="width:170px;padding:8px 10px;border:1px solid #0B7A8A;border-radius:8px;font-size:12px;color:#1C2320;" title="USB/블루투스 스캐너로 이 칸을 클릭한 뒤 찍으면 자동으로 행이 추가됩니다">
-          <button type="button" id="insrep-scanBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">📷 카메라</button>
-          <button type="button" id="insrep-cloudSaveBtn" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="구글시트에 저장 — 다른 기기에서 불러올 수 있습니다">☁ 공유저장</button>
-          <button type="button" id="insrep-cloudLoadBtn" style="background:#fff;color:#5A3E7A;border:1px solid #D9C4EC;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="다른 기기에서 저장한 내용을 불러옵니다">☁ 불러오기</button>
-        </div>
-        <div class="ins-grp" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          <button type="button" id="insrep-exportBtn" style="background:#1E7A46;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button>
-          <input type="file" id="insrep-importFile" accept=".xlsx,.xls" style="display:none;">
-          <button type="button" id="insrep-importBtn" style="background:#7A5A2A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="엑셀 다운로드로 받은 파일을 다시 불러와 이어서 작성">📤 엑셀 업로드</button>
-          <span id="insrep-dayWrap" style="display:inline-flex;align-items:center;gap:6px;">
-            <span style="font-size:12px;color:#5A6478;">날짜</span>
-            <select id="insrep-dayFilter" style="padding:7px 8px;border:1px solid #C9D3E0;border-radius:7px;font-size:12px;"><option value="all">전체</option></select>
-            <button type="button" id="insrep-printBtn" style="background:#334155;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">🖨 인쇄</button>
-            <button type="button" id="insrep-masterBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="모든 유형을 모아 4개 마스터 시트(외관·공정치수/체결·기능·출하)로 — 붙여넣기용">📋 붙여넣기용(전체)</button>
-          </span>
-        </div>
+      <div class="topbar-right" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%;margin-left:0;justify-content:flex-start;">
+        <button type="button" id="insrep-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 행 추가</button>
+        <button type="button" id="insrep-formBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="모바일/태블릿에서 편한 입력 팝업">📝 입력</button>
+        <button type="button" id="insrep-scanBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">📷 카메라</button>
+        <input type="text" id="insrep-scanInput" placeholder="🔫 스캐너로 여기 찍기" autocomplete="off" style="width:160px;padding:8px 10px;border:1px solid #0B7A8A;border-radius:8px;font-size:12px;color:#1C2320;" title="USB/블루투스 스캐너로 이 칸을 클릭한 뒤 찍으면 자동으로 행이 추가됩니다">
+        <span class="ins-dd">
+          <button type="button" class="ins-dd-btn" data-menu="mSave" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">☁ 저장 ▾</button>
+          <div class="ins-dd-menu" id="mSave">
+            <button type="button" id="insrep-cloudSaveBtn" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">☁ 공유저장</button>
+            <button type="button" id="insrep-cloudLoadBtn" style="background:#fff;color:#5A3E7A;border:1px solid #D9C4EC;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">☁ 불러오기</button>
+          </div>
+        </span>
+        <span class="ins-dd">
+          <button type="button" class="ins-dd-btn" data-menu="mFile" style="background:#1E7A46;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">📁 파일 ▾</button>
+          <div class="ins-dd-menu" id="mFile">
+            <button type="button" id="insrep-exportBtn" style="background:#1E7A46;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button>
+            <input type="file" id="insrep-importFile" accept=".xlsx,.xls" style="display:none;">
+            <button type="button" id="insrep-importBtn" style="background:#7A5A2A;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">📤 엑셀 업로드</button>
+            <button type="button" id="insrep-masterBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="모든 유형을 모아 4개 마스터 시트로">📋 붙여넣기용(전체)</button>
+            <button type="button" id="insrep-printBtn" style="background:#334155;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">🖨 인쇄</button>
+          </div>
+        </span>
+        <span id="insrep-dayWrap" style="display:inline-flex;align-items:center;gap:6px;">
+          <span style="font-size:12px;color:#5A6478;">날짜</span>
+          <select id="insrep-dayFilter" style="padding:7px 8px;border:1px solid #C9D3E0;border-radius:7px;font-size:12px;"><option value="all">전체</option></select>
+        </span>
       </div>
       <div style="width:100%;text-align:right;font-size:11.5px;color:#8A93A6;margin-top:-2px;"><span id="insrep-status">💾 입력하면 이 기기에 자동 저장됩니다</span></div>
     </div>
@@ -12472,6 +12482,8 @@ function insInit(){
   var __ts=document.getElementById("insrep-typeSel");
   if(__ts) __ts.addEventListener("change",function(){ insType=this.value; insSyncMetaInputs(); insRender(); insSaveLocal(); });
   var __gc=document.getElementById("insrep-content"); if(__gc) __gc.addEventListener("keydown", insGridKeydown_);
+  document.querySelectorAll("#topbar-insrep .ins-dd-btn").forEach(function(btn){ btn.addEventListener("click", function(e){ e.stopPropagation(); var id=btn.getAttribute("data-menu"); var menu=document.getElementById(id); var open=menu&&menu.classList.contains("open"); document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); if(menu&&!open) menu.classList.add("open"); }); });
+  document.addEventListener("click", function(){ document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); });
   // 기기 내 저장본 복구 (없을 때만 빈 행 시드)
   insRestoreLocal();
   insSyncMetaInputs();
@@ -13169,7 +13181,6 @@ function insUpdateUnrBadge(){
   var b=document.getElementById("insrep-unrBtn"); if(!b) return;
   var n=insUnresolvedList_(false).length;
   b.innerHTML='\u26a0 미조치 부적합'+(n>0?(' <span style="background:#fff;color:#8A1F1F;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:800;">'+n+'</span>'):'');
-  b.style.opacity=n>0?"1":"0.7";
 }
 function insOpenUnresolved(){
   var list=insUnresolvedList_(!!insUnresolvedSrc);
