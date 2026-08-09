@@ -1729,13 +1729,25 @@
     <style>
       #topbar-insrep .topbar-right{ row-gap:8px; }
       @media (max-width:1024px){
-        #topbar-insrep .topbar-right{ justify-content:flex-start; }
+        #topbar-insrep{ padding:8px 12px; gap:6px; }
+        #topbar-insrep h1{ font-size:15px; }
+        #topbar-insrep .topbar-right{ justify-content:flex-start; gap:6px; }
         #topbar-insrep .ins-grp{ width:100%; }
-        #topbar-insrep .topbar-right button{ flex:0 0 auto; min-height:40px; }
+        #topbar-insrep button, #topbar-insrep .ins-dd-btn{ flex:0 0 auto; min-height:36px; padding:6px 10px; font-size:12.5px; }
+        #topbar-insrep input, #topbar-insrep select{ font-size:12.5px; padding:6px 8px; }
+        #topbar-insrep #insrep-scanInput{ width:150px; }
+        #topbar-insrep .ins-dd-menu button{ min-height:42px; }
       }
       @media (max-width:600px){
-        #topbar-insrep .topbar-right button, #topbar-insrep > div button{ font-size:12px; padding:7px 9px; }
-        #topbar-insrep #insrep-scanInput{ width:150px; }
+        #topbar-insrep{ padding:7px 10px; }
+        #topbar-insrep button, #topbar-insrep .ins-dd-btn{ font-size:12px; padding:6px 9px; min-height:34px; }
+        #topbar-insrep #insrep-scanInput{ width:140px; }
+      }
+      @media (orientation:landscape) and (max-height:600px){
+        #topbar-insrep{ padding:5px 12px; gap:5px; }
+        #topbar-insrep h1{ font-size:14px; }
+        #topbar-insrep button, #topbar-insrep .ins-dd-btn{ min-height:30px; padding:4px 9px; font-size:12px; }
+        #topbar-insrep .topbar-right{ row-gap:5px; }
       }
       #topbar-insrep .ins-dd{ position:relative; display:inline-block; }
       #topbar-insrep .ins-dd-menu{ position:absolute; top:calc(100% + 5px); left:0; z-index:1600; background:#fff; border:1px solid #C9D3E0; border-radius:10px; box-shadow:0 10px 28px rgba(0,0,0,0.18); padding:6px; min-width:190px; display:none; flex-direction:column; gap:5px; }
@@ -13401,9 +13413,12 @@ function insApplySnapshot(snap){
   var insp=document.getElementById("insrep-inspector"); if(insp && snap.inspector!=null) insp.value=snap.inspector;
   var dt=document.getElementById("insrep-date"); if(dt && snap.date!=null) dt.value=snap.date;
 }
-function insSaveLocal(){
+function insSaveLocalNow(){
   try{ localStorage.setItem(INSREP_LS_KEY, JSON.stringify(insSnapshot())); insSetStatus("💾 자동저장됨 "+new Date().toLocaleTimeString("ko-KR")); }catch(e){}
 }
+var __insSaveTimer=null;
+function insSaveLocal(){ if(__insSaveTimer) clearTimeout(__insSaveTimer); __insSaveTimer=setTimeout(insSaveLocalNow, 350); }
+try{ window.addEventListener("beforeunload", insSaveLocalNow); document.addEventListener("visibilitychange", function(){ if(document.visibilityState==="hidden") insSaveLocalNow(); }); }catch(e){}
 function insRestoreLocal(){
   try{ var s=localStorage.getItem(INSREP_LS_KEY); if(s) insApplySnapshot(JSON.parse(s)); }catch(e){}
 }
