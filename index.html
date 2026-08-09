@@ -1756,6 +1756,7 @@
         <input type="file" id="insrep-importFile" accept=".xlsx,.xls" style="display:none;">
         <button type="button" id="insrep-importBtn" style="background:#7A5A2A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="엑셀 다운로드로 받은 파일을 다시 불러와 이어서 작성">📤 엑셀 업로드</button>
         <button type="button" id="insrep-ncAlertBtn" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="현재 일보의 부적합을 전체 사용자에게 즉시 알립니다">🔔 부적합 알림 전송</button>
+        <button type="button" id="insrep-unrBtn" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="부적합이 있으나 조치완료일이 비어있는 항목 보기">⚠ 미조치 부적합</button>
         <span id="insrep-dayWrap" style="display:inline-flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:#5A6478;">날짜</span>
           <select id="insrep-dayFilter" style="padding:7px 8px;border:1px solid #C9D3E0;border-radius:7px;font-size:12px;"><option value="all">전체</option></select>
@@ -12427,6 +12428,7 @@ function insInit(){
   bind("insrep-importBtn","click",function(){ var f=document.getElementById("insrep-importFile"); if(f) f.click(); });
   bind("insrep-importFile","change",function(){ if(this.files&&this.files[0]) insImportExcel(this.files[0]); this.value=""; });
   bind("insrep-ncAlertBtn","click",ncAlertSendCurrent);
+  bind("insrep-unrBtn","click",insOpenUnresolved);
   bind("insrep-printBtn","click",insPrintDay);
   bind("insrep-masterBtn","click",insExportMaster);
   var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; insRender(); });
@@ -12462,6 +12464,7 @@ function insRender(){
   var el=document.getElementById("insrep-content"); if(!el) return;
   // 유형 소메뉴 값 동기화
   var __ts=document.getElementById("insrep-typeSel"); if(__ts && __ts.value!==insType) __ts.value=insType;
+  if(typeof insUpdateUnrBadge==="function") insUpdateUnrBadge();
   var __dw=document.getElementById("insrep-dayWrap"); if(__dw) __dw.style.display="inline-flex";
   var __pb=document.getElementById("insrep-printBtn"); if(__pb) __pb.style.display=(insType==="processin")?"none":"";
   var __mb=document.getElementById("insrep-masterBtn"); if(__mb) __mb.style.display="";
@@ -13125,6 +13128,102 @@ function insExportProcessIn(){
   var pad=function(n){return String(n).padStart(2,"0");},d=new Date();
   var stamp=""+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"_"+pad(d.getHours())+pad(d.getMinutes());
   var __dt=(insDayFilter==="all")?stamp:insDayFilter.replace(/-/g,""); XLSX.writeFile(wb,"공정입고_"+__dt+".xlsx");
+}
+/* ==================== ⚠ 미조치 부적합 (부적합 있으나 조치완료일 비어있음) ==================== */
+var insUnresolvedSrc=null;   // 전체 공유본 버퍼 {type:{rows,insp}} — null이면 이 기기 데이터
+function insUnrRows_(t, useSrc){ if(useSrc && insUnresolvedSrc) return (insUnresolvedSrc[t]&&insUnresolvedSrc[t].rows)||[]; return (insState[t]&&insState[t].rows)||[]; }
+function insUnrInsp_(t, useSrc){ if(useSrc && insUnresolvedSrc) return (insUnresolvedSrc[t]&&insUnresolvedSrc[t].insp)||""; return (insMetaByType[t]&&insMetaByType[t].inspector)||""; }
+function insUnresolvedList_(useSrc){
+  var out=[];
+  ["incoming","shipping","measureS","measureL"].forEach(function(t){
+    var by=insUnrInsp_(t,useSrc);
+    insUnrRows_(t,useSrc).forEach(function(r){
+      var d=insRowDefect_(t,r); if(!d) return;                 // 부적합 없음
+      if(String(r.actDate||"").trim()!=="") return;            // 조치완료됨
+      var draw=String(r.draw||"").trim(), sn=String(r.sn||"").trim();
+      if(!draw && !sn) return;
+      out.push({ label:insTypeLabel(t), draw:draw, sn:sn, insDate:String(r.insDate||""), qty:d.qty, types:d.types, by:by });
+    });
+  });
+  out.sort(function(a,b){ return String(b.insDate).localeCompare(String(a.insDate)); });
+  return out;
+}
+function insUpdateUnrBadge(){
+  var b=document.getElementById("insrep-unrBtn"); if(!b) return;
+  var n=insUnresolvedList_(false).length;
+  b.innerHTML='\u26a0 미조치 부적합'+(n>0?(' <span style="background:#fff;color:#8A1F1F;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:800;">'+n+'</span>'):'');
+  b.style.opacity=n>0?"1":"0.7";
+}
+function insOpenUnresolved(){
+  var list=insUnresolvedList_(!!insUnresolvedSrc);
+  var ov=document.getElementById("insunr-ov");
+  if(!ov){
+    ov=document.createElement("div"); ov.id="insunr-ov";
+    ov.style.cssText="position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,0.5);display:flex;align-items:center;justify-content:center;padding:14px;";
+    ov.addEventListener("click",function(e){ if(e.target===ov) ov.style.display="none"; });
+    document.body.appendChild(ov);
+  }
+  var rowsHtml;
+  if(!list.length){ rowsHtml='<div style="padding:26px;text-align:center;color:#1E7A46;font-weight:800;font-size:15px;">미조치 부적합이 없습니다 \uD83D\uDC4D</div>'; }
+  else {
+    rowsHtml='<div style="overflow:auto;max-height:60vh;"><table style="border-collapse:collapse;width:100%;font-size:13px;min-width:560px;"><thead><tr>'
+      +['공정','도번','S/N','검사일','부적합수','유형','검사자'].map(function(h){ return '<th style="border:1px solid #E7C9C9;background:#FDECEC;color:#8A1F1F;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
+      +'</tr></thead><tbody>'
+      +list.map(function(x){ return '<tr>'
+        +'<td style="border:1px solid #EEE1E1;padding:6px;white-space:nowrap;">'+insEsc(x.label)+'</td>'
+        +'<td style="border:1px solid #EEE1E1;padding:6px;font-weight:700;white-space:nowrap;">'+insEsc(x.draw)+'</td>'
+        +'<td style="border:1px solid #EEE1E1;padding:6px;">'+insEsc(x.sn)+'</td>'
+        +'<td style="border:1px solid #EEE1E1;padding:6px;white-space:nowrap;">'+insEsc(x.insDate)+'</td>'
+        +'<td style="border:1px solid #EEE1E1;padding:6px;text-align:center;color:#C0392B;font-weight:800;">'+x.qty+'</td>'
+        +'<td style="border:1px solid #EEE1E1;padding:6px;">'+insEsc(x.types)+'</td>'
+        +'<td style="border:1px solid #EEE1E1;padding:6px;white-space:nowrap;">'+insEsc(x.by)+'</td>'
+        +'</tr>'; }).join("")
+      +'</tbody></table></div>';
+  }
+  var srcNote=insUnresolvedSrc?"전체 공유본 기준":"이 기기 데이터 기준";
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:860px;max-height:90vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.35);">'
+    +'<div style="padding:14px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;">'
+    +  '<b style="font-size:16px;color:#8A1F1F;">\u26a0 미조치 부적합 ('+list.length+') <span style="font-size:12px;color:#8A93A6;font-weight:600;">· '+srcNote+'</span></b>'
+    +  '<button type="button" id="insunr-x" style="border:none;background:#F0F4F8;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
+    +'</div>'
+    +'<div style="padding:8px 16px;font-size:12px;color:#5A6478;">부적합이 있는데 <b>조치 완료일</b>이 비어 있는 항목입니다. 조치 완료일을 채우면 목록에서 사라집니다.</div>'
+    +'<div style="padding:0 16px 12px;">'+rowsHtml+'</div>'
+    +'<div style="padding:12px 16px;border-top:1px solid #E6EBF2;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">'
+    +  '<button type="button" id="insunr-refresh" style="background:#0B7A8A;color:#fff;border:none;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;">\u2601 전체 공유본 불러오기</button>'
+    +  '<button type="button" id="insunr-local" style="background:#fff;color:#334155;border:1px solid #C9D3E0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;">이 기기 기준</button>'
+    +  '<button type="button" id="insunr-xlsx" style="background:#1E7A46;color:#fff;border:none;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;">\uD83D\uDCE5 엑셀</button>'
+    +'</div>'
+    +'</div>';
+  ov.style.display="flex";
+  document.getElementById("insunr-x").addEventListener("click",function(){ ov.style.display="none"; });
+  document.getElementById("insunr-refresh").addEventListener("click", insUnrCloudLoad);
+  document.getElementById("insunr-local").addEventListener("click", function(){ insUnresolvedSrc=null; insOpenUnresolved(); });
+  document.getElementById("insunr-xlsx").addEventListener("click", insUnrExport);
+}
+function insUnrCloudLoad(){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
+  insSetStatus("\u2601 미조치 부적합 — 전체 공유본 불러오는 중\u2026");
+  var get=function(k){ return fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(k),{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return null;}); };
+  Promise.all([get("incoming"),get("shipping"),get("measureS"),get("measureL")]).then(function(res){
+    var pull=function(x){ if(x&&x.success&&x.json){ try{ return JSON.parse(x.json); }catch(e){} } return null; };
+    var mk=function(o){ return { rows:(o&&Array.isArray(o.rows))?o.rows:[], insp:(o&&o.inspector)||"" }; };
+    var a=pull(res[0]),b=pull(res[1]),c=pull(res[2]),d=pull(res[3]);
+    insUnresolvedSrc={ incoming:mk(a), shipping:mk(b), measureS:mk(c), measureL:mk(d) };
+    insOpenUnresolved();
+    insSetStatus("\u2601 미조치 부적합(전체 공유본) "+insUnresolvedList_(true).length+"건");
+  }).catch(function(){ insSetStatus("불러오기 실패 — 네트워크 확인"); });
+}
+function insUnrExport(){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다."); return; }
+  var list=insUnresolvedList_(!!insUnresolvedSrc);
+  if(!list.length){ alert("미조치 부적합이 없습니다."); return; }
+  var aoa=[["미조치 부적합 목록","","","","","",""],["공정","도번","S/N","검사일","부적합수","유형","검사자"]];
+  list.forEach(function(x){ aoa.push([x.label,x.draw,x.sn,x.insDate,x.qty,x.types,x.by]); });
+  var ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=[{wch:12},{wch:16},{wch:10},{wch:12},{wch:9},{wch:22},{wch:10}];
+  ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:6}}];
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"미조치부적합");
+  var pad=function(n){return String(n).padStart(2,"0");},d=new Date();
+  XLSX.writeFile(wb,"미조치부적합_"+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+".xlsx");
 }
 /* ==================== 🔔 부적합 실시간 알림 (전체 브로드캐스트) ==================== */
 // 검사 일보 ☁공유저장 시, 부적합이 있는 행을 알림으로 백엔드에 올리고
