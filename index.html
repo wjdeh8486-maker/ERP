@@ -1729,11 +1729,14 @@
     <div id="topbar-insrep" class="topbar" style="display:none;">
       <h1>🧾 검사 일보</h1>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        <button type="button" class="insrep-type" data-type="incoming" style="padding:7px 12px;border:1px solid #C9D3E0;border-radius:8px;cursor:pointer;font-weight:700;">수입검사</button>
-        <button type="button" class="insrep-type" data-type="shipping" style="padding:7px 12px;border:1px solid #C9D3E0;border-radius:8px;cursor:pointer;font-weight:700;">출하검사</button>
-        <button type="button" class="insrep-type" data-type="measureS" style="padding:7px 12px;border:1px solid #C9D3E0;border-radius:8px;cursor:pointer;font-weight:700;">측정실(치수·기능) 소형</button>
-        <button type="button" class="insrep-type" data-type="measureL" style="padding:7px 12px;border:1px solid #C9D3E0;border-radius:8px;cursor:pointer;font-weight:700;">측정실(치수·기능) 대형</button>
-        <button type="button" class="insrep-type" data-type="processin" style="padding:7px 12px;border:1px solid #C9D3E0;border-radius:8px;cursor:pointer;font-weight:700;">공정입고</button>
+        <span style="font-size:12px;color:#5A6478;font-weight:700;">검사 유형</span>
+        <select id="insrep-typeSel" style="padding:8px 12px;border:1px solid #0B5CAB;border-radius:8px;font-size:13px;font-weight:700;color:#0B5CAB;background:#F4F8FD;cursor:pointer;">
+          <option value="incoming">수입검사</option>
+          <option value="shipping">출하검사</option>
+          <option value="measureS">측정실(치수·기능) 소형</option>
+          <option value="measureL">측정실(치수·기능) 대형</option>
+          <option value="processin">공정입고</option>
+        </select>
         <span aria-hidden="true" style="width:1px;height:22px;background:#D8DEE8;margin:0 2px;flex:0 0 auto;"></span>
         <button type="button" id="insrep-clearBtn" style="background:#fff;color:#C0392B;border:1px solid #E4B4B4;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;">비우기</button>
       </div>
@@ -1748,6 +1751,8 @@
         <button type="button" id="insrep-cloudSaveBtn" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="구글시트에 저장 — 다른 기기에서 불러올 수 있습니다">☁ 공유저장</button>
         <button type="button" id="insrep-cloudLoadBtn" style="background:#fff;color:#5A3E7A;border:1px solid #D9C4EC;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="다른 기기에서 저장한 내용을 불러옵니다">☁ 불러오기</button>
         <button type="button" id="insrep-exportBtn" style="background:#1E7A46;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button>
+        <input type="file" id="insrep-importFile" accept=".xlsx,.xls" style="display:none;">
+        <button type="button" id="insrep-importBtn" style="background:#7A5A2A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="엑셀 다운로드로 받은 파일을 다시 불러와 이어서 작성">📤 엑셀 업로드</button>
         <button type="button" id="insrep-ncAlertBtn" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="현재 일보의 부적합을 전체 사용자에게 즉시 알립니다">🔔 부적합 알림 전송</button>
         <span id="insrep-dayWrap" style="display:inline-flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:#5A6478;">날짜</span>
@@ -12350,16 +12355,74 @@ function insEsc(t){ return docmasterEsc(t); }
 function insDefaultDate_(){ try{ var m=insMetaByType[insType]; if(m&&m.date) return m.date; }catch(e){} var d=new Date(),p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
 function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); if("insDate" in r) r.insDate=insDefaultDate_(); return r; }
 
+function insToday_(){ var d=new Date(),p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
 function insSyncMetaInputs(){
-  var meta=insMetaByType[insType]||{inspector:"",date:""};
+  var meta=insMetaByType[insType];
+  if(meta && insType!=="processin" && !meta.date) meta.date=insToday_();   // 검사일자 오늘 자동
+  meta=meta||{inspector:"",date:""};
   var ip=document.getElementById("insrep-inspector"); if(ip) ip.value=meta.inspector||"";
   var dt=document.getElementById("insrep-date"); if(dt) dt.value=meta.date||"";
+}
+// 검사 일보 표: 방향키로 셀 이동(열/행), 엔터로 다음 행(마지막이면 새 행 추가)
+function insGridKeydown_(e){
+  var t=e.target; if(!t || !t.getAttribute) return;
+  if(t.getAttribute("data-key")==null) return;         // 표 입력칸에서만 동작
+  if(!t.closest) return;
+  var td=t.closest("td"), tr=t.closest("tr"); if(!td||!tr) return;
+  var tbody=tr.parentNode; if(!tbody) return;
+  var trs=Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+  var rowIdx=trs.indexOf(tr);
+  var tds=Array.prototype.slice.call(tr.children);
+  var colIdx=tds.indexOf(td);
+  var K=e.key;
+
+  var focusInTd=function(targetTd){
+    if(!targetTd) return false;
+    var f=targetTd.querySelector('input:not([tabindex="-1"]),select:not([tabindex="-1"])');
+    if(!f) return false;
+    f.focus();
+    try{ if(f.select && f.type!=="checkbox" && f.tagName!=="SELECT" && f.type!=="date") f.select(); }catch(_){}
+    return true;
+  };
+  var moveRow=function(delta){ var ntr=trs[rowIdx+delta]; if(!ntr) return false; return focusInTd(ntr.children[colIdx]); };
+  var moveCol=function(delta){
+    var i=colIdx+delta;
+    while(i>=0 && i<tds.length){
+      if(tds[i].querySelector('input:not([tabindex="-1"]),select:not([tabindex="-1"])')) return focusInTd(tds[i]);
+      i+=delta;
+    }
+    return false;
+  };
+  var isText=(t.tagName==="INPUT" && (t.type==="text" || t.type==="number"));
+  var atStart=function(){ try{ return t.selectionStart===0 || t.selectionStart===null; }catch(_){ return true; } };
+  var atEnd=function(){ try{ var L=t.value?t.value.length:0; return t.selectionStart===L || t.selectionStart===null; }catch(_){ return true; } };
+
+  if(K==="ArrowUp"){ e.preventDefault(); moveRow(-1); return; }
+  if(K==="ArrowDown"){ e.preventDefault(); moveRow(1); return; }
+  if(K==="Enter"){
+    e.preventDefault();
+    if(!moveRow(1)){
+      if(insType!=="processin" && insState[insType]){
+        var nr=insBlankRow(); if(insDayFilter!=="all") nr.insDate=insDayFilter;
+        insState[insType].rows.push(nr); insRender(); insSaveLocal();
+        var el2=document.getElementById("insrep-content");
+        var trs2=el2?el2.querySelectorAll("tbody tr"):[];
+        var last=trs2[trs2.length-1];
+        if(last) focusInTd(last.children[colIdx]);
+      }
+    }
+    return;
+  }
+  if(K==="ArrowLeft"){ if(isText && !atStart()) return; if(moveCol(-1)) e.preventDefault(); return; }
+  if(K==="ArrowRight"){ if(isText && !atEnd()) return; if(moveCol(1)) e.preventDefault(); return; }
 }
 function insInit(){
   var bind=function(id,ev,fn){ var e=document.getElementById(id); if(e) e.addEventListener(ev,fn); };
   bind("insrep-addBtn","click",function(){ if(insType==="processin") return; insState[insType].rows.push(insBlankRow()); insRender(); insSaveLocal(); });
   bind("insrep-scanBtn","click",function(){ insScanAdd(); });
   bind("insrep-exportBtn","click",insExport);
+  bind("insrep-importBtn","click",function(){ var f=document.getElementById("insrep-importFile"); if(f) f.click(); });
+  bind("insrep-importFile","change",function(){ if(this.files&&this.files[0]) insImportExcel(this.files[0]); this.value=""; });
   bind("insrep-ncAlertBtn","click",ncAlertSendCurrent);
   bind("insrep-printBtn","click",insPrintDay);
   bind("insrep-masterBtn","click",insExportMaster);
@@ -12383,23 +12446,19 @@ function insInit(){
       }
     });
   }
-  // 유형 탭
-  document.querySelectorAll(".insrep-type").forEach(function(b){
-    b.addEventListener("click",function(){ insType=b.getAttribute("data-type"); insSyncMetaInputs(); insRender(); insSaveLocal(); });
-  });
+  // 유형 소메뉴(드롭다운)
+  var __ts=document.getElementById("insrep-typeSel");
+  if(__ts) __ts.addEventListener("change",function(){ insType=this.value; insSyncMetaInputs(); insRender(); insSaveLocal(); });
+  var __gc=document.getElementById("insrep-content"); if(__gc) __gc.addEventListener("keydown", insGridKeydown_);
   // 기기 내 저장본 복구 (없을 때만 빈 행 시드)
   insRestoreLocal();
-  if(insType!=="processin" && !insState[insType].rows.length){ for(var i=0;i<3;i++) insState[insType].rows.push(insBlankRow()); }
   insSyncMetaInputs();
   insRender();
 }
 function insRender(){
   var el=document.getElementById("insrep-content"); if(!el) return;
-  // 유형 탭 활성표시 (공정입고 포함 전 탭)
-  document.querySelectorAll(".insrep-type").forEach(function(b){
-    var on=b.getAttribute("data-type")===insType;
-    b.style.background=on?"#0B5CAB":"#fff"; b.style.color=on?"#fff":"#26324A";
-  });
+  // 유형 소메뉴 값 동기화
+  var __ts=document.getElementById("insrep-typeSel"); if(__ts && __ts.value!==insType) __ts.value=insType;
   var __dw=document.getElementById("insrep-dayWrap"); if(__dw) __dw.style.display="inline-flex";
   var __pb=document.getElementById("insrep-printBtn"); if(__pb) __pb.style.display=(insType==="processin")?"none":"";
   var __mb=document.getElementById("insrep-masterBtn"); if(__mb) __mb.style.display="";
@@ -12551,6 +12610,64 @@ function insScanReceive(code){
   insSaveLocal();
 }
 // 엑셀 내보내기 (xlsx-js-style: 병합·테두리·체크박스)
+// 📤 엑셀 업로드: 📥 엑셀 다운로드로 받은 파일을 그대로 되읽어 현재 유형에 복원/추가
+function insImportExcel(file){
+  if(!file) return;
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
+  if(insType==="processin"){ alert("공정입고 화면에서는 업로드가 없습니다."); return; }
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    try{
+      var data=new Uint8Array(ev.target.result);
+      var wb=XLSX.read(data,{type:"array"});
+      var ws=wb.Sheets[wb.SheetNames[0]];
+      var aoa=XLSX.utils.sheet_to_json(ws,{header:1, defval:"", raw:false});
+      var cfg=insCfg(), leaves=insLeaves(cfg);
+      var fileTitle=String((aoa[0]&&aoa[0][0])||"").trim();
+      if(fileTitle && fileTitle!==cfg.title){
+        alert("이 파일은 ["+fileTitle+"] 일보로 보입니다.\n상단 '검사 유형'에서 해당 일보로 바꾼 뒤 업로드하세요.");
+        return;
+      }
+      // 검사자/검사일자 복원 (info 행)
+      var inforow=aoa[1]||[];
+      inforow.forEach(function(cell){
+        var sX=String(cell||"");
+        var m1=sX.match(/검사자:\s*(.*)$/); if(m1 && insMetaByType[insType]){ var v1=m1[1].trim(); if(v1) insMetaByType[insType].inspector=v1; }
+        var m2=sX.match(/검사일자:\s*(.*)$/); if(m2 && insMetaByType[insType]){ var v2=m2[1].trim(); if(v2) insMetaByType[insType].date=v2; }
+      });
+      // 데이터 시작행: No.(정수)로 시작하는 행
+      var start=-1;
+      for(var i=1;i<aoa.length;i++){ var c0=String((aoa[i]&&aoa[i][0])||"").trim(); if(/^\d+$/.test(c0)){ start=i; break; } }
+      if(start<0){ alert("데이터 행을 찾지 못했습니다. (엑셀 다운로드로 받은 파일을 그대로 올려주세요)"); return; }
+      var parsed=[];
+      for(var r=start;r<aoa.length;r++){
+        var row=aoa[r]||[];
+        var nonEmpty=false; for(var k=1;k<row.length;k++){ if(String(row[k]||"").trim()!==""){ nonEmpty=true; break; } }
+        if(!nonEmpty) continue;
+        var obj=insBlankRow();
+        leaves.forEach(function(c, ci){
+          if(c.kind==="no") return;
+          var cell=row[ci];
+          if(c.kind==="check"){ obj[c.key]=String(cell).indexOf("■")>=0; }
+          else if(c.kind==="seg"){ var val=""; (c.opts||[]).forEach(function(o){ if(String(cell).indexOf(o+"■")>=0) val=o; }); obj[c.key]=val; }
+          else if(c.kind==="checks"){ var sel=[]; (c.opts||[]).forEach(function(o){ if(String(cell).indexOf(o+"■")>=0) sel.push(o); }); obj[c.key]=sel.join(","); }
+          else if(c.kind==="num"){ obj[c.key]=String(cell==null?"":cell).trim(); }
+          else { obj[c.key]=String(cell==null?"":cell); }
+        });
+        parsed.push(obj);
+      }
+      if(!parsed.length){ alert("불러올 데이터 행이 없습니다."); return; }
+      var cur=insState[insType].rows;
+      var doAppend=true;
+      if(cur.length){ doAppend=confirm("현재 "+cur.length+"행이 있습니다.\n[확인] 불러온 "+parsed.length+"행을 뒤에 추가\n[취소] 현재 내용을 지우고 교체"); }
+      if(!doAppend) insState[insType].rows=[];
+      parsed.forEach(function(o){ insState[insType].rows.push(o); });
+      insSyncMetaInputs(); insRender(); insSaveLocal();
+      insSetStatus("📤 엑셀 업로드 완료 — "+parsed.length+"행 ("+(doAppend?"추가":"교체")+")");
+    }catch(err){ alert("업로드 중 오류: "+(err&&err.message?err.message:err)); }
+  };
+  reader.readAsArrayBuffer(file);
+}
 function insExport(){
   if(insType==="processin"){ insExportProcessIn(); return; }
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
