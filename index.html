@@ -1753,7 +1753,7 @@
           <span style="font-size:12px;color:#5A6478;">날짜</span>
           <select id="insrep-dayFilter" style="padding:7px 8px;border:1px solid #C9D3E0;border-radius:7px;font-size:12px;"><option value="all">전체</option></select>
           <button type="button" id="insrep-printBtn" style="background:#334155;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">🖨 인쇄</button>
-          <button type="button" id="insrep-masterBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="검사종합(마스터) 시트 컬럼 순서로 정리 — 붙여넣기용">📋 붙여넣기용</button>
+          <button type="button" id="insrep-masterBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="모든 유형을 모아 4개 마스터 시트(외관·공정치수/체결·기능·출하)로 — 붙여넣기용">📋 붙여넣기용(전체)</button>
         </span>
       </div>
       <div style="width:100%;text-align:right;font-size:11.5px;color:#8A93A6;margin-top:-2px;"><span id="insrep-status">💾 입력하면 이 기기에 자동 저장됩니다</span></div>
@@ -12402,7 +12402,7 @@ function insRender(){
   });
   var __dw=document.getElementById("insrep-dayWrap"); if(__dw) __dw.style.display="inline-flex";
   var __pb=document.getElementById("insrep-printBtn"); if(__pb) __pb.style.display=(insType==="processin")?"none":"";
-  var __mb=document.getElementById("insrep-masterBtn"); if(__mb) __mb.style.display=(insType==="processin")?"none":"";
+  var __mb=document.getElementById("insrep-masterBtn"); if(__mb) __mb.style.display="";
   insUpdateDayFilter();
   if(insType==="processin"){ insRenderProcessIn(el); return; }
   var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
@@ -12686,26 +12686,36 @@ var INS_MASTER = {
 function insMasterKey_(){ return (insType==="measureS"||insType==="measureL")?"measure":insType; }
 function insExportMaster(){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
-  var specs=INS_MASTER[insMasterKey_()];
-  if(!specs){ alert("이 화면은 마스터 양식 내보내기가 없습니다."); return; }
-  var all=(insState[insType]&&insState[insType].rows)||[];
-  var rows=(insDayFilter==="all")?all:all.filter(function(r){ return String(r.insDate||"")===insDayFilter; });
-  if(!rows.length){ alert("선택한 날짜에 내보낼 행이 없습니다."); return; }
-  var ctx={ insp:(insMetaByType[insType]&&insMetaByType[insType].inspector)||"" };
-  var wb=XLSX.utils.book_new(); var made=0; var summary=[];
-  specs.forEach(function(sp){
-    var rs=sp.filter?rows.filter(sp.filter):rows;
-    if(!rs.length) return;
-    var aoa=[sp.header]; rs.forEach(function(r){ aoa.push(sp.row(r,ctx)); });
+  function rowsFor(t){ var a=(insState[t]&&insState[t].rows)||[]; return (insDayFilter==="all")?a:a.filter(function(r){ return String(r.insDate||"")===insDayFilter; }); }
+  function ctxFor(t){ return { insp:(insMetaByType[t]&&insMetaByType[t].inspector)||"" }; }
+  var inc=rowsFor("incoming"), shp=rowsFor("shipping"), mS=rowsFor("measureS"), mL=rowsFor("measureL");
+  var CIN=ctxFor("incoming"), CSH=ctxFor("shipping"), CMS=ctxFor("measureS"), CML=ctxFor("measureL");
+  // 4개 마스터 시트 구성 (모든 유형에서 모아서)
+  var aoaOut=[_COL_OUT]; inc.forEach(function(r){ aoaOut.push(_rowOut(r,CIN)); });
+  var aoaProc=[_COL_PROC];
+  mS.forEach(function(r){ aoaProc.push(_rowProcDim(r,CMS)); });
+  mL.forEach(function(r){ aoaProc.push(_rowProcDim(r,CML)); });
+  inc.filter(function(r){ return !!r.tap; }).forEach(function(r){ aoaProc.push(_rowProcTap(r,CIN)); });
+  var aoaFunc=[_COL_FUNC];
+  mS.filter(_hasFunc).forEach(function(r){ aoaFunc.push(_rowFunc(r,CMS)); });
+  mL.filter(_hasFunc).forEach(function(r){ aoaFunc.push(_rowFunc(r,CML)); });
+  var aoaShip=[_COL_SHIP]; shp.forEach(function(r){ aoaShip.push(_rowShip(r,CSH)); });
+  var wb=XLSX.utils.book_new(); var summary=[];
+  function add(name, aoa){
+    if(aoa.length<2) return;
     var ws=XLSX.utils.aoa_to_sheet(aoa);
-    ws["!cols"]=sp.header.map(function(h){ return {wch:Math.max(8,String(h).length+3)}; });
-    XLSX.utils.book_append_sheet(wb, ws, sp.sheet.replace(/[\/\\\?\*\[\]:]/g,"_").slice(0,31));
-    made++; summary.push(sp.sheet+"("+rs.length+")");
-  });
-  if(!made){ alert("내보낼 데이터가 없습니다."); return; }
+    ws["!cols"]=aoa[0].map(function(h){ return {wch:Math.max(8,String(h).length+3)}; });
+    XLSX.utils.book_append_sheet(wb, ws, name.replace(/[\/\\\?\*\[\]:]/g,"_").slice(0,31));
+    summary.push(name+"("+(aoa.length-1)+")");
+  }
+  add("수입검사(외관)", aoaOut);
+  add("공정검사(치수,BOLT,LED)", aoaProc);
+  add("수입검사(기능)", aoaFunc);
+  add("출하검사", aoaShip);
+  if(!summary.length){ alert("선택한 날짜에 내보낼 데이터가 없습니다. (전체 유형 기준)"); return; }
   var dtag=(insDayFilter==="all")?"전체":insDayFilter.replace(/-/g,"");
-  XLSX.writeFile(wb, "붙여넣기용_"+insTypeLabel(insType)+"_"+dtag+".xlsx");
-  insSetStatus("📋 붙여넣기용 내보냄 — "+summary.join(", "));
+  XLSX.writeFile(wb, "붙여넣기용_전체_"+dtag+".xlsx");
+  insSetStatus("📋 붙여넣기용(전체) 내보냄 — "+summary.join(", "));
 }
 
 /* ==================== 🖨 검사 일보 일별 인쇄 + 날짜 필터 ==================== */
