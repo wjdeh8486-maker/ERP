@@ -12657,7 +12657,12 @@ function insLeafLabelMap(cfg){
   });
   return m;
 }
-function insFormClose(){ var ov=document.getElementById("insform-ov"); if(ov) ov.style.display="none"; }
+function insFormClose(){ var ov=document.getElementById("insform-ov"); if(ov){ ov.style.display="none"; ov.style.top=""; ov.style.left=""; ov.style.width=""; ov.style.height=""; ov.style.right=""; ov.style.bottom=""; } }
+function insFormVV_(){
+  var ov=document.getElementById("insform-ov"); if(!ov || ov.style.display==="none") return;
+  var vv=window.visualViewport; if(!vv) return;
+  ov.style.top=vv.offsetTop+"px"; ov.style.left=vv.offsetLeft+"px"; ov.style.width=vv.width+"px"; ov.style.height=vv.height+"px"; ov.style.right="auto"; ov.style.bottom="auto";
+}
 function insOpenForm(ri){
   if(insType==="processin"){ alert("공정입고 화면에서는 입력 팝업이 없습니다."); return; }
   var cfg=insCfg(), leaves=insLeaves(cfg), labels=insLeafLabelMap(cfg);
@@ -12695,7 +12700,7 @@ function insOpenForm(ri){
     body+='<div style="margin-bottom:13px;"><div style="font-size:13px;font-weight:800;color:#5A6478;margin-bottom:5px;">'+insEsc(lab)+'</div>'+ctrl+'</div>';
   });
   var head=(isNew?"➕ 새 입력":"✏️ 수정")+" · "+insEsc(cfg.title);
-  ov.innerHTML='<div style="background:#fff;width:100%;max-width:520px;max-height:90vh;border-radius:18px 18px 0 0;display:flex;flex-direction:column;box-shadow:0 -8px 40px rgba(0,0,0,0.35);">'
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:520px;max-height:100%;border-radius:18px 18px 0 0;display:flex;flex-direction:column;box-shadow:0 -8px 40px rgba(0,0,0,0.35);">'
     +'<div style="padding:14px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;">'
     +  '<b style="font-size:16px;color:#1F2A44;">'+head+'</b>'
     +  '<button type="button" id="insf-x" style="border:none;background:#F0F4F8;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
@@ -12707,6 +12712,8 @@ function insOpenForm(ri){
     +'</div>'
     +'</div>';
   ov.style.display="flex";
+  if(window.visualViewport && !window.__insFormVVBound){ window.__insFormVVBound=true; window.visualViewport.addEventListener("resize", insFormVV_); window.visualViewport.addEventListener("scroll", insFormVV_); }
+  insFormVV_();
   document.getElementById("insf-x").addEventListener("click", insFormClose);
   document.getElementById("insf-save").addEventListener("click", function(){ insFormSave(false); });
   var sc=document.getElementById("insf-savecont"); if(sc) sc.addEventListener("click", function(){ insFormSave(true); });
@@ -12717,6 +12724,7 @@ function insOpenForm(ri){
     var g=document.getElementById("insf-goodCnt"); if(g) g.value=Math.max(0,tot-def);
   };
   var bodyEl=document.getElementById("insf-body");
+  bodyEl.addEventListener("focusin", function(e){ setTimeout(function(){ try{ e.target.scrollIntoView({block:"center", behavior:"smooth"}); }catch(_){} }, 120); });
   bodyEl.querySelectorAll('input[type="number"]').forEach(function(inp){ inp.addEventListener("input", recompute); });
   recompute();
   var first=document.getElementById("insf-draw")||bodyEl.querySelector('input,select'); if(first){ try{ first.focus(); }catch(_){} }
