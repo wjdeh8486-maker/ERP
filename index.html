@@ -1739,15 +1739,17 @@
         </select>
         <span aria-hidden="true" style="width:1px;height:22px;background:#D8DEE8;margin:0 2px;flex:0 0 auto;"></span>
         <button type="button" id="insrep-clearBtn" style="background:#fff;color:#C0392B;border:1px solid #E4B4B4;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;">비우기</button>
-      </div>
-      <div class="topbar-right" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <span aria-hidden="true" style="width:1px;height:22px;background:#D8DEE8;margin:0 2px;flex:0 0 auto;"></span>
         <span style="font-size:12px;color:#5A6478;">검사자</span>
-        <input type="text" id="insrep-inspector" style="width:80px;padding:6px 8px;border:1px solid #C9D3E0;border-radius:7px;font-size:12px;">
+        <input type="text" id="insrep-inspector" style="width:90px;padding:6px 8px;border:1px solid #C9D3E0;border-radius:7px;font-size:12px;">
         <span style="font-size:12px;color:#5A6478;">검사일자</span>
         <input type="date" id="insrep-date" style="padding:6px 8px;border:1px solid #C9D3E0;border-radius:7px;font-size:12px;">
+      </div>
+      <div class="topbar-right" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         <input type="text" id="insrep-scanInput" placeholder="🔫 스캐너로 여기 찍기 (PC)" autocomplete="off" style="width:170px;padding:8px 10px;border:1px solid #0B7A8A;border-radius:8px;font-size:12px;color:#1C2320;" title="USB/블루투스 스캐너로 이 칸을 클릭한 뒤 찍으면 자동으로 행이 추가됩니다">
         <button type="button" id="insrep-scanBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">📷 카메라</button>
         <button type="button" id="insrep-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 행 추가</button>
+        <button type="button" id="insrep-formBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="모바일/태블릿에서 편한 입력 팝업">📝 입력</button>
         <button type="button" id="insrep-cloudSaveBtn" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="구글시트에 저장 — 다른 기기에서 불러올 수 있습니다">☁ 공유저장</button>
         <button type="button" id="insrep-cloudLoadBtn" style="background:#fff;color:#5A3E7A;border:1px solid #D9C4EC;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="다른 기기에서 저장한 내용을 불러옵니다">☁ 불러오기</button>
         <button type="button" id="insrep-exportBtn" style="background:#1E7A46;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button>
@@ -12421,6 +12423,7 @@ function insInit(){
   bind("insrep-addBtn","click",function(){ if(insType==="processin") return; insState[insType].rows.push(insBlankRow()); insRender(); insSaveLocal(); });
   bind("insrep-scanBtn","click",function(){ insScanAdd(); });
   bind("insrep-exportBtn","click",insExport);
+  bind("insrep-formBtn","click",function(){ insOpenForm(-1); });
   bind("insrep-importBtn","click",function(){ var f=document.getElementById("insrep-importFile"); if(f) f.click(); });
   bind("insrep-importFile","change",function(){ if(this.files&&this.files[0]) insImportExcel(this.files[0]); this.value=""; });
   bind("insrep-ncAlertBtn","click",ncAlertSendCurrent);
@@ -12516,7 +12519,7 @@ function insRender(){
       }
       tds+='<td style="border:1px solid #E6EBF2;padding:2px 4px;min-width:'+(c.w*6)+'px;">'+cell+'</td>';
     });
-    tds+='<td style="border:1px solid #E6EBF2;text-align:center;"><button type="button" class="insrep-del" data-ri="'+ri+'" style="border:none;background:transparent;color:#C0392B;cursor:pointer;font-size:14px;">✕</button></td>';
+    tds+='<td style="border:1px solid #E6EBF2;text-align:center;white-space:nowrap;"><button type="button" class="insrep-edit" data-ri="'+ri+'" style="border:none;background:transparent;color:#0B5CAB;cursor:pointer;font-size:14px;margin-right:2px;">✏️</button><button type="button" class="insrep-del" data-ri="'+ri+'" style="border:none;background:transparent;color:#C0392B;cursor:pointer;font-size:14px;">✕</button></td>';
     body+='<tr>'+tds+'</tr>';
   });  
   if(!body){ body='<tr><td colspan="'+(leaves.length+1)+'" style="padding:20px;text-align:center;color:#8A93A6;">해당 날짜에 행이 없습니다.</td></tr>'; }
@@ -12578,6 +12581,7 @@ function insRender(){
     });
   });
     el.querySelectorAll(".insrep-del").forEach(function(b){ b.addEventListener("click",function(){ insState[insType].rows.splice(+b.getAttribute("data-ri"),1); insRender(); insSaveLocal(); }); });
+    el.querySelectorAll(".insrep-edit").forEach(function(b){ b.addEventListener("click",function(){ insOpenForm(+b.getAttribute("data-ri")); }); });
 }
 // 도번으로 생산공정현황에서 품명/수량 참고 (검사수 비었으면 수량 채움)
 function insAutoFill(ri){
@@ -12610,6 +12614,96 @@ function insScanReceive(code){
   insSaveLocal();
 }
 // 엑셀 내보내기 (xlsx-js-style: 병합·테두리·체크박스)
+/* ==================== 📝 입력 팝업 (모바일/태블릿용 세로 폼) ==================== */
+var INSF_INP="width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #C9D3E0;border-radius:9px;font-size:16px;background:#fff;color:#1C2320;";
+var insFormRi=-1;
+function insLeafLabelMap(cfg){
+  var m={};
+  cfg.groups.forEach(function(g){
+    if(g.subs){ g.subs.forEach(function(s){ m[s.key]=(g.label?g.label+" · ":"")+s.label; }); }
+    else if(g.leaf){ m[g.leaf.key]=g.label+(g.leaf.chk?(" ("+g.leaf.chk+")"):""); }
+  });
+  return m;
+}
+function insFormClose(){ var ov=document.getElementById("insform-ov"); if(ov) ov.style.display="none"; }
+function insOpenForm(ri){
+  if(insType==="processin"){ alert("공정입고 화면에서는 입력 팝업이 없습니다."); return; }
+  var cfg=insCfg(), leaves=insLeaves(cfg), labels=insLeafLabelMap(cfg);
+  var isNew=(ri==null||ri<0);
+  var row = isNew? insBlankRow() : insState[insType].rows[ri];
+  if(!row) return;
+  if(isNew && insDayFilter!=="all") row.insDate=insDayFilter;   // 필터 날짜로 시작
+  insFormRi = isNew? -1 : ri;
+
+  var ov=document.getElementById("insform-ov");
+  if(!ov){
+    ov=document.createElement("div"); ov.id="insform-ov";
+    ov.style.cssText="position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,0.5);display:flex;align-items:flex-end;justify-content:center;";
+    ov.addEventListener("click", function(e){ if(e.target===ov) insFormClose(); });
+    document.body.appendChild(ov);
+  }
+  var body="";
+  leaves.forEach(function(c){
+    if(c.kind==="no") return;
+    var lab=labels[c.key]||c.key, val=row[c.key], ctrl="";
+    if(c.kind==="check"){
+      ctrl='<label style="display:inline-flex;align-items:center;gap:10px;font-size:16px;"><input type="checkbox" id="insf-'+c.key+'" '+(val?"checked":"")+' style="width:24px;height:24px;"> 예 (체크)</label>';
+    } else if(c.kind==="seg"){
+      ctrl='<select id="insf-'+c.key+'" style="'+INSF_INP+'"><option value="">-</option>'+(c.opts||[]).map(function(o){ return '<option'+(val===o?" selected":"")+'>'+insEsc(o)+'</option>'; }).join("")+'</select>';
+    } else if(c.kind==="checks"){
+      var sel=String(val||"").split(",");
+      ctrl='<div style="display:flex;flex-wrap:wrap;gap:14px;">'+(c.opts||[]).map(function(o){ return '<label style="display:inline-flex;align-items:center;gap:7px;font-size:16px;"><input type="checkbox" class="insf-chk" data-key="'+c.key+'" data-opt="'+insEsc(o)+'" '+(sel.indexOf(o)>=0?"checked":"")+' style="width:22px;height:22px;"> '+insEsc(o)+'</label>'; }).join("")+'</div>';
+    } else if(c.key==="goodCnt"){
+      ctrl='<input type="text" id="insf-goodCnt" value="'+insEsc(val)+'" readonly style="'+INSF_INP+'background:#F0F4F8;font-weight:800;">';
+    } else {
+      var typ=c.kind==="num"?"number":(c.kind==="date"?"date":"text");
+      var im=c.kind==="num"?' inputmode="decimal"':'';
+      ctrl='<input type="'+typ+'"'+im+' id="insf-'+c.key+'" value="'+insEsc(val)+'" style="'+INSF_INP+'">';
+    }
+    body+='<div style="margin-bottom:13px;"><div style="font-size:13px;font-weight:800;color:#5A6478;margin-bottom:5px;">'+insEsc(lab)+'</div>'+ctrl+'</div>';
+  });
+  var head=(isNew?"➕ 새 입력":"✏️ 수정")+" · "+insEsc(cfg.title);
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:520px;max-height:90vh;border-radius:18px 18px 0 0;display:flex;flex-direction:column;box-shadow:0 -8px 40px rgba(0,0,0,0.35);">'
+    +'<div style="padding:14px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;">'
+    +  '<b style="font-size:16px;color:#1F2A44;">'+head+'</b>'
+    +  '<button type="button" id="insf-x" style="border:none;background:#F0F4F8;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
+    +'</div>'
+    +'<div id="insf-body" style="padding:14px 16px;overflow:auto;-webkit-overflow-scrolling:touch;">'+body+'</div>'
+    +'<div style="padding:12px 16px;border-top:1px solid #E6EBF2;display:flex;gap:8px;">'
+    +  '<button type="button" id="insf-save" style="flex:1;background:#0B5CAB;color:#fff;border:none;border-radius:11px;padding:14px;font-weight:800;font-size:15px;cursor:pointer;">저장</button>'
+    +  (isNew?'<button type="button" id="insf-savecont" style="flex:1;background:#1E7A46;color:#fff;border:none;border-radius:11px;padding:14px;font-weight:800;font-size:15px;cursor:pointer;">저장 + 계속</button>':'')
+    +'</div>'
+    +'</div>';
+  ov.style.display="flex";
+  document.getElementById("insf-x").addEventListener("click", insFormClose);
+  document.getElementById("insf-save").addEventListener("click", function(){ insFormSave(false); });
+  var sc=document.getElementById("insf-savecont"); if(sc) sc.addEventListener("click", function(){ insFormSave(true); });
+  // 양품수 실시간 계산
+  var recompute=function(){
+    var tot=Number((document.getElementById("insf-insCnt")||{}).value)||0, def=0;
+    leaves.forEach(function(lf){ if(lf.kind==="num" && lf.key!=="insCnt" && lf.key!=="goodCnt" && lf.key.indexOf("fn")!==0){ var e=document.getElementById("insf-"+lf.key); if(e) def+=Number(e.value)||0; } });
+    var g=document.getElementById("insf-goodCnt"); if(g) g.value=Math.max(0,tot-def);
+  };
+  var bodyEl=document.getElementById("insf-body");
+  bodyEl.querySelectorAll('input[type="number"]').forEach(function(inp){ inp.addEventListener("input", recompute); });
+  recompute();
+  var first=document.getElementById("insf-draw")||bodyEl.querySelector('input,select'); if(first){ try{ first.focus(); }catch(_){} }
+}
+function insFormSave(cont){
+  var cfg=insCfg(), leaves=insLeaves(cfg);
+  var obj=(insFormRi>=0)? insState[insType].rows[insFormRi] : insBlankRow();
+  if(!obj) obj=insBlankRow();
+  leaves.forEach(function(c){
+    if(c.kind==="no"||c.key==="goodCnt") return;
+    if(c.kind==="check"){ var e=document.getElementById("insf-"+c.key); obj[c.key]=!!(e&&e.checked); }
+    else if(c.kind==="checks"){ var sel=[]; document.querySelectorAll('.insf-chk[data-key="'+c.key+'"]').forEach(function(cb){ if(cb.checked) sel.push(cb.getAttribute("data-opt")); }); obj[c.key]=sel.join(","); }
+    else { var el2=document.getElementById("insf-"+c.key); if(el2) obj[c.key]=el2.value; }
+  });
+  if(insFormRi<0){ insState[insType].rows.push(obj); }
+  insRender(); insSaveLocal();
+  if(cont && insFormRi<0){ insOpenForm(-1); }
+  else insFormClose();
+}
 // 📤 엑셀 업로드: 📥 엑셀 다운로드로 받은 파일을 그대로 되읽어 현재 유형에 복원/추가
 function insImportExcel(file){
   if(!file) return;
