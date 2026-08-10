@@ -1006,23 +1006,25 @@
       <div class="nav-item nav-sub" data-view="waitinsp"><span class="dot"></span>검사대기현황</div>
       <div class="nav-item nav-sub" data-view="sched"><span class="dot"></span>📅 일정 달력</div>
     </div></div>
-    <div class="nav-item" data-view="inventory"><span class="dot"></span>입출고 · 재고관리</div>
-    <div class="nav-item" data-view="insrep"><span class="dot"></span>🧾 검사 일보</div>
-    <div class="nav-dd"><div class="nav-item" data-view="qchist" data-navgroup="qchist"><span class="dot"></span>🧪 검사이력조회<span class="nav-caret" data-caret="qchist">▾</span></div>
-    <div class="nav-group" id="navgroup-qchist">
+    <div class="nav-item" data-view="inventory"><span class="dot"></span>📦 입출고 · 재고관리</div>
+    <div class="nav-dd"><div class="nav-item" data-view="insrep" data-navgroup="insgrp"><span class="dot"></span>🧾 검사 일보<span class="nav-caret" data-caret="insgrp">▾</span></div>
+    <div class="nav-group" id="navgroup-insgrp">
+      <div class="nav-item nav-sub" data-view="qchist"><span class="dot"></span>🧪 검사이력조회</div>
       <div class="nav-item nav-sub" data-view="qcprio"><span class="dot"></span>📋 검사 요청서</div>
     </div></div>
-    <div class="nav-dd"><div class="nav-item" data-view="quality" data-navgroup="quality"><span class="dot"></span>품질분석<span class="nav-caret" data-caret="quality">▾</span></div>
+    <div class="nav-dd"><div class="nav-item" data-view="quality" data-navgroup="quality"><span class="dot"></span>📈 품질분석<span class="nav-caret" data-caret="quality">▾</span></div>
     <div class="nav-group" id="navgroup-quality">
       <div class="nav-item nav-sub" data-view="nc"><span class="dot"></span>⚠ 고객부적합관리</div>
     </div></div>
     <div class="nav-dd"><div class="nav-item" data-view="docmaster" data-navgroup="docmaster"><span class="dot"></span>📑 문서 Master<span class="nav-caret" data-caret="docmaster">▾</span></div>
     <div class="nav-group" id="navgroup-docmaster">
       <div class="nav-item nav-sub" data-view="instr"><span class="dot"></span>🔧 계측기 관리</div>
+      <div class="nav-item nav-sub" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
     </div></div>
-    <div class="nav-item" data-view="sales"><span class="dot"></span>매출현황</div>
-    <div class="nav-item" data-view="vendor"><span class="dot"></span>거래처 관리</div>
-    <div class="nav-item" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
+    <div class="nav-dd"><div class="nav-item" data-view="sales" data-navgroup="salesgrp"><span class="dot"></span>💼 매출현황<span class="nav-caret" data-caret="salesgrp">▾</span></div>
+    <div class="nav-group" id="navgroup-salesgrp">
+      <div class="nav-item nav-sub" data-view="vendor"><span class="dot"></span>거래처 관리</div>
+    </div></div>
     <div class="nav-item" id="helpNavBtn" title="사용법 안내"><span class="dot"></span>❓ 사용법</div>
   </div>
   <button type="button" id="sideNavToggle" class="side-nav-toggle" title="메뉴 접기/펴기">◀</button>
@@ -1775,6 +1777,7 @@
         <span aria-hidden="true" style="width:1px;height:22px;background:#D8DEE8;margin:0 2px;flex:0 0 auto;"></span>
         <button type="button" id="insrep-ncAlertBtn" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer;" title="현재 일보의 부적합을 전체 사용자에게 즉시 알립니다">🔔 부적합 알림</button>
         <button type="button" id="insrep-unrBtn" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer;" title="부적합이 있으나 조치완료일이 비어있는 항목 보기">⚠ 미조치 부적합</button>
+        <button type="button" id="insrep-qualBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer;" title="불량률·PPM·부적합 파레토">📊 품질 요약</button>
       </div>
       <div class="topbar-right" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%;margin-left:0;justify-content:flex-start;">
         <button type="button" id="insrep-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 행 추가</button>
@@ -2329,7 +2332,7 @@ function setNavGroup(name, open){
 }
 // 프로그램을 열 때는 소메뉴(월별 현황 / MAIN 대시보드)를 항상 접힌 상태로 시작한다.
 // 세션 중 펼친 상태는 그대로 유지되고, 새로 열면 다시 접힌다.
-["summary","main","qchist","quality","docmaster"].forEach(name => setNavGroup(name, false));
+["summary","main","insgrp","quality","docmaster","salesgrp"].forEach(name => setNavGroup(name, false));
 document.querySelectorAll(".nav-caret").forEach(caret => {
   caret.addEventListener("click", (e) => {
     e.stopPropagation(); // 화면 전환 없이 접고/펴기만
@@ -12468,6 +12471,7 @@ function insInit(){
   bind("insrep-importFile","change",function(){ if(this.files&&this.files[0]) insImportExcel(this.files[0]); this.value=""; });
   bind("insrep-ncAlertBtn","click",ncAlertSendCurrent);
   bind("insrep-unrBtn","click",insOpenUnresolved);
+  bind("insrep-qualBtn","click",insOpenQuality);
   bind("insrep-printBtn","click",insPrintDay);
   bind("insrep-masterBtn","click",insExportMaster);
   var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; insRender(); });
@@ -13177,6 +13181,82 @@ function insExportProcessIn(){
   var pad=function(n){return String(n).padStart(2,"0");},d=new Date();
   var stamp=""+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"_"+pad(d.getHours())+pad(d.getMinutes());
   var __dt=(insDayFilter==="all")?stamp:insDayFilter.replace(/-/g,""); XLSX.writeFile(wb,"공정입고_"+__dt+".xlsx");
+}
+/* ==================== \uD83D\uDCCA 품질 요약 (검사 일보 기준: 불량률·PPM·부적합 파레토) ==================== */
+function insDefectShortLabel_(cfg){
+  var m={};
+  cfg.groups.forEach(function(g){
+    if(g.subs){ g.subs.forEach(function(s){ if(insIsDefectKey_(s.key)) m[s.key]=s.label; }); }
+    else if(g.leaf && insIsDefectKey_(g.leaf.key)){ m[g.leaf.key]=g.label; }
+  });
+  return m;
+}
+function insQualityRows_(t){ return (insState[t]&&insState[t].rows)||[]; }
+function insQualitySummary_(){
+  var types=["incoming","shipping","measureS","measureL"];
+  var byType={}, defMap={}, tot={ins:0,good:0,bad:0};
+  types.forEach(function(t){
+    var ins=0,good=0, lab=insDefectShortLabel_(INS_CFG[t]);
+    insQualityRows_(t).forEach(function(r){
+      if(insDayFilter!=="all" && String(r.insDate||"")!==insDayFilter) return;
+      var ic=Number(r.insCnt)||0, gc=Number(r.goodCnt)||0;
+      ins+=ic; good+=gc;
+      Object.keys(r).forEach(function(k){ if(insIsDefectKey_(k)){ var n=Number(r[k])||0; if(n>0){ var L=lab[k]||k; defMap[L]=(defMap[L]||0)+n; } } });
+    });
+    var bad=Math.max(0,ins-good);
+    byType[t]={label:insTypeLabel(t), ins:ins, good:good, bad:bad, rate:(ins?bad/ins*100:0)};
+    tot.ins+=ins; tot.good+=good; tot.bad+=bad;
+  });
+  tot.rate = tot.ins? (tot.bad/tot.ins*100):0;
+  tot.ppm  = tot.ins? Math.round(tot.bad/tot.ins*1000000):0;
+  var defList=Object.keys(defMap).map(function(k){ return {label:k,n:defMap[k]}; }).sort(function(a,b){ return b.n-a.n; });
+  return {byType:byType, tot:tot, defList:defList, types:types};
+}
+function insOpenQuality(){
+  var d=insQualitySummary_(), t=d.tot;
+  var period=(insDayFilter==="all")?"전체 기간":("검사일 "+insDayFilter);
+  var kpi=function(lab,val,color){ return '<div style="flex:1;min-width:96px;background:#F6FAFF;border:1px solid #D6E4F5;border-radius:12px;padding:12px;text-align:center;"><div style="font-size:12px;color:#5A6478;">'+lab+'</div><div style="font-size:22px;font-weight:800;color:'+(color||"#1F2A44")+';margin-top:2px;">'+val+'</div></div>'; };
+  var kpis='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">'
+    +kpi("검사수", t.ins.toLocaleString())
+    +kpi("양품수", t.good.toLocaleString(),"#1E7A46")
+    +kpi("불량수", t.bad.toLocaleString(),"#C0392B")
+    +kpi("불량률", t.rate.toFixed(2)+"%","#C0392B")
+    +kpi("PPM", t.ppm.toLocaleString(),"#8A1F1F")
+    +'</div>';
+  var typeRows=d.types.map(function(k){ var x=d.byType[k]; return '<tr>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;white-space:nowrap;">'+insEsc(x.label)+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;">'+x.ins.toLocaleString()+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;color:#1E7A46;">'+x.good.toLocaleString()+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;color:#C0392B;">'+x.bad.toLocaleString()+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;">'+x.rate.toFixed(2)+'%</td>'
+    +'</tr>'; }).join("");
+  var typeTable='<div style="font-weight:800;color:#1F2A44;margin:6px 0;">유형별</div>'
+    +'<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:14px;"><thead><tr>'
+    +['유형','검사수','양품수','불량','불량률'].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:6px;">'+h+'</th>'; }).join("")
+    +'</tr></thead><tbody>'+typeRows+'</tbody></table>';
+  var maxN=d.defList.length? d.defList[0].n:0;
+  var pareto = d.defList.length
+    ? '<div style="font-weight:800;color:#1F2A44;margin:6px 0;">부적합 유형 (파레토)</div>'+d.defList.map(function(x){
+        var pct=maxN? Math.round(x.n/maxN*100):0;
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;">'
+          +'<div style="width:96px;text-align:right;color:#33415C;white-space:nowrap;">'+insEsc(x.label)+'</div>'
+          +'<div style="flex:1;background:#F0F4F8;border-radius:6px;overflow:hidden;height:18px;"><div style="width:'+pct+'%;height:100%;background:#C0392B;"></div></div>'
+          +'<div style="width:44px;text-align:right;font-weight:700;color:#C0392B;">'+x.n+'</div>'
+          +'</div>';
+      }).join("")
+    : '<div style="color:#1E7A46;font-weight:700;padding:8px 0;">부적합이 없습니다 \uD83D\uDC4D</div>';
+
+  var ov=document.getElementById("insql-ov");
+  if(!ov){ ov=document.createElement("div"); ov.id="insql-ov"; ov.style.cssText="position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,0.5);display:flex;align-items:center;justify-content:center;padding:14px;"; ov.addEventListener("click",function(e){ if(e.target===ov) ov.style.display="none"; }); document.body.appendChild(ov); }
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:760px;max-height:90vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.35);">'
+    +'<div style="padding:14px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;">'
+    +  '<b style="font-size:16px;color:#1F2A44;">\uD83D\uDCCA 품질 요약 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· '+insEsc(period)+' · 이 기기 기준</span></b>'
+    +  '<button type="button" id="insql-x" style="border:none;background:#F0F4F8;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
+    +'</div>'
+    +'<div style="padding:14px 16px;overflow:auto;">'+kpis+typeTable+pareto+'</div>'
+    +'</div>';
+  ov.style.display="flex";
+  document.getElementById("insql-x").addEventListener("click",function(){ ov.style.display="none"; });
 }
 /* ==================== ⚠ 미조치 부적합 (부적합 있으나 조치완료일 비어있음) ==================== */
 var insUnresolvedSrc=null;   // 전체 공유본 버퍼 {type:{rows,insp}} — null이면 이 기기 데이터
