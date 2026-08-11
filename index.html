@@ -12483,15 +12483,9 @@ function insInit(){
     var oldDate=m.date||"", newDate=this.value||"";
     var rows=(insState[insType]&&insState[insType].rows)||[];
     if(oldDate && newDate && oldDate!==newDate && insType!=="processin" && rows.length>0){
-      if(confirm("검사일자가 "+oldDate+" → "+newDate+" 로 바뀝니다.\n\n[확인] 현재 내용을 엑셀로 저장하고 비웁니다. (조치 안 된 부적합 행은 남김)\n[취소] 날짜만 바꾸고 내용은 그대로 둡니다.")){
-        var savedFilter=insDayFilter; insDayFilter="all"; m.date=oldDate;
-        try{ insExport(); }catch(e){}
-        try{ insExportMaster(); }catch(e){}
-        insDayFilter=savedFilter;
-        insState[insType].rows = rows.filter(function(r){ return insRowDefect_(insType,r) && String(r.actDate||"").trim()===""; });
-        m.date=newDate;
-        insSyncMetaInputs(); insRender(); if(typeof insSaveLocalNow==="function") insSaveLocalNow(); else insSaveLocal();
-        insSetStatus("📥 엑셀 저장 후 비움 — 새 검사일자 "+newDate);
+      if(confirm("검사일자가 "+oldDate+" → "+newDate+" 로 바뀝니다.\n\n[확인] 수입·측정·입고·출하 + 붙여넣기용을 모두 저장하고 표를 비웁니다. (조치 안 된 부적합 행은 남김)\n[취소] 날짜만 바꾸고 내용은 그대로 둡니다.")){
+        var saved=insDailyClose(newDate);
+        try{ insSetStatus("📥 마감 저장 완료: "+saved.join(", ")); }catch(e){}
         return;
       }
     }
@@ -12861,21 +12855,39 @@ function insWriteXlsx(wb, filename){
       .then(function(){ try{ insSetStatus("📁 폴더에 저장됨: "+filename); }catch(e){} });
   }).catch(function(){ dl(); });
 }
+// 마감: 수입·측정(소/대)·입고·출하 폼 + 붙여넣기용(전체) 저장 → 비우기(미조치 남김) → 날짜 갱신
+function insDailyClose(targetDate){
+  var today=targetDate || ((typeof insToday_==="function")?insToday_():"");
+  var order=["incoming","measureS","measureL","shipping"];
+  var savedType=insType, sf=insDayFilter; insDayFilter="all";
+  var saved=[];
+  order.forEach(function(t){
+    var rows=(insState[t]&&insState[t].rows)||[];
+    if(!rows.length) return;
+    insType=t; try{ insExport(); saved.push(insTypeLabel(t)); }catch(e){}
+  });
+  var hasProc=(((insState.incoming&&insState.incoming.rows)||[]).length)||(((insState.measureS&&insState.measureS.rows)||[]).length)||(((insState.measureL&&insState.measureL.rows)||[]).length);
+  if(hasProc){ insType="processin"; try{ insExport(); saved.push("공정입고"); }catch(e){} }
+  var anyData=order.some(function(t){ return (((insState[t]&&insState[t].rows)||[]).length)>0; });
+  if(anyData){ try{ insExportMaster(); saved.push("붙여넣기용"); }catch(e){} }
+  insType=savedType; insDayFilter=sf;
+  order.forEach(function(t){
+    var rows=(insState[t]&&insState[t].rows)||[];
+    if(!rows.length) return;
+    insState[t].rows = rows.filter(function(r){ return insRowDefect_(t,r) && String(r.actDate||"").trim()===""; });
+    if(insMetaByType[t]) insMetaByType[t].date=today;
+  });
+  insSyncMetaInputs(); insRender(); if(typeof insSaveLocalNow==="function") insSaveLocalNow(); else insSaveLocal();
+  return saved;
+}
 function insDailyRollover(){
-  if(insType==="processin") return;
-  var m=insMetaByType[insType]; if(!m) return;
-  var today=(typeof insToday_==="function")?insToday_():"";
-  var rows=(insState[insType]&&insState[insType].rows)||[];
-  if(!today || !m.date || m.date===today || !rows.length) return;
-  if(confirm("저장된 "+insTypeLabel(insType)+" 검사 일보가 ["+m.date+"] 날짜입니다.\n오늘("+today+")로 넘어갑니다.\n\n[확인] 그 내용을 엑셀로 저장하고 비웁니다. (조치 안 된 부적합 행은 남김)\n[취소] 그대로 두고 계속 작성합니다.")){
-    var sf=insDayFilter; insDayFilter="all";
-    try{ insExport(); }catch(e){}
-    try{ insExportMaster(); }catch(e){}
-    insDayFilter=sf;
-    insState[insType].rows = rows.filter(function(r){ return insRowDefect_(insType,r) && String(r.actDate||"").trim()===""; });
-    m.date=today;
-    insSyncMetaInputs(); insRender(); if(typeof insSaveLocalNow==="function") insSaveLocalNow(); else insSaveLocal();
-    try{ insSetStatus("📥 저장 후 새 날짜("+today+") 시작 — 미조치 "+insState[insType].rows.length+"행 유지"); }catch(e){}
+  var today=(typeof insToday_==="function")?insToday_():""; if(!today) return;
+  var order=["incoming","measureS","measureL","shipping"];
+  var stale=order.some(function(t){ var m=insMetaByType[t], rows=(insState[t]&&insState[t].rows)||[]; return m && m.date && m.date!==today && rows.length; });
+  if(!stale) return;
+  if(confirm("이전 날짜의 검사 일보가 남아 있습니다.\n\n[확인] 수입·측정·입고·출하 + 붙여넣기용을 모두 엑셀로 저장하고 표를 비웁니다.\n(조치 안 된 부적합 행은 남기고, 검사일자는 오늘로)\n[취소] 그대로 둡니다.")){
+    var saved=insDailyClose(today);
+    try{ insSetStatus("📥 마감 저장 완료: "+saved.join(", ")+" — 오늘("+today+")로 시작"); }catch(e){}
   }
 }
 
