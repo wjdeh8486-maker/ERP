@@ -1789,6 +1789,7 @@
           <button type="button" class="ins-dd-btn" data-menu="mMore" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">⚙ 더보기 ▾</button>
           <div class="ins-dd-menu" id="mMore" style="min-width:240px;">
             <button type="button" id="insrep-saveFolderBtn" style="background:#334155;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="PC 크롬/엣지에서 저장 폴더 지정">📁 저장 폴더 지정</button>
+            <button type="button" id="insrep-validateBtn" style="background:#B45309;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="수량·양품수·중복/오타 S/N 등 입력 오류 검출">🔎 입력 검증</button>
             <div style="border-top:1px solid #EEF1F6;margin:3px 0;"></div>
             <button type="button" id="insrep-cloudLoadBtn" style="background:#fff;color:#5A3E7A;border:1px solid #D9C4EC;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">☁ 불러오기</button>
             <div style="border-top:1px solid #EEF1F6;margin:3px 0;"></div>
@@ -12473,6 +12474,7 @@ function insInit(){
   var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; if(insDayFilter!=="all" && insType!=="processin" && insMetaByType[insType]){ insMetaByType[insType].date=insDayFilter; insSyncMetaInputs(); } insRender(); insSaveLocal(); });
   bind("insrep-cloudSaveBtn","click",insCloudSave);
   bind("insrep-saveFolderBtn","click",insPickSaveFolder);
+  bind("insrep-validateBtn","click",insOpenValidate);
   bind("insrep-cloudLoadBtn","click",insCloudLoad);
   bind("insrep-inspector","input",function(){ if(insMetaByType[insType]) insMetaByType[insType].inspector=this.value; insSaveLocal(); });
   bind("insrep-date","change",function(){ var v=this.value; if(insMetaByType[insType]) insMetaByType[insType].date=v; insDayFilter = v ? v : "all"; insRender(); insSaveLocal(); });
@@ -13243,6 +13245,126 @@ function insExportProcessIn(){
   var __dt=(insDayFilter==="all")?stamp:insDayFilter.replace(/-/g,""); insWriteXlsx(wb,"공정입고_"+__dt+".xlsx");
 }
 /* ==================== \uD83D\uDCCA 품질 요약 (검사 일보 기준: 불량률·PPM·부적합 파레토) ==================== */
+/* ==================== 🔎 입력 검증 (수량·양품수·중복/오타 S/N) ==================== */
+function insLev_(a,b){
+  a=String(a); b=String(b); var m=a.length, n=b.length;
+  if(Math.abs(m-n)>2) return 99;
+  var dp=[]; for(var i=0;i<=m;i++){ dp[i]=[]; dp[i][0]=i; } for(var j=0;j<=n;j++) dp[0][j]=j;
+  for(var i=1;i<=m;i++){ for(var j=1;j<=n;j++){
+    var cost=a.charAt(i-1)===b.charAt(j-1)?0:1;
+    dp[i][j]=Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+cost);
+  }}
+  return dp[m][n];
+}
+function insValidate_(){
+  var pass=function(r){ return insDayFilter==="all" || String((r&&r.insDate)||"")===insDayFilter; };
+  var num=function(v){ var n=Number(v); return isNaN(n)?null:n; };
+  var TYPES=["incoming","measureS","measureL","shipping"];
+
+  // 1) 도번별 검사수량 (수입 / 측정=소+대 / 출하)
+  var byDraw={};
+  var addQ=function(t, bucket){
+    ((insState[t]&&insState[t].rows)||[]).forEach(function(r){
+      if(!pass(r)) return; var d=String((r&&r.draw)||"").trim(); if(!d) return;
+      var c=num(r.insCnt)||0;
+      var o=byDraw[d]||(byDraw[d]={incoming:0,measure:0,shipping:0,hasI:false,hasM:false,hasS:false});
+      o[bucket]+=c; if(bucket==="incoming") o.hasI=true; else if(bucket==="measure") o.hasM=true; else o.hasS=true;
+    });
+  };
+  addQ("incoming","incoming"); addQ("measureS","measure"); addQ("measureL","measure"); addQ("shipping","shipping");
+  var qty=[];
+  Object.keys(byDraw).forEach(function(d){
+    var o=byDraw[d], vals=[]; if(o.hasI) vals.push(o.incoming); if(o.hasM) vals.push(o.measure); if(o.hasS) vals.push(o.shipping);
+    if(vals.length>=2){ var mn=Math.min.apply(null,vals), mx=Math.max.apply(null,vals);
+      if(mn!==mx) qty.push({draw:d, inc:o.hasI?o.incoming:"-", mea:o.hasM?o.measure:"-", shp:o.hasS?o.shipping:"-", gap:mx-mn}); }
+  });
+  qty.sort(function(a,b){ return b.gap-a.gap; });
+
+  // 2) 양품수 > 검사수 (또는 음수)
+  var good=[];
+  TYPES.forEach(function(t){
+    ((insState[t]&&insState[t].rows)||[]).forEach(function(r){
+      if(!pass(r)) return; var ic=num(r.insCnt), gc=num(r.goodCnt);
+      if(ic!=null && gc!=null && (gc>ic || gc<0 || ic<0)) good.push({type:insTypeLabel(t), draw:String(r.draw||""), sn:String(r.sn||""), ins:ic, good:gc});
+    });
+  });
+
+  // 3) 중복 S/N (같은 유형+도번)
+  var dup=[];
+  TYPES.forEach(function(t){
+    var seen={};
+    ((insState[t]&&insState[t].rows)||[]).forEach(function(r){
+      if(!pass(r)) return; var sn=String((r&&r.sn)||"").trim(); if(!sn) return;
+      var key=String(r.draw||"")+"\u0001"+sn; seen[key]=(seen[key]||0)+1;
+    });
+    Object.keys(seen).forEach(function(k){ if(seen[k]>1){ var p=k.split("\u0001"); dup.push({type:insTypeLabel(t), draw:p[0], sn:p[1], n:seen[k]}); } });
+  });
+
+  // 4) S/N 오타 의심 (같은 도번, 공정 간 '유사하지만 다른' S/N)
+  var snMap={};
+  TYPES.forEach(function(t){
+    var st=(t==="measureS"||t==="measureL")?"측정실":insTypeLabel(t);
+    ((insState[t]&&insState[t].rows)||[]).forEach(function(r){
+      if(!pass(r)) return; var d=String((r&&r.draw)||"").trim(), sn=String((r&&r.sn)||"").trim();
+      if(!d||!sn) return; var o=snMap[d]||(snMap[d]={}); (o[st]=o[st]||[]).push(sn);
+    });
+  });
+  var typo=[];
+  Object.keys(snMap).forEach(function(d){
+    var stations=Object.keys(snMap[d]); if(stations.length<2) return;
+    var seenPair={};
+    for(var i=0;i<stations.length;i++){ for(var j=i+1;j<stations.length;j++){
+      var A=snMap[d][stations[i]], B=snMap[d][stations[j]];
+      var setA={}; A.forEach(function(x){setA[x]=1;}); var setB={}; B.forEach(function(x){setB[x]=1;});
+      A.forEach(function(sa){
+        if(setB[sa]) return;
+        B.forEach(function(sb){
+          if(setA[sb] || sa===sb) return;
+          var dist=insLev_(sa,sb);
+          if(dist>=1 && dist<=2){
+            var key=d+"|"+[sa,sb].sort().join("~"); if(seenPair[key]) return; seenPair[key]=1;
+            typo.push({draw:d, a:sa, aProc:stations[i], b:sb, bProc:stations[j]});
+          }
+        });
+      });
+    }}
+  });
+
+  return {qty:qty, good:good, dup:dup, typo:typo};
+}
+function insOpenValidate(){
+  var v=insValidate_();
+  var total=v.qty.length+v.good.length+v.dup.length+v.typo.length;
+  var period=(insDayFilter==="all")?"전체 기간":("검사일 "+insDayFilter);
+  var th=function(a){ return '<tr>'+a.map(function(h){ return '<th style="border:1px solid #E7C9C9;background:#FDECEC;color:#8A1F1F;padding:6px;white-space:nowrap;">'+h+'</th>'; }).join("")+'</tr>'; };
+  var td=function(x,extra){ return '<td style="border:1px solid #EEE1E1;padding:6px;'+(extra||"")+'">'+insEsc(x)+'</td>'; };
+  var ok='<div style="color:#1E7A46;font-weight:700;padding:4px 0;">이상 없음 👍</div>';
+  var wrap=function(inner){ return '<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:13px;min-width:460px;">'+inner+'</table></div>'; };
+  var sec=function(title, inner){ return '<div style="font-weight:800;color:#1F2A44;margin:10px 0 5px;">'+title+'</div>'+inner; };
+
+  var qtyHtml = v.qty.length ? wrap('<thead>'+th(["도 번","수입검사","측정실","출하검사","차이"])+'</thead><tbody>'+v.qty.map(function(x){ return '<tr>'+td(x.draw,"font-weight:700;white-space:nowrap;")+td(x.inc,"text-align:center;")+td(x.mea,"text-align:center;")+td(x.shp,"text-align:center;")+td(x.gap,"text-align:center;color:#C0392B;font-weight:800;")+'</tr>'; }).join("")+'</tbody>') : ok;
+  var typoHtml = v.typo.length ? wrap('<thead>'+th(["도 번","S/N (공정)","S/N (공정)"])+'</thead><tbody>'+v.typo.map(function(x){ return '<tr>'+td(x.draw,"font-weight:700;white-space:nowrap;")+td(x.a+" ("+x.aProc+")","color:#C0392B;")+td(x.b+" ("+x.bProc+")","color:#C0392B;")+'</tr>'; }).join("")+'</tbody>') : ok;
+  var goodHtml = v.good.length ? wrap('<thead>'+th(["공정","도 번","S/N","검사수","양품수"])+'</thead><tbody>'+v.good.map(function(x){ return '<tr>'+td(x.type,"white-space:nowrap;")+td(x.draw,"font-weight:700;")+td(x.sn)+td(x.ins,"text-align:center;")+td(x.good,"text-align:center;color:#C0392B;font-weight:800;")+'</tr>'; }).join("")+'</tbody>') : ok;
+  var dupHtml = v.dup.length ? wrap('<thead>'+th(["공정","도 번","S/N","횟수"])+'</thead><tbody>'+v.dup.map(function(x){ return '<tr>'+td(x.type,"white-space:nowrap;")+td(x.draw,"font-weight:700;")+td(x.sn)+td(x.n+"회","text-align:center;color:#C0392B;font-weight:800;")+'</tr>'; }).join("")+'</tbody>') : ok;
+
+  var ov=document.getElementById("insval-ov");
+  if(!ov){ ov=document.createElement("div"); ov.id="insval-ov"; ov.style.cssText="position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,0.5);display:flex;align-items:center;justify-content:center;padding:14px;"; ov.addEventListener("click",function(e){ if(e.target===ov) ov.style.display="none"; }); document.body.appendChild(ov); }
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:860px;max-height:90vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.35);">'
+    +'<div style="padding:14px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;">'
+    +  '<b style="font-size:16px;color:#8A1F1F;">🔎 입력 검증 ('+total+'건) <span style="font-size:12px;color:#8A93A6;font-weight:600;">· '+insEsc(period)+'</span></b>'
+    +  '<button type="button" id="insval-x" style="border:none;background:#F0F4F8;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
+    +'</div>'
+    +'<div style="padding:10px 16px 16px;overflow:auto;">'
+    +  '<div style="font-size:12px;color:#5A6478;margin-bottom:4px;">같은 도번인데 공정별 수량/ S/N이 어긋나면 어느 한쪽 오입력일 수 있습니다. 아래 항목을 확인하세요.</div>'
+    +  sec("① 수량 불일치 (도번별 수입·측정·출하)", qtyHtml)
+    +  sec("② S/N 오타 의심 (같은 도번, 공정 간 유사·상이한 S/N)", typoHtml)
+    +  sec("③ 양품수 > 검사수 (불가능한 값)", goodHtml)
+    +  sec("④ 중복 S/N (같은 도번에 같은 S/N)", dupHtml)
+    +'</div>'
+    +'</div>';
+  ov.style.display="flex";
+  document.getElementById("insval-x").addEventListener("click",function(){ ov.style.display="none"; });
+}
 function insDefectShortLabel_(cfg){
   var m={};
   cfg.groups.forEach(function(g){
@@ -13453,6 +13575,7 @@ function ncAlertBroadcastType(t){
   var alerts=[];
   rows.forEach(function(r){
     var d=insRowDefect_(t, r); if(!d) return;
+    if(String((r&&r.actDate)||"").trim()!=="") return;   // 조치완료된 부적합은 알림 제외
     var draw=String((r&&r.draw)||"").trim(); if(!draw) return;
     alerts.push({ proc:proc, draw:draw, qty:d.qty, types:d.types, by:by });
   });
@@ -13515,7 +13638,7 @@ function ncAlertSendCurrent(){
   var t=insType;
   if(t==="processin"){ alert("공정입고 화면에서는 부적합 알림 전송이 없습니다."); return; }
   var rows=(insState[t]&&insState[t].rows)||[], cnt=0;
-  rows.forEach(function(r){ if(insRowDefect_(t,r) && String((r&&r.draw)||"").trim()) cnt++; });
+  rows.forEach(function(r){ if(insRowDefect_(t,r) && String((r&&r.draw)||"").trim() && String((r&&r.actDate)||"").trim()==="") cnt++; });
   if(!cnt){ insSetStatus("전송할 부적합이 없습니다."); alert("현재 일보에 부적합(수량>0)이 없습니다."); return; }
   if(!confirm("현재 ["+insTypeLabel(t)+"] 일보의 부적합 "+cnt+"건을 전체 사용자에게 알릴까요?")) return;
   ncAlertBroadcastType(t);
