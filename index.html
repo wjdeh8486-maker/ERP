@@ -6923,7 +6923,24 @@ window.__qualityInited = true;
         if(done < steps.length) statusEl.textContent = "데이터 동기화 중… (" + done + "/" + steps.length + ")";
       });
     };
-    await Promise.all(steps.map(runStep));   // 전부 병렬 (가장 느린 것만큼만 대기)
+    // ★ 공유 캐시(모든 사람이 보는 동일한 내용)가 있으면 즉시 열어준다. 최신화는 백그라운드.
+    var __haveShared = false;
+    try{
+      if(typeof sharedCacheBoot === "function"){
+        statusEl.textContent = "공유 데이터 여는 중…";
+        await sharedCacheBoot();
+        __haveShared = (typeof mainData !== "undefined" && mainData && mainData.length > 0);
+      }
+    }catch(_){ }
+    if(__haveShared){
+      window.alert = realAlert;
+      steps.forEach(function(st){ setStep(st.key, "done"); });
+      finish(steps.length);
+      steps.forEach(function(st){ try{ runStep(st); }catch(_){ } });   // 최신화 백그라운드
+      setTimeout(function(){ try{ if(enterBtn && !enterBtn.disabled) enterBtn.click(); }catch(_){ } }, 250);   // 바로 진입
+      return;
+    }
+    await Promise.all(steps.map(runStep));   // (공유 캐시 없을 때) 전부 병렬 대기
     window.alert = realAlert;   // 원복
     finish(ok);
   }
