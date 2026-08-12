@@ -1756,6 +1756,11 @@
       #topbar-insrep .ins-dd-menu.open{ display:flex; }
       #topbar-insrep .ins-dd-menu button{ width:100%; box-sizing:border-box; text-align:left; }
     </style>
+    <style>
+      #insrep-content .insrep-tablewrap thead th{ position:sticky; z-index:6; }
+      #insrep-content .insrep-tablewrap thead tr:first-child th{ top:0; }
+      #insrep-content .insrep-tablewrap thead tr:last-child th{ top:27px; }
+    </style>
     <div id="topbar-insrep" class="topbar" style="display:none;">
       <h1>🧾 검사 일보</h1>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -4317,6 +4322,46 @@ setInterval(updateSyncBanner, 30000);
 }
 async function loadMainData(){
   return await idbGet("cache_mainData");
+}
+// 다른 기기(PC)가 채워둔 공유 캐시를 부팅 시 읽어 빠르게 표시 (로컬 캐시 없는 기기용)
+async function sharedCacheBoot(){
+  try{
+    var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return;
+    var res=await Promise.race([
+      fetch(url+"?mode=readCache",{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return null;}),
+      new Promise(function(rs){ setTimeout(function(){ rs(null); }, 8000); })
+    ]);
+    if(!res||!res.success) return;
+    var pick=function(sec){ return sec ? (sec.data||sec.payload||null) : null; };
+    try{ var dm=pick(res.main);
+      if(dm && Array.isArray(dm.mainData)){
+        mainData=dm.mainData;
+        if(dm.measureWaitMap) measureWaitMap=dm.measureWaitMap;
+        if(dm.cleanWaitMap) cleanWaitMap=dm.cleanWaitMap;
+        if(dm.visionWaitMap) visionWaitMap=dm.visionWaitMap;
+        if(typeof markMainStatusDirty==="function") markMainStatusDirty();
+        if(typeof mainInitialRender==="function") mainInitialRender(mainData);
+        if(typeof setLoadDone==="function") setLoadDone("main");
+        if(typeof markDataArrived==="function") markDataArrived("main");
+        var st=document.getElementById("main-apiStatus"); if(st) st.textContent="공유 캐시 사용 중 (다른 기기에서 불러온 데이터)";
+      }
+    }catch(e){}
+    try{ var di=pick(res.inv);
+      if(di && Array.isArray(di.invData)){
+        invData=di.invData; invServerLoaded=true;
+        if(typeof invRenderAll==="function") invRenderAll();
+        if(typeof markDataArrived==="function") markDataArrived("inv");
+        if(typeof setLoadDone==="function") setLoadDone("inv");
+      }
+    }catch(e){}
+    try{ var dq=pick(res.quality);
+      if(dq && typeof dq==="object"){
+        Object.keys(dq).forEach(function(k){ if(Array.isArray(dq[k])) qualityRawData[k]=dq[k].map(function(r){ return Object.assign({},r,{date:new Date(r.date)}); }); });
+        if(typeof setLoadDone==="function") setLoadDone("quality");
+      }
+    }catch(e){}
+    if(typeof refreshActiveViewAfterData==="function") refreshActiveViewAfterData();
+  }catch(e){}
 }
   function getLocalCacheVersion(){
   return cacheGet("sharedCacheVersion") || {};
@@ -7058,6 +7103,7 @@ function renderSummaryView(){
 }
 (async function initCachedOrFetch(){
   const cachedMain = await loadMainData();
+  if(!cachedMain){ try{ await sharedCacheBoot(); }catch(e){} }   // 로컬 캐시 없는 기기(태블릿 등)는 공유 캐시로 빠르게
   const lastSync = cacheGet("mainLastSync");
   updateSyncBanner();
   if(cachedMain){
@@ -12570,10 +12616,10 @@ function insRender(){
   });  
   if(!body){ body='<tr><td colspan="'+(leaves.length+1)+'" style="padding:20px;text-align:center;color:#8A93A6;">해당 날짜에 행이 없습니다.</td></tr>'; }
   el.innerHTML=
-    '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px;overflow-x:auto;">'
+    '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px;">'
     + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">'+insEsc(cfg.title)+'</div>'
     + '<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">도번을 입력/스캔하면 자동으로 채워지고, 각 칸은 직접 수정할 수 있습니다. 체크박스는 엑셀에서 ■/□ 로 나옵니다.</div>'
-    + '<table style="border-collapse:collapse;font-size:12px;min-width:100%;"><thead><tr>'+head1+'<th rowspan="2" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;">삭제</th></tr><tr>'+head2+'</tr></thead><tbody>'+body+'</tbody></table>'
+    + '<div class="insrep-tablewrap" style="overflow:auto;max-height:calc(100vh - 300px);min-height:160px;-webkit-overflow-scrolling:touch;"><table style="border-collapse:collapse;font-size:12px;min-width:100%;"><thead><tr>'+head1+'<th rowspan="2" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;">삭제</th></tr><tr>'+head2+'</tr></thead><tbody>'+body+'</tbody></table></div>'
     + '</div>'
     + '<div style="background:#F6FAFF;border:1px solid #D6E4F5;border-radius:12px;padding:14px 16px;margin-top:12px;font-size:12.5px;color:#33415C;line-height:1.75;">'
     +   '<div style="font-weight:800;color:#1F2A44;margin-bottom:6px;">📌 저장·사용 안내</div>'
