@@ -12458,7 +12458,8 @@ function insCfg(){ return INS_CFG[insType]; }
 function insLeaves(cfg){ cfg=cfg||insCfg(); var out=[]; cfg.groups.forEach(function(g){ if(g.subs){ g.subs.forEach(function(s){ out.push(s); }); } else { out.push(g.leaf); } }); return out; }
 function insEsc(t){ return docmasterEsc(t); }
 function insDefaultDate_(){ try{ var m=insMetaByType[insType]; if(m&&m.date) return m.date; }catch(e){} var d=new Date(),p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
-function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); if("insDate" in r) r.insDate=insDefaultDate_(); return r; }
+function insRowId_(){ return "r"+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); if("insDate" in r) r.insDate=insDefaultDate_(); r._id=insRowId_(); return r; }
 
 function insToday_(){ var d=new Date(),p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
 function insSyncMetaInputs(){
@@ -13756,18 +13757,33 @@ function insCloudSave(){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
   var t=insType, label=insTypeLabel(t);
   if(t==="processin"){ insProcInCloudSave(); return; }
-  insSaveLocal(); insSetStatus("☁ ["+label+"] 저장 중…");
-  ncAlertBroadcastType(t);   // 부적합 있으면 전체 알림 전송
-  var payload={
-    rows:(insState[t]&&insState[t].rows)?insState[t].rows:[],
-    inspector:(document.getElementById("insrep-inspector")||{}).value||"",
-    date:(document.getElementById("insrep-date")||{}).value||"",
-    savedAt:new Date().toISOString()
-  };
-  fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
-    body:JSON.stringify({mode:"writeInsrepMaster", key:t, json:JSON.stringify(payload)})})
-   .then(function(){ insSetStatus("☁ ["+label+"] 공유 저장됨 "+new Date().toLocaleTimeString("ko-KR")); })
-   .catch(function(){ insSetStatus("["+label+"] 공유 저장 실패 — 네트워크 확인"); });
+  insSaveLocal(); insSetStatus("☁ ["+label+"] 저장 중… (누적 병합)");
+  ncAlertBroadcastType(t);
+  var localRows=(insState[t]&&insState[t].rows)?insState[t].rows:[];
+  // 클라우드 현재본을 먼저 읽어, 로컬에 없는 내용은 보존(병합) → 다른 날짜 누적이 지워지지 않음
+  fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(t),{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return null;})
+  .then(function(res){
+    var cloudRows=[]; try{ if(res && res.json){ var o=JSON.parse(res.json); if(o && Array.isArray(o.rows)) cloudRows=o.rows; } }catch(e){}
+    var localIds={}, localDates={};
+    localRows.forEach(function(r){ if(r&&r._id) localIds[r._id]=1; localDates[String((r&&r.insDate)||"").trim()]=1; });
+    var keep=cloudRows.filter(function(r){
+      if(r && r._id) return !localIds[r._id];            // id 있으면 id로 (정확)
+      return !localDates[String((r&&r.insDate)||"").trim()];  // 구버전(id 없음)은 날짜로
+    });
+    var merged=localRows.concat(keep);
+    var payload={ rows:merged,
+      inspector:(document.getElementById("insrep-inspector")||{}).value||"",
+      date:(document.getElementById("insrep-date")||{}).value||"",
+      savedAt:new Date().toISOString() };
+    return fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({mode:"writeInsrepMaster", key:t, json:JSON.stringify(payload)})})
+     .then(function(){
+       if(insState[t]) insState[t].rows=merged;
+       if(typeof insSaveLocalNow==="function") insSaveLocalNow(); else insSaveLocal();
+       insUpdateDayFilter(); insRender();
+       insSetStatus("☁ ["+label+"] 공유 저장됨"+(keep.length?(" · 다른 내용 "+keep.length+"행 보존"):"")+" "+new Date().toLocaleTimeString("ko-KR"));
+     });
+  }).catch(function(){ insSetStatus("["+label+"] 공유 저장 실패 — 네트워크 확인"); });
 }
 /* 불러오기: 현재 유형(페이지)만 불러옴 — 다른 유형 작업분은 건드리지 않음 */
 function insCloudLoad(){
