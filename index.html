@@ -12459,6 +12459,7 @@ function insLeaves(cfg){ cfg=cfg||insCfg(); var out=[]; cfg.groups.forEach(funct
 function insEsc(t){ return docmasterEsc(t); }
 function insDefaultDate_(){ try{ var m=insMetaByType[insType]; if(m&&m.date) return m.date; }catch(e){} var d=new Date(),p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
 function insRowId_(){ return "r"+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function insEnsureIds_(rows){ if(Array.isArray(rows)) rows.forEach(function(r){ if(r && !r._id) r._id=insRowId_(); }); return rows; }
 function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); if("insDate" in r) r.insDate=insDefaultDate_(); r._id=insRowId_(); return r; }
 
 function insToday_(){ var d=new Date(),p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
@@ -13749,6 +13750,7 @@ function insSaveLocal(){ if(__insSaveTimer) clearTimeout(__insSaveTimer); __insS
 try{ window.addEventListener("beforeunload", insSaveLocalNow); document.addEventListener("visibilitychange", function(){ if(document.visibilityState==="hidden") insSaveLocalNow(); }); }catch(e){}
 function insRestoreLocal(){
   try{ var s=localStorage.getItem(INSREP_LS_KEY); if(s) insApplySnapshot(JSON.parse(s)); }catch(e){}
+  try{ ["incoming","shipping","measureS","measureL","processin"].forEach(function(t){ if(insState[t]&&Array.isArray(insState[t].rows)) insEnsureIds_(insState[t].rows); }); }catch(e){}
 }
 function insSetStatus(msg){ var e=document.getElementById("insrep-status"); if(e) e.textContent=msg||""; }
 function insTypeLabel(t){ t=t||insType; return ({incoming:"수입검사",shipping:"출하검사",measureS:"측정실 소형",measureL:"측정실 대형",processin:"공정입고"})[t]||t; }
@@ -13770,7 +13772,7 @@ function insCloudSave(){
       if(r && r._id) return !localIds[r._id];            // id 있으면 id로 (정확)
       return !localDates[String((r&&r.insDate)||"").trim()];  // 구버전(id 없음)은 날짜로
     });
-    var merged=localRows.concat(keep);
+    var merged=insEnsureIds_(localRows.concat(keep));
     var payload={ rows:merged,
       inspector:(document.getElementById("insrep-inspector")||{}).value||"",
       date:(document.getElementById("insrep-date")||{}).value||"",
@@ -13798,7 +13800,7 @@ function insCloudLoad(){
        if(data && Array.isArray(data.rows)){
          var when=data.savedAt?new Date(data.savedAt).toLocaleString("ko-KR"):"-";
          if(!confirm("["+label+"] 공유 저장본을 불러오면 현재 ["+label+"] 작성분을 덮어씁니다. 진행할까요?\n(저장 시각: "+when+")")){ insSetStatus(""); return; }
-         insState[t]={rows:data.rows};
+         insState[t]={rows:insEnsureIds_(data.rows)};
          if(insMetaByType[t]) insMetaByType[t]={inspector:data.inspector||"",date:data.date||""};
          insSyncMetaInputs();
          insRender(); insSaveLocal(); insSetStatus("☁ ["+label+"] 불러옴");
