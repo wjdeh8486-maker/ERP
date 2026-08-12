@@ -12950,6 +12950,7 @@ function insExport(){
 //  측정실  → [공정검사(치수,BOLT,LED) 치수] + (기능 행) [수입검사(기능)]
 //  출하검사 → [출하검사]
 function insMNum_(v){ if(v==null) return ""; var s=String(v).trim(); if(s==="") return ""; var n=Number(v); return isNaN(n)?"":n; }
+function insNumIfDigits_(v){ var s=String(v==null?"":v).trim(); return /^[1-9][0-9]{0,14}$/.test(s) ? Number(s) : s; }
 function insMInt_(v){ var n=Number(v); return isNaN(n)?0:n; }
 function insMDefects_(r){ var d=insMInt_(r.insCnt)-insMInt_(r.goodCnt); return d>0?d:0; }
 
@@ -12961,7 +12962,7 @@ var _COL_FUNC= ["도 번","S/N","업 체","검사자","검사수","양품수","L
 
 // 수입검사(외관): 전체 행
 function _rowOut(r,c){
-  return [ r.draw||"", r.sn||"", r.vendor||"", r.insDate||"", c.insp||"",
+  return [ insNumIfDigits_(r.draw), r.sn||"", r.vendor||"", r.insDate||"", c.insp||"",
     insMNum_(r.insCnt), insMNum_(r.goodCnt), insMDefects_(r),
     insMNum_(r.d_scr), insMNum_(r.d_dnt), insMNum_(r.d_stn), insMNum_(r.p_mis), insMNum_(r.d_etc),
     "", r.actDate||"", r.act||"", "","","","","", (r.led?(r.insDate||""):"") ];
@@ -12969,19 +12970,19 @@ function _rowOut(r,c){
 // 수입검사 TAP → 공정검사 '체결란'만 채움 (도번·S/N·체결검사일·체결검사자·체결수·체결부적합·LED촬영)
 function _rowProcTap(r,c){
   var bad=insMInt_(r.p_fst)+insMInt_(r.p_mis);   // 체결 + 누락 부적합 합
-  return [ r.draw||"", r.sn||"", "", "", "", "", "", "", "", "", "", "", "", "", "",
+  return [ insNumIfDigits_(r.draw), r.sn||"", "", "", "", "", "", "", "", "", "", "", "", "", "",
     "","","","","", r.insDate||"", c.insp||"", insMNum_(r.insCnt), (bad>0?bad:""), (r.led?(r.insDate||""):"") ];
 }
 // 측정실 치수 → 공정검사 치수란
 function _rowProcDim(r,c){
-  return [ r.draw||"", r.sn||"", r.insDate||"", c.insp||"", r.mode||"",
+  return [ insNumIfDigits_(r.draw), r.sn||"", r.insDate||"", c.insp||"", r.mode||"",
     insMNum_(r.insCnt), insMNum_(r.goodCnt), insMDefects_(r),
     insMNum_(r.d_gen), insMNum_(r.d_tol), insMNum_(r.d_mis), "", "", r.actDate||"", r.act||"",
     "","","","","", "","","","", "" ];
 }
 // 출하검사
 function _rowShip(r,c){
-  return [ r.draw||"", r.sn||"", r.insDate||"", c.insp||"",
+  return [ insNumIfDigits_(r.draw), r.sn||"", r.insDate||"", c.insp||"",
     insMNum_(r.insCnt), insMNum_(r.goodCnt), insMDefects_(r),
     insMNum_(r.d_scr), insMNum_(r.d_dnt), insMNum_(r.d_stn), "", insMNum_(r.d_etc),
     "", r.actDate||"", r.act||"", "","","","","", "" ];
@@ -12989,7 +12990,7 @@ function _rowShip(r,c){
 // 측정실 기능 → 수입검사(기능). 검사일은 각 항목 체크한 날(=검사일)
 function _rowFunc(r,c){
   var pressDate=(String(r.press||"").trim()!=="")?(r.insDate||""):"";
-  return [ r.draw||"", r.sn||"", "", c.insp||"", insMNum_(r.fnCnt), insMNum_(r.fnGood),
+  return [ insNumIfDigits_(r.draw), r.sn||"", "", c.insp||"", insMNum_(r.fnCnt), insMNum_(r.fnGood),
     insMNum_(r.fnBad), (r.leak?(r.insDate||""):""), (r.flow?(r.insDate||""):""), pressDate, (r.vac?(r.insDate||""):""),
     "", "", "", "", "", "" ];
 }
@@ -13222,7 +13223,7 @@ function insExportProcessIn(){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
   var rows=insProcInCompute_();
   var aoa=[["공정입고 현황","","","",""],["품번(도번)","측정실입고 수량","비고","크린룸입고 수량","비고"]];
-  rows.forEach(function(r){ var m=insProcInMemo[r.draw]||{m:"",c:""}; aoa.push([r.draw, r.meas||"", m.m||"", r.clean||"", m.c||""]); });
+  rows.forEach(function(r){ var m=insProcInMemo[r.draw]||{m:"",c:""}; aoa.push([insNumIfDigits_(r.draw), r.meas||"", m.m||"", r.clean||"", m.c||""]); });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
   ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:4}}];
   ws["!cols"]=[{wch:18},{wch:14},{wch:18},{wch:14},{wch:18}];
