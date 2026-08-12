@@ -12470,12 +12470,12 @@ function insInit(){
   bind("insrep-qualBtn","click",insOpenQuality);
   bind("insrep-printBtn","click",insPrintDay);
   bind("insrep-masterBtn","click",insExportMaster);
-  var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; insRender(); });
+  var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; if(insDayFilter!=="all" && insType!=="processin" && insMetaByType[insType]){ insMetaByType[insType].date=insDayFilter; insSyncMetaInputs(); } insRender(); insSaveLocal(); });
   bind("insrep-cloudSaveBtn","click",insCloudSave);
   bind("insrep-saveFolderBtn","click",insPickSaveFolder);
   bind("insrep-cloudLoadBtn","click",insCloudLoad);
   bind("insrep-inspector","input",function(){ if(insMetaByType[insType]) insMetaByType[insType].inspector=this.value; insSaveLocal(); });
-  bind("insrep-date","change",function(){ if(insMetaByType[insType]) insMetaByType[insType].date=this.value; insSaveLocal(); });
+  bind("insrep-date","change",function(){ var v=this.value; if(insMetaByType[insType]) insMetaByType[insType].date=v; insDayFilter = v ? v : "all"; insRender(); insSaveLocal(); });
   // PC 스캐너(키보드형) 입력: 찍으면 값+Enter → 행 추가, 연속 가능
   var scanInp=document.getElementById("insrep-scanInput");
   if(scanInp){
@@ -13049,8 +13049,10 @@ function insUpdateDayFilter(){
   var sel=document.getElementById("insrep-dayFilter"); if(!sel) return;
   var rows; if(insType==="processin"){ var __sc=insProcInSrc_(); rows=[].concat(__sc.incoming,__sc.measureS,__sc.measureL); } else { rows=(insState[insType]&&insState[insType].rows)||[]; }
   var set={}; rows.forEach(function(r){ var d=String((r&&r.insDate)||"").trim(); if(d) set[d]=1; });
+  var curDate=(insMetaByType[insType]&&insMetaByType[insType].date)||"";
+  if(curDate && !(curDate in set)) set[curDate]=0;   // 작성 중 날짜는 0건이어도 목록에 포함
   var dates=Object.keys(set).sort(function(a,b){ return b.localeCompare(a); });   // 최신 날짜 위로
-  if(insDayFilter!=="all" && !set[insDayFilter]) insDayFilter="all";
+  if(insDayFilter!=="all" && !(insDayFilter in set)) insDayFilter="all";
   sel.innerHTML='<option value="all">전체 ('+rows.length+')</option>'+dates.map(function(d){
     var c=rows.filter(function(r){ return String(r.insDate||"")===d; }).length;
     return '<option value="'+insEsc(d)+'"'+(insDayFilter===d?" selected":"")+'>'+insEsc(d)+' ('+c+')</option>';
