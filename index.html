@@ -13608,6 +13608,7 @@ function insUnrExport(){
 // 시스템을 열고 있는 모든 사람이 20초 폴링으로 팝업을 받는다. (공정/도번/부적합수량/유형)
 var NCALERT_LS_TS = "ntl_ncalert_ts_v1";
 var __ncAlertSeen = {};
+var __ncAlertInit = false;   // 접속 후 첫 폴링에서는 과거 알림을 띄우지 않음
 var __ncAlertStarted = false;
 
 // 유형별 부적합 라벨 맵 (예: d_gen->일반치수, fnBad->기능부적합)
@@ -13659,12 +13660,17 @@ function ncAlertPoll(){
     if(!res||!res.success||!Array.isArray(res.alerts)) return;
     var lastTs=0; try{ lastTs=Number(localStorage.getItem(NCALERT_LS_TS)||0)||0; }catch(e){}
     var maxTs=lastTs;
-    res.alerts.slice().sort(function(a,b){return (a.ts||0)-(b.ts||0);}).forEach(function(a){
+    var sorted=res.alerts.slice().sort(function(a,b){return (a.ts||0)-(b.ts||0);});
+    if(!__ncAlertInit){
+      // 접속 시점의 기존 알림은 팝업 없이 확인 처리 (과거 발생분·조치완료분이 쏟아지지 않게)
+      sorted.forEach(function(a){ __ncAlertSeen[a.id]=1; var ts=Number(a.ts||0)||0; if(ts>maxTs) maxTs=ts; });
+      __ncAlertInit=true;
+      if(maxTs>lastTs){ try{ localStorage.setItem(NCALERT_LS_TS, String(maxTs)); }catch(e){} }
+      return;
+    }
+    sorted.forEach(function(a){
       var ts=Number(a.ts||0)||0;
-      if(ts>lastTs && !__ncAlertSeen[a.id]){
-        __ncAlertSeen[a.id]=1; ncAlertShow(a);
-        if(ts>maxTs) maxTs=ts;
-      }
+      if(ts>lastTs && !__ncAlertSeen[a.id]){ __ncAlertSeen[a.id]=1; ncAlertShow(a); if(ts>maxTs) maxTs=ts; }
     });
     if(maxTs>lastTs){ try{ localStorage.setItem(NCALERT_LS_TS, String(maxTs)); }catch(e){} }
   }).catch(function(){});
