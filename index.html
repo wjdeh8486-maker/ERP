@@ -1805,6 +1805,7 @@
             <button type="button" id="insrep-printBtn" style="background:#334155;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">🖨 인쇄</button>
             <div style="border-top:1px solid #EEF1F6;margin:3px 0;"></div>
             <button type="button" id="insrep-qualBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">📊 품질 요약</button>
+            <button type="button" id="insrep-ctqBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="부적합 유형별 CTQ 분석 (비중·누적·PPM·핵심등급)">🎯 CTQ 분석</button>
           </div>
         </span>
       </div>
@@ -12527,6 +12528,7 @@ function insInit(){
   bind("insrep-ncAlertBtn","click",ncAlertSendCurrent);
   bind("insrep-unrBtn","click",insOpenUnresolved);
   bind("insrep-qualBtn","click",insOpenQuality);
+  bind("insrep-ctqBtn","click",insOpenCTQ);
   bind("insrep-printBtn","click",insPrintDay);
   bind("insrep-masterBtn","click",insExportMaster);
   var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; if(insDayFilter!=="all" && insType!=="processin" && insMetaByType[insType]){ insMetaByType[insType].date=insDayFilter; insSyncMetaInputs(); } insRender(); insSaveLocal(); });
@@ -13423,6 +13425,76 @@ function insOpenValidate(){
     +'</div>';
   ov.style.display="flex";
   document.getElementById("insval-x").addEventListener("click",function(){ ov.style.display="none"; });
+}
+/* ==================== 🎯 CTQ 분석 (부적합 유형별: 비중·누적·PPM·핵심등급) ==================== */
+function insCTQRows_(){
+  var q=insQualitySummary_();
+  var defList=q.defList||[], tot=q.tot||{ins:0,bad:0};
+  var sumN=defList.reduce(function(a,d){ return a+(d.n||0); },0);
+  var cum=0;
+  var rows=defList.map(function(d,i){
+    var share=sumN? (d.n/sumN*100) : 0;
+    cum+=share;
+    var ppm=tot.ins? Math.round(d.n/tot.ins*1000000) : 0;
+    var grade=(cum<=80.00001)?"핵심":"일반";   // 파레토 80% = 핵심(Vital Few)
+    return { rank:i+1, label:d.label, n:d.n, share:share, cum:cum, ppm:ppm, grade:grade };
+  });
+  return { rows:rows, tot:tot, sumN:sumN };
+}
+function insOpenCTQ(){
+  var c=insCTQRows_();
+  var rows=c.rows, tot=c.tot;
+  var period=(insDayFilter==="all")?"전체 기간":("검사일 "+insDayFilter);
+  var f1=function(x){ return (Math.round(x*10)/10).toFixed(1); };
+  var body;
+  if(!rows.length){
+    body='<div style="color:#1E7A46;font-weight:700;padding:16px 4px;">부적합이 없습니다 👍 (해당 기간에 CTQ로 분석할 불량이 없음)</div>';
+  } else {
+    var maxShare=rows[0].share||1;
+    var trs=rows.map(function(r){
+      var barW=Math.max(2, (r.share/maxShare*100));
+      var barColor=(r.grade==="핵심")?"#C0392B":"#9AA6B2";
+      var gradeBadge=(r.grade==="핵심")
+        ? '<span style="background:#FDECEC;color:#8A1F1F;border:1px solid #E7C9C9;border-radius:6px;padding:1px 7px;font-weight:800;font-size:11px;">핵심</span>'
+        : '<span style="background:#EEF1F6;color:#5A6478;border-radius:6px;padding:1px 7px;font-size:11px;">일반</span>';
+      return '<tr>'
+        +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;color:#8A93A6;">'+r.rank+'</td>'
+        +'<td style="border:1px solid #E6EBF2;padding:6px;font-weight:700;white-space:nowrap;">'+insEsc(r.label)+'</td>'
+        +'<td style="border:1px solid #E6EBF2;padding:6px;">'
+        +'  <div style="display:flex;align-items:center;gap:8px;">'
+        +'    <div style="flex:1;min-width:80px;background:#F0F4F8;border-radius:5px;height:14px;overflow:hidden;"><div style="width:'+barW+'%;height:100%;background:'+barColor+';"></div></div>'
+        +'    <span style="font-size:12px;color:#33415C;white-space:nowrap;">'+f1(r.share)+'%</span>'
+        +'  </div></td>'
+        +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;font-weight:800;color:#C0392B;">'+r.n+'</td>'
+        +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+f1(r.cum)+'%</td>'
+        +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+r.ppm.toLocaleString()+'</td>'
+        +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+gradeBadge+'</td>'
+        +'</tr>';
+    }).join("");
+    var coreCnt=rows.filter(function(r){return r.grade==="핵심";}).length;
+    body='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'
+      +'<div style="flex:1;min-width:120px;background:#F4F8FD;border:1px solid #D6E4F5;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">총 검사수</div><div style="font-size:18px;font-weight:800;color:#0B5CAB;">'+(tot.ins||0).toLocaleString()+'</div></div>'
+      +'<div style="flex:1;min-width:120px;background:#FDF3F3;border:1px solid #F0D6D6;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">총 부적합</div><div style="font-size:18px;font-weight:800;color:#C0392B;">'+(c.sumN||0).toLocaleString()+'</div></div>'
+      +'<div style="flex:1;min-width:120px;background:#F6FFF9;border:1px solid #CFE9D8;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">불량률 / PPM</div><div style="font-size:18px;font-weight:800;color:#1E7A46;">'+f1(tot.rate||0)+'% · '+(tot.ppm||0).toLocaleString()+'</div></div>'
+      +'<div style="flex:1;min-width:120px;background:#FDECEC;border:1px solid #E7C9C9;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">핵심 CTQ 항목</div><div style="font-size:18px;font-weight:800;color:#8A1F1F;">'+coreCnt+'개</div></div>'
+      +'</div>'
+      +'<div style="font-size:12px;color:#5A6478;margin-bottom:6px;">누적 비중 80%까지를 <b style="color:#8A1F1F;">핵심(Vital Few)</b>으로 표시했습니다 — 이 항목들을 먼저 개선하면 불량의 대부분을 줄일 수 있습니다.</div>'
+      +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:13px;min-width:560px;"><thead><tr>'
+      +['순위','부적합 유형 (CTQ)','비중','부적합수','누적%','PPM','등급'].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
+      +'</tr></thead><tbody>'+trs+'</tbody></table></div>';
+  }
+
+  var ov=document.getElementById("insctq-ov");
+  if(!ov){ ov=document.createElement("div"); ov.id="insctq-ov"; ov.style.cssText="position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,0.5);display:flex;align-items:center;justify-content:center;padding:14px;"; ov.addEventListener("click",function(e){ if(e.target===ov) ov.style.display="none"; }); document.body.appendChild(ov); }
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:820px;max-height:90vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.35);">'
+    +'<div style="padding:14px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;">'
+    +  '<b style="font-size:16px;color:#0B5CAB;">🎯 CTQ 분석 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 부적합 유형별 · '+insEsc(period)+'</span></b>'
+    +  '<button type="button" id="insctq-x" style="border:none;background:#F0F4F8;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
+    +'</div>'
+    +'<div style="padding:12px 16px 16px;overflow:auto;">'+body+'</div>'
+    +'</div>';
+  ov.style.display="flex";
+  document.getElementById("insctq-x").addEventListener("click",function(){ ov.style.display="none"; });
 }
 function insDefectShortLabel_(cfg){
   var m={};
