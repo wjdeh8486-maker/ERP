@@ -12555,6 +12555,7 @@ function insInit(){
   // 유형 소메뉴(드롭다운)
   var __ts=document.getElementById("insrep-typeSel");
   if(__ts) __ts.addEventListener("change",function(){ insType=this.value; insSyncMetaInputs(); insRender(); insSaveLocal(); });
+  var __ic=document.getElementById("insrep-content"); if(__ic) __ic.addEventListener("change",function(e){ var t=e.target; if(t&&t.getAttribute&&t.getAttribute("data-key")==="draw"){ var v=String(t.value||"").trim(); if(v) insNcHistoryPopup_(v); } });
   var __gc=document.getElementById("insrep-content"); if(__gc) __gc.addEventListener("keydown", insGridKeydown_);
   document.querySelectorAll("#topbar-insrep .ins-dd-btn").forEach(function(btn){ btn.addEventListener("click", function(e){ e.stopPropagation(); var id=btn.getAttribute("data-menu"); var menu=document.getElementById(id); var open=menu&&menu.classList.contains("open"); document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); if(menu&&!open) menu.classList.add("open"); }); });
   document.addEventListener("click", function(e){ if(e.target && e.target.closest && e.target.closest("#topbar-insrep .ins-dd")) return; document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); });
@@ -12719,6 +12720,7 @@ function insScanReceive(code){
   insState[insType].rows.push(row);
   insRender();
   insSaveLocal();
+  insNcHistoryPopup_(draw);
 }
 // 엑셀 내보내기 (xlsx-js-style: 병합·테두리·체크박스)
 /* ==================== 📝 입력 팝업 (모바일/태블릿용 세로 폼) ==================== */
@@ -12792,6 +12794,7 @@ function insOpenForm(ri){
   document.getElementById("insf-x").addEventListener("click", insFormClose);
   document.getElementById("insf-save").addEventListener("click", function(){ insFormSave(false); });
   var sc=document.getElementById("insf-savecont"); if(sc) sc.addEventListener("click", function(){ insFormSave(true); });
+  var __fd=document.getElementById("insf-draw"); if(__fd) __fd.addEventListener("change", function(){ var v=String(this.value||"").trim(); if(v) insNcHistoryPopup_(v); });
   // 양품수 실시간 계산
   var recompute=function(){
     var tot=Number((document.getElementById("insf-insCnt")||{}).value)||0, def=0;
@@ -13495,6 +13498,59 @@ function insOpenCTQ(){
     +'</div>';
   ov.style.display="flex";
   document.getElementById("insctq-x").addEventListener("click",function(){ ov.style.display="none"; });
+}
+/* ==================== ⚠ 도번 입력 시 고객부적합 이력 팝업 (지속 관리) ==================== */
+function insNcNorm_(x){ return String(x==null?"":x).trim().toUpperCase().replace(/\s+/g,""); }
+function insNcLoose_(x){ return insNcNorm_(x).replace(/[^A-Z0-9]/g,""); }   // 하이픈·점 등 제거(형식 차이 보정)
+function insNcHistoryFor_(draw){
+  var dn=insNcNorm_(draw); if(!dn) return [];
+  var dl=insNcLoose_(draw);
+  var list=(typeof qualityRawData!=="undefined" && typeof CUSTOMER_NC_KEY!=="undefined" && qualityRawData[CUSTOMER_NC_KEY]) || [];
+  var live=list.filter(function(r){ return !(r && r._deleted); });
+  var sortf=function(a,b){ return String(b.date||"").localeCompare(String(a.date||"")); };
+  var exact=live.filter(function(r){ return insNcNorm_(r.partNo)===dn; });
+  if(exact.length) return exact.sort(sortf);
+  // 정확 일치가 없으면 하이픈/점 무시하고 다시 비교(표기 차이 보정)
+  return dl ? live.filter(function(r){ return insNcLoose_(r.partNo)===dl; }).sort(sortf) : [];
+}
+var __insNcLast={draw:"",t:0};
+function insNcHistoryPopup_(draw){
+  var d=String(draw||"").trim(); if(!d) return;
+  // 같은 도번 연속 트리거 방지(3초)
+  var now=Date.now(); if(__insNcLast.draw===d && (now-__insNcLast.t)<3000) return; __insNcLast={draw:d,t:now};
+  var hits=insNcHistoryFor_(d);
+  if(!hits.length){ try{ insSetStatus("✔ "+d+" — 고객부적합 이력 없음"); }catch(e){} return; }
+
+  var esc=(typeof insEsc==="function")?insEsc:function(x){return String(x==null?"":x);};
+  var td=function(x,extra){ return '<td style="border:1px solid #EEE1E1;padding:6px;'+(extra||"")+'">'+esc(x)+'</td>'; };
+  var trs=hits.map(function(r){
+    var done=String(r.doneDate||"").trim();
+    var stat=done? '<span style="color:#1E7A46;font-weight:700;">완료('+esc(done)+')</span>' : '<span style="color:#C0392B;font-weight:700;">미완</span>';
+    return '<tr>'
+      +td(r.date||"","white-space:nowrap;text-align:center;")
+      +td(r.customer||"","white-space:nowrap;")
+      +td(r.content||"","font-weight:700;color:#8A1F1F;")
+      +td(r.finder||"","text-align:center;")
+      +td((r.qty!=null&&r.qty!=="")?r.qty:"","text-align:center;")
+      +'<td style="border:1px solid #EEE1E1;padding:6px;text-align:center;white-space:nowrap;">'+stat+'</td>'
+      +'</tr>';
+  }).join("");
+  var openCnt=hits.filter(function(r){ return !String(r.doneDate||"").trim(); }).length;
+
+  var ov=document.getElementById("insnch-ov");
+  if(!ov){ ov=document.createElement("div"); ov.id="insnch-ov"; ov.style.cssText="position:fixed;inset:0;z-index:2147483200;background:rgba(15,23,42,0.5);display:flex;align-items:flex-start;justify-content:center;padding:40px 14px;"; ov.addEventListener("click",function(e){ if(e.target===ov) ov.style.display="none"; }); document.body.appendChild(ov); }
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:760px;max-height:80vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.4);">'
+    +'<div style="padding:13px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;background:#FDF3F3;border-radius:16px 16px 0 0;">'
+    +  '<b style="font-size:15px;color:#8A1F1F;">⚠ '+esc(d)+' — 고객부적합 이력 '+hits.length+'건'+(openCnt?(' <span style="color:#C0392B;">(미완 '+openCnt+')</span>'):'')+'</b>'
+    +  '<button type="button" id="insnch-x" style="border:none;background:#fff;border:1px solid #E7C9C9;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
+    +'</div>'
+    +'<div style="padding:8px 14px 4px;font-size:12px;color:#8A1F1F;">이 도번은 과거 고객부적합이 있었습니다. 아래 유형을 특히 주의해서 검사하세요.</div>'
+    +'<div style="padding:6px 14px 16px;overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:520px;"><thead><tr>'
+    +  ['발생일','고객사','부적합 내용','발견자','수량','조치'].map(function(h){ return '<th style="border:1px solid #E7C9C9;background:#FDECEC;color:#8A1F1F;padding:6px;white-space:nowrap;">'+h+'</th>'; }).join("")
+    +  '</tr></thead><tbody>'+trs+'</tbody></table></div>'
+    +'</div>';
+  ov.style.display="flex";
+  document.getElementById("insnch-x").addEventListener("click",function(){ ov.style.display="none"; });
 }
 function insDefectShortLabel_(cfg){
   var m={};
