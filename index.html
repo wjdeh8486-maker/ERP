@@ -5566,6 +5566,68 @@ function computeNCMonthStats(year, month){
   const ppm = delivered>0 ? Math.round((qty/delivered)*1000000) : 0;
   return { cnt, qty, dev, prod, delivered, ppm };
 }
+/* ==================== 🎯 고객부적합 CTQ 분석 (부적합 내용 키워드 자동 분류) ==================== */
+var NC_CTQ_RULES = [
+  ["기스/스크래치", ["기스","스크래치","스크레치","긁힘","긁","scratch"]],
+  ["찍힘/눌림", ["찍힘","찍","눌림","눌린","타흔","dent"]],
+  ["이물/오염", ["이물","오염","얼룩","오일","지문","이물질","오구","오점"]],
+  ["치수/공차", ["치수","공차","규격","사이즈","외경","내경","길이","깊이","각도","홀","구멍","dimension","d/m","측정값"]],
+  ["형상/변형", ["변형","휨","휨발생","뒤틀","굽음","단차","비틀","평탄"]],
+  ["파손/크랙", ["파손","크랙","균열","깨짐","터짐","찢","crack"]],
+  ["도금/표면처리", ["도금","아노다이징","코팅","표면처리","산화","변색","부식","박리","기포","얼룩도금"]],
+  ["용접", ["용접","웰딩","기공","weld","용입"]],
+  ["나사/탭", ["나사","탭","나사산","체결","탭핑","tap","나사불량"]],
+  ["누설/기능", ["누설","누유","누수","리크","기밀","기능","leak"]],
+  ["가압/진공/압력", ["가압","진공","압력","기밀시험","리크테스트"]],
+  ["누락/미가공", ["누락","미가공","미삭","미절삭","미태핑","미작업","가공누락","공정누락"]],
+  ["버/모따기", ["버","버발생","거스러미","모따기","면취","burr"]],
+  ["수량/포장/혼입", ["수량","포장","오배송","라벨","혼입","오품","수량부족","오출하"]]
+];
+function ncClassifyCTQ_(content){
+  var s=String(content==null?"":content).toLowerCase();
+  if(!s.trim()) return "미기재";
+  for(var i=0;i<NC_CTQ_RULES.length;i++){
+    var kws=NC_CTQ_RULES[i][1];
+    for(var j=0;j<kws.length;j++){ if(s.indexOf(String(kws[j]).toLowerCase())>=0) return NC_CTQ_RULES[i][0]; }
+  }
+  return "기타(미분류)";
+}
+function ncCTQSection_(rowsAll, year){
+  var yr=String(year||"");
+  var rows=(rowsAll||[]).filter(function(r){ return !(r&&r._deleted) && (!yr || String(r.date||"").slice(0,4)===yr); });
+  if(!rows.length) return "";
+  var map={};
+  rows.forEach(function(r){ var cat=ncClassifyCTQ_(r.content); var o=map[cat]||(map[cat]={cnt:0,qty:0}); o.cnt++; o.qty+=Number(r.qty)||0; });
+  var list=Object.keys(map).map(function(k){ return {cat:k, cnt:map[k].cnt, qty:map[k].qty}; }).sort(function(a,b){ return b.cnt-a.cnt; });
+  var totCnt=list.reduce(function(a,d){ return a+d.cnt; },0);
+  var unclass=(map["기타(미분류)"]?map["기타(미분류)"].cnt:0)+(map["미기재"]?map["미기재"].cnt:0);
+  var cum=0, max=list[0].cnt||1;
+  var esc=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+  var f1=function(x){ return (Math.round(x*10)/10).toFixed(1); };
+  var trs=list.map(function(d,i){
+    var share=totCnt?d.cnt/totCnt*100:0; cum+=share;
+    var isCore=(cum<=80.00001) && d.cat!=="기타(미분류)" && d.cat!=="미기재";
+    var barW=Math.max(2, d.cnt/max*100);
+    var color=isCore?"#C0392B":"#9AA6B2";
+    var badge=isCore?'<span style="background:#FDECEC;color:#8A1F1F;border:1px solid #E7C9C9;border-radius:6px;padding:1px 7px;font-weight:800;font-size:11px;">핵심</span>':'<span style="background:#EEF1F6;color:#5A6478;border-radius:6px;padding:1px 7px;font-size:11px;">일반</span>';
+    return '<tr>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;color:#8A93A6;">'+(i+1)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;font-weight:700;white-space:nowrap;">'+esc(d.cat)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;"><div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;min-width:70px;background:#F0F4F8;border-radius:5px;height:14px;overflow:hidden;"><div style="width:'+barW+'%;height:100%;background:'+color+';"></div></div><span style="font-size:12px;white-space:nowrap;">'+f1(share)+'%</span></div></td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;font-weight:800;color:#C0392B;">'+d.cnt+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+d.qty+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+f1(cum)+'%</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+badge+'</td>'
+      +'</tr>';
+  }).join("");
+  var warn = unclass>0 ? '<div style="font-size:12px;color:#B45309;margin-top:6px;">※ 미분류/미기재 '+unclass+'건 — 새 불량 표현이 있으면 알려주시면 분류 규칙에 추가합니다.</div>' : '';
+  return '<div class="table-wrap" style="margin-top:16px;padding:14px;">'
+    +'<div style="font-weight:800;font-size:15px;color:#1F2A44;margin-bottom:4px;">🎯 CTQ 분석 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 고객부적합 유형 자동분류 · '+esc(yr)+'년 · 총 '+totCnt+'건</span></div>'
+    +'<div style="font-size:12px;color:#5A6478;margin-bottom:8px;">부적합 내용을 키워드로 자동 분류했습니다. 누적 80%까지를 <b style="color:#8A1F1F;">핵심(Vital Few)</b>으로 표시 — 이 유형부터 개선하면 효과가 큽니다.</div>'
+    +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:13px;min-width:560px;"><thead><tr>'
+    +['순위','CTQ 유형','비중','건수','수량','누적%','등급'].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
+    +'</tr></thead><tbody>'+trs+'</tbody></table></div>'+warn+'</div>';
+}
 function renderCustomerNCPanel(){
   const panel = document.getElementById("qpanel-customer");
   if(!panel) return;
@@ -5694,6 +5756,7 @@ function renderCustomerNCPanel(){
   }
   drawLineChart(panel.querySelector(".qnc-weekly-chart"), weekly.map(w=>w.week+"주차"), weekly.map(w=>w.ppm), "주차별 고객부적합 부적합율(ppm)");
   drawBarChart(panel.querySelector(".qnc-type-chart"), ["개발부적합","양산부적합"], [tot.dev, tot.prod], "누적 부적합 수량 (개발 vs 양산)");
+  try{ panel.insertAdjacentHTML("beforeend", ncCTQSection_(rowsAll, qualityYear)); }catch(e){}
 }
 /* ===== 시정조치(CAPA) : 고객부적합관리대장 데이터를 재구성해 조치 진행상태를 추적 =====
    [종결 규칙]  대책서송부일이 있는 건 → 유효성확인이 되면 종결
