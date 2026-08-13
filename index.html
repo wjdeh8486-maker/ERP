@@ -13578,6 +13578,7 @@ function insNcHistoryFor_(draw){
   // 정확 일치가 없으면 하이픈/점 무시하고 다시 비교(표기 차이 보정)
   return dl ? live.filter(function(r){ return insNcLoose_(r.partNo)===dl; }).sort(sortf) : [];
 }
+function insNcDate_(d){ if(d instanceof Date){ if(isNaN(d.getTime())) return ""; var p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); } var s=String(d==null?"":d).trim(); var m=s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/); if(m) return m[1]+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[3]).slice(-2); return s; }
 var __insNcLast={draw:"",t:0};
 function insNcHistoryPopup_(draw){
   var d=String(draw||"").trim(); if(!d) return;
@@ -13589,15 +13590,9 @@ function insNcHistoryPopup_(draw){
   var esc=(typeof insEsc==="function")?insEsc:function(x){return String(x==null?"":x);};
   var td=function(x,extra){ return '<td style="border:1px solid #EEE1E1;padding:6px;'+(extra||"")+'">'+esc(x)+'</td>'; };
   var trs=hits.map(function(r){
-    var done=String(r.doneDate||"").trim();
-    var stat=done? '<span style="color:#1E7A46;font-weight:700;">완료('+esc(done)+')</span>' : '<span style="color:#C0392B;font-weight:700;">미완</span>';
     return '<tr>'
-      +td(r.date||"","white-space:nowrap;text-align:center;")
-      +td(r.customer||"","white-space:nowrap;")
+      +td(insNcDate_(r.date),"white-space:nowrap;text-align:center;")
       +td(r.content||"","font-weight:700;color:#8A1F1F;")
-      +td(r.finder||"","text-align:center;")
-      +td((r.qty!=null&&r.qty!=="")?r.qty:"","text-align:center;")
-      +'<td style="border:1px solid #EEE1E1;padding:6px;text-align:center;white-space:nowrap;">'+stat+'</td>'
       +'</tr>';
   }).join("");
   var openCnt=hits.filter(function(r){ return !String(r.doneDate||"").trim(); }).length;
@@ -13610,8 +13605,8 @@ function insNcHistoryPopup_(draw){
     +  '<button type="button" id="insnch-x" style="border:none;background:#fff;border:1px solid #E7C9C9;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
     +'</div>'
     +'<div style="padding:8px 14px 4px;font-size:12px;color:#8A1F1F;">이 도번은 과거 고객부적합이 있었습니다. 아래 유형을 특히 주의해서 검사하세요.</div>'
-    +'<div style="padding:6px 14px 16px;overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:520px;"><thead><tr>'
-    +  ['발생일','고객사','부적합 내용','발견자','수량','조치'].map(function(h){ return '<th style="border:1px solid #E7C9C9;background:#FDECEC;color:#8A1F1F;padding:6px;white-space:nowrap;">'+h+'</th>'; }).join("")
+    +'<div style="padding:6px 14px 16px;overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:280px;"><thead><tr>'
+    +  ['발생일','부적합 내용'].map(function(h){ return '<th style="border:1px solid #E7C9C9;background:#FDECEC;color:#8A1F1F;padding:6px;white-space:nowrap;">'+h+'</th>'; }).join("")
     +  '</tr></thead><tbody>'+trs+'</tbody></table></div>'
     +'</div>';
   ov.style.display="flex";
