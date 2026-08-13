@@ -1603,6 +1603,7 @@
         <button class="tab-btn" data-qtab="customer">고객부적합</button>
         <button class="tab-btn" data-qtab="capa">시정조치</button>
         <button class="tab-btn" data-qtab="recur">재발관리</button>
+        <button class="tab-btn" data-qtab="ctq">🎯 CTQ 분석</button>
       </div>
       <div class="tab-panel active" id="qpanel-process"></div>
       <div class="tab-panel" id="qpanel-incoming"></div>
@@ -1610,6 +1611,7 @@
       <div class="tab-panel" id="qpanel-customer"></div>
       <div class="tab-panel" id="qpanel-capa"></div>
       <div class="tab-panel" id="qpanel-recur"></div>
+      <div class="tab-panel" id="qpanel-ctq"></div>
     </div>
     <!-- ===================== 문서 Master (품질문서 관리) VIEW ===================== -->
     <div id="topbar-docmaster" class="topbar" style="display:none;">
@@ -5539,6 +5541,7 @@ function renderQualityAll(){
   renderCustomerNCPanel();
   renderCAPAPanel();
   renderRecurPanel();
+  try{ renderCTQPanel(); }catch(e){}
 }
 /* ===== 고객부적합 (출하검사와 동일한 구성: KPI → 월별 추이 그래프/표 → 주차별 → 상세 → 유형) ===== */
 // 해당 월의 납품완료 수량 (MAIN 데이터의 납품일자 기준) — 고객부적합 PPM 분모
@@ -5629,6 +5632,150 @@ function ncCTQSection_(rowsAll, year){
     +['순위','CTQ 유형','비중','건수','수량','누적%','등급'].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
     +'</tr></thead><tbody>'+trs+'</tbody></table></div>'+warn+'</div>';
 }
+/* ==================== 🎯 CTQ 분석 (검사종합 업로드 → 부적합 유형별, 전체/년/월) ==================== */
+var CTQ_SHEETS = [
+  { name:"수입검사(외관)", date:3, cnt:5, defs:[["기스",8],["찍힘",9],["얼룩",10],["누락",11],["기타",12]] },
+  { name:"출하검사",        date:2, cnt:4, defs:[["기스",7],["찍힘",8],["얼룩",9],["누락",10],["기타",11]] },
+  { name:"공정검사(치수,BOLT,LED)", date:2, cnt:5, defs:[["일반치수",8],["공차치수",9],["누락",10],["기타",11],["체결",23]] },
+  { name:"수입검사(기능)",  date:7, cnt:4, defs:[["LEAK/기능",6]] }
+];
+var __ctqMonthly = null;              // { "YYYY-MM": {ins:Number, defs:{type:count}} }
+var ctqMode = "all", ctqYear = null, ctqMonth = null;
+
+function ctqYM_(v){
+  if(v instanceof Date){ if(isNaN(v.getTime())) return ""; return v.getFullYear()+"-"+String(v.getMonth()+1).padStart(2,"0"); }
+  var s=String(v==null?"":v).trim();
+  var m=s.match(/(\d{4})[.\-\/](\d{1,2})/); if(m) return m[1]+"-"+("0"+m[2]).slice(-2);
+  var n=Number(s); if(n>30000 && n<80000){ var dt=new Date(Math.round((n-25569)*86400*1000)); if(!isNaN(dt.getTime())) return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0"); }
+  return "";
+}
+function ctqParseWorkbook(wb){
+  var monthly={};
+  CTQ_SHEETS.forEach(function(cfg){
+    var ws=wb.Sheets[cfg.name]; if(!ws) return;
+    var aoa=XLSX.utils.sheet_to_json(ws,{header:1, raw:true});
+    for(var i=2;i<aoa.length;i++){
+      var row=aoa[i]; if(!row) continue;
+      var draw=row[0]; if(draw==null||String(draw).trim()==="") continue;
+      var ym=ctqYM_(row[cfg.date]); if(!ym) continue;
+      var mo=monthly[ym]||(monthly[ym]={ins:0, defs:{}});
+      mo.ins += Number(row[cfg.cnt])||0;
+      cfg.defs.forEach(function(d){ var v=Number(row[d[1]])||0; if(v>0) mo.defs[d[0]]=(mo.defs[d[0]]||0)+v; });
+    }
+  });
+  return monthly;
+}
+function ctqYears_(monthly){
+  var ys={}; Object.keys(monthly||{}).forEach(function(k){ ys[k.slice(0,4)]=1; });
+  return Object.keys(ys).sort(function(a,b){ return b.localeCompare(a); });
+}
+function ctqAggregate(monthly, mode, year, month){
+  var ins=0, defs={};
+  Object.keys(monthly||{}).forEach(function(ym){
+    var y=ym.slice(0,4), mm=ym.slice(5,7);
+    var inc=(mode==="all")||(mode==="year"&&y===String(year))||(mode==="month"&&y===String(year)&&mm===("0"+month).slice(-2));
+    if(!inc) return;
+    var mo=monthly[ym]; ins+=mo.ins;
+    Object.keys(mo.defs).forEach(function(k){ defs[k]=(defs[k]||0)+mo.defs[k]; });
+  });
+  return {ins:ins, defs:defs};
+}
+function ctqTableHtml(agg){
+  var esc=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+  var f1=function(x){ return (Math.round(x*10)/10).toFixed(1); };
+  var list=Object.keys(agg.defs).map(function(k){ return {cat:k, n:agg.defs[k]}; }).sort(function(a,b){ return b.n-a.n; });
+  var sumN=list.reduce(function(a,d){ return a+d.n; },0);
+  if(!sumN) return '<div style="padding:20px;color:var(--text-mute);">해당 기간에 부적합 데이터가 없습니다.</div>';
+  var cum=0, max=list[0].n||1;
+  var trs=list.map(function(d,i){
+    var share=d.n/sumN*100; cum+=share;
+    var core=(cum<=80.00001);
+    var barW=Math.max(2, d.n/max*100), color=core?"#C0392B":"#9AA6B2";
+    var ppm=agg.ins? Math.round(d.n/agg.ins*1000000):0;
+    var badge=core?'<span style="background:#FDECEC;color:#8A1F1F;border:1px solid #E7C9C9;border-radius:6px;padding:1px 7px;font-weight:800;font-size:11px;">핵심</span>':'<span style="background:#EEF1F6;color:#5A6478;border-radius:6px;padding:1px 7px;font-size:11px;">일반</span>';
+    return '<tr>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;color:#8A93A6;">'+(i+1)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;font-weight:700;white-space:nowrap;">'+esc(d.cat)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;"><div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;min-width:70px;background:#F0F4F8;border-radius:5px;height:14px;overflow:hidden;"><div style="width:'+barW+'%;height:100%;background:'+color+';"></div></div><span style="font-size:12px;white-space:nowrap;">'+f1(share)+'%</span></div></td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;font-weight:800;color:#C0392B;">'+d.n.toLocaleString()+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+f1(cum)+'%</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+ppm.toLocaleString()+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+badge+'</td>'
+      +'</tr>';
+  }).join("");
+  var head=['순위','부적합 유형(CTQ)','비중','부적합수','누적%','PPM','등급'].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("");
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px;">'
+    +'<div style="flex:1;min-width:120px;background:#F4F8FD;border:1px solid #D6E4F5;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">총 검사수</div><div style="font-size:18px;font-weight:800;color:#0B5CAB;">'+agg.ins.toLocaleString()+'</div></div>'
+    +'<div style="flex:1;min-width:120px;background:#FDF3F3;border:1px solid #F0D6D6;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">총 부적합</div><div style="font-size:18px;font-weight:800;color:#C0392B;">'+sumN.toLocaleString()+'</div></div>'
+    +'<div style="flex:1;min-width:120px;background:#F6FFF9;border:1px solid #CFE9D8;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">불량률 / PPM</div><div style="font-size:18px;font-weight:800;color:#1E7A46;">'+(agg.ins?f1(sumN/agg.ins*100):"0.0")+'% · '+(agg.ins?Math.round(sumN/agg.ins*1000000).toLocaleString():0)+'</div></div>'
+    +'</div>'
+    +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:13px;min-width:560px;"><thead><tr>'+head+'</tr></thead><tbody>'+trs+'</tbody></table></div>';
+}
+function ctqRenderTable_(){
+  var host=document.getElementById("ctq-table"); if(!host) return;
+  if(!__ctqMonthly){ host.innerHTML='<div style="padding:20px;color:var(--text-mute);">검사종합 파일을 업로드하면 부적합 유형별 CTQ가 여기에 표시됩니다.</div>'; return; }
+  host.innerHTML=ctqTableHtml(ctqAggregate(__ctqMonthly, ctqMode, ctqYear, ctqMonth));
+}
+function ctqBuildControls_(){
+  var years=ctqYears_(__ctqMonthly||{});
+  if(!ctqYear && years.length) ctqYear=years[0];
+  if(!ctqMonth) ctqMonth=(new Date()).getMonth()+1;
+  var mkBtn=function(m,l){ return '<button type="button" class="ctq-mode tab-btn'+(ctqMode===m?" active":"")+'" data-m="'+m+'" style="padding:6px 14px;">'+l+'</button>'; };
+  var yrSel='<select id="ctq-year" style="padding:6px 8px;border:1px solid #C9D3E0;border-radius:7px;">'+years.map(function(y){ return '<option value="'+y+'"'+(String(ctqYear)===y?" selected":"")+'>'+y+'년</option>'; }).join("")+'</select>';
+  var moSel='<select id="ctq-month" style="padding:6px 8px;border:1px solid #C9D3E0;border-radius:7px;">'+Array.from({length:12},function(_,i){ var m=i+1; return '<option value="'+m+'"'+(Number(ctqMonth)===m?" selected":"")+'>'+m+'월</option>'; }).join("")+'</select>';
+  var showYear=(ctqMode!=="all"), showMonth=(ctqMode==="month");
+  return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+    +mkBtn("all","전체")+mkBtn("year","년별")+mkBtn("month","월별")
+    +'<span id="ctq-ysel" style="display:'+(showYear?"inline-flex":"none")+';gap:6px;align-items:center;margin-left:6px;">'+yrSel+'</span>'
+    +'<span id="ctq-msel" style="display:'+(showMonth?"inline-flex":"none")+';gap:6px;align-items:center;">'+moSel+'</span>'
+    +'</div>';
+}
+function renderCTQPanel(){
+  var panel=document.getElementById("qpanel-ctq"); if(!panel) return;
+  var range="";
+  if(__ctqMonthly){ var ks=Object.keys(__ctqMonthly).sort(); if(ks.length) range=ks[0]+" ~ "+ks[ks.length-1]+" · "+ks.length+"개월"; }
+  panel.innerHTML='<div class="table-wrap" style="padding:16px;">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">'
+    +  '<div style="font-weight:800;font-size:16px;color:#1F2A44;">🎯 CTQ 분석 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 검사종합(수입·출하·측정) 부적합 유형별</span></div>'
+    +  '<div style="display:flex;gap:8px;align-items:center;">'
+    +    '<span id="ctq-range" style="font-size:12px;color:#5A6478;">'+(range||"파일 미업로드")+'</span>'
+    +    '<input type="file" id="ctq-file" accept=".xlsx,.xlsm,.xls" style="display:none;">'
+    +    '<button type="button" id="ctq-upload" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📤 검사종합 업로드</button>'
+    +  '</div>'
+    +'</div>'
+    +'<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">검사종합 엑셀을 올리면 3년치를 한 번에 집계합니다. 소형/대형 구분 없이 측정(공정)까지 포함. 누적 80%까지가 <b style="color:#8A1F1F;">핵심(Vital Few)</b>입니다.</div>'
+    +'<div id="ctq-controls" style="margin-bottom:10px;">'+ctqBuildControls_()+'</div>'
+    +'<div id="ctq-table"></div>'
+    +'</div>';
+
+  var fileInp=document.getElementById("ctq-file");
+  document.getElementById("ctq-upload").addEventListener("click", function(){ fileInp.click(); });
+  fileInp.addEventListener("change", function(){ if(fileInp.files&&fileInp.files[0]) ctqOnUpload_(fileInp.files[0]); });
+  ctqBindControls_();
+  ctqRenderTable_();
+}
+function ctqBindControls_(){
+  var panel=document.getElementById("qpanel-ctq"); if(!panel) return;
+  panel.querySelectorAll(".ctq-mode").forEach(function(b){ b.addEventListener("click", function(){ ctqMode=b.getAttribute("data-m"); document.getElementById("ctq-controls").innerHTML=ctqBuildControls_(); ctqBindControls_(); ctqRenderTable_(); }); });
+  var ys=document.getElementById("ctq-year"); if(ys) ys.addEventListener("change", function(){ ctqYear=this.value; ctqRenderTable_(); });
+  var ms=document.getElementById("ctq-month"); if(ms) ms.addEventListener("change", function(){ ctqMonth=Number(this.value); ctqRenderTable_(); });
+}
+function ctqOnUpload_(file){
+  var status=document.getElementById("ctq-range"); if(status) status.textContent="읽는 중…";
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array", cellDates:true});
+      __ctqMonthly=ctqParseWorkbook(wb);
+      try{ if(typeof idbSet==="function") idbSet("ctqMonthly", __ctqMonthly); }catch(_){}
+      renderCTQPanel();
+    }catch(err){ if(status) status.textContent="파일 읽기 실패"; alert("검사종합 파일을 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
+  };
+  reader.onerror=function(){ if(status) status.textContent="파일 읽기 실패"; };
+  reader.readAsArrayBuffer(file);
+}
+// 저장된 집계가 있으면 로드
+(function(){ try{ if(typeof idbGet==="function"){ idbGet("ctqMonthly").then(function(v){ if(v && typeof v==="object"){ __ctqMonthly=v; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); } }).catch(function(){}); } }catch(_){} })();
 function renderCustomerNCPanel(){
   const panel = document.getElementById("qpanel-customer");
   if(!panel) return;
