@@ -12777,6 +12777,7 @@ function insInit(){
   insSyncMetaInputs();
   insDayFilter = (insMetaByType[insType] && insMetaByType[insType].date) || (typeof insToday_==="function"?insToday_():"all");   // 열 때 오늘 시트만(누적 커져도 빠름)
   insRender();
+  try{ insCloudAutoLoad(); }catch(e){}   // 열 때 공유 최신본 자동 병합
 }
 function insRender(){
   var el=document.getElementById("insrep-content"); if(!el) return;
@@ -14123,6 +14124,29 @@ function insCloudSave(){
   }).catch(function(){ insSetStatus("["+label+"] 공유 저장 실패 — 네트워크 확인"); });
 }
 /* 불러오기: 현재 유형(페이지)만 불러옴 — 다른 유형 작업분은 건드리지 않음 */
+// 접속(열기) 시 공유 저장 최신본을 조용히 병합 — 빈 상태로 열려도 자동으로 최신 내용을 채운다.
+function insCloudAutoLoad(){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return;
+  ["incoming","shipping","measureS","measureL"].forEach(function(t){
+    fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(t),{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return null;})
+    .then(function(res){
+      if(!res||!res.success||!res.json) return;
+      var data=null; try{ data=JSON.parse(res.json); }catch(e){}
+      if(!data||!Array.isArray(data.rows)) return;
+      var cloudRows=insEnsureIds_(data.rows);
+      var localRows=(insState[t]&&insState[t].rows)||[];
+      var localIds={}, localSigs={};
+      localRows.forEach(function(r){ if(r&&r._id) localIds[r._id]=1; localSigs[insRowSig_(r)]=1; });
+      var keep=cloudRows.filter(function(r){ if(r&&r._id&&localIds[r._id]) return false; if(localSigs[insRowSig_(r)]) return false; return true; });
+      if(!keep.length) return;
+      insState[t]={rows:insDedup_(localRows.concat(keep))};
+      if(insMetaByType[t]){ if(!insMetaByType[t].date && data.date) insMetaByType[t].date=data.date; if(!insMetaByType[t].inspector && data.inspector) insMetaByType[t].inspector=data.inspector; }
+      if(t===insType){ insSyncMetaInputs(); insUpdateDayFilter(); insRender(); }
+      if(typeof insSaveLocalNow==="function") insSaveLocalNow(); else insSaveLocal();
+      insSetStatus("☁ 최신 내용 불러옴 ("+insTypeLabel(t)+" "+keep.length+"행)");
+    });
+  });
+}
 function insCloudLoad(){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
   var t=insType, label=insTypeLabel(t);
