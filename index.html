@@ -1605,6 +1605,7 @@
         <button class="tab-btn" data-qtab="recur">재발관리</button>
         <button class="tab-btn" data-qtab="ctq">🎯 CTQ 분석</button>
         <button class="tab-btn" data-qtab="ppk">📐 공정능력(Ppk)</button>
+        <button class="tab-btn" data-qtab="ncr">📁 NCR 대장</button>
       </div>
       <div class="tab-panel active" id="qpanel-process"></div>
       <div class="tab-panel" id="qpanel-incoming"></div>
@@ -1614,6 +1615,7 @@
       <div class="tab-panel" id="qpanel-recur"></div>
       <div class="tab-panel" id="qpanel-ctq"></div>
       <div class="tab-panel" id="qpanel-ppk"></div>
+      <div class="tab-panel" id="qpanel-ncr"></div>
     </div>
     <!-- ===================== 문서 Master (품질문서 관리) VIEW ===================== -->
     <div id="topbar-docmaster" class="topbar" style="display:none;">
@@ -5545,6 +5547,7 @@ function renderQualityAll(){
   renderRecurPanel();
   try{ renderCTQPanel(); }catch(e){}
   try{ renderPpkPanel(); }catch(e){}
+  try{ renderNcrPanel(); }catch(e){}
 }
 /* ===== 고객부적합 (출하검사와 동일한 구성: KPI → 월별 추이 그래프/표 → 주차별 → 상세 → 유형) ===== */
 // 해당 월의 납품완료 수량 (MAIN 데이터의 납품일자 기준) — 고객부적합 PPM 분모
@@ -5966,6 +5969,112 @@ function ppkOnUpload_(file){
   reader.readAsArrayBuffer(file);
 }
 (function(){ try{ if(typeof idbGet==="function"){ idbGet("ppkData").then(function(v){ if(v&&v.products){ __ppkData=v; if(document.getElementById("qpanel-ppk")) renderPpkPanel(); } }).catch(function(){}); } }catch(_){} })();
+/* ==================== 📁 NCR 대장 (추출 대장 업로드 → 조회·검색·유형분석) ==================== */
+var __ncrData=null;        // [{date,part,customer,content,vendor,register,file}]
+var ncrSearch="", ncrYear="all";
+
+function ncrParseWorkbook_(wb){
+  var ws=wb.Sheets[wb.SheetNames[0]]; if(!ws) return [];
+  var aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""}); if(aoa.length<2) return [];
+  var hdr=(aoa[0]||[]).map(function(h){ return String(h||"").replace(/\s+/g,""); });
+  var idx=function(keys){ for(var i=0;i<hdr.length;i++){ for(var j=0;j<keys.length;j++){ if(hdr[i].indexOf(keys[j])>=0) return i; } } return -1; };
+  var iDate=idx(["발생일","일자","날짜"]), iPart=idx(["도번","품번"]), iCust=idx(["고객"]),
+      iCont=idx(["부적합내용","내용","현상"]), iVend=idx(["부적합업체","업체"]),
+      iReg=idx(["등록자","작성"]), iFile=idx(["원본","파일","경로"]);
+  var get=function(row,i){ return i>=0?String(row[i]==null?"":row[i]).trim():""; };
+  var out=[];
+  for(var r=1;r<aoa.length;r++){ var row=aoa[r]; if(!row) continue;
+    var part=get(row,iPart), cont=get(row,iCont); if(!part && !cont) continue;
+    out.push({ date:get(row,iDate), part:part, customer:get(row,iCust), content:cont, vendor:get(row,iVend), register:get(row,iReg), file:get(row,iFile) });
+  }
+  return out;
+}
+function ncrYear_(d){ var m=String(d||"").match(/(\d{4})/); return m?m[1]:""; }
+function ncrYears_(){ var ys={}; (__ncrData||[]).forEach(function(r){ var y=ncrYear_(r.date); if(y) ys[y]=1; }); return Object.keys(ys).sort(function(a,b){return b.localeCompare(a);}); }
+function ncrFiltered_(){
+  var q=ncrSearch.trim().toLowerCase();
+  return (__ncrData||[]).filter(function(r){
+    if(ncrYear!=="all" && ncrYear_(r.date)!==ncrYear) return false;
+    if(!q) return true;
+    return (r.part+" "+r.content+" "+r.customer+" "+r.register).toLowerCase().indexOf(q)>=0;
+  });
+}
+function ncrRenderBody_(){
+  var host=document.getElementById("ncr-body"); if(!host) return;
+  if(!__ncrData){ host.innerHTML='<div style="padding:20px;color:var(--text-mute);">NCR 추출 대장(NCR대장_추출.xlsx)을 업로드하면 조회·검색·분석이 여기에 표시됩니다.</div>'; return; }
+  var rows=ncrFiltered_();
+  var esc=insEscQ_;
+  // 유형 요약(키워드 분류) + 재발 도번
+  var typeMap={}, partMap={};
+  rows.forEach(function(r){ var t=(typeof ncClassifyCTQ_==="function")?ncClassifyCTQ_(r.content):"기타"; typeMap[t]=(typeMap[t]||0)+1; if(r.part) partMap[r.part]=(partMap[r.part]||0)+1; });
+  var typeList=Object.keys(typeMap).map(function(k){return [k,typeMap[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
+  var recur=Object.keys(partMap).map(function(k){return [k,partMap[k]];}).filter(function(x){return x[1]>=2;}).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
+  var chips=function(arr,color){ return arr.map(function(x){ return '<span style="display:inline-block;background:'+color+';border-radius:14px;padding:3px 10px;margin:2px;font-size:12px;">'+esc(x[0])+' <b>'+x[1]+'</b></span>'; }).join(""); };
+
+  var trs=rows.slice(0,500).map(function(r){
+    var fileLink = r.file ? '<span title="'+esc(r.file)+'" style="color:#8A93A6;">파일</span>' : '';
+    return '<tr>'
+      +'<td style="border:1px solid #E6EBF2;padding:5px;text-align:center;white-space:nowrap;">'+esc(r.date)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:5px;font-weight:700;white-space:nowrap;">'+esc(r.part)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:5px;white-space:nowrap;">'+esc(r.customer)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:5px;color:#8A1F1F;">'+esc(r.content)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:5px;text-align:center;white-space:nowrap;">'+esc(r.vendor)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:5px;text-align:center;white-space:nowrap;">'+esc(r.register)+'</td>'
+      +'</tr>';
+  }).join("");
+  var more = rows.length>500 ? '<div style="font-size:12px;color:#8A93A6;padding:6px;">※ '+rows.length.toLocaleString()+'건 중 상위 500건 표시 — 검색으로 좁혀 보세요.</div>' : '';
+
+  host.innerHTML=''
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
+    +  '<div style="flex:1;min-width:120px;background:#F4F8FD;border:1px solid #D6E4F5;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">조회 건수</div><div style="font-size:18px;font-weight:800;color:#0B5CAB;">'+rows.length.toLocaleString()+'</div></div>'
+    +  '<div style="flex:2;min-width:200px;background:#FDF3F3;border:1px solid #F0D6D6;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;margin-bottom:2px;">부적합 유형(상위)</div><div>'+chips(typeList,"#FDECEC")+'</div></div>'
+    +'</div>'
+    +(recur.length?'<div style="background:#FFFBF2;border:1px solid #F0DCB4;border-radius:10px;padding:8px 12px;margin-bottom:10px;"><span style="font-size:12px;color:#B45309;font-weight:700;">🔁 재발 도번(2건+): </span>'+chips(recur,"#FFF3E0")+'</div>':'')
+    +'<div style="overflow:auto;max-height:520px;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:640px;"><thead><tr>'
+    +  ['발생일','도번','고객','부적합 내용','업체','등록자'].map(function(h){ return '<th style="position:sticky;top:0;border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
+    +'</tr></thead><tbody>'+trs+'</tbody></table></div>'+more;
+}
+function renderNcrPanel(){
+  var panel=document.getElementById("qpanel-ncr"); if(!panel) return;
+  var years=ncrYears_();
+  var yrOpts='<option value="all"'+(ncrYear==="all"?" selected":"")+'>전체 연도</option>'+years.map(function(y){ return '<option value="'+y+'"'+(ncrYear===y?" selected":"")+'>'+y+'년</option>'; }).join("");
+  panel.innerHTML='<div class="table-wrap" style="padding:16px;">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">'
+    +  '<div style="font-weight:800;font-size:16px;color:#1F2A44;">📁 NCR 대장 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 추출 대장 조회·검색·유형분석</span></div>'
+    +  '<div style="display:flex;gap:8px;align-items:center;">'
+    +    '<span id="ncr-status" style="font-size:12px;color:#5A6478;">'+(__ncrData?(__ncrData.length.toLocaleString()+"건 로드됨"):"파일 미업로드")+'</span>'
+    +    '<input type="file" id="ncr-file" accept=".xlsx,.xls,.csv" style="display:none;">'
+    +    '<button type="button" id="ncr-upload" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📤 NCR 대장 업로드</button>'
+    +  '</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">'
+    +  '<input type="text" id="ncr-search" value="'+insEscQ_(ncrSearch)+'" placeholder="🔎 도번·부적합내용·고객·등록자 검색" style="flex:1;min-width:220px;padding:8px 10px;border:1px solid #C9D3E0;border-radius:8px;">'
+    +  '<select id="ncr-year" style="padding:8px;border:1px solid #C9D3E0;border-radius:8px;">'+yrOpts+'</select>'
+    +'</div>'
+    +'<div id="ncr-body"></div>'
+    +'</div>';
+  var fi=document.getElementById("ncr-file");
+  document.getElementById("ncr-upload").addEventListener("click",function(){ fi.click(); });
+  fi.addEventListener("change",function(){ if(fi.files&&fi.files[0]) ncrOnUpload_(fi.files[0]); });
+  var sb=document.getElementById("ncr-search"); if(sb) sb.addEventListener("input",function(){ ncrSearch=this.value; ncrRenderBody_(); });
+  var ys=document.getElementById("ncr-year"); if(ys) ys.addEventListener("change",function(){ ncrYear=this.value; ncrRenderBody_(); });
+  ncrRenderBody_();
+}
+function ncrOnUpload_(file){
+  var st=document.getElementById("ncr-status"); if(st) st.textContent="읽는 중…";
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array"});
+      __ncrData=ncrParseWorkbook_(wb);
+      try{ if(typeof idbSet==="function") idbSet("ncrData", __ncrData); }catch(_){}
+      renderNcrPanel();
+    }catch(err){ if(st) st.textContent="파일 읽기 실패"; alert("NCR 대장을 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
+  };
+  reader.onerror=function(){ if(st) st.textContent="파일 읽기 실패"; };
+  reader.readAsArrayBuffer(file);
+}
+(function(){ try{ if(typeof idbGet==="function"){ idbGet("ncrData").then(function(v){ if(Array.isArray(v)){ __ncrData=v; if(document.getElementById("qpanel-ncr")) renderNcrPanel(); } }).catch(function(){}); } }catch(_){} })();
 function renderCustomerNCPanel(){
   const panel = document.getElementById("qpanel-customer");
   if(!panel) return;
