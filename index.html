@@ -5821,9 +5821,45 @@ function ppkParseWorkbook_(wb){
       var st=ppkCompute_(vals, sp.usl, sp.lsl); if(!st) return;
       chars.push({name:sp.name, disp:sp.disp, usl:sp.usl, lsl:sp.lsl, n:st.n, mean:st.mean, sd:st.sd, min:st.min, max:st.max, ppk:st.ppk, oos:st.oos, grade:ppkGrade_(st.ppk,st.oos)});
     });
-    if(chars.length) products.push({sheet:sn, name:prodName, chars:chars});
+    var list=[];
+    for(var r2=4;r2<aoa.length;r2++){ var rr=aoa[r2]; if(!rr) continue; var vv=cols.map(function(c){ var x=rr[c]; return (typeof x==="number"&&isFinite(x))?x:null; }); if(vv.every(function(x){return x==null;})) continue; list.push({code:(rr[1]==null?"":String(rr[1])), sn:(rr[2]==null?"":String(rr[2])), v:vv}); }
+    if(chars.length) products.push({sheet:sn, name:prodName, chars:chars, list:list});
   });
   return {products:products};
+}
+function ppkFmt_(x){ if(x==null||isNaN(x)) return "-"; var a=Math.abs(x); var d=a>=100?2:(a>=1?3:(a>=0.01?4:5)); return Number(x).toFixed(d); }
+function ppkPrescribe_(ch){
+  if(!ch || ch.grade==="양호" || ch.ppk==null) return "";
+  var tgt=PPK_GOOD, sd=ch.sd, mean=ch.mean, out=[];
+  if(ch.usl!=null && ch.lsl!=null){
+    var half=Math.min(ch.usl-mean, mean-ch.lsl); var sdNeed=half/(3*tgt);
+    if(sdNeed>0) out.push("표준편차 ≤ "+ppkFmt_(sdNeed)+" (현재 "+ppkFmt_(sd)+", "+(sd/sdNeed).toFixed(1)+"배 개선)");
+    var center=(ch.usl+ch.lsl)/2; if(Math.abs(mean-center) > sd*0.5) out.push("평균을 규격중심 "+ppkFmt_(center)+" 쪽으로 이동");
+  } else if(ch.usl!=null){
+    var sdNeedU=(ch.usl-mean)/(3*tgt); if(sdNeedU>0) out.push("표준편차 ≤ "+ppkFmt_(sdNeedU)+" (현재 "+ppkFmt_(sd)+", "+(sd/sdNeedU).toFixed(1)+"배 개선)");
+    out.push("또는 평균 ≤ "+ppkFmt_(ch.usl-3*tgt*sd)+" (현재 "+ppkFmt_(mean)+")");
+  } else if(ch.lsl!=null){
+    var sdNeedL=(mean-ch.lsl)/(3*tgt); if(sdNeedL>0) out.push("표준편차 ≤ "+ppkFmt_(sdNeedL)+" (현재 "+ppkFmt_(sd)+")");
+    out.push("또는 평균 ≥ "+ppkFmt_(ch.lsl+3*tgt*sd));
+  }
+  return out.join(" · ");
+}
+function ppkListHtml_(p){
+  if(!p || !p.list || !p.list.length) return "";
+  var chs=p.chars.map(function(c){return c.name;});
+  var head=["NO.","장비 CODE","S/N"].concat(chs);
+  var rows=p.list.map(function(row,i){
+    var tds=["<td style=\"border:1px solid #E6EBF2;padding:5px;text-align:center;color:#8A93A6;\">"+(i+1)+"</td>",
+      "<td style=\"border:1px solid #E6EBF2;padding:5px;white-space:nowrap;\">"+insEscQ_(row.code)+"</td>",
+      "<td style=\"border:1px solid #E6EBF2;padding:5px;text-align:center;\">"+insEscQ_(row.sn)+"</td>"];
+    p.chars.forEach(function(ch,ci){ var v=row.v[ci]; var oos=(v!=null)&&((ch.usl!=null&&v>ch.usl)||(ch.lsl!=null&&v<ch.lsl));
+      tds.push("<td style=\"border:1px solid #E6EBF2;padding:5px;text-align:right;"+(oos?"color:#fff;background:#C0392B;font-weight:800;":"")+"\">"+(v==null?"":ppkFmt_(v))+"</td>"); });
+    return "<tr>"+tds.join("")+"</tr>";
+  }).join("");
+  return "<div style=\"margin-top:14px;\"><div style=\"font-weight:800;color:#1F2A44;margin-bottom:6px;\">📋 측정 데이터 ("+p.list.length+"건) <span style=\"font-size:11px;color:#8A93A6;font-weight:600;\">· 규격이탈은 빨강</span></div>"
+    +"<div style=\"overflow:auto;max-height:420px;\"><table style=\"border-collapse:collapse;width:100%;font-size:12px;\"><thead><tr>"
+    +head.map(function(h){ return "<th style=\"position:sticky;top:0;border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:6px;white-space:nowrap;\">"+insEscQ_(h)+"</th>"; }).join("")
+    +"</tr></thead><tbody>"+rows+"</tbody></table></div></div>";
 }
 function ppkGradeBadge_(g){
   var map={"양호":["#E7F6EC","#1E7A46","#CFE9D8"],"주의":["#FFF7E6","#B45309","#F0DCB4"],"부족":["#FDECEC","#C0392B","#E7C9C9"],"이탈":["#8A1F1F","#fff","#8A1F1F"]};
@@ -5850,7 +5886,7 @@ function ppkRenderTable_(){
   if(!rows.length){ host.innerHTML='<div style="padding:20px;color:#1E7A46;font-weight:700;">'+(ppkProduct==="__prob"?"문제(주의/부족/이탈) 항목이 없습니다 👍":"표시할 특성이 없습니다.")+'</div>'; return; }
   var f=function(x,d){ return (x==null)?"-":Number(x).toFixed(d==null?3:d); };
   var showProd=(ppkProduct==="__prob");
-  var head=(showProd?["제품","특성"]:["특성"]).concat(["규격","n","평균","표준편차","최소","최대","Ppk","규격이탈","판정"]);
+  var head=(showProd?["제품","특성"]:["특성"]).concat(["규격","n","평균","표준편차","최소","최대","Ppk","규격이탈","판정","개선 목표(Ppk 1.33)"]);
   var trs=rows.map(function(r){
     var ch=r.ch;
     var ppkColor=(ch.grade==="이탈"||ch.grade==="부족")?"#C0392B":(ch.grade==="주의"?"#B45309":"#1E7A46");
@@ -5865,11 +5901,13 @@ function ppkRenderTable_(){
     tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;font-weight:800;color:'+ppkColor+';">'+f(ch.ppk,2)+'</td>');
     tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;'+(ch.oos>0?"color:#C0392B;font-weight:800;":"color:#8A93A6;")+'">'+ch.oos+'</td>');
     tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+ppkGradeBadge_(ch.grade)+'</td>');
+    tds.push('<td style="border:1px solid #E6EBF2;padding:6px;font-size:11.5px;color:#8A1F1F;">'+insEscQ_(ppkPrescribe_(ch)||"-")+'</td>');
     return '<tr>'+tds.join("")+'</tr>';
   }).join("");
   host.innerHTML='<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:640px;"><thead><tr>'
     +head.map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
     +'</tr></thead><tbody>'+trs+'</tbody></table></div>';
+  if(ppkProduct!=="__prob" && __ppkData){ var pp=null; __ppkData.products.forEach(function(x){ if(x.sheet===ppkProduct) pp=x; }); if(pp) host.innerHTML+=ppkListHtml_(pp); }
 }
 function insEscQ_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 function ppkSummary_(){
