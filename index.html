@@ -5639,6 +5639,10 @@ function ncCTQSection_(rowsAll, year){
     +['순위','CTQ 유형','비중','건수','수량','누적%','등급'].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
     +'</tr></thead><tbody>'+trs+'</tbody></table></div>'+warn+'</div>';
 }
+/* 품질 데이터 공유 저장/읽기 (CTQ·Ppk·NCR을 백엔드에 공유 → 모두가 봄) */
+function qShareUrl_(){ return (typeof docmasterApiUrl==="function")?docmasterApiUrl():((typeof mainApiUrl!=="undefined"&&mainApiUrl)?mainApiUrl:""); }
+function qShareSave_(section, data){ var url=qShareUrl_(); if(!url) return; try{ fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeCache", section:section, payload:data, updatedAt:new Date().toISOString()})}); }catch(e){} }
+function qShareLoad_(section, cb){ var url=qShareUrl_(); if(!url){ cb(null); return; } fetch(url+"?mode=readCache&section="+encodeURIComponent(section),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var d=(res&&res.data&&res.data.data!==undefined)?res.data.data:null; cb(d||null); }).catch(function(){ cb(null); }); }
 /* ==================== 🎯 CTQ 분석 (검사종합 업로드 → 부적합 유형별, 전체/년/월) ==================== */
 var CTQ_SHEETS = [
   { name:"수입검사(외관)", date:3, cnt:5, defs:[["기스",8],["찍힘",9],["얼룩",10],["누락",11],["기타",12]] },
@@ -5775,6 +5779,7 @@ function ctqOnUpload_(file){
       var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array", cellDates:true});
       __ctqMonthly=ctqParseWorkbook(wb);
       try{ if(typeof idbSet==="function") idbSet("ctqMonthly", __ctqMonthly); }catch(_){}
+      qShareSave_("ctqMonthly", __ctqMonthly);
       renderCTQPanel();
     }catch(err){ if(status) status.textContent="파일 읽기 실패"; alert("검사종합 파일을 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
   };
@@ -5782,7 +5787,7 @@ function ctqOnUpload_(file){
   reader.readAsArrayBuffer(file);
 }
 // 저장된 집계가 있으면 로드
-(function(){ try{ if(typeof idbGet==="function"){ idbGet("ctqMonthly").then(function(v){ if(v && typeof v==="object"){ __ctqMonthly=v; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); } }).catch(function(){}); } }catch(_){} })();
+(function(){ qShareLoad_("ctqMonthly", function(sv){ if(sv&&typeof sv==="object"){ __ctqMonthly=sv; try{ if(typeof idbSet==="function") idbSet("ctqMonthly",sv); }catch(_){}; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ctqMonthly").then(function(v){ if(v&&typeof v==="object"){ __ctqMonthly=v; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); } }).catch(function(){}); } }catch(_){} }); })();
 /* ==================== 📐 공정능력(Ppk) 분석 (측정 종합 시트 업로드 → 특성별 Ppk·문제 검출) ==================== */
 var PPK_GOOD=1.33, PPK_WARN=1.00;
 var __ppkData=null;          // { products:[ {sheet,name,chars:[...]} ] }
@@ -5962,13 +5967,14 @@ function ppkOnUpload_(file){
       var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array", cellDates:false});
       __ppkData=ppkParseWorkbook_(wb); ppkProduct="__prob";
       try{ if(typeof idbSet==="function") idbSet("ppkData", __ppkData); }catch(_){}
+      qShareSave_("ppkData", __ppkData);
       renderPpkPanel();
     }catch(err){ if(st) st.textContent="파일 읽기 실패"; alert("측정 시트를 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
   };
   reader.onerror=function(){ if(st) st.textContent="파일 읽기 실패"; };
   reader.readAsArrayBuffer(file);
 }
-(function(){ try{ if(typeof idbGet==="function"){ idbGet("ppkData").then(function(v){ if(v&&v.products){ __ppkData=v; if(document.getElementById("qpanel-ppk")) renderPpkPanel(); } }).catch(function(){}); } }catch(_){} })();
+(function(){ qShareLoad_("ppkData", function(sv){ if(sv&&sv.products){ __ppkData=sv; try{ if(typeof idbSet==="function") idbSet("ppkData",sv); }catch(_){}; if(document.getElementById("qpanel-ppk")) renderPpkPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ppkData").then(function(v){ if(v&&v.products){ __ppkData=v; if(document.getElementById("qpanel-ppk")) renderPpkPanel(); } }).catch(function(){}); } }catch(_){} }); })();
 /* ==================== 📁 NCR 대장 (추출 대장 업로드 → 조회·검색·유형분석) ==================== */
 var __ncrData=null;        // [{date,part,customer,content,vendor,register,file}]
 var ncrSearch="", ncrYear="all";
@@ -6068,13 +6074,14 @@ function ncrOnUpload_(file){
       var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array"});
       __ncrData=ncrParseWorkbook_(wb);
       try{ if(typeof idbSet==="function") idbSet("ncrData", __ncrData); }catch(_){}
+      qShareSave_("ncrData", __ncrData);
       renderNcrPanel();
     }catch(err){ if(st) st.textContent="파일 읽기 실패"; alert("NCR 대장을 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
   };
   reader.onerror=function(){ if(st) st.textContent="파일 읽기 실패"; };
   reader.readAsArrayBuffer(file);
 }
-(function(){ try{ if(typeof idbGet==="function"){ idbGet("ncrData").then(function(v){ if(Array.isArray(v)){ __ncrData=v; if(document.getElementById("qpanel-ncr")) renderNcrPanel(); } }).catch(function(){}); } }catch(_){} })();
+(function(){ qShareLoad_("ncrData", function(sv){ if(Array.isArray(sv)){ __ncrData=sv; try{ if(typeof idbSet==="function") idbSet("ncrData",sv); }catch(_){}; if(document.getElementById("qpanel-ncr")) renderNcrPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ncrData").then(function(v){ if(Array.isArray(v)){ __ncrData=v; if(document.getElementById("qpanel-ncr")) renderNcrPanel(); } }).catch(function(){}); } }catch(_){} }); })();
 function renderCustomerNCPanel(){
   const panel = document.getElementById("qpanel-customer");
   if(!panel) return;
