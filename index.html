@@ -1604,6 +1604,7 @@
         <button class="tab-btn" data-qtab="capa">시정조치</button>
         <button class="tab-btn" data-qtab="recur">재발관리</button>
         <button class="tab-btn" data-qtab="ctq">🎯 CTQ 분석</button>
+        <button class="tab-btn" data-qtab="ppk">📐 공정능력(Ppk)</button>
       </div>
       <div class="tab-panel active" id="qpanel-process"></div>
       <div class="tab-panel" id="qpanel-incoming"></div>
@@ -1612,6 +1613,7 @@
       <div class="tab-panel" id="qpanel-capa"></div>
       <div class="tab-panel" id="qpanel-recur"></div>
       <div class="tab-panel" id="qpanel-ctq"></div>
+      <div class="tab-panel" id="qpanel-ppk"></div>
     </div>
     <!-- ===================== 문서 Master (품질문서 관리) VIEW ===================== -->
     <div id="topbar-docmaster" class="topbar" style="display:none;">
@@ -5542,6 +5544,7 @@ function renderQualityAll(){
   renderCAPAPanel();
   renderRecurPanel();
   try{ renderCTQPanel(); }catch(e){}
+  try{ renderPpkPanel(); }catch(e){}
 }
 /* ===== 고객부적합 (출하검사와 동일한 구성: KPI → 월별 추이 그래프/표 → 주차별 → 상세 → 유형) ===== */
 // 해당 월의 납품완료 수량 (MAIN 데이터의 납품일자 기준) — 고객부적합 PPM 분모
@@ -5777,6 +5780,154 @@ function ctqOnUpload_(file){
 }
 // 저장된 집계가 있으면 로드
 (function(){ try{ if(typeof idbGet==="function"){ idbGet("ctqMonthly").then(function(v){ if(v && typeof v==="object"){ __ctqMonthly=v; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); } }).catch(function(){}); } }catch(_){} })();
+/* ==================== 📐 공정능력(Ppk) 분석 (측정 종합 시트 업로드 → 특성별 Ppk·문제 검출) ==================== */
+var PPK_GOOD=1.33, PPK_WARN=1.00;
+var __ppkData=null;          // { products:[ {sheet,name,chars:[...]} ] }
+var ppkProduct="__prob";     // "__prob"=문제 항목 전체, else 제품 sheet명
+
+function ppkParseSpec_(header){
+  var s=String(header==null?"":header).replace(/\r/g,"");
+  var parts=s.split("\n"); var name=(parts[0]||"").trim(); var sp=parts.slice(1).join(" ").trim();
+  if(!sp){ var mm=name.match(/^(.*?)(-?\d[\d.]*\s*±.*|\d[\d.]*)$/); if(mm){ name=mm[1].trim()||name; sp=mm[2].trim(); } }
+  var m=sp.match(/(-?\d+(?:\.\d+)?)\s*±\s*(\d+(?:\.\d+)?)/);
+  if(m){ var nom=parseFloat(m[1]), tol=parseFloat(m[2]); return {name:name, disp:sp, usl:nom+tol, lsl:nom-tol}; }
+  var m3=sp.match(/^(\d+(?:\.\d+)?)$/);
+  if(m3){ return {name:name, disp:sp, usl:parseFloat(m3[1]), lsl:null}; }   // 편측 상한(평면도 등)
+  return {name:name, disp:sp||"", usl:null, lsl:null};
+}
+function ppkCompute_(vals, usl, lsl){
+  var n=vals.length; if(n<2) return null;
+  var mean=0,i; for(i=0;i<n;i++) mean+=vals[i]; mean/=n;
+  var vv=0; for(i=0;i<n;i++){ var d=vals[i]-mean; vv+=d*d; } var sd=Math.sqrt(vv/(n-1));
+  var mn=Math.min.apply(null,vals), mx=Math.max.apply(null,vals), ppk=null;
+  if(sd>0){ if(usl!=null&&lsl!=null) ppk=Math.min((usl-mean)/(3*sd),(mean-lsl)/(3*sd)); else if(usl!=null) ppk=(usl-mean)/(3*sd); else if(lsl!=null) ppk=(mean-lsl)/(3*sd); }
+  var oos=0; for(i=0;i<n;i++){ if((usl!=null&&vals[i]>usl)||(lsl!=null&&vals[i]<lsl)) oos++; }
+  return {n:n, mean:mean, sd:sd, min:mn, max:mx, ppk:ppk, oos:oos};
+}
+function ppkGrade_(ppk, oos){ if(oos>0) return "이탈"; if(ppk==null) return "-"; if(ppk>=PPK_GOOD) return "양호"; if(ppk>=PPK_WARN) return "주의"; return "부족"; }
+function ppkParseWorkbook_(wb){
+  var products=[];
+  (wb.SheetNames||[]).forEach(function(sn){
+    var ws=wb.Sheets[sn]; if(!ws) return;
+    var aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true}); if(aoa.length<5) return;
+    var hdr=aoa[2]||[];
+    var cols=[]; for(var c=3;c<hdr.length;c++){ var h=hdr[c]; if(h==null||String(h).trim()==="") break; cols.push(c); }
+    if(!cols.length) return;
+    var prodName=(aoa[0]&&aoa[0][0])?String(aoa[0][0]).split("\n")[0]:sn;
+    var chars=[];
+    cols.forEach(function(c){
+      var sp=ppkParseSpec_(hdr[c]);
+      var vals=[]; for(var r=4;r<aoa.length;r++){ var v=aoa[r]&&aoa[r][c]; if(typeof v==="number"&&isFinite(v)) vals.push(v); }
+      var st=ppkCompute_(vals, sp.usl, sp.lsl); if(!st) return;
+      chars.push({name:sp.name, disp:sp.disp, usl:sp.usl, lsl:sp.lsl, n:st.n, mean:st.mean, sd:st.sd, min:st.min, max:st.max, ppk:st.ppk, oos:st.oos, grade:ppkGrade_(st.ppk,st.oos)});
+    });
+    if(chars.length) products.push({sheet:sn, name:prodName, chars:chars});
+  });
+  return {products:products};
+}
+function ppkGradeBadge_(g){
+  var map={"양호":["#E7F6EC","#1E7A46","#CFE9D8"],"주의":["#FFF7E6","#B45309","#F0DCB4"],"부족":["#FDECEC","#C0392B","#E7C9C9"],"이탈":["#8A1F1F","#fff","#8A1F1F"]};
+  var c=map[g]||["#EEF1F6","#5A6478","#DDD"];
+  return '<span style="background:'+c[0]+';color:'+c[1]+';border:1px solid '+c[2]+';border-radius:6px;padding:1px 8px;font-weight:800;font-size:11px;">'+g+'</span>';
+}
+function ppkRows_(){
+  if(!__ppkData) return [];
+  var out=[];
+  __ppkData.products.forEach(function(p){
+    if(ppkProduct!=="__prob" && p.sheet!==ppkProduct) return;
+    p.chars.forEach(function(ch){
+      if(ppkProduct==="__prob" && !(ch.grade==="이탈"||ch.grade==="부족"||ch.grade==="주의")) return;
+      out.push({prod:p.name, ch:ch});
+    });
+  });
+  if(ppkProduct==="__prob") out.sort(function(a,b){ var pa=a.ch.oos?-1:(a.ch.ppk==null?99:a.ch.ppk), pb=b.ch.oos?-1:(b.ch.ppk==null?99:b.ch.ppk); return pa-pb; });
+  return out;
+}
+function ppkRenderTable_(){
+  var host=document.getElementById("ppk-table"); if(!host) return;
+  if(!__ppkData){ host.innerHTML='<div style="padding:20px;color:var(--text-mute);">측정 종합 시트를 업로드하면 특성별 공정능력(Ppk)이 여기에 표시됩니다.</div>'; return; }
+  var rows=ppkRows_();
+  if(!rows.length){ host.innerHTML='<div style="padding:20px;color:#1E7A46;font-weight:700;">'+(ppkProduct==="__prob"?"문제(주의/부족/이탈) 항목이 없습니다 👍":"표시할 특성이 없습니다.")+'</div>'; return; }
+  var f=function(x,d){ return (x==null)?"-":Number(x).toFixed(d==null?3:d); };
+  var showProd=(ppkProduct==="__prob");
+  var head=(showProd?["제품","특성"]:["특성"]).concat(["규격","n","평균","표준편차","최소","최대","Ppk","규격이탈","판정"]);
+  var trs=rows.map(function(r){
+    var ch=r.ch;
+    var ppkColor=(ch.grade==="이탈"||ch.grade==="부족")?"#C0392B":(ch.grade==="주의"?"#B45309":"#1E7A46");
+    var tds=(showProd?['<td style="border:1px solid #E6EBF2;padding:6px;white-space:nowrap;color:#5A6478;">'+insEscQ_(r.prod)+'</td>']:[]);
+    tds.push('<td style="border:1px solid #E6EBF2;padding:6px;font-weight:700;white-space:nowrap;">'+insEscQ_(ch.name)+'</td>');
+    tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;white-space:nowrap;color:#5A6478;">'+insEscQ_(ch.disp||"-")+'</td>');
+    tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+ch.n+'</td>');
+    tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;">'+f(ch.mean)+'</td>');
+    tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;">'+f(ch.sd,4)+'</td>');
+    tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;color:#5A6478;">'+f(ch.min)+'</td>');
+    tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;color:#5A6478;">'+f(ch.max)+'</td>');
+    tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;font-weight:800;color:'+ppkColor+';">'+f(ch.ppk,2)+'</td>');
+    tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;'+(ch.oos>0?"color:#C0392B;font-weight:800;":"color:#8A93A6;")+'">'+ch.oos+'</td>');
+    tds.push('<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+ppkGradeBadge_(ch.grade)+'</td>');
+    return '<tr>'+tds.join("")+'</tr>';
+  }).join("");
+  host.innerHTML='<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:640px;"><thead><tr>'
+    +head.map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
+    +'</tr></thead><tbody>'+trs+'</tbody></table></div>';
+}
+function insEscQ_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function ppkSummary_(){
+  if(!__ppkData) return {prod:0,ch:0,good:0,warn:0,bad:0,oos:0};
+  var s={prod:__ppkData.products.length,ch:0,good:0,warn:0,bad:0,oos:0};
+  __ppkData.products.forEach(function(p){ p.chars.forEach(function(ch){ s.ch++; if(ch.grade==="이탈") s.oos++; else if(ch.grade==="부족") s.bad++; else if(ch.grade==="주의") s.warn++; else if(ch.grade==="양호") s.good++; }); });
+  return s;
+}
+function renderPpkPanel(){
+  var panel=document.getElementById("qpanel-ppk"); if(!panel) return;
+  var sm=ppkSummary_();
+  var prodOpts='<option value="__prob"'+(ppkProduct==="__prob"?" selected":"")+'>⚠ 문제 항목 전체</option>';
+  if(__ppkData) __ppkData.products.forEach(function(p){ prodOpts+='<option value="'+insEscQ_(p.sheet)+'"'+(ppkProduct===p.sheet?" selected":"")+'>'+insEscQ_(p.name)+'</option>'; });
+  var card=function(l,v,col,bg,bd){ return '<div style="flex:1;min-width:96px;background:'+bg+';border:1px solid '+bd+';border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">'+l+'</div><div style="font-size:18px;font-weight:800;color:'+col+';">'+v+'</div></div>'; };
+  panel.innerHTML='<div class="table-wrap" style="padding:16px;">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">'
+    +  '<div style="font-weight:800;font-size:16px;color:#1F2A44;">📐 공정능력(Ppk) 분석 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 측정 종합 시트</span></div>'
+    +  '<div style="display:flex;gap:8px;align-items:center;">'
+    +    '<span id="ppk-range" style="font-size:12px;color:#5A6478;">'+(__ppkData?(sm.prod+"개 제품 · "+sm.ch+"개 특성"):"파일 미업로드")+'</span>'
+    +    '<input type="file" id="ppk-file" accept=".xlsx,.xlsm,.xls" style="display:none;">'
+    +    '<button type="button" id="ppk-upload" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📤 측정 시트 업로드</button>'
+    +  '</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'
+    +  card("총 특성", sm.ch, "#0B5CAB", "#F4F8FD", "#D6E4F5")
+    +  card("양호(≥1.33)", sm.good, "#1E7A46", "#F6FFF9", "#CFE9D8")
+    +  card("주의(1.0~1.33)", sm.warn, "#B45309", "#FFFBF2", "#F0DCB4")
+    +  card("부족(<1.0)", sm.bad, "#C0392B", "#FDF3F3", "#F0D6D6")
+    +  card("규격이탈", sm.oos, "#8A1F1F", "#FDECEC", "#E7C9C9")
+    +'</div>'
+    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">'
+    +  '<span style="font-size:12px;color:#5A6478;font-weight:700;">보기</span>'
+    +  '<select id="ppk-product" style="padding:6px 8px;border:1px solid #C9D3E0;border-radius:7px;min-width:200px;">'+prodOpts+'</select>'
+    +  '<span style="font-size:11px;color:#8A93A6;">Ppk ≥1.33 양호 · 1.0~1.33 주의 · &lt;1.0 부족 · 규격이탈=측정값이 규격을 벗어난 개수</span>'
+    +'</div>'
+    +'<div id="ppk-table"></div>'
+    +'</div>';
+  var fi=document.getElementById("ppk-file");
+  document.getElementById("ppk-upload").addEventListener("click",function(){ fi.click(); });
+  fi.addEventListener("change",function(){ if(fi.files&&fi.files[0]) ppkOnUpload_(fi.files[0]); });
+  var ps=document.getElementById("ppk-product"); if(ps) ps.addEventListener("change",function(){ ppkProduct=this.value; ppkRenderTable_(); });
+  ppkRenderTable_();
+}
+function ppkOnUpload_(file){
+  var st=document.getElementById("ppk-range"); if(st) st.textContent="읽는 중…";
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array", cellDates:false});
+      __ppkData=ppkParseWorkbook_(wb); ppkProduct="__prob";
+      try{ if(typeof idbSet==="function") idbSet("ppkData", __ppkData); }catch(_){}
+      renderPpkPanel();
+    }catch(err){ if(st) st.textContent="파일 읽기 실패"; alert("측정 시트를 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
+  };
+  reader.onerror=function(){ if(st) st.textContent="파일 읽기 실패"; };
+  reader.readAsArrayBuffer(file);
+}
+(function(){ try{ if(typeof idbGet==="function"){ idbGet("ppkData").then(function(v){ if(v&&v.products){ __ppkData=v; if(document.getElementById("qpanel-ppk")) renderPpkPanel(); } }).catch(function(){}); } }catch(_){} })();
 function renderCustomerNCPanel(){
   const panel = document.getElementById("qpanel-customer");
   if(!panel) return;
