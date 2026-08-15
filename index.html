@@ -14069,17 +14069,27 @@ function insNcHistoryPopup_(draw){
   document.getElementById("insnch-x").addEventListener("click",function(){ ov.style.display="none"; });
 }
 /* ==================== 📄 NCR 출력 (미조치 부적합 → NCR 엑셀 발행) ==================== */
-function insPartName_(draw){
-  var norm=function(x){ return String(x==null?"":x).trim().toUpperCase().replace(/\s+/g,""); };
-  var d=norm(draw); if(!d) return "";
-  var pick=function(r){ return (r.partName!=null?r.partName:(r["품명"]!=null?r["품명"]:r["품 명"])); };
+var __partNameMap = null;   // { 정규화도번: 품명 } — IndexedDB에 저장돼 MAIN을 안 열어도 유지됨
+function insNormDraw_(x){ return String(x==null?"":x).trim().toUpperCase().replace(/\s+/g,""); }
+function insRefreshPartNameMap_(){
+  var map = __partNameMap || {};
   var keys=["oldDrawingNo","oldDraw","기존도번","partNo","품번","품 번","draw","도번","도면번호","drawingNo"];
-  var scan=function(arr){ if(!Array.isArray(arr)) return ""; for(var i=0;i<arr.length;i++){ var r=arr[i]; if(!r||typeof r!=="object") continue; var hit=false; for(var ki=0;ki<keys.length;ki++){ var v=r[keys[ki]]; if(v!=null && norm(v)===d){ hit=true; break; } } if(hit){ var nm=pick(r); if(nm && String(nm).trim()) return String(nm).trim(); } } return ""; };
-  var nm=scan(typeof mainData!=="undefined"?mainData:null); if(nm) return nm;
-  if(typeof qualityRawData!=="undefined" && qualityRawData){ var ks=Object.keys(qualityRawData); for(var j=0;j<ks.length;j++){ nm=scan(qualityRawData[ks[j]]); if(nm) return nm; } }
-  if(typeof invData!=="undefined"){ nm=scan(invData); if(nm) return nm; }
-  return "";
+  var add=function(arr){ if(!Array.isArray(arr)) return; arr.forEach(function(r){ if(!r||typeof r!=="object") return; var nm=(r.partName!=null?r.partName:(r["품명"]!=null?r["품명"]:r["품 명"])); if(!nm||!String(nm).trim()) return; nm=String(nm).trim(); keys.forEach(function(k){ var v=r[k]; if(v!=null){ var d=insNormDraw_(v); if(d) map[d]=nm; } }); }); };
+  add(typeof mainData!=="undefined"?mainData:null);
+  if(typeof qualityRawData!=="undefined" && qualityRawData){ Object.keys(qualityRawData).forEach(function(k){ add(qualityRawData[k]); }); }
+  add(typeof invData!=="undefined"?invData:null);
+  __partNameMap = map;
+  try{ if(typeof idbSet==="function") idbSet("partNameMap", map); }catch(e){}
+  return map;
 }
+function insPartName_(draw){
+  var d=insNormDraw_(draw); if(!d) return "";
+  if(__partNameMap && __partNameMap[d]) return __partNameMap[d];
+  insRefreshPartNameMap_();   // 현재 로드된 데이터로 맵 갱신 후 재확인
+  return (__partNameMap && __partNameMap[d]) ? __partNameMap[d] : "";
+}
+// 저장된 품명 맵 로드(부팅 시) — 이전에 한 번이라도 데이터가 로드됐으면 이후엔 MAIN 없이도 품명 나옴
+(function(){ try{ if(typeof idbGet==="function") idbGet("partNameMap").then(function(v){ if(v&&typeof v==="object") __partNameMap=v; }).catch(function(){}); }catch(e){} })();
 function insNcrContent_(item){
   var parts=String(item.types||"").split(",").map(function(s){ s=s.trim(); if(!s) return ""; var m=s.match(/^(.*?)\s+(\d+)$/); return m?(m[1]+" ("+m[2]+"EA)"):s; }).filter(Boolean);
   return "-"+parts.join(", ");
@@ -14119,6 +14129,7 @@ function insMakeNcrXlsx_(d){
 }
 var __insNcrList=[];
 function insOpenNcrExport(){
+  try{ insRefreshPartNameMap_(); }catch(e){}
   __insNcrList=insUnresolvedList_(!!insUnresolvedSrc);
   var esc=insEsc;
   var rowsHtml = __insNcrList.length ? __insNcrList.map(function(it,i){
