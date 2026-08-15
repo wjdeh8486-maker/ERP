@@ -14069,6 +14069,17 @@ function insNcHistoryPopup_(draw){
   document.getElementById("insnch-x").addEventListener("click",function(){ ov.style.display="none"; });
 }
 /* ==================== 📄 NCR 출력 (미조치 부적합 → NCR 엑셀 발행) ==================== */
+function insPartName_(draw){
+  var norm=function(x){ return String(x==null?"":x).trim().toUpperCase().replace(/\s+/g,""); };
+  var d=norm(draw); if(!d) return "";
+  var pick=function(r){ return (r.partName!=null?r.partName:(r["품명"]!=null?r["품명"]:r["품 명"])); };
+  var pnum=function(r){ return (r.partNo!=null?r.partNo:(r["품번"]!=null?r["품번"]:(r["품 번"]!=null?r["품 번"]:(r.draw!=null?r.draw:r["도번"])))); };
+  var scan=function(arr){ if(!Array.isArray(arr)) return ""; for(var i=0;i<arr.length;i++){ var r=arr[i]; if(!r||typeof r!=="object") continue; var pn=pnum(r); if(pn!=null && norm(pn)===d){ var nm=pick(r); if(nm && String(nm).trim()) return String(nm).trim(); } } return ""; };
+  var nm=scan(typeof mainData!=="undefined"?mainData:null); if(nm) return nm;
+  if(typeof qualityRawData!=="undefined" && qualityRawData){ var ks=Object.keys(qualityRawData); for(var j=0;j<ks.length;j++){ nm=scan(qualityRawData[ks[j]]); if(nm) return nm; } }
+  if(typeof invData!=="undefined"){ nm=scan(invData); if(nm) return nm; }
+  return "";
+}
 function insNcrContent_(item){
   var parts=String(item.types||"").split(",").map(function(s){ s=s.trim(); if(!s) return ""; var m=s.match(/^(.*?)\s+(\d+)$/); return m?(m[1]+" ("+m[2]+"EA)"):s; }).filter(Boolean);
   return "-"+parts.join(", ");
@@ -14146,7 +14157,7 @@ function insOpenNcrExport(){
       var vendor=(document.getElementById("insncr-vendor")||{}).value||"";
       var method=(document.getElementById("insncr-method")||{}).value||"";
       var today=(typeof insToday_==="function")?insToday_():"";
-      insMakeNcrXlsx_({ date:(it.insDate||today), cust:cust, part:it.draw, partname:"", reg:(it.by||""), content:insNcrContent_(it), contentShort:String(it.types||"").split(",")[0].replace(/\s+\d+$/,""), vendor:vendor, noti:today, method:method });
+      insMakeNcrXlsx_({ date:(it.insDate||today), cust:cust, part:it.draw, partname:insPartName_(it.draw), reg:(it.by||""), content:insNcrContent_(it), contentShort:String(it.types||"").split(",")[0].replace(/\s+\d+$/,""), vendor:vendor, noti:today, method:method });
     });
   });
 }
