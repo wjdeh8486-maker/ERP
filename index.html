@@ -1812,6 +1812,7 @@
             <div style="border-top:1px solid #EEF1F6;margin:3px 0;"></div>
             <button type="button" id="insrep-qualBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">📊 품질 요약</button>
             <button type="button" id="insrep-ctqBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="부적합 유형별 CTQ 분석 (비중·누적·PPM·핵심등급)">🎯 CTQ 분석</button>
+            <button type="button" id="insrep-ncrBtn" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="미조치 부적합에서 NCR(부적합보고서) 엑셀 발행">📄 NCR 출력</button>
           </div>
         </span>
       </div>
@@ -13047,6 +13048,7 @@ function insInit(){
   bind("insrep-unrBtn","click",insOpenUnresolved);
   bind("insrep-qualBtn","click",insOpenQuality);
   bind("insrep-ctqBtn","click",insOpenCTQ);
+  bind("insrep-ncrBtn","click",insOpenNcrExport);
   bind("insrep-printBtn","click",insPrintDay);
   bind("insrep-masterBtn","click",insExportMaster);
   var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; if(insDayFilter!=="all" && insType!=="processin" && insMetaByType[insType]){ insMetaByType[insType].date=insDayFilter; insSyncMetaInputs(); } insRender(); insSaveLocal(); });
@@ -14065,6 +14067,85 @@ function insNcHistoryPopup_(draw){
     +'</div>';
   ov.style.display="flex";
   document.getElementById("insnch-x").addEventListener("click",function(){ ov.style.display="none"; });
+}
+/* ==================== 📄 NCR 출력 (미조치 부적합 → NCR 엑셀 발행) ==================== */
+function insNcrContent_(item){
+  var parts=String(item.types||"").split(",").map(function(s){ s=s.trim(); if(!s) return ""; var m=s.match(/^(.*?)\s+(\d+)$/); return m?(m[1]+" ("+m[2]+"EA)"):s; }).filter(Boolean);
+  return "-"+parts.join(", ");
+}
+function insNcrCell_(v,opt){ opt=opt||{}; var b={style:"thin",color:{rgb:"888888"}};
+  return {v:(v==null?"":v), t:"s", s:{ border:{top:b,bottom:b,left:b,right:b}, alignment:{vertical:"center",horizontal:(opt.align||"left"),wrapText:true}, font:{name:"맑은 고딕",sz:(opt.sz||10),bold:!!opt.bold,color:{rgb:(opt.color||"000000")}}, fill:(opt.fill?{fgColor:{rgb:opt.fill}}:undefined) } };
+}
+function insMakeNcrXlsx_(d){
+  if(typeof XLSX==="undefined"||!XLSX.utils){ alert("엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요."); return; }
+  var C=insNcrCell_, ws={};
+  ws["A1"]=C("Incoming Rejection Report",{bold:true,sz:16,align:"center",fill:"1F2A44",color:"FFFFFF"});
+  ws["A3"]=C("Order Date",{bold:true,align:"center",fill:"EEF3FA"}); ws["B3"]=C(d.date,{align:"center"});
+  ws["E3"]=C("Customer Line",{bold:true,align:"center",fill:"EEF3FA"}); ws["F3"]=C(d.cust,{align:"center"});
+  ws["A4"]=C("Part",{bold:true,align:"center",fill:"EEF3FA"}); ws["B4"]=C(d.partname||"",{});
+  ws["A5"]=C("item number",{bold:true,align:"center",fill:"EEF3FA"}); ws["B5"]=C(d.part,{align:"center",bold:true});
+  ws["E5"]=C("Register",{bold:true,align:"center",fill:"EEF3FA"}); ws["F5"]=C(d.reg,{align:"center"});
+  ws["A7"]=C("Incoming\nRejection\nContents",{bold:true,align:"center",fill:"EEF3FA"}); ws["C7"]=C(d.content,{bold:true,color:"8A1F1F"});
+  ws["A11"]=C("Incoming Rejection Contents and Photos",{bold:true,align:"center",fill:"EEF3FA"});
+  ws["A12"]=C("",{});   // 사진 영역(A12:H33) — 엑셀에서 사진 삽입
+  ws["A35"]=C("부적합 업체",{bold:true,align:"center",fill:"EEF3FA"}); ws["B35"]=C(d.vendor,{align:"center"});
+  ws["A36"]=C("부적합 통보일자",{bold:true,align:"center",fill:"EEF3FA"}); ws["B36"]=C(d.noti,{align:"center"});
+  ws["E36"]=C("통보 방법",{bold:true,align:"center",fill:"EEF3FA"}); ws["F36"]=C(d.method,{align:"center"});
+  ws["A37"]=C("부적합  처리",{bold:true,align:"center",fill:"EEF3FA"}); ws["B37"]=C("",{});
+  ws["A38"]=C("최종 진행자",{bold:true,align:"center",fill:"EEF3FA"}); ws["B38"]=C("",{});
+  ws["E38"]=C("회신 일자 / 회신자",{bold:true,align:"center",fill:"EEF3FA"}); ws["F38"]=C("",{});
+  ws["!ref"]="A1:H38";
+  ws["!merges"]=["A1:H1","B3:D3","F3:H3","B4:H4","B5:D5","F5:H5","A7:B9","C7:H9","A11:H11","A12:H33","B35:H35","B36:D36","F36:H36","B37:H37","B38:D38","F38:H38"].map(function(r){ return XLSX.utils.decode_range(r); });
+  ws["!cols"]=[{wch:14},{wch:14},{wch:11},{wch:8},{wch:13},{wch:13},{wch:10},{wch:10}];
+  ws["!rows"]=[]; for(var i=0;i<38;i++) ws["!rows"][i]={hpt:18}; ws["!rows"][0]={hpt:28}; for(var j=11;j<33;j++) ws["!rows"][j]={hpt:22};
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "기본양식");
+  var safe=function(x){ return String(x||"").replace(/[\\\/:*?"<>|]/g,"").replace(/\s+/g,"").slice(0,20); };
+  var ymd=String(d.date||"").replace(/-/g,"").slice(2);
+  XLSX.writeFile(wb, "NCR_"+ymd+"_"+safe(d.part)+"_"+safe(d.contentShort||"부적합")+".xlsx");
+}
+var __insNcrList=[];
+function insOpenNcrExport(){
+  __insNcrList=insUnresolvedList_(!!insUnresolvedSrc);
+  var esc=insEsc;
+  var rowsHtml = __insNcrList.length ? __insNcrList.map(function(it,i){
+    return '<tr>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;white-space:nowrap;">'+esc(it.insDate)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;white-space:nowrap;color:#5A6478;">'+esc(it.label)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;font-weight:700;white-space:nowrap;">'+esc(it.draw)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;color:#8A1F1F;">'+esc(insNcrContent_(it))+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;"><button type="button" data-ncr="'+i+'" style="background:#0B7A8A;color:#fff;border:none;border-radius:7px;padding:6px 12px;font-weight:700;cursor:pointer;white-space:nowrap;">📄 발행</button></td>'
+      +'</tr>';
+  }).join("") : '<tr><td colspan="5" style="padding:20px;text-align:center;color:#1E7A46;">미조치 부적합이 없습니다 👍</td></tr>';
+
+  var ov=document.getElementById("insncr-ov");
+  if(!ov){ ov=document.createElement("div"); ov.id="insncr-ov"; ov.style.cssText="position:fixed;inset:0;z-index:2147483100;background:rgba(15,23,42,0.5);display:flex;align-items:flex-start;justify-content:center;padding:30px 14px;"; ov.addEventListener("click",function(e){ if(e.target===ov) ov.style.display="none"; }); document.body.appendChild(ov); }
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:860px;max-height:88vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.35);">'
+    +'<div style="padding:13px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;">'
+    +  '<b style="font-size:16px;color:#0B5CAB;">📄 NCR 출력 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 미조치 부적합에서 건별 발행</span></b>'
+    +  '<button type="button" id="insncr-x" style="border:none;background:#F0F4F8;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
+    +'</div>'
+    +'<div style="padding:12px 16px;border-bottom:1px solid #EEF1F6;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">'
+    +  '<div><div style="font-size:11px;color:#5A6478;margin-bottom:3px;">고객 (Customer Line)</div><input id="insncr-cust" value="유진테크" style="padding:7px 9px;border:1px solid #C9D3E0;border-radius:7px;width:140px;"></div>'
+    +  '<div><div style="font-size:11px;color:#5A6478;margin-bottom:3px;">부적합 업체</div><input id="insncr-vendor" value="사내" style="padding:7px 9px;border:1px solid #C9D3E0;border-radius:7px;width:110px;"></div>'
+    +  '<div><div style="font-size:11px;color:#5A6478;margin-bottom:3px;">통보 방법</div><input id="insncr-method" value="서면" style="padding:7px 9px;border:1px solid #C9D3E0;border-radius:7px;width:90px;"></div>'
+    +  '<div style="font-size:11.5px;color:#8A93A6;flex:1;min-width:180px;">위 값은 발행 시 공통 적용됩니다. 발행 후 엑셀에서 <b>사진을 넣고</b> 인쇄/보관하세요.</div>'
+    +'</div>'
+    +'<div style="padding:8px 16px 16px;overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:600px;"><thead><tr>'
+    +  ['검사일','유형','도번','부적합 내용','발행'].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
+    +  '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>'
+    +'</div>';
+  ov.style.display="flex";
+  document.getElementById("insncr-x").addEventListener("click",function(){ ov.style.display="none"; });
+  ov.querySelectorAll("[data-ncr]").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var it=__insNcrList[Number(btn.getAttribute("data-ncr"))]; if(!it) return;
+      var cust=(document.getElementById("insncr-cust")||{}).value||"";
+      var vendor=(document.getElementById("insncr-vendor")||{}).value||"";
+      var method=(document.getElementById("insncr-method")||{}).value||"";
+      var today=(typeof insToday_==="function")?insToday_():"";
+      insMakeNcrXlsx_({ date:(it.insDate||today), cust:cust, part:it.draw, partname:"", reg:(it.by||""), content:insNcrContent_(it), contentShort:String(it.types||"").split(",")[0].replace(/\s+\d+$/,""), vendor:vendor, noti:today, method:method });
+    });
+  });
 }
 function insDefectShortLabel_(cfg){
   var m={};
