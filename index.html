@@ -1606,6 +1606,7 @@
         <button class="tab-btn" data-qtab="ctq">🎯 CTQ 분석</button>
         <button class="tab-btn" data-qtab="ppk">📐 공정능력(Ppk)</button>
         <button class="tab-btn" data-qtab="ncr">📁 NCR 대장</button>
+        <button class="tab-btn" data-qtab="edu">👥 교육/자격</button>
       </div>
       <div class="tab-panel active" id="qpanel-process"></div>
       <div class="tab-panel" id="qpanel-incoming"></div>
@@ -1616,6 +1617,7 @@
       <div class="tab-panel" id="qpanel-ctq"></div>
       <div class="tab-panel" id="qpanel-ppk"></div>
       <div class="tab-panel" id="qpanel-ncr"></div>
+      <div class="tab-panel" id="qpanel-edu"></div>
     </div>
     <!-- ===================== 문서 Master (품질문서 관리) VIEW ===================== -->
     <div id="topbar-docmaster" class="topbar" style="display:none;">
@@ -5549,6 +5551,7 @@ function renderQualityAll(){
   try{ renderCTQPanel(); }catch(e){}
   try{ renderPpkPanel(); }catch(e){}
   try{ renderNcrPanel(); }catch(e){}
+  try{ renderEduPanel(); }catch(e){}
 }
 /* ===== 고객부적합 (출하검사와 동일한 구성: KPI → 월별 추이 그래프/표 → 주차별 → 상세 → 유형) ===== */
 // 해당 월의 납품완료 수량 (MAIN 데이터의 납품일자 기준) — 고객부적합 PPM 분모
@@ -6083,6 +6086,88 @@ function ncrOnUpload_(file){
   reader.readAsArrayBuffer(file);
 }
 (function(){ qShareLoad_("ncrData", function(sv){ if(Array.isArray(sv)){ __ncrData=sv; try{ if(typeof idbSet==="function") idbSet("ncrData",sv); }catch(_){}; if(document.getElementById("qpanel-ncr")) renderNcrPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ncrData").then(function(v){ if(Array.isArray(v)){ __ncrData=v; if(document.getElementById("qpanel-ncr")) renderNcrPanel(); } }).catch(function(){}); } }catch(_){} }); })();
+/* ==================== 👥 교육/자격 관리 (인원·교육이력·자격인증·재인증 알림) ==================== */
+var EDU_EQUIP=["3D측정기","비접촉검사기","Leak(헬륨)","외관검사","BOLT검사","조도측정기","청정도측정기","도막두께","범용계측기"];
+var __eduData=null;   // { members:[{name,post,year}], history:[{date,subject,target,hours,score,cert}], certs:[{target,equip,date,period}] }
+function eduDefault_(){ return { members:[], history:[], certs:[] }; }
+function eduEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function eduSave_(){ try{ if(typeof idbSet==="function") idbSet("eduData", __eduData); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("eduData", __eduData); }catch(e){} }
+function eduAddMonths_(dateStr, months){ var d=new Date(dateStr); if(isNaN(d.getTime())) return ""; d.setMonth(d.getMonth()+Math.round(months)); var p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
+function eduDaysLeft_(dateStr){ var d=new Date(dateStr); if(isNaN(d.getTime())) return null; return Math.round((d.getTime()-Date.now())/86400000); }
+
+function eduReadTable_(tblId, cols){
+  var out=[]; var tb=document.getElementById(tblId); if(!tb) return out;
+  tb.querySelectorAll("tbody tr").forEach(function(tr){
+    var o={}, has=false;
+    cols.forEach(function(c){ var el=tr.querySelector('[data-k="'+c+'"]'); var v=el?String(el.value||"").trim():""; o[c]=v; if(v) has=true; });
+    if(has) out.push(o);
+  });
+  return out;
+}
+function eduCollect_(){
+  __eduData.members=eduReadTable_("edu-members",["name","post","year"]);
+  __eduData.history=eduReadTable_("edu-history",["date","subject","target","hours","score","cert"]);
+  __eduData.certs=eduReadTable_("edu-certs",["target","equip","date","period"]);
+  eduSave_();
+}
+function eduInput_(k,v,ph,w){ return '<input data-k="'+k+'" value="'+eduEsc_(v||"")+'" placeholder="'+(ph||"")+'" style="width:'+(w||"100%")+';box-sizing:border-box;padding:5px 6px;border:1px solid #D6DEE8;border-radius:6px;font-size:12.5px;">'; }
+function eduSel_(k,v,opts){ return '<select data-k="'+k+'" style="width:100%;box-sizing:border-box;padding:5px 6px;border:1px solid #D6DEE8;border-radius:6px;font-size:12.5px;">'+opts.map(function(o){ return '<option'+(String(v)===String(o)?" selected":"")+'>'+eduEsc_(o)+'</option>'; }).join("")+'</select>'; }
+function eduDel_(){ return '<button type="button" class="edu-del" style="border:none;background:#F0F4F8;border-radius:6px;width:26px;height:26px;cursor:pointer;">✕</button>'; }
+
+function renderEduPanel(){
+  var panel=document.getElementById("qpanel-edu"); if(!panel) return;
+  if(!__eduData) __eduData=eduDefault_();
+  var M=__eduData.members||[], H=__eduData.history||[], Cs=__eduData.certs||[];
+
+  // 재인증 임박 계산
+  var alerts=[];
+  Cs.forEach(function(c){ if(!c.date) return; var per=Number(c.period)||1; var due=eduAddMonths_(c.date, per*12); var dl=eduDaysLeft_(due); if(dl!==null && dl<=30){ alerts.push({t:c.target,e:c.equip,due:due,dl:dl}); } });
+  alerts.sort(function(a,b){ return a.dl-b.dl; });
+  var alertHtml = alerts.length ? '<div style="background:#FDECEC;border:1px solid #E7C9C9;border-radius:10px;padding:10px 14px;margin-bottom:12px;"><b style="color:#8A1F1F;">🔔 재인증 임박/만료 '+alerts.length+'건</b><div style="margin-top:5px;font-size:12.5px;color:#8A1F1F;">'+alerts.map(function(a){ return eduEsc_(a.t||"?")+' · '+eduEsc_(a.e||"")+' → '+a.due+(a.dl<0?' <b>('+(-a.dl)+'일 초과)</b>':' ('+a.dl+'일 남음)'); }).join(" &nbsp;|&nbsp; ")+'</div></div>' : '';
+
+  var names=M.map(function(m){return m.name;}).filter(Boolean);
+  var posts=["수입검사","측정검사","Date관리","출하검사","중간관리","전체관리"];
+  var years=["신규~1년","1~3년차","3~5년차","5~8년차 이상"];
+
+  var mRows=(M.length?M:[{}]).map(function(m){ return '<tr><td>'+eduInput_("name",m.name)+'</td><td>'+eduSel_("post",m.post||posts[0],posts)+'</td><td>'+eduSel_("year",m.year||years[1],years)+'</td><td style="text-align:center;">'+eduDel_()+'</td></tr>'; }).join("");
+  var hRows=(H.length?H:[{}]).map(function(h){ return '<tr><td>'+eduInput_("date",h.date,"2026-08-20")+'</td><td>'+eduInput_("subject",h.subject,"과목")+'</td><td>'+eduInput_("target",h.target,"대상자")+'</td><td>'+eduInput_("hours",h.hours,"h",'60px')+'</td><td>'+eduInput_("score",h.score,"점",'60px')+'</td><td>'+eduSel_("cert",h.cert||"N",["Y","N"])+'</td><td style="text-align:center;">'+eduDel_()+'</td></tr>'; }).join("");
+  var cRows=(Cs.length?Cs:[{}]).map(function(c){
+    var per=Number(c.period)||1; var due=c.date?eduAddMonths_(c.date,per*12):""; var dl=due?eduDaysLeft_(due):null;
+    var stColor=(dl===null)?"#8A93A6":(dl<0?"#C0392B":(dl<=30?"#B45309":"#1E7A46"));
+    var stTxt=(dl===null)?"-":(dl<0?(-dl)+"일 초과":dl+"일 남음");
+    return '<tr><td>'+eduInput_("target",c.target,"대상자")+'</td><td>'+eduSel_("equip",c.equip||EDU_EQUIP[0],EDU_EQUIP)+'</td><td>'+eduInput_("date",c.date,"인증일")+'</td><td>'+eduSel_("period",c.period||"1",["1","2","3"])+'</td><td style="text-align:center;white-space:nowrap;">'+(due||"-")+'</td><td style="text-align:center;color:'+stColor+';font-weight:700;white-space:nowrap;">'+stTxt+'</td><td style="text-align:center;">'+eduDel_()+'</td></tr>';
+  }).join("");
+
+  var sec=function(title,desc,tblId,heads,rows,addLabel){
+    return '<div class="table-wrap" style="padding:14px;margin-bottom:14px;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><b style="font-size:15px;color:#1F2A44;">'+title+'</b>'
+      +'<div><button type="button" class="edu-add" data-tbl="'+tblId+'" style="background:#0B7A8A;color:#fff;border:none;border-radius:7px;padding:6px 12px;font-weight:700;cursor:pointer;margin-right:6px;">'+addLabel+'</button>'
+      +'<button type="button" class="edu-savebtn" style="background:#1F2A44;color:#fff;border:none;border-radius:7px;padding:6px 12px;font-weight:700;cursor:pointer;">💾 저장</button></div></div>'
+      +(desc?'<div style="font-size:12px;color:#5A6478;margin-bottom:8px;">'+desc+'</div>':'')
+      +'<div style="overflow:auto;"><table id="'+tblId+'" style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:520px;"><thead><tr>'
+      +heads.map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:6px;white-space:nowrap;">'+h+'</th>'; }).join("")
+      +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  };
+
+  panel.innerHTML='<div style="padding:2px;">'
+    +'<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:10px;">👥 교육/자격 관리 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 인원·교육이력·자격인증·재인증 알림</span></div>'
+    +alertHtml
+    +sec("① 인원","품질팀 인원과 배치·연차를 등록합니다.","edu-members",["이름","배치","연차","삭제"],mRows,"➕ 인원 추가")
+    +sec("② 교육 실시 이력","실시일·과목·대상자·시간·평가점수·자격부여(Y/N).","edu-history",["실시일","과목","대상자","시간(h)","평가","자격","삭제"],hRows,"➕ 이력 추가")
+    +sec("③ 자격 인증 / 재인증","인증일+주기(년)로 재인증 예정일이 자동 계산되고, 30일 이내면 위에 알림이 뜹니다. (주기: 신규~3년=1 · 3~5년=2 · 5~8년+=3)","edu-certs",["대상자","장비","인증일","주기(년)","재인증 예정","상태","삭제"],cRows,"➕ 인증 추가")
+    +'</div>';
+
+  // 이벤트
+  panel.querySelectorAll(".edu-savebtn").forEach(function(b){ b.addEventListener("click",function(){ eduCollect_(); renderEduPanel(); }); });
+  panel.querySelectorAll(".edu-add").forEach(function(b){ b.addEventListener("click",function(){ eduCollect_(); var t=b.getAttribute("data-tbl"); if(t==="edu-members") __eduData.members.push({}); else if(t==="edu-history") __eduData.history.push({}); else __eduData.certs.push({}); renderEduPanel(); }); });
+  panel.querySelectorAll(".edu-del").forEach(function(b){ b.addEventListener("click",function(){ var tr=b.closest("tr"); if(tr) tr.parentNode.removeChild(tr); eduCollect_(); renderEduPanel(); }); });
+}
+// 로드: 공유 먼저, 없으면 로컬
+(function(){
+  var apply=function(v){ if(v&&typeof v==="object"){ __eduData=v; if(document.getElementById("qpanel-edu")) renderEduPanel(); return true; } return false; };
+  try{ if(typeof qShareLoad_==="function"){ qShareLoad_("eduData", function(sv){ if(apply(sv)){ try{ if(typeof idbSet==="function") idbSet("eduData",sv); }catch(_){}; return; } try{ if(typeof idbGet==="function") idbGet("eduData").then(apply).catch(function(){}); }catch(_){} }); return; } }catch(_){}
+  try{ if(typeof idbGet==="function") idbGet("eduData").then(apply).catch(function(){}); }catch(_){}
+})();
 function renderCustomerNCPanel(){
   const panel = document.getElementById("qpanel-customer");
   if(!panel) return;
