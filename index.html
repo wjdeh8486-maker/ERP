@@ -6114,6 +6114,53 @@ function eduInput_(k,v,ph,w){ return '<input data-k="'+k+'" value="'+eduEsc_(v||
 function eduSel_(k,v,opts){ return '<select data-k="'+k+'" style="width:100%;box-sizing:border-box;padding:5px 6px;border:1px solid #D6DEE8;border-radius:6px;font-size:12.5px;">'+opts.map(function(o){ return '<option'+(String(v)===String(o)?" selected":"")+'>'+eduEsc_(o)+'</option>'; }).join("")+'</select>'; }
 function eduDel_(){ return '<button type="button" class="edu-del" style="border:none;background:#F0F4F8;border-radius:6px;width:26px;height:26px;cursor:pointer;">✕</button>'; }
 
+/* 교육 세트 엑셀 업로드 → 병합(기존 유지, 신규만 추가) */
+function eduNorm_(x){ return String(x==null?"":x).trim(); }
+function eduKey_(x){ return String(x==null?"":x).trim().toUpperCase().replace(/\s+/g,""); }
+function eduColIdx_(hdr, names){ for(var i=0;i<(hdr||[]).length;i++){ var h=String(hdr[i]||"").replace(/\s+/g,""); for(var j=0;j<names.length;j++){ if(h.indexOf(names[j])>=0) return i; } } return -1; }
+function eduReadSheet_(ws, headerKeys){
+  var aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
+  var norm=function(c){ return String(c||"").replace(/\s+/g,""); };
+  for(var r=0;r<Math.min(aoa.length,8);r++){ var row=aoa[r]||[]; var hasFirst=row.some(function(c){ return norm(c).indexOf(headerKeys[0])>=0; }); if(!hasFirst) continue; var hit=0; headerKeys.forEach(function(k){ if(row.some(function(c){ return norm(c).indexOf(k)>=0; })) hit++; }); if(hit>=2){ return {hr:r, hdr:aoa[r], aoa:aoa}; } }
+  return {hr:-1, aoa:aoa};
+}
+function eduParseWorkbook_(wb){
+  var res={members:[],history:[],certs:[]};
+  var find=function(keys){ for(var i=0;i<wb.SheetNames.length;i++){ var n=wb.SheetNames[i]; for(var j=0;j<keys.length;j++){ if(n.indexOf(keys[j])>=0) return wb.Sheets[n]; } } return null; };
+  var skip=function(v){ v=eduNorm_(v); return !v || v.indexOf("예)")===0 || v.indexOf("성명")>=0 || v.indexOf("빈칸")>=0; };
+  var isEx=function(row){ return eduNorm_(row[0]).indexOf("예)")===0; };
+  var ms=find(["인원","개인별"]);
+  if(ms){ var d=eduReadSheet_(ms,["이름","배치","연차"]); if(d.hr>=0){ var ci={name:eduColIdx_(d.hdr,["이름"]),post:eduColIdx_(d.hdr,["배치","직무"]),year:eduColIdx_(d.hdr,["연차"])};
+    for(var r=d.hr+1;r<d.aoa.length;r++){ var row=d.aoa[r]; if(!row||isEx(row)) continue; var nm=eduNorm_(row[ci.name]); if(skip(nm)) continue; if(eduNorm_(row[0]).indexOf("전원")>=0) continue; res.members.push({name:nm, post:eduNorm_(row[ci.post]), year:eduNorm_(row[ci.year])}); } } }
+  var hs=find(["이력","실시"]);
+  if(hs){ var dh=eduReadSheet_(hs,["대상자","실시일","과목"]); if(dh.hr>=0){ var hi={date:eduColIdx_(dh.hdr,["실시일","일자"]),subject:eduColIdx_(dh.hdr,["과목"]),target:eduColIdx_(dh.hdr,["대상자"]),hours:eduColIdx_(dh.hdr,["시간"]),score:eduColIdx_(dh.hdr,["평가","점수"]),cert:eduColIdx_(dh.hdr,["자격"])};
+    for(var r2=dh.hr+1;r2<dh.aoa.length;r2++){ var row2=dh.aoa[r2]; if(!row2||isEx(row2)) continue; var sub=eduNorm_(row2[hi.subject]); if(skip(row2[hi.date]) && skip(sub)) continue; if(!sub && skip(row2[hi.target])) continue; res.history.push({date:eduNorm_(row2[hi.date]),subject:sub,target:eduNorm_(row2[hi.target]),hours:eduNorm_(row2[hi.hours]),score:eduNorm_(row2[hi.score]),cert:eduNorm_(row2[hi.cert])||"N"}); } } }
+  var cs=find(["자격","인증"]);
+  if(cs){ var dc=eduReadSheet_(cs,["대상자","장비","인증일"]); if(dc.hr>=0){ var cci={target:eduColIdx_(dc.hdr,["대상자"]),equip:eduColIdx_(dc.hdr,["장비"]),date:eduColIdx_(dc.hdr,["인증일"]),period:eduColIdx_(dc.hdr,["주기"])};
+    for(var r3=dc.hr+1;r3<dc.aoa.length;r3++){ var row3=dc.aoa[r3]; if(!row3||isEx(row3)) continue; var eq=eduNorm_(row3[cci.equip]); var tg=eduNorm_(row3[cci.target]); if(skip(tg)) continue; if(!eq && !tg) continue; res.certs.push({target:tg,equip:eq,date:eduNorm_(row3[cci.date]),period:eduNorm_(row3[cci.period])||"1"}); } } }
+  return res;
+}
+function eduMerge_(p){
+  if(!__eduData) __eduData=eduDefault_();
+  var mk={}; __eduData.members.forEach(function(m,i){ mk[eduKey_(m.name)]=i; });
+  (p.members||[]).forEach(function(m){ if(!eduNorm_(m.name)) return; var k=eduKey_(m.name); if(k in mk) __eduData.members[mk[k]]=m; else { mk[k]=__eduData.members.length; __eduData.members.push(m); } });
+  var hk={}; __eduData.history.forEach(function(h){ hk[eduKey_(h.date)+"|"+eduKey_(h.subject)+"|"+eduKey_(h.target)]=1; });
+  (p.history||[]).forEach(function(h){ var k=eduKey_(h.date)+"|"+eduKey_(h.subject)+"|"+eduKey_(h.target); if(!(k in hk)){ hk[k]=1; __eduData.history.push(h); } });
+  var ck={}; __eduData.certs.forEach(function(c){ ck[eduKey_(c.target)+"|"+eduKey_(c.equip)]=1; });
+  (p.certs||[]).forEach(function(c){ var k=eduKey_(c.target)+"|"+eduKey_(c.equip); if(!(k in ck)){ ck[k]=1; __eduData.certs.push(c); } });
+}
+function eduOnUpload_(file){
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
+      var p=eduParseWorkbook_(wb);
+      eduMerge_(p); eduSave_(); renderEduPanel();
+      alert("업로드 병합 완료 (기존 유지)\n· 인원 "+(p.members||[]).length+"명\n· 이력 "+(p.history||[]).length+"건\n· 자격 "+(p.certs||[]).length+"건");
+    }catch(err){ alert("교육 세트를 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
+  };
+  reader.readAsArrayBuffer(file);
+}
 function renderEduPanel(){
   var panel=document.getElementById("qpanel-edu"); if(!panel) return;
   if(!__eduData) __eduData=eduDefault_();
@@ -6150,7 +6197,10 @@ function renderEduPanel(){
   };
 
   panel.innerHTML='<div style="padding:2px;">'
-    +'<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:10px;">👥 교육/자격 관리 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 인원·교육이력·자격인증·재인증 알림</span></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">'
+    +  '<div style="font-weight:800;font-size:16px;color:#1F2A44;">👥 교육/자격 관리 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 인원·교육이력·자격인증·재인증 알림</span></div>'
+    +  '<div><input type="file" id="edu-file" accept=".xlsx,.xls" style="display:none;"><button type="button" id="edu-upload" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="교육 세트 엑셀을 올리면 병합됩니다(기존 유지, 신규만 추가)">📤 교육세트 업로드</button></div>'
+    +'</div>'
     +alertHtml
     +sec("① 인원","품질팀 인원과 배치·연차를 등록합니다.","edu-members",["이름","배치","연차","삭제"],mRows,"➕ 인원 추가")
     +sec("② 교육 실시 이력","실시일·과목·대상자·시간·평가점수·자격부여(Y/N).","edu-history",["실시일","과목","대상자","시간(h)","평가","자격","삭제"],hRows,"➕ 이력 추가")
@@ -6158,6 +6208,7 @@ function renderEduPanel(){
     +'</div>';
 
   // 이벤트
+  var __ef=document.getElementById("edu-file"); var __eu=document.getElementById("edu-upload"); if(__eu&&__ef){ __eu.addEventListener("click",function(){ __ef.click(); }); __ef.addEventListener("change",function(){ if(__ef.files&&__ef.files[0]) eduOnUpload_(__ef.files[0]); }); }
   panel.querySelectorAll(".edu-savebtn").forEach(function(b){ b.addEventListener("click",function(){ eduCollect_(); renderEduPanel(); }); });
   panel.querySelectorAll(".edu-add").forEach(function(b){ b.addEventListener("click",function(){ eduCollect_(); var t=b.getAttribute("data-tbl"); if(t==="edu-members") __eduData.members.push({}); else if(t==="edu-history") __eduData.history.push({}); else __eduData.certs.push({}); renderEduPanel(); }); });
   panel.querySelectorAll(".edu-del").forEach(function(b){ b.addEventListener("click",function(){ var tr=b.closest("tr"); if(tr) tr.parentNode.removeChild(tr); eduCollect_(); renderEduPanel(); }); });
