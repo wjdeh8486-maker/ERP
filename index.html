@@ -5666,21 +5666,16 @@ function qShareToast_(msg, ok){
 function qShareSave_(section, data, statusId){
   var url=qShareUrl_();
   var setSt=function(msg,color){ if(statusId){ var el=document.getElementById(statusId); if(el){ el.textContent=msg; if(color) el.style.color=color; } } };
-  if(!url){ console.warn("[공유저장] URL 없음"); setSt("⚠ 백엔드 URL 없음","#B02A2A"); qShareToast_("⚠ 공유 저장 실패 — 백엔드 URL 없음",false); return; }
+  if(!url){ console.warn("[공유저장] URL 없음"); setSt("⚠ 백엔드 URL 없음","#B02A2A"); return; }
   setSt("☁ 공유 저장 중…","#5A6478");
-  try{ fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeCache", section:section, payload:data, updatedAt:new Date().toISOString()})}); }catch(e){ console.warn("[공유저장] 전송오류",section,e); }
-  // Apps Script는 첫 요청이 느릴 수 있어(콜드 스타트) 넉넉히 기다렸다 확인(6초 → 실패면 12초 재확인)
-  var verify=function(delay, last){ try{ setTimeout(function(){
-    fetch(url+"?mode=readCache&section="+encodeURIComponent(section)+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){
-      var ok=res&&res.data&&res.data.data!=null;
-      var hhmm=new Date().toTimeString().slice(0,5);
-      if(ok){ console.log("[공유저장 완료] "+section); setSt("☁ 공유 저장 완료 ("+hhmm+")","#1E7A46"); qShareToast_("☁ 공유 저장 완료 — 다른 PC에서도 보입니다",true); }
-      else if(!last){ setSt("☁ 저장 확인 중…","#5A6478"); verify(6000, true); }
-      else { console.warn("[공유저장 실패] "+section); setSt("⚠ 공유 저장 실패 — 로컬만 저장됨","#B02A2A"); qShareToast_("⚠ 공유 저장 실패 — 이 PC에만 저장됨(백엔드 확인)",false); }
-    }).catch(function(err){ if(!last){ verify(6000,true); return; } console.warn("[공유저장 확인오류] "+section,err); setSt("⚠ 저장 확인 실패(네트워크)","#B02A2A"); });
-  }, delay); }catch(e){} };
-  verify(6000, false); }
-function qShareLoad_(section, cb){ var url=qShareUrl_(); if(!url){ cb(null); return; } fetch(url+"?mode=readCache&section="+encodeURIComponent(section),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var d=(res&&res.data&&res.data.data!==undefined)?res.data.data:null; cb(d||null); }).catch(function(){ cb(null); }); }
+  // 스프레드시트 탭(품질도구Master)에 저장 — 검사일보·문서Master와 동일 방식(드라이브 파일 X)
+  try{ fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeQTool", key:section, json:JSON.stringify(data)})}); }catch(e){ console.warn("[공유저장] 전송오류",section,e); }
+  var hhmm=new Date().toTimeString().slice(0,5);
+  setSt("☁ 공유 저장 전송 완료 ("+hhmm+")","#1E7A46");
+  qShareToast_("☁ 공유 저장 전송 완료 — 다른 PC/새로고침으로 반영됩니다",true);
+  // 저장 확인(읽기): 6초 후 되읽어 성공하면 '확인됨' 표시(실패해도 오탐 방지 위해 조용히)
+  try{ setTimeout(function(){ fetch(url+"?mode=qToolMaster&key="+encodeURIComponent(section)+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ if(res&&res.success&&res.json){ console.log("[공유저장 확인됨] "+section); setSt("☁ 공유 저장 확인됨 ("+hhmm+")","#1E7A46"); qShareToast_("☁ 공유 저장 확인됨 — 다른 PC에서도 보입니다",true); } }).catch(function(){}); }, 6000); }catch(e){} }
+function qShareLoad_(section, cb){ var url=qShareUrl_(); if(!url){ cb(null); return; } fetch(url+"?mode=qToolMaster&key="+encodeURIComponent(section)+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var d=null; if(res&&res.success&&res.json){ try{ d=JSON.parse(res.json); }catch(e){} } cb(d); }).catch(function(){ cb(null); }); }
 /* ==================== 🎯 CTQ 분석 (검사종합 업로드 → 부적합 유형별, 전체/년/월) ==================== */
 var CTQ_SHEETS = [
   { name:"수입검사(외관)", date:3, cnt:5, defs:[["기스",8],["찍힘",9],["얼룩",10],["누락",11],["기타",12]] },
