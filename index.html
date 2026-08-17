@@ -6389,14 +6389,14 @@ function qmsGoto_(it){
     if(it.qtab){ var q=document.querySelector('.nav-item[data-view="quality"]'); if(q) q.click(); setTimeout(function(){ var tb=document.querySelector('[data-qtab="'+it.qtab+'"]'); if(tb) tb.click(); },220); }
   }catch(e){}
 }
-function qmsShowMorning_(){
+function qmsMorningBindBadge_(){ var b=document.getElementById("app-version"); if(b && !b.__bound){ b.__bound=true; b.addEventListener("click",function(){ qmsShowMorning_(true); }); } }
+function qmsShowMorning_(force){
   try{
     var d=new Date(); var key=d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();
-    var seen=""; try{ seen=localStorage.getItem("qmsMorningShown")||""; }catch(_){}
-    if(seen===key) return;                       // 오늘 이미 확인함 → 다시 안 뜸
-    try{ localStorage.setItem("qmsMorningShown", key); }catch(_){}
+    if(!force){ var seen=""; try{ seen=localStorage.getItem("qmsMorningShown2")||""; }catch(_){} if(seen===key) return; }   // 오늘 이미 확인함(자동일 때만)
     var items=qmsMorningAlerts_();
-    if(!items.length) return;                     // 챙길 것 없으면 안 띄움
+    if(!items.length){ if(!force) return; items=[{icon:"✅",title:"오늘 특이사항 없습니다",count:"",color:"#1E7A46"}]; }
+    if(!force){ try{ localStorage.setItem("qmsMorningShown2", key); }catch(_){} }   // 실제로 띄운 날만 기록
     var cards=items.map(function(it,i){ return '<button class="qms-mit" data-i="'+i+'" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid #E1E8F0;border-left:4px solid '+it.color+';border-radius:10px;padding:12px 14px;margin:6px 0;cursor:pointer;"><span style="font-size:22px;">'+it.icon+'</span><span style="flex:1;font-weight:700;color:#1F2A44;font-size:14px;">'+it.title+'</span><span style="font-size:20px;font-weight:800;color:'+it.color+';">'+it.count+'</span><span style="color:#8A93A6;font-size:18px;">›</span></button>'; }).join("");
     var ov=document.createElement("div"); ov.id="qms-morning-ov";
     ov.style.cssText="position:fixed;inset:0;z-index:99985;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:16px;";
@@ -7853,7 +7853,7 @@ window.__qualityInited = true;
     setTimeout(()=>{ splash.style.display = "none"; }, 450);
     // 스플래시를 닫고 들어간 뒤, 아직 안 온 데이터가 있으면 상단 배너로 알린다.
     if(typeof updateLoadingBanner === "function") updateLoadingBanner();
-    setTimeout(function(){ try{ if(typeof qmsShowMorning_==="function") qmsShowMorning_(); }catch(e){} }, 1500);
+    setTimeout(function(){ try{ if(typeof qmsMorningBindBadge_==="function") qmsMorningBindBadge_(); }catch(e){} try{ if(typeof qmsShowMorning_==="function") qmsShowMorning_(); }catch(e){} }, 1500);
   });
 
   // 앱 스크립트가 로드된 뒤 시작
@@ -15654,6 +15654,6 @@ function docmasterPrint(){
     if(window.matchMedia){ try{ window.matchMedia("(orientation: landscape)").addEventListener("change", killT); }catch(e){ try{ window.matchMedia("(orientation: landscape)").addListener(killT); }catch(_){} } }
   })();
 </script>
-<div id="app-version" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;pointer-events:none;user-select:none;">V8.17</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.17 🔔</div>
 </body>
 </html>
