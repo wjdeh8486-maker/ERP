@@ -6099,7 +6099,7 @@ var EDU_EQUIP=["3D측정기","비접촉검사기","Leak(헬륨)","외관검사",
 var __eduData=null;   // { members:[{name,post,year}], history:[{date,subject,target,hours,score,cert}], certs:[{target,equip,date,period}] }
 function eduDefault_(){ return { members:[], history:[], certs:[] }; }
 function eduEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-function eduSave_(){ try{ if(typeof idbSet==="function") idbSet("eduData", __eduData); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("eduData", __eduData); }catch(e){} }
+function eduSave_(){ try{ if(typeof idbSet==="function") idbSet("eduData", __eduData); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("eduData", __eduData); }catch(e){} try{ window.__unsaved=false; }catch(e){} }
 function eduAddMonths_(dateStr, months){ var d=new Date(dateStr); if(isNaN(d.getTime())) return ""; d.setMonth(d.getMonth()+Math.round(months)); var p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
 function eduDaysLeft_(dateStr){ var d=new Date(dateStr); if(isNaN(d.getTime())) return null; return Math.round((d.getTime()-Date.now())/86400000); }
 
@@ -6232,7 +6232,7 @@ var __chgData=null;   // [{type,date,part,customer,cat,before,after,oldRev,newRe
 var chgSearch="", chgFilter="all";
 function chgDefault_(){ return []; }
 function chgEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-function chgSave_(){ try{ if(typeof idbSet==="function") idbSet("chgData", __chgData); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("chgData", __chgData); }catch(e){} }
+function chgSave_(){ try{ if(typeof idbSet==="function") idbSet("chgData", __chgData); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("chgData", __chgData); }catch(e){} try{ window.__unsaved=false; }catch(e){} }
 
 function chgReadTable_(){
   var out=[]; var tb=document.getElementById("chg-table"); if(!tb) return out;
@@ -7630,6 +7630,15 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
     document.addEventListener("click", function(e){ if(!qbtn.contains(e.target) && !qmenu.contains(e.target)) qmenu.style.display="none"; });
     document.querySelectorAll("[data-qtab]").forEach(function(btn){ btn.addEventListener("click", function(){ var isTool=qtoolTabs.indexOf(btn.dataset.qtab)>=0; if(isTool) qbtn.classList.add("active"); else qbtn.classList.remove("active"); qmenu.style.display="none"; }); });
   }
+})();
+/* 전역: 저장 안 함 경고 — 편집칸(data-k) 변경 시 미저장 표시, 새로고침/닫기 시 경고 */
+(function(){
+  if(window.__unsavedGuardInit) return; window.__unsavedGuardInit=true;
+  window.__unsaved = window.__unsaved || false;
+  var mark=function(e){ var t=e.target; if(t && t.getAttribute && t.getAttribute("data-k")!=null){ window.__unsaved=true; document.querySelectorAll("#chg-save,.edu-savebtn").forEach(function(b){ if(!/●/.test(b.textContent)) b.textContent="💾 저장 ●"; }); } };
+  document.addEventListener("input", mark, true);
+  document.addEventListener("change", mark, true);
+  window.addEventListener("beforeunload", function(e){ if(window.__unsaved){ e.preventDefault(); e.returnValue="저장하지 않은 변경사항이 있습니다. 나가기 전에 [저장]을 눌러주세요."; return e.returnValue; } });
 })();
 window.__qualityInited = true;
 /* ============ 진입 로딩 스플래시 ============
