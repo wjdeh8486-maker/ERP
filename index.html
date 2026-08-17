@@ -14619,7 +14619,7 @@ var insUnresolvedSrc=null;   // 전체 공유본 버퍼 {type:{rows,insp}} — n
 function insUnrRows_(t, useSrc){ if(useSrc && insUnresolvedSrc) return (insUnresolvedSrc[t]&&insUnresolvedSrc[t].rows)||[]; return (insState[t]&&insState[t].rows)||[]; }
 function insUnrInsp_(t, useSrc){ if(useSrc && insUnresolvedSrc) return (insUnresolvedSrc[t]&&insUnresolvedSrc[t].insp)||""; return (insMetaByType[t]&&insMetaByType[t].inspector)||""; }
 function insUnresolvedList_(useSrc){
-  var out=[];
+  var out=[], seen={};
   ["incoming","shipping","measureS","measureL"].forEach(function(t){
     var by=insUnrInsp_(t,useSrc);
     insUnrRows_(t,useSrc).forEach(function(r){
@@ -14627,6 +14627,8 @@ function insUnresolvedList_(useSrc){
       if(String(r.actDate||"").trim()!=="") return;            // 조치완료됨
       var draw=String(r.draw||"").trim(), sn=String(r.sn||"").trim();
       if(!draw && !sn) return;
+      var sig=t+"|"+draw+"|"+sn+"|"+String(r.insDate||"")+"|"+d.types+"|"+d.qty;   // 완전 동일 항목 중복 제거
+      if(seen[sig]) return; seen[sig]=1;
       out.push({ label:insTypeLabel(t), draw:draw, sn:sn, insDate:String(r.insDate||""), qty:d.qty, types:d.types, by:by });
     });
   });
