@@ -5654,9 +5654,30 @@ function ncCTQSection_(rowsAll, year){
 }
 /* 품질 데이터 공유 저장/읽기 (CTQ·Ppk·NCR을 백엔드에 공유 → 모두가 봄) */
 function qShareUrl_(){ return (typeof docmasterApiUrl==="function")?docmasterApiUrl():((typeof mainApiUrl!=="undefined"&&mainApiUrl)?mainApiUrl:""); }
-function qShareSave_(section, data){ var url=qShareUrl_(); if(!url){ console.warn("[공유저장] URL 없음"); return; }
+function qShareToast_(msg, ok){
+  try{
+    var t=document.getElementById("qshare-toast");
+    if(!t){ t=document.createElement("div"); t.id="qshare-toast"; t.style.cssText="position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:99990;padding:10px 18px;border-radius:10px;font-weight:800;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,0.25);transition:opacity .3s;"; document.body.appendChild(t); }
+    t.style.background = ok ? "#1E7A46" : "#B02A2A"; t.style.color="#fff";
+    t.textContent = msg; t.style.opacity="1"; t.style.display="block";
+    clearTimeout(t.__h); t.__h=setTimeout(function(){ t.style.opacity="0"; setTimeout(function(){ t.style.display="none"; },350); }, 4000);
+  }catch(e){}
+}
+function qShareSave_(section, data, statusId){
+  var url=qShareUrl_();
+  var setSt=function(msg,color){ if(statusId){ var el=document.getElementById(statusId); if(el){ el.textContent=msg; if(color) el.style.color=color; } } };
+  if(!url){ console.warn("[공유저장] URL 없음"); setSt("⚠ 백엔드 URL 없음","#B02A2A"); qShareToast_("⚠ 공유 저장 실패 — 백엔드 URL 없음",false); return; }
+  setSt("☁ 공유 저장 중…","#5A6478");
   try{ fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeCache", section:section, payload:data, updatedAt:new Date().toISOString()})}); }catch(e){ console.warn("[공유저장] 전송오류",section,e); }
-  try{ setTimeout(function(){ fetch(url+"?mode=readCache&section="+encodeURIComponent(section),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var ok=res&&res.data&&res.data.data!=null; if(ok){ console.log("[공유저장 완료] "+section); } else { console.warn("[공유저장 실패] "+section+" — 백엔드에 저장되지 않음(URL/재배포 확인)"); } }).catch(function(err){ console.warn("[공유저장 확인 실패] "+section, err); }); }, 3000); }catch(e){} }
+  // 3초 후 실제로 저장됐는지 읽어서 확인 → 화면·토스트로 결과 표시
+  try{ setTimeout(function(){
+    fetch(url+"?mode=readCache&section="+encodeURIComponent(section),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){
+      var ok=res&&res.data&&res.data.data!=null;
+      var hhmm=new Date().toTimeString().slice(0,5);
+      if(ok){ console.log("[공유저장 완료] "+section); setSt("☁ 공유 저장 완료 ("+hhmm+")","#1E7A46"); qShareToast_("☁ 공유 저장 완료 — 다른 PC에서도 보입니다",true); }
+      else { console.warn("[공유저장 실패] "+section); setSt("⚠ 공유 저장 실패 — 로컬만 저장됨","#B02A2A"); qShareToast_("⚠ 공유 저장 실패 — 이 PC에만 저장됨(백엔드 확인)",false); }
+    }).catch(function(err){ console.warn("[공유저장 확인오류] "+section,err); setSt("⚠ 저장 확인 실패(네트워크)","#B02A2A"); qShareToast_("⚠ 공유 저장 확인 실패 — 네트워크/백엔드 확인",false); });
+  }, 3000); }catch(e){} }
 function qShareLoad_(section, cb){ var url=qShareUrl_(); if(!url){ cb(null); return; } fetch(url+"?mode=readCache&section="+encodeURIComponent(section),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var d=(res&&res.data&&res.data.data!==undefined)?res.data.data:null; cb(d||null); }).catch(function(){ cb(null); }); }
 /* ==================== 🎯 CTQ 분석 (검사종합 업로드 → 부적합 유형별, 전체/년/월) ==================== */
 var CTQ_SHEETS = [
@@ -5794,7 +5815,7 @@ function ctqOnUpload_(file){
       var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array", cellDates:true});
       __ctqMonthly=ctqParseWorkbook(wb);
       try{ if(typeof idbSet==="function") idbSet("ctqMonthly", __ctqMonthly); }catch(_){}
-      qShareSave_("ctqMonthly", __ctqMonthly);
+      qShareSave_("ctqMonthly", __ctqMonthly, "ctq-range");
       renderCTQPanel();
     }catch(err){ if(status) status.textContent="파일 읽기 실패"; alert("검사종합 파일을 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
   };
@@ -5982,7 +6003,7 @@ function ppkOnUpload_(file){
       var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array", cellDates:false});
       __ppkData=ppkParseWorkbook_(wb); ppkProduct="__prob";
       try{ if(typeof idbSet==="function") idbSet("ppkData", __ppkData); }catch(_){}
-      qShareSave_("ppkData", __ppkData);
+      qShareSave_("ppkData", __ppkData, "ppk-range");
       renderPpkPanel();
     }catch(err){ if(st) st.textContent="파일 읽기 실패"; alert("측정 시트를 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
   };
@@ -6089,7 +6110,7 @@ function ncrOnUpload_(file){
       var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array"});
       __ncrData=ncrParseWorkbook_(wb);
       try{ if(typeof idbSet==="function") idbSet("ncrData", __ncrData); }catch(_){}
-      qShareSave_("ncrData", __ncrData);
+      qShareSave_("ncrData", __ncrData, "ncr-status");
       renderNcrPanel();
     }catch(err){ if(st) st.textContent="파일 읽기 실패"; alert("NCR 대장을 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
   };
