@@ -6390,10 +6390,29 @@ function qmsGoto_(it){
   }catch(e){}
 }
 function qmsMorningBindBadge_(){ var b=document.getElementById("app-version"); if(b && !b.__bound){ b.__bound=true; b.addEventListener("click",function(){ qmsShowMorning_(true); }); } }
+function qmsLoadUnresolvedShared_(cb){
+  try{
+    if(typeof insUnresolvedSrc!=="undefined" && insUnresolvedSrc){ cb&&cb(); return; }   // 이미 로드됨
+    var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ cb&&cb(); return; }
+    var get=function(k){ return fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(k),{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return null;}); };
+    Promise.all([get("incoming"),get("shipping"),get("measureS"),get("measureL")]).then(function(res){
+      var pull=function(x){ if(x&&x.success&&x.json){ try{ return JSON.parse(x.json); }catch(e){} } return null; };
+      var mk=function(o){ return { rows:(o&&Array.isArray(o.rows))?o.rows:[], insp:(o&&o.inspector)||"" }; };
+      try{ insUnresolvedSrc={ incoming:mk(pull(res[0])), shipping:mk(pull(res[1])), measureS:mk(pull(res[2])), measureL:mk(pull(res[3])) }; }catch(e){}
+      cb&&cb();
+    }).catch(function(){ cb&&cb(); });
+  }catch(e){ cb&&cb(); }
+}
 function qmsShowMorning_(force){
   try{
     var d=new Date(); var key=d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();
     if(!force){ var seen=""; try{ seen=localStorage.getItem("qmsMorningShown2")||""; }catch(_){} if(seen===key) return; }   // 오늘 이미 확인함(자동일 때만)
+    // 검사 일보를 안 열어도 미조치가 잡히도록, 공유 검사일보를 먼저 조용히 불러온다
+    qmsLoadUnresolvedShared_(function(){ qmsRenderMorning_(force, key); });
+  }catch(e){}
+}
+function qmsRenderMorning_(force, key){
+  try{
     var items=qmsMorningAlerts_();
     if(!items.length){ if(!force) return; items=[{icon:"✅",title:"오늘 특이사항 없습니다",count:"",color:"#1E7A46"}]; }
     if(!force){ try{ localStorage.setItem("qmsMorningShown2", key); }catch(_){} }   // 실제로 띄운 날만 기록
