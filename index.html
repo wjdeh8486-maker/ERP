@@ -6368,6 +6368,49 @@ function renderChgPanel(){
   try{ if(typeof qShareLoad_==="function"){ qShareLoad_("chgData", function(sv){ if(apply(sv)){ try{ if(typeof idbSet==="function") idbSet("chgData",sv); }catch(_){}; return; } try{ if(typeof idbGet==="function") idbGet("chgData").then(apply).catch(function(){}); }catch(_){} }); return; } }catch(_){}
   try{ if(typeof idbGet==="function") idbGet("chgData").then(apply).catch(function(){}); }catch(_){}
 })();
+/* ==================== 🔔 아침 알림 팝업 (접속 시 1일 1회, 오늘 챙길 것 종합) ==================== */
+function qmsParseMonths_(cycle){ var m=String(cycle||"").match(/(\d+)/); return m?parseInt(m[1],10):0; }
+function qmsAddMonths_(dateStr, months){ var d=new Date(dateStr); if(isNaN(d.getTime())||!months) return null; d.setMonth(d.getMonth()+months); return d; }
+function qmsDaysLeft_(d){ if(!d) return null; return Math.round((d.getTime()-Date.now())/86400000); }
+function qmsMorningAlerts_(){
+  var items=[];
+  try{ var un=(typeof insUnresolvedList_==="function")?insUnresolvedList_(!!(typeof insUnresolvedSrc!=="undefined"&&insUnresolvedSrc)):[]; if(un&&un.length) items.push({icon:"⚠️",title:"미조치 부적합",count:un.length,color:"#C0392B",view:"insrep"}); }catch(e){}
+  try{ if(typeof __chgData!=="undefined"&&Array.isArray(__chgData)){
+    var op=__chgData.filter(function(c){return !(c.doneDate&&String(c.doneDate).trim());}); if(op.length) items.push({icon:"🔄",title:"미완료 변경점",count:op.length,color:"#B45309",qtab:"chg"});
+    var mix=__chgData.filter(function(c){return c.type==="고객REV"&&(!c.doneDate||!String(c.doneDate).trim())&&(!c.stockAction||c.stockAction==="구재고 소진"||c.stockAction==="선별 사용");}); if(mix.length) items.push({icon:"🔀",title:"구/신 도면 혼입주의",count:mix.length,color:"#8A1F1F",qtab:"chg"});
+  } }catch(e){}
+  try{ if(typeof __eduData!=="undefined"&&__eduData&&__eduData.certs){ var re=0; __eduData.certs.forEach(function(c){ if(!c.date) return; var per=Number(c.period)||1; var due=qmsAddMonths_(c.date,per*12); var dl=qmsDaysLeft_(due); if(dl!==null&&dl<=30) re++; }); if(re) items.push({icon:"👥",title:"자격 재인증 임박(30일)",count:re,color:"#0B5CAB",qtab:"edu"}); } }catch(e){}
+  try{ if(typeof instrData!=="undefined"&&Array.isArray(instrData)){ var cal=0; instrData.forEach(function(r){ if(!r||!r.lastCal) return; var mo=qmsParseMonths_(r.cycle); if(!mo) return; var due=qmsAddMonths_(r.lastCal,mo); var dl=qmsDaysLeft_(due); if(dl!==null&&dl<=30) cal++; }); if(cal) items.push({icon:"🔧",title:"검교정 만료 임박(30일)",count:cal,color:"#7A5C00",view:"instr"}); } }catch(e){}
+  return items;
+}
+function qmsGoto_(it){
+  try{
+    if(it.view){ var nv=document.querySelector('.nav-item[data-view="'+it.view+'"]'); if(nv) nv.click(); return; }
+    if(it.qtab){ var q=document.querySelector('.nav-item[data-view="quality"]'); if(q) q.click(); setTimeout(function(){ var tb=document.querySelector('[data-qtab="'+it.qtab+'"]'); if(tb) tb.click(); },220); }
+  }catch(e){}
+}
+function qmsShowMorning_(){
+  try{
+    var d=new Date(); var key=d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();
+    var seen=""; try{ seen=localStorage.getItem("qmsMorningShown")||""; }catch(_){}
+    if(seen===key) return;                       // 오늘 이미 확인함 → 다시 안 뜸
+    try{ localStorage.setItem("qmsMorningShown", key); }catch(_){}
+    var items=qmsMorningAlerts_();
+    if(!items.length) return;                     // 챙길 것 없으면 안 띄움
+    var cards=items.map(function(it,i){ return '<button class="qms-mit" data-i="'+i+'" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid #E1E8F0;border-left:4px solid '+it.color+';border-radius:10px;padding:12px 14px;margin:6px 0;cursor:pointer;"><span style="font-size:22px;">'+it.icon+'</span><span style="flex:1;font-weight:700;color:#1F2A44;font-size:14px;">'+it.title+'</span><span style="font-size:20px;font-weight:800;color:'+it.color+';">'+it.count+'</span><span style="color:#8A93A6;font-size:18px;">›</span></button>'; }).join("");
+    var ov=document.createElement("div"); ov.id="qms-morning-ov";
+    ov.style.cssText="position:fixed;inset:0;z-index:99985;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:16px;";
+    ov.innerHTML='<div style="background:#F7F9FC;width:100%;max-width:440px;max-height:88vh;overflow:auto;border-radius:16px;box-shadow:0 16px 50px rgba(0,0,0,0.35);">'
+      +'<div style="background:#1F2A44;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;"><b style="font-size:16px;">🔔 오늘 챙길 것</b><span style="font-size:12px;color:#9fb0d6;">'+key+'</span></div>'
+      +'<div style="padding:14px 16px;">'+cards+'<div style="font-size:11.5px;color:#8A93A6;margin-top:8px;text-align:center;">항목을 누르면 해당 화면으로 이동합니다. 오늘은 다시 표시되지 않습니다.</div></div>'
+      +'<div style="padding:0 16px 16px;"><button id="qms-morning-close" style="width:100%;background:#0B5CAB;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:700;cursor:pointer;font-size:14px;">확인</button></div>'
+      +'</div>';
+    document.body.appendChild(ov);
+    ov.querySelectorAll(".qms-mit").forEach(function(b){ b.addEventListener("click",function(){ var it=items[Number(b.getAttribute("data-i"))]; if(ov.parentNode) ov.parentNode.removeChild(ov); qmsGoto_(it); }); });
+    var cb=document.getElementById("qms-morning-close"); if(cb) cb.addEventListener("click",function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); });
+    ov.addEventListener("click",function(e){ if(e.target===ov && ov.parentNode) ov.parentNode.removeChild(ov); });
+  }catch(e){}
+}
 function renderCustomerNCPanel(){
   const panel = document.getElementById("qpanel-customer");
   if(!panel) return;
@@ -7810,6 +7853,7 @@ window.__qualityInited = true;
     setTimeout(()=>{ splash.style.display = "none"; }, 450);
     // 스플래시를 닫고 들어간 뒤, 아직 안 온 데이터가 있으면 상단 배너로 알린다.
     if(typeof updateLoadingBanner === "function") updateLoadingBanner();
+    setTimeout(function(){ try{ if(typeof qmsShowMorning_==="function") qmsShowMorning_(); }catch(e){} }, 1500);
   });
 
   // 앱 스크립트가 로드된 뒤 시작
