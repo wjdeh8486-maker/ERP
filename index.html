@@ -5654,7 +5654,9 @@ function ncCTQSection_(rowsAll, year){
 }
 /* 품질 데이터 공유 저장/읽기 (CTQ·Ppk·NCR을 백엔드에 공유 → 모두가 봄) */
 function qShareUrl_(){ return (typeof docmasterApiUrl==="function")?docmasterApiUrl():((typeof mainApiUrl!=="undefined"&&mainApiUrl)?mainApiUrl:""); }
-function qShareSave_(section, data){ var url=qShareUrl_(); if(!url) return; try{ fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeCache", section:section, payload:data, updatedAt:new Date().toISOString()})}); }catch(e){} }
+function qShareSave_(section, data){ var url=qShareUrl_(); if(!url){ console.warn("[공유저장] URL 없음"); return; }
+  try{ fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeCache", section:section, payload:data, updatedAt:new Date().toISOString()})}); }catch(e){ console.warn("[공유저장] 전송오류",section,e); }
+  try{ setTimeout(function(){ fetch(url+"?mode=readCache&section="+encodeURIComponent(section),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var ok=res&&res.data&&res.data.data!=null; if(ok){ console.log("[공유저장 완료] "+section); } else { console.warn("[공유저장 실패] "+section+" — 백엔드에 저장되지 않음(URL/재배포 확인)"); } }).catch(function(err){ console.warn("[공유저장 확인 실패] "+section, err); }); }, 3000); }catch(e){} }
 function qShareLoad_(section, cb){ var url=qShareUrl_(); if(!url){ cb(null); return; } fetch(url+"?mode=readCache&section="+encodeURIComponent(section),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var d=(res&&res.data&&res.data.data!==undefined)?res.data.data:null; cb(d||null); }).catch(function(){ cb(null); }); }
 /* ==================== 🎯 CTQ 분석 (검사종합 업로드 → 부적합 유형별, 전체/년/월) ==================== */
 var CTQ_SHEETS = [
