@@ -417,7 +417,7 @@
     .gs-chips{order:5;flex:1 1 100%;padding-left:36px;gap:5px;}
     .gs-chip{padding:7px 10px;font-size:11.5px;min-height:34px;}
   }
-  @media print{ #gs-fab,#gs-overlay,#gs-hint,#app-version{display:none !important;} }
+  @media print{ #gs-fab,#gs-overlay,#gs-hint,#app-version,#notice-btn{display:none !important;} }
   /* 도번 조회: 관리항목/이력 탭 */
   /* ===== 진입 로딩 스플래시 ===== */
   #gs-splash{position:fixed;inset:0;z-index:99990;background:linear-gradient(160deg,#0f1830,#1b2545 60%,#243055);
@@ -948,7 +948,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.24</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.26</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -4267,6 +4267,7 @@ function computeWaitIncomingInspection(mainRow){
   if(!waitInspIndexCache) buildWaitInspIndex();
   const processQty = waitInspIndexCache.processQty.get(oldDrawingNo) || 0;
   const inspectionQty = waitInspIndexCache.inspQty.get(oldDrawingNo) || 0;
+  var __ov=__waitOverride["수입검사대기|"+oldDrawingNo]; if(__ov!==undefined&&__ov!==null&&__ov!=="") return Number(__ov)||0;
   return Math.max(0, processQty - inspectionQty); // 음수면 0
 }
 let mainApiUrl = "";
@@ -6479,6 +6480,97 @@ function qmsRenderMorning_(force, key){
     ov.addEventListener("click",function(e){ if(e.target===ov && ov.parentNode) ov.parentNode.removeChild(ov); });
   }catch(e){}
 }
+/* ==================== 📢 팀 공지사항 (날짜 지정 → 그날 크게 표시) ==================== */
+var __noticeData = null;   // [{id, date, text, author, ts}]
+function noticeEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function noticeToday_(){ var d=new Date(); return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }
+function noticeSave_(){ try{ if(typeof idbSet==="function") idbSet("noticeData", __noticeData); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("noticeData", __noticeData); }catch(e){} }
+function noticeApply_(v){ if(Array.isArray(v)){ __noticeData=v; return true; } return false; }
+
+// 오늘 날짜 공지 팝업(전체화면)
+function noticeShowToday_(force){
+  try{
+    var today=noticeToday_();
+    var todays=(__noticeData||[]).filter(function(n){ return String(n.date)===today && String(n.text||"").trim(); });
+    if(!force){
+      if(!todays.length) return;
+      var seen=""; try{ seen=localStorage.getItem("noticeShown")||""; }catch(_){}
+      var sig=today+"|"+todays.map(function(n){return n.id;}).join(",");
+      if(seen===sig) return;                       // 오늘 이 공지들 이미 봄
+      try{ localStorage.setItem("noticeShown", sig); }catch(_){}
+    }
+    if(!todays.length){ if(force) todays=[{date:today,text:"오늘 등록된 공지가 없습니다.",author:""}]; else return; }
+    var cards=todays.map(function(n){
+      return '<div style="background:#fff;border-radius:14px;padding:22px 26px;margin:14px 0;box-shadow:0 6px 22px rgba(0,0,0,0.12);">'
+        +'<div style="font-size:clamp(20px,3vw,30px);font-weight:800;color:#1F2A44;line-height:1.5;white-space:pre-wrap;word-break:break-word;">'+noticeEsc_(n.text)+'</div>'
+        +(n.author?'<div style="margin-top:14px;font-size:14px;color:#8A93A6;text-align:right;">— '+noticeEsc_(n.author)+'</div>':'')
+        +'</div>';
+    }).join("");
+    var ov=document.createElement("div"); ov.id="notice-ov";
+    ov.style.cssText="position:fixed;inset:0;z-index:99992;background:linear-gradient(160deg,#0B2A4A,#12395F);display:flex;flex-direction:column;padding:24px;overflow:auto;";
+    ov.innerHTML='<div style="max-width:900px;width:100%;margin:auto;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;color:#fff;margin-bottom:10px;">'
+      +  '<div style="font-size:clamp(22px,4vw,34px);font-weight:900;letter-spacing:1px;">📢 오늘의 공지</div>'
+      +  '<div style="font-size:15px;color:#9fc3e8;">'+today+'</div>'
+      +'</div>'+cards
+      +'<button id="notice-close" style="display:block;margin:18px auto 0;background:#fff;color:#12395F;border:none;border-radius:12px;padding:14px 44px;font-weight:800;font-size:17px;cursor:pointer;">확인</button>'
+      +'</div>';
+    document.body.appendChild(ov);
+    var cb=document.getElementById("notice-close"); if(cb) cb.addEventListener("click",function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); });
+  }catch(e){}
+}
+
+// 공지 관리창(추가/삭제)
+function noticeOpenManager_(){
+  if(!__noticeData) __noticeData=[];
+  var ov=document.createElement("div"); ov.id="notice-mgr-ov";
+  ov.style.cssText="position:fixed;inset:0;z-index:99991;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:16px;";
+  var listHtml=function(){
+    var arr=(__noticeData||[]).slice().sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
+    if(!arr.length) return '<div style="color:#8A93A6;text-align:center;padding:20px;">등록된 공지가 없습니다.</div>';
+    var today=noticeToday_();
+    return arr.map(function(n){
+      var isToday=String(n.date)===today;
+      return '<div style="display:flex;gap:10px;align-items:flex-start;border:1px solid #E1E8F0;border-left:4px solid '+(isToday?"#0B7A8A":"#C9D3E0")+';border-radius:10px;padding:10px 12px;margin:6px 0;">'
+        +'<div style="flex:1;"><div style="font-size:12px;color:'+(isToday?"#0B7A8A":"#8A93A6")+';font-weight:700;">'+noticeEsc_(n.date)+(isToday?" · 오늘 표시":"")+(n.author?(" · "+noticeEsc_(n.author)):"")+'</div>'
+        +'<div style="font-size:14px;color:#1F2A44;white-space:pre-wrap;word-break:break-word;margin-top:3px;">'+noticeEsc_(n.text)+'</div></div>'
+        +'<button class="notice-del" data-id="'+noticeEsc_(n.id)+'" style="border:none;background:#F0F4F8;border-radius:6px;width:28px;height:28px;cursor:pointer;">✕</button></div>';
+    }).join("");
+  };
+  ov.innerHTML='<div style="background:#F7F9FC;width:100%;max-width:520px;max-height:90vh;overflow:auto;border-radius:16px;box-shadow:0 16px 50px rgba(0,0,0,0.35);">'
+    +'<div style="background:#0B7A8A;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;"><b style="font-size:16px;">📢 팀 공지사항</b><button id="notice-mgr-x" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button></div>'
+    +'<div style="padding:14px 16px;">'
+    +  '<div style="background:#fff;border:1px solid #E1E8F0;border-radius:10px;padding:12px;margin-bottom:12px;">'
+    +    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
+    +      '<label style="font-size:12px;color:#5A6478;font-weight:700;display:flex;align-items:center;gap:6px;">표시 날짜 <input type="date" id="notice-date" value="'+noticeToday_()+'" style="padding:6px 8px;border:1px solid #C9D3E0;border-radius:7px;"></label>'
+    +      '<input type="text" id="notice-author" placeholder="작성자(선택)" style="flex:1;min-width:120px;padding:6px 9px;border:1px solid #C9D3E0;border-radius:7px;">'
+    +    '</div>'
+    +    '<textarea id="notice-text" rows="3" placeholder="공지 내용을 입력하세요 (그 날짜에 접속하면 크게 표시됩니다)" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #C9D3E0;border-radius:7px;font-size:14px;resize:vertical;"></textarea>'
+    +    '<button id="notice-add" style="margin-top:8px;width:100%;background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;">➕ 공지 등록</button>'
+    +  '</div>'
+    +  '<div id="notice-list">'+listHtml()+'</div>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  var close=function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+  document.getElementById("notice-mgr-x").addEventListener("click",close);
+  ov.addEventListener("click",function(e){ if(e.target===ov) close(); });
+  var refresh=function(){ var el=document.getElementById("notice-list"); if(el) el.innerHTML=listHtml(); bindDel(); };
+  var bindDel=function(){ ov.querySelectorAll(".notice-del").forEach(function(b){ b.addEventListener("click",function(){ var id=b.getAttribute("data-id"); __noticeData=(__noticeData||[]).filter(function(n){ return String(n.id)!==String(id); }); noticeSave_(); refresh(); }); }); };
+  bindDel();
+  document.getElementById("notice-add").addEventListener("click",function(){
+    var d=(document.getElementById("notice-date")||{}).value||noticeToday_();
+    var t=(document.getElementById("notice-text")||{}).value||"";
+    var a=(document.getElementById("notice-author")||{}).value||"";
+    if(!t.trim()){ alert("공지 내용을 입력하세요."); return; }
+    __noticeData=__noticeData||[];
+    __noticeData.push({ id:"N"+Date.now()+Math.floor(Math.random()*1000), date:d, text:t.trim(), author:a.trim(), ts:Date.now() });
+    noticeSave_();
+    var tx=document.getElementById("notice-text"); if(tx) tx.value="";
+    refresh();
+    alert("공지가 등록되었습니다.\n" + d + " 에 접속하면 크게 표시됩니다.");
+  });
+}
+function noticeBindBtn_(){ var b=document.getElementById("notice-btn"); if(b && !b.__bound){ b.__bound=true; b.addEventListener("click", noticeOpenManager_); } }
 function renderCustomerNCPanel(){
   const panel = document.getElementById("qpanel-customer");
   if(!panel) return;
@@ -7921,6 +8013,10 @@ window.__qualityInited = true;
     setTimeout(()=>{ splash.style.display = "none"; }, 450);
     // 스플래시를 닫고 들어간 뒤, 아직 안 온 데이터가 있으면 상단 배너로 알린다.
     if(typeof updateLoadingBanner === "function") updateLoadingBanner();
+    setTimeout(function(){ try{ if(typeof noticeBindBtn_==="function") noticeBindBtn_(); }catch(e){}
+      try{ if(typeof qShareLoad_==="function"){ qShareLoad_("noticeData", function(sv){ if(noticeApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("noticeData",sv); }catch(_){}}  else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(noticeApply_).catch(function(){}); }catch(_){}} try{ noticeShowToday_(); }catch(e){} }); } else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(function(v){ noticeApply_(v); noticeShowToday_(); }).catch(function(){}); }catch(_){} } }catch(e){}
+      try{ if(typeof qShareLoad_==="function"){ qShareLoad_("waitOverride", function(sv){ if(sv&&typeof sv==="object"){ __waitOverride=sv; try{ if(typeof idbSet==="function") idbSet("waitOverride",sv); }catch(_){}} else { try{ if(typeof idbGet==="function") idbGet("waitOverride").then(function(v){ if(v&&typeof v==="object") __waitOverride=v; }).catch(function(){}); }catch(_){}} try{ if(document.getElementById("waitinsp-content")) renderWaitInspTab(); }catch(e){} }); } }catch(e){}
+    }, 1000);
     setTimeout(function(){ try{ if(typeof qmsMorningBindBadge_==="function") qmsMorningBindBadge_(); }catch(e){} try{ if(typeof qmsShowMorning_==="function") qmsShowMorning_(); }catch(e){} }, 1500);
   });
 
@@ -8150,7 +8246,10 @@ function uploadEnqueue(fn){
 
 function uploadGetApiUrl(){
   const el = document.getElementById("main-appsScriptUrl");
-  return el ? el.value.trim() : "";
+  var v = el ? el.value.trim() : "";
+  // 입력칸이 비었거나 http(비보안)이면, 공유저장과 동일한 정상 백엔드 URL로 폴백
+  if(!v || !/^https:\/\//.test(v)){ try{ if(typeof qShareUrl_==="function"){ var u=qShareUrl_(); if(u) return u; } }catch(e){} }
+  return v;
 }
 function uploadNormTab(s){ return String(s||"").replace(/\s+/g,"").toLowerCase(); }
 
@@ -10208,6 +10307,8 @@ function renderDwgInspSpecTab(el){
   }
 }
 
+var __waitOverride = {};   // "탭키|도번" → 실수량 보정값(공유 저장)
+function waitOvSave_(){ try{ if(typeof idbSet==="function") idbSet("waitOverride", __waitOverride); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("waitOverride", __waitOverride); }catch(e){} }
 function renderWaitInspTab(){
   const el = document.getElementById("waitinsp-content");
   if(!el) return;
@@ -10229,6 +10330,7 @@ function renderWaitInspTab(){
     return;
   }
   const list = waitInspFilter(isIncoming ? waitInspIncomingList() : waitInspAggregate(key));
+  list.forEach(function(r){ var ov=__waitOverride[key+"|"+r.partNo]; r.__ov=(ov!==undefined&&ov!==null&&ov!==""); if(r.__ov) r.qty=Number(ov)||0; });
   const totalQty = list.reduce((a,r)=>a+r.qty,0);
   const esc = t => String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   // 데이터 신선도 배지: 자동 동기화 전이면 "이전 데이터"(주황), 최신이면 "최신 · N분 전"(녹색)
@@ -10247,13 +10349,23 @@ function renderWaitInspTab(){
             ${list.length ? list.map(r=>`<tr>
               <td style="text-align:center;">${esc(r.partNo)}</td>
               <td style="text-align:center;">${esc(r.lastReg||'-')}</td>
-              <td style="text-align:center;">${r.qty.toLocaleString()}</td>
+              <td style="text-align:center;"><span class="wait-qty-edit" data-dn="${esc(r.partNo)}" data-key="${esc(key)}" style="cursor:pointer;border-bottom:1px dashed #B9C2D6;padding:1px 4px;${r.__ov?'color:#0B7A8A;font-weight:700;':''}" title="클릭하여 실수량 보정">${r.qty.toLocaleString()}${r.__ov?' ✏':''}</span></td>
             </tr>`).join("") : `<tr><td colspan="3" style="text-align:center;color:#B9C2D6;">${waitInspKeyword ? "검색 결과가 없습니다." : "보유 중인 대기 제품이 없습니다."}</td></tr>`}
             ${list.length ? `<tr style="font-weight:400;background:#EDF0F5;"><td style="text-align:center;">합계</td><td></td><td style="text-align:center;">${totalQty.toLocaleString()}</td></tr>` : ""}
           </tbody>
         </table>
       </div>
     </div>`;
+  el.querySelectorAll(".wait-qty-edit").forEach(function(sp){ sp.addEventListener("click",function(){
+    var dn=sp.getAttribute("data-dn"), k=sp.getAttribute("data-key");
+    var cur=__waitOverride[k+"|"+dn];
+    var ans=prompt("["+dn+"] 실제 검사대기 수량을 입력하세요.\n(비우면 자동 계산값으로 되돌립니다)", (cur!==undefined&&cur!==null)?String(cur):"");
+    if(ans===null) return; ans=String(ans).trim();
+    if(ans===""){ delete __waitOverride[k+"|"+dn]; }
+    else { var num=Number(ans.replace(/[, ]/g,"")); if(isNaN(num)||num<0){ alert("숫자를 입력하세요."); return; } __waitOverride[k+"|"+dn]=num; }
+    waitOvSave_(); renderWaitInspTab();
+    try{ if(typeof markMainStatusDirty==="function") markMainStatusDirty(); }catch(e){}
+  }); });
 }
 function initWaitInspView(){
   if(!waitInspLoaded){
@@ -15786,6 +15898,7 @@ function docmasterPrint(){
     if(window.matchMedia){ try{ window.matchMedia("(orientation: landscape)").addEventListener("change", killT); }catch(e){ try{ window.matchMedia("(orientation: landscape)").addListener(killT); }catch(_){} } }
   })();
 </script>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.24 🔔</div>
+<div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.26 🔔</div>
 </body>
 </html>
