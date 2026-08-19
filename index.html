@@ -948,7 +948,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.19</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.20</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -5668,13 +5668,17 @@ function qShareSave_(section, data, statusId){
   var setSt=function(msg,color){ if(statusId){ var el=document.getElementById(statusId); if(el){ el.textContent=msg; if(color) el.style.color=color; } } };
   if(!url){ console.warn("[공유저장] URL 없음"); setSt("⚠ 백엔드 URL 없음","#B02A2A"); return; }
   setSt("☁ 공유 저장 중…","#5A6478");
-  // 스프레드시트 탭(품질도구Master)에 저장 — 검사일보·문서Master와 동일 방식(드라이브 파일 X)
-  try{ fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeQTool", key:section, json:JSON.stringify(data)})}); }catch(e){ console.warn("[공유저장] 전송오류",section,e); }
+  var payload=""; try{ payload=JSON.stringify(data); }catch(e){ payload=""; }
+  if(payload.length>49000){ setSt("⚠ 용량 초과("+payload.length.toLocaleString()+"자) — 저장 불가","#B02A2A"); qShareToast_("⚠ 데이터가 너무 큽니다("+payload.length.toLocaleString()+"자, 한도 50,000) — 저장 안 됨",false); return; }
+  try{ fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeQTool", key:section, json:payload})}); }catch(e){ console.warn("[공유저장] 전송오류",section,e); }
   var hhmm=new Date().toTimeString().slice(0,5);
-  setSt("☁ 공유 저장 전송 완료 ("+hhmm+")","#1E7A46");
-  qShareToast_("☁ 공유 저장 전송 완료 — 다른 PC/새로고침으로 반영됩니다",true);
-  // 저장 확인(읽기): 6초 후 되읽어 성공하면 '확인됨' 표시(실패해도 오탐 방지 위해 조용히)
-  try{ setTimeout(function(){ fetch(url+"?mode=qToolMaster&key="+encodeURIComponent(section)+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ if(res&&res.success&&res.json){ console.log("[공유저장 확인됨] "+section); setSt("☁ 공유 저장 확인됨 ("+hhmm+")","#1E7A46"); qShareToast_("☁ 공유 저장 확인됨 — 다른 PC에서도 보입니다",true); } }).catch(function(){}); }, 6000); }catch(e){} }
+  setSt("☁ 공유 저장 중… (확인 대기)","#5A6478");
+  // 저장 확인: 6초 후 되읽어 "보낸 내용과 일치"할 때만 확인됨 표시(오탐 방지)
+  try{ setTimeout(function(){ fetch(url+"?mode=qToolMaster&key="+encodeURIComponent(section)+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){
+    var got=(res&&res.success&&res.json)?String(res.json):"";
+    if(got===payload){ console.log("[공유저장 확인됨] "+section); setSt("☁ 공유 저장 확인됨 ("+hhmm+")","#1E7A46"); qShareToast_("☁ 공유 저장 확인됨 — 다른 PC에서도 보입니다",true); }
+    else { console.warn("[공유저장 실패] "+section+" (되읽기 불일치)"); setSt("⚠ 공유 저장 실패 — 다시 시도하세요","#B02A2A"); qShareToast_("⚠ 공유 저장 실패 — 저장이 반영되지 않았습니다(다시 시도)",false); }
+  }).catch(function(){ setSt("☁ 저장 전송됨(확인 불가)","#5A6478"); }); }, 6000); }catch(e){} }
 function qShareLoad_(section, cb){ var url=qShareUrl_(); if(!url){ cb(null); return; } fetch(url+"?mode=qToolMaster&key="+encodeURIComponent(section)+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var d=null; if(res&&res.success&&res.json){ try{ d=JSON.parse(res.json); }catch(e){} } cb(d); }).catch(function(){ cb(null); }); }
 /* ==================== 🎯 CTQ 분석 (검사종합 업로드 → 부적합 유형별, 전체/년/월) ==================== */
 var CTQ_SHEETS = [
@@ -5885,6 +5889,7 @@ function ppkPrescribe_(ch){
   }
   return out.join(" · ");
 }
+function ppkShareLite_(d){ if(!d||!d.products) return d; try{ return { products: d.products.map(function(p){ var q={}; for(var k in p){ if(k==="list") continue; q[k]=p[k]; } return q; }) }; }catch(e){ return d; } }
 function ppkListHtml_(p){
   if(!p || !p.list || !p.list.length) return "";
   var chs=p.chars.map(function(c){return c.name;});
@@ -6000,7 +6005,7 @@ function ppkOnUpload_(file){
       var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array", cellDates:false});
       __ppkData=ppkParseWorkbook_(wb); ppkProduct="__prob"; try{ window.__qUserLoaded=window.__qUserLoaded||{}; window.__qUserLoaded.ppkData=true; }catch(_){}
       try{ if(typeof idbSet==="function") idbSet("ppkData", __ppkData); }catch(_){}
-      qShareSave_("ppkData", __ppkData, "ppk-range");
+      qShareSave_("ppkData", ppkShareLite_(__ppkData), "ppk-range");
       renderPpkPanel();
     }catch(err){ if(st) st.textContent="파일 읽기 실패"; alert("측정 시트를 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
   };
@@ -15705,6 +15710,6 @@ function docmasterPrint(){
     if(window.matchMedia){ try{ window.matchMedia("(orientation: landscape)").addEventListener("change", killT); }catch(e){ try{ window.matchMedia("(orientation: landscape)").addListener(killT); }catch(_){} } }
   })();
 </script>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.19 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.20 🔔</div>
 </body>
 </html>
