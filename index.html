@@ -14938,11 +14938,18 @@ function insCloudAutoLoad(){
       if(!data||!Array.isArray(data.rows)) return;
       var cloudRows=insEnsureIds_(data.rows);
       var localRows=(insState[t]&&insState[t].rows)||[];
-      var localIds={}, localSigs={};
-      localRows.forEach(function(r){ if(r&&r._id) localIds[r._id]=1; localSigs[insRowSig_(r)]=1; });
-      var keep=cloudRows.filter(function(r){ if(r&&r._id&&localIds[r._id]) return false; if(localSigs[insRowSig_(r)]) return false; return true; });
-      if(!keep.length) return;
-      insState[t]={rows:insDedup_(localRows.concat(keep))};
+      // 같은 _id는 "공유 최신본(cloud)"이 이긴다 → 수정한 내용이 옛 로컬본에 밀려 되살아나는 문제 방지.
+      var cloudById={}; cloudRows.forEach(function(r){ if(r&&r._id) cloudById[r._id]=r; });
+      var mergedRows=localRows.map(function(lr){ return (lr&&lr._id&&cloudById[lr._id]) ? cloudById[lr._id] : lr; });
+      // 아직 로컬에 없는 공유 행(다른 사람이 추가한 행 등)은 뒤에 덧붙인다.
+      var haveIds={}, haveSigs={};
+      mergedRows.forEach(function(r){ if(r&&r._id) haveIds[r._id]=1; haveSigs[insRowSig_(r)]=1; });
+      var keep=cloudRows.filter(function(r){ if(r&&r._id&&haveIds[r._id]) return false; if(haveSigs[insRowSig_(r)]) return false; return true; });
+      var changed = keep.length>0;
+      // 로컬 행 중 공유본으로 교체된 게 있으면(내용이 바뀜) 그것도 반영 대상
+      if(!changed){ for(var i=0;i<localRows.length;i++){ if(localRows[i]!==mergedRows[i]){ changed=true; break; } } }
+      if(!changed) return;
+      insState[t]={rows:insDedup_(mergedRows.concat(keep))};
       if(insMetaByType[t]){ if(!insMetaByType[t].date && data.date) insMetaByType[t].date=data.date; if(!insMetaByType[t].inspector && data.inspector) insMetaByType[t].inspector=data.inspector; }
       if(t===insType){ insSyncMetaInputs(); insUpdateDayFilter(); insRender(); }
       if(typeof insSaveLocalNow==="function") insSaveLocalNow(); else insSaveLocal();
