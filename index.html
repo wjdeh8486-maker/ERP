@@ -948,7 +948,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.23</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.24</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -1823,6 +1823,7 @@
             <input type="file" id="insrep-importFile" accept=".xlsx,.xls" style="display:none;">
             <button type="button" id="insrep-importBtn" style="background:#7A5A2A;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">📤 엑셀 업로드</button>
             <button type="button" id="insrep-masterBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="모든 유형을 모아 4개 마스터 시트로">📋 붙여넣기용(전체)</button>
+            <button type="button" id="insrep-masterExBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="S/N을 개별 행으로 펼쳐서(26025-1~8 → 8행). 부적합은 (기스)/(찍힘) 표시된 S/N에만 배정">📋 붙여넣기용(S/N펼침)</button>
             <button type="button" id="insrep-printBtn" style="background:#334155;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">🖨 인쇄</button>
             <div style="border-top:1px solid #EEF1F6;margin:3px 0;"></div>
             <button type="button" id="insrep-qualBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">📊 품질 요약</button>
@@ -13470,7 +13471,8 @@ function insInit(){
   bind("insrep-ctqBtn","click",insOpenCTQ);
   bind("insrep-ncrBtn","click",insOpenNcrExport);
   bind("insrep-printBtn","click",insPrintDay);
-  bind("insrep-masterBtn","click",insExportMaster);
+  bind("insrep-masterBtn","click",function(){ insExportMaster(false); });
+  bind("insrep-masterExBtn","click",function(){ insExportMaster(true); });
   var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; if(insDayFilter!=="all" && insType!=="processin" && insMetaByType[insType]){ insMetaByType[insType].date=insDayFilter; insSyncMetaInputs(); } insRender(); insSaveLocal(); });
   var __ds=document.getElementById("insrep-drawSearch"); if(__ds) __ds.addEventListener("input",function(){ insDrawSearch=this.value; insRender(); });
   var __dc=document.getElementById("insrep-drawClear"); if(__dc) __dc.addEventListener("click",function(){ insDrawSearch=""; var e=document.getElementById("insrep-drawSearch"); if(e) e.value=""; insRender(); });
@@ -13516,6 +13518,7 @@ function insRender(){
   var __dw=document.getElementById("insrep-dayWrap"); if(__dw) __dw.style.display="inline-flex";
   var __pb=document.getElementById("insrep-printBtn"); if(__pb) __pb.style.display=(insType==="processin")?"none":"";
   var __mb=document.getElementById("insrep-masterBtn"); if(__mb) __mb.style.display="";
+  var __mbe=document.getElementById("insrep-masterExBtn"); if(__mbe) __mbe.style.display="";
   insUpdateDayFilter();
   if(insType==="processin"){ insRenderProcessIn(el); return; }
   var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
@@ -14020,22 +14023,64 @@ var INS_MASTER = {
   ]
 };
 function insMasterKey_(){ return (insType==="measureS"||insType==="measureL")?"measure":insType; }
-function insExportMaster(){
+function insExpandSN_(raw){
+  var s=String(raw==null?"":raw).trim(); if(!s) return [];
+  var pfx="",rest=s,dash=s.indexOf("-");
+  if(dash>=0){ pfx=s.slice(0,dash+1); rest=s.slice(dash+1); }
+  var out=[];
+  rest.split(",").forEach(function(seg){
+    seg=seg.trim(); if(!seg) return;
+    var note=""; var m=seg.match(/\(([^)]*)\)/); if(m){ note=m[1]; seg=seg.replace(/\([^)]*\)/,"").trim(); }
+    if(seg.indexOf("-")>=0){ out.push({sn:seg,note:note}); return; }
+    if(seg.indexOf("~")>=0){ var mm=seg.split("~"),a=parseInt(mm[0],10),b=parseInt(mm[1],10); if(isFinite(a)&&isFinite(b)&&b>=a){ for(var i=a;i<=b;i++) out.push({sn:pfx+i,note:(i==a?note:"")}); return; } }
+    out.push({sn:pfx+seg,note:note});
+  });
+  return out;
+}
+function insNoteKey_(note){ note=String(note||"").replace(/\s/g,""); if(!note) return "";
+  if(note.indexOf("기스")>=0) return "d_scr";
+  if(note.indexOf("찍")>=0) return "d_dnt";
+  if(note.indexOf("얼룩")>=0) return "d_stn";
+  if(note.indexOf("누락")>=0) return "p_mis";
+  if(note.indexOf("치수")>=0) return "d_tol";
+  return "d_etc"; }
+// 한 행을 개별 S/N 행들로 펼친다. 부적합은 (주석) 붙은 S/N에만 배정. 애매하면 원행 유지.
+function insExpandRow_(r){
+  var items=insExpandSN_(r&&r.sn); if(items.length<=1) return [r];
+  var origDef=insMDefects_(r); var fnBad=insMInt_(r.fnBad);
+  var annotated=items.filter(function(it){ return insNoteKey_(it.note); }).length;
+  // 부적합이 있는데 주석과 개수가 안 맞으면(어느 S/N이 불량인지 불명확) 안전하게 원행 유지
+  if((origDef>0 || fnBad>0) && annotated!==(origDef+fnBad)) return [r];
+  var dkeys=["d_scr","d_dnt","d_stn","p_mis","d_etc","d_gen","d_tol","d_mis"];
+  return items.map(function(it){
+    var x={}; for(var k in r) x[k]=r[k];
+    x.sn=it.sn;
+    if(insMInt_(r.insCnt)>0){ x.insCnt=1; }
+    if(insMInt_(r.fnCnt)>0){ x.fnCnt=1; }
+    dkeys.forEach(function(k){ x[k]=""; });
+    var dk=insNoteKey_(it.note);
+    if(dk){ x[dk]=1; x.goodCnt=0; if(insMInt_(r.fnCnt)>0){ x.fnGood=0; x.fnBad=1; } }
+    else { if(insMInt_(r.insCnt)>0) x.goodCnt=1; if(insMInt_(r.fnCnt)>0){ x.fnGood=1; x.fnBad=0; } }
+    return x;
+  });
+}
+function insExportMaster(expand){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
+  var EX=function(r){ return expand?insExpandRow_(r):[r]; };
   function rowsFor(t){ var a=(insState[t]&&insState[t].rows)||[]; return (insDayFilter==="all")?a:a.filter(function(r){ return String(r.insDate||"")===insDayFilter; }); }
   function ctxFor(t){ return { insp:(insMetaByType[t]&&insMetaByType[t].inspector)||"" }; }
   var inc=rowsFor("incoming"), shp=rowsFor("shipping"), mS=rowsFor("measureS"), mL=rowsFor("measureL");
   var CIN=ctxFor("incoming"), CSH=ctxFor("shipping"), CMS=ctxFor("measureS"), CML=ctxFor("measureL");
   // 4개 마스터 시트 구성 (모든 유형에서 모아서)
-  var aoaOut=[_COL_OUT]; inc.forEach(function(r){ aoaOut.push(_rowOut(r,CIN)); });
+  var aoaOut=[_COL_OUT]; inc.forEach(function(r){ EX(r).forEach(function(er){ aoaOut.push(_rowOut(er,CIN)); }); });
   var aoaProc=[_COL_PROC];
-  mS.forEach(function(r){ aoaProc.push(_rowProcDim(r,CMS)); });
-  mL.forEach(function(r){ aoaProc.push(_rowProcDim(r,CML)); });
-  inc.filter(function(r){ return !!r.tap; }).forEach(function(r){ aoaProc.push(_rowProcTap(r,CIN)); });
+  mS.forEach(function(r){ EX(r).forEach(function(er){ aoaProc.push(_rowProcDim(er,CMS)); }); });
+  mL.forEach(function(r){ EX(r).forEach(function(er){ aoaProc.push(_rowProcDim(er,CML)); }); });
+  inc.filter(function(r){ return !!r.tap; }).forEach(function(r){ EX(r).forEach(function(er){ aoaProc.push(_rowProcTap(er,CIN)); }); });
   var aoaFunc=[_COL_FUNC];
-  mS.filter(_hasFunc).forEach(function(r){ aoaFunc.push(_rowFunc(r,CMS)); });
-  mL.filter(_hasFunc).forEach(function(r){ aoaFunc.push(_rowFunc(r,CML)); });
-  var aoaShip=[_COL_SHIP]; shp.forEach(function(r){ aoaShip.push(_rowShip(r,CSH)); });
+  mS.filter(_hasFunc).forEach(function(r){ EX(r).forEach(function(er){ aoaFunc.push(_rowFunc(er,CMS)); }); });
+  mL.filter(_hasFunc).forEach(function(r){ EX(r).forEach(function(er){ aoaFunc.push(_rowFunc(er,CML)); }); });
+  var aoaShip=[_COL_SHIP]; shp.forEach(function(r){ EX(r).forEach(function(er){ aoaShip.push(_rowShip(er,CSH)); }); });
   var wb=XLSX.utils.book_new(); var summary=[];
   function add(name, aoa){
     if(aoa.length<2) return;
@@ -14050,8 +14095,8 @@ function insExportMaster(){
   add("출하검사", aoaShip);
   if(!summary.length){ alert("선택한 날짜에 내보낼 데이터가 없습니다. (전체 유형 기준)"); return; }
   var dtag=(insDayFilter==="all")?"전체":insDayFilter.replace(/-/g,"");
-  insWriteXlsx(wb, "붙여넣기용_전체_"+dtag+".xlsx");
-  insSetStatus("📋 붙여넣기용(전체) 내보냄 — "+summary.join(", "));
+  insWriteXlsx(wb, "붙여넣기용_"+(expand?"펼침_":"전체_")+dtag+".xlsx");
+  insSetStatus("📋 붙여넣기용"+(expand?"(S/N 펼침)":"(전체)")+" 내보냄 — "+summary.join(", "));
 }
 
 /* ==================== 🖨 검사 일보 일별 인쇄 + 날짜 필터 ==================== */
@@ -15741,6 +15786,6 @@ function docmasterPrint(){
     if(window.matchMedia){ try{ window.matchMedia("(orientation: landscape)").addEventListener("change", killT); }catch(e){ try{ window.matchMedia("(orientation: landscape)").addListener(killT); }catch(_){} } }
   })();
 </script>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.23 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.24 🔔</div>
 </body>
 </html>
