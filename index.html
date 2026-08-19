@@ -948,7 +948,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.26</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.27</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -14137,15 +14137,23 @@ var INS_MASTER = {
 function insMasterKey_(){ return (insType==="measureS"||insType==="measureL")?"measure":insType; }
 function insExpandSN_(raw){
   var s=String(raw==null?"":raw).trim(); if(!s) return [];
-  var pfx="",rest=s,dash=s.indexOf("-");
-  if(dash>=0){ pfx=s.slice(0,dash+1); rest=s.slice(dash+1); }
-  var out=[];
-  rest.split(",").forEach(function(seg){
+  var segs=s.split(/[,\/]/);          // 콤마 + 슬래시(/) 모두 구분자
+  var pfx="", out=[];
+  segs.forEach(function(seg){
     seg=seg.trim(); if(!seg) return;
     var note=""; var m=seg.match(/\(([^)]*)\)/); if(m){ note=m[1]; seg=seg.replace(/\([^)]*\)/,"").trim(); }
-    if(seg.indexOf("-")>=0){ out.push({sn:seg,note:note}); return; }
-    if(seg.indexOf("~")>=0){ var mm=seg.split("~"),a=parseInt(mm[0],10),b=parseInt(mm[1],10); if(isFinite(a)&&isFinite(b)&&b>=a){ for(var i=a;i<=b;i++) out.push({sn:pfx+i,note:(i==a?note:"")}); return; } }
-    out.push({sn:pfx+seg,note:note});
+    if(!seg) return;
+    if(seg.indexOf("-")>=0){           // 접두어 포함된 완전 S/N → 접두어 갱신
+      pfx=seg.slice(0, seg.lastIndexOf("-")+1);
+      var tail=seg.slice(seg.lastIndexOf("-")+1);
+      if(tail.indexOf("~")>=0){ var mm=tail.split("~"),a=parseInt(mm[0],10),b=parseInt(mm[1],10); if(isFinite(a)&&isFinite(b)&&b>=a){ for(var i=a;i<=b;i++) out.push({sn:pfx+i,note:(i==a?note:"")}); return; } }
+      out.push({sn:seg,note:note}); return;
+    }
+    if(seg.indexOf("~")>=0){           // 범위(접두어 이어받음)
+      var m2=seg.split("~"),a2=parseInt(m2[0],10),b2=parseInt(m2[1],10);
+      if(isFinite(a2)&&isFinite(b2)&&b2>=a2){ for(var j=a2;j<=b2;j++) out.push({sn:pfx+j,note:(j==a2?note:"")}); return; }
+    }
+    out.push({sn:pfx+seg,note:note});  // 번호만(접두어 이어받음)
   });
   return out;
 }
@@ -14158,7 +14166,8 @@ function insNoteKey_(note){ note=String(note||"").replace(/\s/g,""); if(!note) r
   return "d_etc"; }
 // 한 행을 개별 S/N 행들로 펼친다. 부적합은 (주석) 붙은 S/N에만 배정. 애매하면 원행 유지.
 function insExpandRow_(r){
-  var items=insExpandSN_(r&&r.sn); if(items.length<=1) return [r];
+  var items=insExpandSN_(r&&r.sn); if(items.length===0) return [r];
+  if(items.length===1){ if(items[0].sn===String(r&&r.sn||"")) return [r]; var one={}; for(var kk in r) one[kk]=r[kk]; one.sn=items[0].sn; return [one]; }
   var origDef=insMDefects_(r); var fnBad=insMInt_(r.fnBad);
   var annotated=items.filter(function(it){ return insNoteKey_(it.note); }).length;
   // 부적합이 있는데 주석과 개수가 안 맞으면(어느 S/N이 불량인지 불명확) 안전하게 원행 유지
@@ -14186,8 +14195,8 @@ function insExportMaster(expand){
   // 4개 마스터 시트 구성 (모든 유형에서 모아서)
   var aoaOut=[_COL_OUT]; inc.forEach(function(r){ EX(r).forEach(function(er){ aoaOut.push(_rowOut(er,CIN)); }); });
   var aoaProc=[_COL_PROC];
-  mS.forEach(function(r){ EX(r).forEach(function(er){ aoaProc.push(_rowProcDim(er,CMS)); }); });
-  mL.forEach(function(r){ EX(r).forEach(function(er){ aoaProc.push(_rowProcDim(er,CML)); }); });
+  mS.filter(function(r){ return insMInt_(r.insCnt)>0; }).forEach(function(r){ EX(r).forEach(function(er){ aoaProc.push(_rowProcDim(er,CMS)); }); });
+  mL.filter(function(r){ return insMInt_(r.insCnt)>0; }).forEach(function(r){ EX(r).forEach(function(er){ aoaProc.push(_rowProcDim(er,CML)); }); });
   inc.filter(function(r){ return !!r.tap; }).forEach(function(r){ EX(r).forEach(function(er){ aoaProc.push(_rowProcTap(er,CIN)); }); });
   var aoaFunc=[_COL_FUNC];
   mS.filter(_hasFunc).forEach(function(r){ EX(r).forEach(function(er){ aoaFunc.push(_rowFunc(er,CMS)); }); });
@@ -15899,6 +15908,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.26 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.27 🔔</div>
 </body>
 </html>
