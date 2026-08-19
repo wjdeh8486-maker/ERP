@@ -948,7 +948,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.21</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.22</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -1805,6 +1805,11 @@
         <span style="display:inline-flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:#5A6478;font-weight:700;">📅 날짜별 보기</span>
           <select id="insrep-dayFilter" style="padding:7px 8px;border:1px solid #0B5CAB;border-radius:7px;font-size:12px;font-weight:700;color:#0B5CAB;background:#F4F8FD;cursor:pointer;"><option value="all">전체</option></select>
+        </span>
+        <span style="display:inline-flex;align-items:center;gap:6px;">
+          <span style="font-size:12px;color:#5A6478;font-weight:700;">🔎 도번</span>
+          <input type="text" id="insrep-drawSearch" placeholder="도번 검색(전체 날짜)" autocomplete="off" style="width:150px;padding:7px 9px;border:1px solid #0B5CAB;border-radius:7px;font-size:12px;">
+          <button type="button" id="insrep-drawClear" title="검색 지우기" style="background:#EEF3FA;border:1px solid #C9D3E0;border-radius:7px;padding:6px 8px;cursor:pointer;font-size:12px;">✕</button>
         </span>
         <span class="ins-dd">
           <button type="button" class="ins-dd-btn" data-menu="mMore" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">⚙ 더보기 ▾</button>
@@ -13373,6 +13378,7 @@ var insProcInSource = null;   // 공정입고 집계용 공유 버퍼(null이면
 var insProcInMemo   = {};     // 도번 -> { m:측정실비고, c:크린룸비고 }
 var insMetaByType = { incoming:{inspector:"",date:""}, shipping:{inspector:"",date:""}, measureS:{inspector:"",date:""}, measureL:{inspector:"",date:""} };  // 검사자/검사일자 유형별 분리
 var insDayFilter = "all";  // 검사 일보 날짜 필터
+var insDrawSearch = "";     // 검사 일보 도번 검색(있으면 전체 날짜에서 도번 매칭만 표시)
 
 function insCfg(){ return INS_CFG[insType]; }
 function insLeaves(cfg){ cfg=cfg||insCfg(); var out=[]; cfg.groups.forEach(function(g){ if(g.subs){ g.subs.forEach(function(s){ out.push(s); }); } else { out.push(g.leaf); } }); return out; }
@@ -13462,6 +13468,8 @@ function insInit(){
   bind("insrep-printBtn","click",insPrintDay);
   bind("insrep-masterBtn","click",insExportMaster);
   var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; if(insDayFilter!=="all" && insType!=="processin" && insMetaByType[insType]){ insMetaByType[insType].date=insDayFilter; insSyncMetaInputs(); } insRender(); insSaveLocal(); });
+  var __ds=document.getElementById("insrep-drawSearch"); if(__ds) __ds.addEventListener("input",function(){ insDrawSearch=this.value; insRender(); });
+  var __dc=document.getElementById("insrep-drawClear"); if(__dc) __dc.addEventListener("click",function(){ insDrawSearch=""; var e=document.getElementById("insrep-drawSearch"); if(e) e.value=""; insRender(); });
   bind("insrep-cloudSaveBtn","click",insCloudSave);
   bind("insrep-saveFolderBtn","click",insPickSaveFolder);
   bind("insrep-validateBtn","click",insOpenValidate);
@@ -13532,7 +13540,9 @@ function insRender(){
       }
     });
     row.goodCnt = Math.max(0, totalQty - defectQty);
-    if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="")) return;   // 다른 날짜여도 미조치 부적합은 계속 표시
+    var __dq=(insDrawSearch||"").trim().toLowerCase();
+    if(__dq){ if(String(row.draw||"").toLowerCase().indexOf(__dq)<0) return; }   // 도번 검색: 전체 날짜에서 매칭만
+    else if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="")) return;   // 다른 날짜여도 미조치 부적합은 계속 표시
     __dispNo++;
     var tds="";
     leaves.forEach(function(c){
@@ -15725,6 +15735,6 @@ function docmasterPrint(){
     if(window.matchMedia){ try{ window.matchMedia("(orientation: landscape)").addEventListener("change", killT); }catch(e){ try{ window.matchMedia("(orientation: landscape)").addListener(killT); }catch(_){} } }
   })();
 </script>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.21 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.22 🔔</div>
 </body>
 </html>
