@@ -948,7 +948,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.37</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.38</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -7143,12 +7143,68 @@ function sigPadOpen_(title, onDone){
   ov.querySelector("#sigpad-cancel").addEventListener("click",close);
   ov.querySelector("#sigpad-ok").addEventListener("click",function(){ var url=dirty?cv.toDataURL("image/png"):""; close(); if(typeof onDone==="function") onDone(url); });
 }
+function sigStoreGet_(){ try{ return JSON.parse(localStorage.getItem("ntlSigStore")||"{}")||{}; }catch(e){ return {}; } }
+function sigStoreSet_(o){ try{ localStorage.setItem("ntlSigStore", JSON.stringify(o||{})); }catch(e){ alert("서명 저장 공간이 부족합니다(이미지가 너무 큼)."); } }
+function sigEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+// 서명 관리(등록/삭제) — 파일 업로드 또는 직접 그리기
+function sigManagerOpen_(afterChange){
+  var store=sigStoreGet_();
+  var ov=document.createElement("div"); ov.style.cssText="position:fixed;inset:0;z-index:100001;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;padding:16px;";
+  var listHtml=function(){ var st=sigStoreGet_(); var ks=Object.keys(st); if(!ks.length) return '<div style="color:#8A93A6;text-align:center;padding:14px;font-size:13px;">등록된 서명이 없습니다.</div>';
+    return '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+ks.map(function(n){ return '<div style="border:1px solid #E1E8F0;border-radius:8px;padding:6px;text-align:center;width:120px;"><img src="'+st[n]+'" style="max-height:44px;max-width:104px;"><div style="font-size:12px;color:#1F2A44;font-weight:700;margin-top:2px;">'+sigEsc_(n)+'</div><button class="sig-del" data-n="'+sigEsc_(n)+'" style="margin-top:4px;border:none;background:#F0F4F8;border-radius:5px;font-size:11px;padding:3px 8px;cursor:pointer;">삭제</button></div>'; }).join("")+'</div>'; };
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:18px;width:100%;max-width:520px;max-height:90vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,0.4);">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><b style="font-size:16px;color:#1F2A44;">✍ 서명/도장 등록</b><button id="sigmgr-x" style="border:none;background:transparent;font-size:20px;cursor:pointer;">✕</button></div>'
+    +'<div style="background:#F7F9FC;border:1px solid #E1E8F0;border-radius:10px;padding:12px;margin-bottom:12px;">'
+    +'<input type="text" id="sigmgr-name" placeholder="이름 (예: 이정도)" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #C9D3E0;border-radius:7px;margin-bottom:8px;">'
+    +'<div style="font-size:12px;color:#5A6478;margin-bottom:4px;">이미지 파일 업로드</div>'
+    +'<input type="file" id="sigmgr-file" accept="image/*" style="width:100%;font-size:12px;margin-bottom:8px;">'
+    +'<div style="text-align:center;color:#9AA7BC;font-size:11px;margin:6px 0;">— 또는 직접 그리기 —</div>'
+    +'<canvas id="sigmgr-cv" width="440" height="150" style="width:100%;height:150px;border:1px dashed #9AA7BC;border-radius:8px;touch-action:none;background:#fff;display:block;"></canvas>'
+    +'<div style="display:flex;gap:8px;margin-top:8px;"><button id="sigmgr-clear" style="flex:1;padding:8px;border:1px solid #C9D3E0;background:#F0F4F8;border-radius:7px;font-weight:700;cursor:pointer;">캔버스 지우기</button><button id="sigmgr-save" style="flex:1.4;padding:8px;border:none;background:#0B5CAB;color:#fff;border-radius:7px;font-weight:800;cursor:pointer;">등록</button></div>'
+    +'</div><div id="sigmgr-list">'+listHtml()+'</div></div>';
+  document.body.appendChild(ov);
+  var close=function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); if(typeof afterChange==="function") afterChange(); };
+  ov.querySelector("#sigmgr-x").addEventListener("click",close);
+  ov.addEventListener("click",function(e){ if(e.target===ov) close(); });
+  var cv=ov.querySelector("#sigmgr-cv"), ctx=cv.getContext("2d"); ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.strokeStyle="#111827";
+  var dr=false,last=null,dirty=false; var pos=function(e){ var r=cv.getBoundingClientRect(); var t=(e.touches&&e.touches[0])?e.touches[0]:e; return {x:(t.clientX-r.left)*(cv.width/r.width), y:(t.clientY-r.top)*(cv.height/r.height)}; };
+  var st1=function(e){ e.preventDefault(); dr=true; last=pos(e); }, mv=function(e){ if(!dr)return; e.preventDefault(); var p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; dirty=true; }, en=function(){ dr=false; };
+  cv.addEventListener("mousedown",st1); cv.addEventListener("mousemove",mv); window.addEventListener("mouseup",en);
+  cv.addEventListener("touchstart",st1,{passive:false}); cv.addEventListener("touchmove",mv,{passive:false}); cv.addEventListener("touchend",en);
+  ov.querySelector("#sigmgr-clear").addEventListener("click",function(){ ctx.clearRect(0,0,cv.width,cv.height); dirty=false; });
+  var fileURL=""; ov.querySelector("#sigmgr-file").addEventListener("change",function(e){ var f=e.target.files&&e.target.files[0]; if(!f) return; var rd=new FileReader(); rd.onload=function(){ fileURL=rd.result; }; rd.readAsDataURL(f); });
+  var refresh=function(){ var el=ov.querySelector("#sigmgr-list"); if(el){ el.innerHTML=listHtml(); bindDel(); } };
+  var bindDel=function(){ ov.querySelectorAll(".sig-del").forEach(function(b){ b.addEventListener("click",function(){ var n=b.getAttribute("data-n"); var st=sigStoreGet_(); delete st[n]; sigStoreSet_(st); refresh(); }); }); };
+  bindDel();
+  ov.querySelector("#sigmgr-save").addEventListener("click",function(){ var nm=(ov.querySelector("#sigmgr-name")||{}).value||""; nm=nm.trim(); if(!nm){ alert("이름을 입력하세요."); return; }
+    var url=fileURL || (dirty?cv.toDataURL("image/png"):""); if(!url){ alert("이미지를 업로드하거나 직접 그려주세요."); return; }
+    var st=sigStoreGet_(); st[nm]=url; sigStoreSet_(st); fileURL=""; ctx.clearRect(0,0,cv.width,cv.height); dirty=false; var ni=ov.querySelector("#sigmgr-name"); if(ni) ni.value=""; var fi=ov.querySelector("#sigmgr-file"); if(fi) fi.value=""; refresh(); });
+}
+// 결재 셀 터치 시: 직접 서명 / 등록 서명 선택
+function sigChooser_(role, onPick){
+  var store=sigStoreGet_(); var ks=Object.keys(store);
+  var ov=document.createElement("div"); ov.style.cssText="position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;padding:16px;";
+  var grid = ks.length ? ('<div style="font-size:12px;color:#5A6478;margin:10px 0 6px;">등록된 서명 선택</div><div style="display:flex;flex-wrap:wrap;gap:8px;">'+ks.map(function(n){ return '<button class="sig-pick" data-n="'+sigEsc_(n)+'" style="border:1px solid #E1E8F0;border-radius:8px;padding:6px;background:#fff;cursor:pointer;width:120px;"><img src="'+store[n]+'" style="max-height:40px;max-width:104px;pointer-events:none;"><div style="font-size:12px;color:#1F2A44;font-weight:700;margin-top:2px;pointer-events:none;">'+sigEsc_(n)+'</div></button>'; }).join("")+'</div>') : '<div style="font-size:12px;color:#8A93A6;margin:10px 0;">등록된 서명이 없습니다. 아래에서 등록하거나 직접 서명하세요.</div>';
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:18px;width:100%;max-width:480px;max-height:90vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,0.4);">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><b style="font-size:16px;color:#1F2A44;">'+sigEsc_(role)+' 결재</b><button id="sigch-x" style="border:none;background:transparent;font-size:20px;cursor:pointer;">✕</button></div>'
+    +'<button id="sigch-draw" style="width:100%;padding:12px;border:none;background:#0B5CAB;color:#fff;border-radius:8px;font-weight:800;cursor:pointer;">✍ 직접 서명 (현장)</button>'
+    +grid
+    +'<div style="border-top:1px solid #EEF2F7;margin-top:12px;padding-top:10px;text-align:center;"><button id="sigch-manage" style="border:none;background:transparent;color:#0B5CAB;font-weight:700;cursor:pointer;text-decoration:underline;font-size:13px;">+ 서명 등록/관리</button></div>'
+    +'</div>';
+  document.body.appendChild(ov);
+  var close=function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+  ov.querySelector("#sigch-x").addEventListener("click",close);
+  ov.addEventListener("click",function(e){ if(e.target===ov) close(); });
+  ov.querySelector("#sigch-draw").addEventListener("click",function(){ close(); sigPadOpen_(role+" 서명", onPick); });
+  ov.querySelectorAll(".sig-pick").forEach(function(b){ b.addEventListener("click",function(){ var n=b.getAttribute("data-n"); var st=sigStoreGet_(); var url=st[n]||""; close(); if(url && typeof onPick==="function") onPick(url); }); });
+  ov.querySelector("#sigch-manage").addEventListener("click",function(){ close(); sigManagerOpen_(function(){ sigChooser_(role,onPick); }); });
+}
 function qReportPrintCSS_(){ return '*{box-sizing:border-box;} body{font-family:"맑은 고딕",sans-serif;} .q-report-page{page-break-after:always;} .q-report-page:last-child{page-break-after:auto;} table{width:100%;border-collapse:collapse;font-size:9px;} th,td{border:1px solid #999;padding:2px 3px;text-align:center;line-height:1.25;} .q-page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;} .q-approval-table{width:auto;flex-shrink:0;} .q-approval-table td{height:42px;min-width:74px;} .q-approval-table .q-approval-label{writing-mode:vertical-rl;} h2{font-size:13px;margin:0 0 4px;} .qsig-cell img{max-height:40px;max-width:90px;}'; }
 function qOpenSignPreview_(html){
   var ov=document.createElement("div"); ov.id="qsign-ov";
   ov.style.cssText="position:fixed;inset:0;z-index:99990;background:#F0F2F5;display:flex;flex-direction:column;";
   ov.innerHTML='<div style="background:#1F2A44;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:8px;flex-wrap:wrap;">'
-    +'<b style="font-size:15px;">✍ 품질분석 보고서 — 결재란을 터치하여 서명</b>'
+    +'<b style="font-size:15px;">✍ 품질분석 보고서 — 결재란을 터치하여 서명</b><button id="qsign-manage" style="background:#0B7A8A;color:#fff;border:none;border-radius:6px;padding:8px 14px;font-weight:700;cursor:pointer;">✍ 서명 등록/관리</button>'
     +'<div style="display:flex;gap:8px;"><button id="qsign-print" style="background:#fff;color:#1F2A44;border:none;border-radius:6px;padding:9px 18px;font-weight:800;cursor:pointer;">🖨 인쇄</button>'
     +'<button id="qsign-close" style="background:transparent;color:#fff;border:1px solid #fff;border-radius:6px;padding:9px 14px;font-weight:700;cursor:pointer;">닫기</button></div></div>'
     +'<div id="qsign-body" style="flex:1;overflow:auto;padding:16px;background:#fff;color:#111;">'+html+'</div>';
@@ -7157,9 +7213,11 @@ function qOpenSignPreview_(html){
   body.querySelectorAll(".qsig-cell").forEach(function(td){
     td.style.cursor="pointer"; td.style.minWidth="74px"; td.style.height="42px";
     if(!td.querySelector("img")) td.innerHTML='<span style="color:#B9C2D6;font-size:10px;">터치하여 서명</span>';
-    td.addEventListener("click",function(){ var role=td.getAttribute("data-role")||"서명"; sigPadOpen_(role+" 서명", function(url){ if(url){ td.innerHTML='<img src="'+url+'" style="max-height:40px;max-width:90px;">'; td.setAttribute("data-signed","1"); } }); });
+    td.addEventListener("click",function(){ var role=td.getAttribute("data-role")||"서명"; sigChooser_(role, function(url){ if(url){ td.innerHTML='<img src="'+url+'" style="max-height:40px;max-width:90px;">'; td.setAttribute("data-signed","1"); } }); });
   });
   ov.querySelector("#qsign-close").addEventListener("click",function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); });
+
+  var __qm=ov.querySelector("#qsign-manage"); if(__qm) __qm.addEventListener("click",function(){ sigManagerOpen_(); });
   ov.querySelector("#qsign-print").addEventListener("click",function(){
     var printHTML=body.innerHTML;
     if(typeof IS_MOBILE!=="undefined" && IS_MOBILE && typeof openPrintWindow==="function"){
@@ -16257,6 +16315,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.37 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.38 🔔</div>
 </body>
 </html>
