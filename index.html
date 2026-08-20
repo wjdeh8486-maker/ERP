@@ -948,7 +948,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.32</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.33</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -14888,6 +14888,20 @@ function insOpenQuality(){
 var insUnresolvedSrc=null;   // 전체 공유본 버퍼 {type:{rows,insp}} — null이면 이 기기 데이터
 function insUnrRows_(t, useSrc){ if(useSrc && insUnresolvedSrc) return (insUnresolvedSrc[t]&&insUnresolvedSrc[t].rows)||[]; return (insState[t]&&insState[t].rows)||[]; }
 function insUnrInsp_(t, useSrc){ if(useSrc && insUnresolvedSrc) return (insUnresolvedSrc[t]&&insUnresolvedSrc[t].insp)||""; return (insMetaByType[t]&&insMetaByType[t].inspector)||""; }
+function insClosedList_(useSrc){
+  var out=[], seen={};
+  ["incoming","shipping","measureS","measureL"].forEach(function(t){
+    insUnrRows_(t,useSrc).forEach(function(r){
+      var d=insRowDefect_(t,r); if(!d) return;
+      if(String(r.actDate||"").trim()==="") return;   // 조치완료된 것만
+      var draw=String(r.draw||"").trim(), sn=String(r.sn||"").trim(); if(!draw && !sn) return;
+      var sig=t+"|"+draw+"|"+sn+"|"+String(r.insDate||"")+"|"+d.types+"|"+String(r.actDate||"");
+      if(seen[sig]) return; seen[sig]=1;
+      out.push({ label:insTypeLabel(t), draw:draw, sn:sn, insDate:String(r.insDate||""), qty:d.qty, types:d.types, actDate:String(r.actDate||"").trim(), act:String(r.act||"").trim() });
+    });
+  });
+  return out;
+}
 /* ==================== 📋 부적합 종결 이력 (발생~조치완료 추적, 감사 증빙) ==================== */
 var __defectLog = [];   // [{label,draw,sn,insDate,types,qty,actDate,act,closedAt,days,__sig}]
 function defectLogSave_(){ try{ if(typeof idbSet==="function") idbSet("defectLog", __defectLog); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("defectLog", __defectLog); }catch(e){} }
@@ -14906,13 +14920,16 @@ function insDefectLogAdd_(t,r,closedAt){
 function defectHistEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 // 종결 이력 + 현재 미조치를 합쳐 목록 구성
 function defectHistRows_(){
-  var rows=[];
-  (__defectLog||[]).forEach(function(x){ rows.push({ status:"종결", label:x.label, draw:x.draw, sn:x.sn, insDate:x.insDate, types:x.types, qty:x.qty, actDate:x.actDate, act:x.act, days:x.days }); });
-  try{
-    var un=(typeof insUnresolvedList_==="function")?insUnresolvedList_(!!(typeof insUnresolvedSrc!=="undefined"&&insUnresolvedSrc)):[];
-    var today=(typeof insToday_==="function")?insToday_():"";
-    un.forEach(function(u){ rows.push({ status:"미조치", label:u.label, draw:u.draw, sn:u.sn, insDate:u.insDate, types:u.types, qty:u.qty, actDate:"", act:"", days:insDaysBetween_(u.insDate, today) }); });
-  }catch(e){}
+  var rows=[], seen={};
+  var useSrc=!!(typeof insUnresolvedSrc!=="undefined"&&insUnresolvedSrc);
+  var today=(typeof insToday_==="function")?insToday_():"";
+  var push=function(o){ var sig=(o.label||"")+"|"+(o.draw||"")+"|"+(o.sn||"")+"|"+(o.insDate||"")+"|"+(o.types||"")+"|"+(o.status==="종결"?(o.actDate||""):""); if(seen[sig]) return; seen[sig]=1; rows.push(o); };
+  // 현재 표에서 조치완료된 부적합 → 즉시 종결 집계(마감 안 해도 반영)
+  try{ insClosedList_(useSrc).forEach(function(c){ push({ status:"종결", label:c.label, draw:c.draw, sn:c.sn, insDate:c.insDate, types:c.types, qty:c.qty, actDate:c.actDate, act:c.act, days:insDaysBetween_(c.insDate,c.actDate) }); }); }catch(e){}
+  // 마감 시 기록된 종결 로그
+  (__defectLog||[]).forEach(function(x){ push({ status:"종결", label:x.label, draw:x.draw, sn:x.sn, insDate:x.insDate, types:x.types, qty:x.qty, actDate:x.actDate, act:x.act, days:x.days }); });
+  // 미조치(조치완료일 빈 부적합)
+  try{ var un=(typeof insUnresolvedList_==="function")?insUnresolvedList_(useSrc):[]; un.forEach(function(u){ push({ status:"미조치", label:u.label, draw:u.draw, sn:u.sn, insDate:u.insDate, types:u.types, qty:u.qty, actDate:"", act:"", days:insDaysBetween_(u.insDate, today) }); }); }catch(e){}
   rows.sort(function(a,b){ return String(b.insDate).localeCompare(String(a.insDate)); });
   return rows;
 }
@@ -16036,6 +16053,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.32 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.33 🔔</div>
 </body>
 </html>
