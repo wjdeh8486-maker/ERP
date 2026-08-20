@@ -948,7 +948,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.30</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.31</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -1802,6 +1802,7 @@
         <button type="button" id="insrep-cloudSaveBtn" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">☁ 공유저장</button>
         <button type="button" id="insrep-ncAlertBtn" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="현재 일보의 부적합을 전체 사용자에게 즉시 알립니다">🔔 부적합 알림</button>
         <button type="button" id="insrep-unrBtn" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="부적합이 있으나 조치완료일이 비어있는 항목 보기">⚠ 미조치 부적합</button>
+        <button type="button" id="insrep-histBtn" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="부적합 발생~조치완료 종결 이력(감사 증빙)">📋 종결 이력</button>
         <span style="display:inline-flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:#5A6478;font-weight:700;">📅 날짜별 보기</span>
           <select id="insrep-dayFilter" style="padding:7px 8px;border:1px solid #0B5CAB;border-radius:7px;font-size:12px;font-weight:700;color:#0B5CAB;background:#F4F8FD;cursor:pointer;"><option value="all">전체</option></select>
@@ -8022,6 +8023,7 @@ window.__qualityInited = true;
     setTimeout(()=>{ splash.style.display = "none"; }, 450);
     // 스플래시를 닫고 들어간 뒤, 아직 안 온 데이터가 있으면 상단 배너로 알린다.
     if(typeof updateLoadingBanner === "function") updateLoadingBanner();
+    setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("defectLog", function(sv){ if(defectLogApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("defectLog",sv); }catch(_){}} else { try{ if(typeof idbGet==="function") idbGet("defectLog").then(defectLogApply_).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 1400);
     setTimeout(function(){ try{ (window.__afterEnter||[]).forEach(function(fn,i){ setTimeout(fn, i*150); }); window.__afterEnter=[]; }catch(e){} }, 300);
     setTimeout(function(){ try{ if(typeof noticeBindBtn_==="function") noticeBindBtn_(); }catch(e){}
       try{ if(typeof qShareLoad_==="function"){ qShareLoad_("noticeData", function(sv){ if(noticeApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("noticeData",sv); }catch(_){}}  else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(noticeApply_).catch(function(){}); }catch(_){}} try{ noticeShowToday_(); }catch(e){} }); } else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(function(v){ noticeApply_(v); noticeShowToday_(); }).catch(function(){}); }catch(_){} } }catch(e){}
@@ -13590,6 +13592,7 @@ function insInit(){
   bind("insrep-importFile","change",function(){ if(this.files&&this.files[0]) insImportExcel(this.files[0]); this.value=""; });
   bind("insrep-ncAlertBtn","click",ncAlertSendCurrent);
   bind("insrep-unrBtn","click",insOpenUnresolved);
+  bind("insrep-histBtn","click",insOpenDefectHistory);
   bind("insrep-qualBtn","click",insOpenQuality);
   bind("insrep-ctqBtn","click",insOpenCTQ);
   bind("insrep-ncrBtn","click",insOpenNcrExport);
@@ -13995,6 +13998,7 @@ function insDailyClose(targetDate){
   order.forEach(function(t){
     var rows=(insState[t]&&insState[t].rows)||[];
     if(!rows.length) return;
+    rows.forEach(function(r){ if(insRowDefect_(t,r) && String(r.actDate||"").trim()!==""){ try{ insDefectLogAdd_(t,r,today); }catch(e){} } });
     insState[t].rows = rows.filter(function(r){ return insRowDefect_(t,r) && String(r.actDate||"").trim()===""; });
     if(insMetaByType[t]) insMetaByType[t].date=today;
   });
@@ -14863,6 +14867,87 @@ function insOpenQuality(){
 var insUnresolvedSrc=null;   // 전체 공유본 버퍼 {type:{rows,insp}} — null이면 이 기기 데이터
 function insUnrRows_(t, useSrc){ if(useSrc && insUnresolvedSrc) return (insUnresolvedSrc[t]&&insUnresolvedSrc[t].rows)||[]; return (insState[t]&&insState[t].rows)||[]; }
 function insUnrInsp_(t, useSrc){ if(useSrc && insUnresolvedSrc) return (insUnresolvedSrc[t]&&insUnresolvedSrc[t].insp)||""; return (insMetaByType[t]&&insMetaByType[t].inspector)||""; }
+/* ==================== 📋 부적합 종결 이력 (발생~조치완료 추적, 감사 증빙) ==================== */
+var __defectLog = [];   // [{label,draw,sn,insDate,types,qty,actDate,act,closedAt,days,__sig}]
+function defectLogSave_(){ try{ if(typeof idbSet==="function") idbSet("defectLog", __defectLog); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("defectLog", __defectLog); }catch(e){} }
+function defectLogApply_(v){ if(Array.isArray(v)){ __defectLog=v; return true; } return false; }
+function insDaysBetween_(a,b){ try{ var pa=String(a||"").slice(0,10), pb=String(b||"").slice(0,10); if(!pa||!pb) return ""; var da=new Date(pa), db=new Date(pb); if(isNaN(da)||isNaN(db)) return ""; return Math.round((db-da)/86400000); }catch(e){ return ""; } }
+function insDefectLogAdd_(t,r,closedAt){
+  var d=(typeof insRowDefect_==="function")?insRowDefect_(t,r):null; if(!d) return;
+  var rec={ label:(typeof insTypeLabel==="function"?insTypeLabel(t):t), draw:String(r.draw||"").trim(), sn:String(r.sn||"").trim(),
+    insDate:String(r.insDate||"").trim(), types:d.types, qty:d.qty, actDate:String(r.actDate||"").trim(),
+    act:String(r.act||"").trim(), closedAt:closedAt||"" };
+  rec.days=insDaysBetween_(rec.insDate, rec.actDate);
+  var sig=rec.label+"|"+rec.draw+"|"+rec.sn+"|"+rec.insDate+"|"+rec.types+"|"+rec.actDate;
+  if(__defectLog.some(function(x){ return (x.__sig||"")===sig; })) return;
+  rec.__sig=sig; __defectLog.push(rec); defectLogSave_();
+}
+function defectHistEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+// 종결 이력 + 현재 미조치를 합쳐 목록 구성
+function defectHistRows_(){
+  var rows=[];
+  (__defectLog||[]).forEach(function(x){ rows.push({ status:"종결", label:x.label, draw:x.draw, sn:x.sn, insDate:x.insDate, types:x.types, qty:x.qty, actDate:x.actDate, act:x.act, days:x.days }); });
+  try{
+    var un=(typeof insUnresolvedList_==="function")?insUnresolvedList_(!!(typeof insUnresolvedSrc!=="undefined"&&insUnresolvedSrc)):[];
+    var today=(typeof insToday_==="function")?insToday_():"";
+    un.forEach(function(u){ rows.push({ status:"미조치", label:u.label, draw:u.draw, sn:u.sn, insDate:u.insDate, types:u.types, qty:u.qty, actDate:"", act:"", days:insDaysBetween_(u.insDate, today) }); });
+  }catch(e){}
+  rows.sort(function(a,b){ return String(b.insDate).localeCompare(String(a.insDate)); });
+  return rows;
+}
+function insOpenDefectHistory(){
+  var rows=defectHistRows_();
+  var closed=rows.filter(function(r){return r.status==="종결";}).length;
+  var open=rows.length-closed;
+  var rate=rows.length?Math.round(closed/rows.length*100):0;
+  var body=rows.length ? rows.map(function(r){
+    var stColor=r.status==="종결"?"#1E7A46":"#C0392B";
+    return '<tr>'
+      +'<td style="text-align:center;color:'+stColor+';font-weight:700;">'+r.status+'</td>'
+      +'<td style="text-align:center;">'+defectHistEsc_(r.insDate)+'</td>'
+      +'<td>'+defectHistEsc_(r.label)+'</td>'
+      +'<td>'+defectHistEsc_(r.draw)+'</td>'
+      +'<td>'+defectHistEsc_(r.sn)+'</td>'
+      +'<td>'+defectHistEsc_(r.types)+'</td>'
+      +'<td style="text-align:center;">'+defectHistEsc_(r.actDate||"-")+'</td>'
+      +'<td style="text-align:center;">'+(r.days===""?"-":defectHistEsc_(r.days))+'</td>'
+      +'<td>'+defectHistEsc_(r.act||"")+'</td></tr>';
+  }).join("") : '<tr><td colspan="9" style="text-align:center;color:#B9C2D6;padding:16px;">부적합 이력이 없습니다.</td></tr>';
+  var ov=document.createElement("div"); ov.id="dhist-ov";
+  ov.style.cssText="position:fixed;inset:0;z-index:99991;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:14px;";
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:960px;max-height:92vh;overflow:auto;border-radius:14px;box-shadow:0 16px 50px rgba(0,0,0,0.35);">'
+    +'<div style="background:#1F2A44;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;">'
+    +  '<b style="font-size:16px;">📋 부적합 종결 이력 (발생 → 조치 → 종결)</b>'
+    +  '<button id="dhist-x" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button></div>'
+    +'<div style="padding:12px 16px;">'
+    +  '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">'
+    +    '<div style="flex:1;min-width:120px;background:#EEF6EF;border-radius:9px;padding:10px;text-align:center;"><div style="font-size:12px;color:#5A6478;">종결</div><div style="font-size:20px;font-weight:800;color:#1E7A46;">'+closed+'</div></div>'
+    +    '<div style="flex:1;min-width:120px;background:#FBEDEC;border-radius:9px;padding:10px;text-align:center;"><div style="font-size:12px;color:#5A6478;">미조치</div><div style="font-size:20px;font-weight:800;color:#C0392B;">'+open+'</div></div>'
+    +    '<div style="flex:1;min-width:120px;background:#EEF2FA;border-radius:9px;padding:10px;text-align:center;"><div style="font-size:12px;color:#5A6478;">조치 완료율</div><div style="font-size:20px;font-weight:800;color:#0B5CAB;">'+rate+'%</div></div>'
+    +  '</div>'
+    +  '<div style="text-align:right;margin-bottom:8px;"><button id="dhist-excel" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button></div>'
+    +  '<div style="overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
+    +    '<thead><tr style="background:#F0F4F8;">'
+    +      '<th style="padding:7px;border:1px solid #E1E8F0;">상태</th><th style="padding:7px;border:1px solid #E1E8F0;">발생일</th><th style="padding:7px;border:1px solid #E1E8F0;">유형</th><th style="padding:7px;border:1px solid #E1E8F0;">도번</th><th style="padding:7px;border:1px solid #E1E8F0;">S/N</th><th style="padding:7px;border:1px solid #E1E8F0;">부적합</th><th style="padding:7px;border:1px solid #E1E8F0;">조치완료일</th><th style="padding:7px;border:1px solid #E1E8F0;">소요일</th><th style="padding:7px;border:1px solid #E1E8F0;">조치내용</th>'
+    +    '</tr></thead><tbody>'+body+'</tbody></table></div>'
+    +  '<div style="font-size:11px;color:#8A93A6;margin-top:8px;">※ 종결 이력은 마감 시 조치완료된 부적합이 자동 기록됩니다. 미조치는 현재 진행 중인 항목입니다.</div>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  var close=function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+  document.getElementById("dhist-x").addEventListener("click",close);
+  ov.addEventListener("click",function(e){ if(e.target===ov) close(); });
+  var ex=document.getElementById("dhist-excel"); if(ex) ex.addEventListener("click",function(){ defectHistExcel_(rows); });
+}
+function defectHistExcel_(rows){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다."); return; }
+  var aoa=[["상태","발생일","검사유형","도번","S/N","부적합유형","수량","조치완료일","소요일","조치내용"]];
+  rows.forEach(function(r){ aoa.push([r.status,r.insDate,r.label,r.draw,r.sn,r.types,r.qty,r.actDate,r.days,r.act]); });
+  var ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=[{wch:7},{wch:12},{wch:14},{wch:14},{wch:12},{wch:20},{wch:6},{wch:12},{wch:7},{wch:30}];
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"부적합종결이력");
+  var d=new Date(), tag=d.getFullYear()+("0"+(d.getMonth()+1)).slice(-2)+("0"+d.getDate()).slice(-2);
+  try{ if(typeof insWriteXlsx==="function"){ insWriteXlsx(wb,"부적합_종결이력_"+tag+".xlsx"); return; } }catch(e){}
+  XLSX.writeFile(wb,"부적합_종결이력_"+tag+".xlsx");
+}
 function insUnresolvedList_(useSrc){
   var out=[], seen={};
   ["incoming","shipping","measureS","measureL"].forEach(function(t){
@@ -15930,6 +16015,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.30 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.31 🔔</div>
 </body>
 </html>
