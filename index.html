@@ -948,7 +948,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.36</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.37</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -7116,6 +7116,59 @@ function renderRecurPanel(){
     </div>
   `;
 }
+/* ==================== ✍ 태블릿 즉석 서명 (품질분석 보고서 결재) ==================== */
+function sigPadOpen_(title, onDone){
+  var ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;padding:16px;";
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:16px;width:100%;max-width:480px;box-shadow:0 16px 50px rgba(0,0,0,0.4);">'
+    +'<div style="font-weight:800;color:#1F2A44;margin-bottom:8px;font-size:16px;">✍ '+(title||"서명")+'</div>'
+    +'<canvas id="sigpad-cv" width="440" height="190" style="width:100%;height:190px;border:1px dashed #9AA7BC;border-radius:8px;touch-action:none;background:#fff;display:block;"></canvas>'
+    +'<div style="display:flex;gap:8px;margin-top:12px;">'
+    +'<button id="sigpad-clear" style="flex:1;padding:12px;border:1px solid #C9D3E0;background:#F0F4F8;border-radius:8px;font-weight:700;cursor:pointer;">지우기</button>'
+    +'<button id="sigpad-cancel" style="flex:1;padding:12px;border:1px solid #C9D3E0;background:#fff;border-radius:8px;font-weight:700;cursor:pointer;">취소</button>'
+    +'<button id="sigpad-ok" style="flex:1.5;padding:12px;border:none;background:#0B5CAB;color:#fff;border-radius:8px;font-weight:800;cursor:pointer;">서명 완료</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  var cv=ov.querySelector("#sigpad-cv"), ctx=cv.getContext("2d");
+  ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle="#111827";
+  var drawing=false, last=null, dirty=false;
+  var pos=function(e){ var r=cv.getBoundingClientRect(); var t=(e.touches&&e.touches[0])?e.touches[0]:e; var sx=cv.width/r.width, sy=cv.height/r.height; return {x:(t.clientX-r.left)*sx, y:(t.clientY-r.top)*sy}; };
+  var start=function(e){ e.preventDefault(); drawing=true; last=pos(e); };
+  var move=function(e){ if(!drawing) return; e.preventDefault(); var p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; dirty=true; };
+  var end=function(){ drawing=false; };
+  cv.addEventListener("mousedown",start); cv.addEventListener("mousemove",move); window.addEventListener("mouseup",end);
+  cv.addEventListener("touchstart",start,{passive:false}); cv.addEventListener("touchmove",move,{passive:false}); cv.addEventListener("touchend",end);
+  var close=function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); window.removeEventListener("mouseup",end); };
+  ov.querySelector("#sigpad-clear").addEventListener("click",function(){ ctx.clearRect(0,0,cv.width,cv.height); dirty=false; });
+  ov.querySelector("#sigpad-cancel").addEventListener("click",close);
+  ov.querySelector("#sigpad-ok").addEventListener("click",function(){ var url=dirty?cv.toDataURL("image/png"):""; close(); if(typeof onDone==="function") onDone(url); });
+}
+function qReportPrintCSS_(){ return '*{box-sizing:border-box;} body{font-family:"맑은 고딕",sans-serif;} .q-report-page{page-break-after:always;} .q-report-page:last-child{page-break-after:auto;} table{width:100%;border-collapse:collapse;font-size:9px;} th,td{border:1px solid #999;padding:2px 3px;text-align:center;line-height:1.25;} .q-page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;} .q-approval-table{width:auto;flex-shrink:0;} .q-approval-table td{height:42px;min-width:74px;} .q-approval-table .q-approval-label{writing-mode:vertical-rl;} h2{font-size:13px;margin:0 0 4px;} .qsig-cell img{max-height:40px;max-width:90px;}'; }
+function qOpenSignPreview_(html){
+  var ov=document.createElement("div"); ov.id="qsign-ov";
+  ov.style.cssText="position:fixed;inset:0;z-index:99990;background:#F0F2F5;display:flex;flex-direction:column;";
+  ov.innerHTML='<div style="background:#1F2A44;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:8px;flex-wrap:wrap;">'
+    +'<b style="font-size:15px;">✍ 품질분석 보고서 — 결재란을 터치하여 서명</b>'
+    +'<div style="display:flex;gap:8px;"><button id="qsign-print" style="background:#fff;color:#1F2A44;border:none;border-radius:6px;padding:9px 18px;font-weight:800;cursor:pointer;">🖨 인쇄</button>'
+    +'<button id="qsign-close" style="background:transparent;color:#fff;border:1px solid #fff;border-radius:6px;padding:9px 14px;font-weight:700;cursor:pointer;">닫기</button></div></div>'
+    +'<div id="qsign-body" style="flex:1;overflow:auto;padding:16px;background:#fff;color:#111;">'+html+'</div>';
+  document.body.appendChild(ov);
+  var body=ov.querySelector("#qsign-body");
+  body.querySelectorAll(".qsig-cell").forEach(function(td){
+    td.style.cursor="pointer"; td.style.minWidth="74px"; td.style.height="42px";
+    if(!td.querySelector("img")) td.innerHTML='<span style="color:#B9C2D6;font-size:10px;">터치하여 서명</span>';
+    td.addEventListener("click",function(){ var role=td.getAttribute("data-role")||"서명"; sigPadOpen_(role+" 서명", function(url){ if(url){ td.innerHTML='<img src="'+url+'" style="max-height:40px;max-width:90px;">'; td.setAttribute("data-signed","1"); } }); });
+  });
+  ov.querySelector("#qsign-close").addEventListener("click",function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); });
+  ov.querySelector("#qsign-print").addEventListener("click",function(){
+    var printHTML=body.innerHTML;
+    if(typeof IS_MOBILE!=="undefined" && IS_MOBILE && typeof openPrintWindow==="function"){
+      openPrintWindow(printHTML, qReportPrintCSS_(), "품질분석 보고서");
+    } else {
+      var pa=document.getElementById("print-area"); if(pa){ pa.innerHTML=printHTML; window.print(); }
+    }
+  });
+}
 function printQualityReport(){
   renderQualityAll();
   const order = ["process","incoming","shipping","customer","capa","recur"];
@@ -7128,7 +7181,7 @@ function printQualityReport(){
           <th>작성</th><th>검토</th><th>승인</th>
         </tr>
         <tr>
-          <td></td><td></td><td></td>
+          <td class="qsig-cell" data-role="작성"></td><td class="qsig-cell" data-role="검토"></td><td class="qsig-cell" data-role="승인"></td>
         </tr>
       </tbody>
     </table>
@@ -7146,8 +7199,7 @@ function printQualityReport(){
       </div>
     `;
   }).join("");
-  document.getElementById("print-area").innerHTML = html;
-  window.print();
+  qOpenSignPreview_(html);
 }
 document.getElementById("quality-printBtn").addEventListener("click", ()=>runBusy(printQualityReport, "인쇄 준비 중..."));
 document.getElementById("quality-excelBtn").addEventListener("click", ()=>runBusy(()=>{
@@ -16205,6 +16257,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.36 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.37 🔔</div>
 </body>
 </html>
