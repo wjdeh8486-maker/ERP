@@ -948,7 +948,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.34</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.36</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -1026,6 +1026,7 @@
     <div class="nav-group" id="navgroup-salesgrp">
       <div class="nav-item nav-sub" data-view="vendor"><span class="dot"></span>거래처 관리</div>
     </div></div>
+    <div class="nav-item" id="dataCheckNavBtn" title="데이터 이상 점검 (관리자용)"><span class="dot"></span>🔍 데이터 점검</div>
     <div class="nav-item" id="helpNavBtn" title="사용법 안내"><span class="dot"></span>❓ 사용법</div>
   </div>
   <button type="button" id="sideNavToggle" class="side-nav-toggle" title="메뉴 접기/펴기">◀</button>
@@ -6580,6 +6581,156 @@ function noticeOpenManager_(){
   });
 }
 function noticeBindBtn_(){ var b=document.getElementById("notice-btn"); if(b && !b.__bound){ b.__bound=true; b.addEventListener("click", noticeOpenManager_); } }
+/* ==================== 🔍 데이터 점검 (관리자용 이상 검출) ==================== */
+function dchkEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function dchkInt_(v){ try{ return (typeof insMInt_==="function")?insMInt_(v):(parseInt(v,10)||0); }catch(e){ return parseInt(v,10)||0; } }
+function dchkYear_(s){ var m=String(s||"").match(/(\d{4})/); return m?parseInt(m[1],10):0; }
+// 전체 이상 스캔 → [{group, sev, rows:[{who, msg}]}]
+function qmsDataScan_(){
+  var groups=[], today=(typeof insToday_==="function")?insToday_():"";
+  var curYear=new Date().getFullYear();
+
+  // ① 검사일보 오입력 (현재 작업중 데이터)
+  var insBad=[];
+  try{
+    var seen={};
+    ["incoming","shipping","measureS","measureL"].forEach(function(t){
+      var rows=(typeof insState!=="undefined" && insState[t] && insState[t].rows)?insState[t].rows:[];
+      var lab=(typeof insTypeLabel==="function")?insTypeLabel(t):t;
+      rows.forEach(function(r){
+        var draw=String(r.draw||"").trim(), sn=String(r.sn||"").trim(), dt=String(r.insDate||"").trim();
+        var cnt=dchkInt_(r.insCnt), good=dchkInt_(r.goodCnt);
+        var d=(typeof insRowDefect_==="function")?insRowDefect_(t,r):null; var bad=d?d.qty:0;
+        var hasAny=draw||sn||cnt||good||bad;
+        if(!hasAny) return;
+        var who=lab+" · "+(draw||"(도번없음)")+" "+(sn?("/"+sn):"")+(dt?(" · "+dt):"");
+        if(cnt>0 && (good+bad)!==cnt) insBad.push({who:who, msg:"합계 불일치: 검사수 "+cnt+" ≠ 양품 "+good+" + 부적합 "+bad});
+        if(good>cnt && cnt>0) insBad.push({who:who, msg:"양품수("+good+")가 검사수("+cnt+")보다 많음"});
+        if(cnt>0 && !draw) insBad.push({who:who, msg:"도번 누락"});
+        if(dt){ var y=dchkYear_(dt); if(y && (y<curYear-1 || y>curYear)) insBad.push({who:who, msg:"검사일 연도 이상: "+dt}); if(today && dt>today) insBad.push({who:who, msg:"검사일이 미래: "+dt}); }
+        if(cnt>0){ var sig=t+"|"+draw+"|"+sn+"|"+dt; if(sn && seen[sig]) insBad.push({who:who, msg:"중복 입력(동일 도번+S/N+검사일)"}); seen[sig]=1; }
+      });
+    });
+  }catch(e){}
+  if(insBad.length) groups.push({group:"검사일보 오입력", sev:"high", rows:insBad});
+
+  // ② 미조치 지연 + 날짜 역전
+  var delay=[];
+  try{
+    var useSrc=!!(typeof insUnresolvedSrc!=="undefined"&&insUnresolvedSrc);
+    var un=(typeof insUnresolvedList_==="function")?insUnresolvedList_(useSrc):[];
+    un.forEach(function(u){ var dd=(typeof insDaysBetween_==="function")?insDaysBetween_(u.insDate,today):""; if(dd!==""&&dd>=7) delay.push({who:u.label+" · "+u.draw+(u.sn?("/"+u.sn):"")+" · "+u.insDate, msg:"미조치 "+dd+"일 경과 ("+u.types+")"}); });
+    if(typeof insClosedList_==="function"){ insClosedList_(useSrc).forEach(function(c){ var dd=(typeof insDaysBetween_==="function")?insDaysBetween_(c.insDate,c.actDate):""; if(dd!==""&&dd<0) delay.push({who:c.label+" · "+c.draw+(c.sn?("/"+c.sn):""), msg:"조치완료일("+c.actDate+")이 발생일("+c.insDate+")보다 빠름"}); }); }
+  }catch(e){}
+  if(delay.length) groups.push({group:"미조치 지연 / 날짜 역전", sev:"high", rows:delay});
+
+  // ③ 계측기 검교정 만료/임박
+  var cal=[];
+  try{
+    if(typeof instrData!=="undefined" && Array.isArray(instrData)){
+      instrData.forEach(function(r){ if(!r || (typeof trashIsDeleted==="function"&&trashIsDeleted(r))) return;
+        if(String(r.status||"")==="폐기") return;
+        if(!r.lastCal){ cal.push({who:(r.no||"")+" "+(r.name||""), msg:"최근 교정일 없음"}); return; }
+        var mo=(typeof qmsParseMonths_==="function")?qmsParseMonths_(r.cycle):0; if(!mo) return;
+        var due=(typeof qmsAddMonths_==="function")?qmsAddMonths_(r.lastCal,mo):null; var dl=(typeof qmsDaysLeft_==="function")?qmsDaysLeft_(due):null;
+        if(dl!==null && dl<0) cal.push({who:(r.no||"")+" "+(r.name||""), msg:"검교정 만료 ("+Math.abs(dl)+"일 초과, 기한 "+due+")"});
+        else if(dl!==null && dl<=30) cal.push({who:(r.no||"")+" "+(r.name||""), msg:"검교정 임박 ("+dl+"일 남음, 기한 "+due+")"});
+      });
+    }
+  }catch(e){}
+  if(cal.length) groups.push({group:"계측기 검교정", sev:"mid", rows:cal});
+
+  // ④ 교육/자격 재인증 만료/임박
+  var cert=[];
+  try{
+    if(typeof __eduData!=="undefined" && __eduData && __eduData.certs){
+      __eduData.certs.forEach(function(c){ if(!c || !c.date) return; var per=parseInt(c.period,10)||0; if(!per) return;
+        var due=(typeof qmsAddMonths_==="function")?qmsAddMonths_(c.date, per*12):null; var dl=(typeof qmsDaysLeft_==="function")?qmsDaysLeft_(due):null;
+        if(dl!==null && dl<0) cert.push({who:(c.target||"")+" · "+(c.equip||""), msg:"재인증 만료 ("+Math.abs(dl)+"일 초과, 기한 "+due+")"});
+        else if(dl!==null && dl<=30) cert.push({who:(c.target||"")+" · "+(c.equip||""), msg:"재인증 임박 ("+dl+"일 남음, 기한 "+due+")"});
+      });
+    }
+  }catch(e){}
+  if(cert.length) groups.push({group:"교육/자격 재인증", sev:"mid", rows:cert});
+
+  // ⑤ 변경점 미완료 / 혼입주의
+  var chg=[];
+  try{
+    if(typeof __chgData!=="undefined" && Array.isArray(__chgData)){
+      __chgData.forEach(function(c){ if(!c) return; var nm=(c.part||"")+(c.customer?(" · "+c.customer):"");
+        if(!nm.trim()) return;
+        var done=String(c.doneDate||"").trim();
+        if(!done) chg.push({who:nm, msg:"변경점 미완료(완료일 없음)"});
+        if(c.type==="고객REV" && (!c.stockAction || c.stockAction==="구재고 소진" || c.stockAction==="선별 사용") && !done) chg.push({who:nm, msg:"고객REV 구재고 혼입주의(미완료)"});
+      });
+    }
+  }catch(e){}
+  if(chg.length) groups.push({group:"변경점 미완료", sev:"mid", rows:chg});
+
+  // ⑥ 문서 Master 이상 (오래된 개정 / 경로 없음 / 개정중)
+  var doc=[];
+  try{
+    if(typeof docmasterData!=="undefined" && Array.isArray(docmasterData)){
+      docmasterData.forEach(function(r){ if(!r || (typeof trashIsDeleted==="function"&&trashIsDeleted(r))) return;
+        if(String(r.status||"")==="폐지") return;
+        var nm=(r.no?(r.no+" "):"")+(r.name||"");
+        if(!String(r.path||"").trim()) doc.push({who:nm, msg:"사내 경로 없음"});
+        if(String(r.status||"")==="개정중") doc.push({who:nm, msg:"상태가 '개정중'으로 방치"});
+        var y=dchkYear_(r.revDate); if(y && (curYear-y)>=3) doc.push({who:nm, msg:"개정일 오래됨("+r.revDate+", "+(curYear-y)+"년 경과) — 현행화 검토"});
+      });
+    }
+  }catch(e){}
+  if(doc.length) groups.push({group:"문서 Master", sev:"low", rows:doc});
+
+  return groups;
+}
+function qmsOpenDataCheck_(){
+  var groups=qmsDataScan_();
+  var total=groups.reduce(function(a,g){return a+g.rows.length;},0);
+  var sevColor={high:"#C0392B",mid:"#B45309",low:"#5A6478"};
+  var body = groups.length ? groups.map(function(g){
+    var col=sevColor[g.sev]||"#5A6478";
+    return '<div style="margin-bottom:14px;border:1px solid #E1E8F0;border-radius:10px;overflow:hidden;">'
+      +'<div style="background:'+col+';color:#fff;padding:8px 12px;font-weight:700;font-size:13px;">'+dchkEsc_(g.group)+' <span style="opacity:0.85;">('+g.rows.length+'건)</span></div>'
+      +'<div style="padding:4px 0;">'+g.rows.map(function(r){
+        return '<div style="display:flex;gap:8px;padding:6px 12px;border-bottom:1px solid #F0F4F8;font-size:12.5px;">'
+          +'<div style="min-width:200px;max-width:260px;color:#1F2A44;font-weight:600;word-break:break-word;">'+dchkEsc_(r.who)+'</div>'
+          +'<div style="flex:1;color:#5A6478;">'+dchkEsc_(r.msg)+'</div></div>';
+      }).join("")+'</div></div>';
+  }).join("") : '<div style="text-align:center;color:#1E7A46;padding:30px;font-size:15px;font-weight:700;">✅ 검출된 이상이 없습니다. 데이터가 깨끗합니다.</div>';
+  var ov=document.createElement("div"); ov.id="dchk-ov";
+  ov.style.cssText="position:fixed;inset:0;z-index:99991;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:14px;";
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:820px;max-height:92vh;overflow:auto;border-radius:14px;box-shadow:0 16px 50px rgba(0,0,0,0.35);">'
+    +'<div style="background:#1F2A44;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;">'
+    +  '<b style="font-size:16px;">🔍 데이터 점검 <span style="opacity:0.8;font-weight:400;font-size:13px;">(관리자용)</span></b>'
+    +  '<button id="dchk-x" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button></div>'
+    +'<div style="padding:14px 16px;">'
+    +  '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">'
+    +    '<div style="font-size:14px;font-weight:700;color:'+(total?"#C0392B":"#1E7A46")+';">'+(total?("⚠ 총 "+total+"건의 점검 항목"):"✅ 이상 없음")+'</div>'
+    +    '<div style="display:flex;gap:8px;"><button id="dchk-refresh" style="background:#EEF3FA;border:1px solid #C9D3E0;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;">🔄 다시 점검</button>'
+    +    (total?'<button id="dchk-excel" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;">📥 엑셀</button>':'')+'</div>'
+    +  '</div>'+body
+    +  '<div style="font-size:11px;color:#8A93A6;margin-top:10px;">※ 검사일보 오입력은 현재 작업중(마감 전) 데이터 기준입니다. 계측기·교육·변경점·문서는 공유 데이터 기준입니다.</div>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  var close=function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+  document.getElementById("dchk-x").addEventListener("click",close);
+  ov.addEventListener("click",function(e){ if(e.target===ov) close(); });
+  var rf=document.getElementById("dchk-refresh"); if(rf) rf.addEventListener("click",function(){ close(); qmsOpenDataCheck_(); });
+  var ex=document.getElementById("dchk-excel"); if(ex) ex.addEventListener("click",function(){ qmsDataCheckExcel_(groups); });
+}
+function qmsDataCheckExcel_(groups){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
+  var aoa=[["구분","대상","점검 내용"]];
+  groups.forEach(function(g){ g.rows.forEach(function(r){ aoa.push([g.group, r.who, r.msg]); }); });
+  if(aoa.length===1) aoa.push(["-","이상 없음",""]);
+  var ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=[{wch:20},{wch:34},{wch:50}];
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"데이터점검");
+  var d=new Date(), tag=d.getFullYear()+("0"+(d.getMonth()+1)).slice(-2)+("0"+d.getDate()).slice(-2);
+  try{ if(typeof insWriteXlsx==="function"){ insWriteXlsx(wb,"데이터점검_"+tag+".xlsx"); return; } }catch(e){}
+  XLSX.writeFile(wb,"데이터점검_"+tag+".xlsx");
+}
+function dchkBindNav_(){ var b=document.getElementById("dataCheckNavBtn"); if(b && !b.__bound){ b.__bound=true; b.addEventListener("click", qmsOpenDataCheck_); } }
 function renderCustomerNCPanel(){
   const panel = document.getElementById("qpanel-customer");
   if(!panel) return;
@@ -8202,7 +8353,10 @@ async function autoRefreshAll(){
       if(id === "view-summary" && typeof renderSummaryView === "function") renderSummaryView();
       else if(id === "view-weekly" && typeof renderWeeklyView === "function") renderWeeklyView();
       else if(id === "view-waitinsp" && typeof renderWaitInspTab === "function") renderWaitInspTab();
-      else if(id === "view-main" && typeof mainInitialRender === "function" && typeof mainData !== "undefined") mainInitialRender(mainData);
+      else if(id === "view-main" && typeof mainInitialRender === "function" && typeof mainData !== "undefined"){
+        mainInitialRender(mainData);
+        try{ var __sv=(document.getElementById("main-searchInput")||{}).value; if(__sv && __sv.trim() && typeof mainApplySearch==="function") mainApplySearch(); }catch(_){}
+      }
     }catch(_){ }
   }catch(_){ }
   __autoRefreshRunning = false;
@@ -10454,6 +10608,7 @@ document.addEventListener("DOMContentLoaded", () => {
   //    여기서 중복 등록하면 핸들러가 두 번 실행되고, 초기 화면이 두 개 겹쳐 열린다.
 
   // 도움말
+  try{ if(typeof dchkBindNav_==="function") dchkBindNav_(); }catch(e){}
   const helpBtn = document.getElementById("helpNavBtn");
   const helpModal = document.getElementById("help-modal");
   if(helpBtn && helpModal){
@@ -16050,6 +16205,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.34 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.36 🔔</div>
 </body>
 </html>
