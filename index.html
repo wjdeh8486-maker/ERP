@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.40</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.41</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -7145,8 +7145,11 @@ function sigPadOpen_(title, onDone){
   ov.querySelector("#sigpad-cancel").addEventListener("click",close);
   ov.querySelector("#sigpad-ok").addEventListener("click",function(){ var url=dirty?cv.toDataURL("image/png"):""; close(); if(typeof onDone==="function") onDone(url); });
 }
-function sigStoreGet_(){ try{ return JSON.parse(localStorage.getItem("ntlSigStore")||"{}")||{}; }catch(e){ return {}; } }
-function sigStoreSet_(o){ try{ localStorage.setItem("ntlSigStore", JSON.stringify(o||{})); }catch(e){ alert("서명 저장 공간이 부족합니다(이미지가 너무 큼)."); } }
+var __sigStore = null;
+function sigStoreGet_(){ if(__sigStore) return __sigStore; try{ __sigStore=JSON.parse(localStorage.getItem("ntlSigStore")||"{}")||{}; }catch(e){ __sigStore={}; } return __sigStore; }
+function sigStoreSet_(o){ __sigStore=o||{}; try{ localStorage.setItem("ntlSigStore", JSON.stringify(__sigStore)); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("sigStore", __sigStore); }catch(e){} }
+function sigStoreApply_(v){ if(v && typeof v==="object" && !Array.isArray(v)){ __sigStore=v; try{ localStorage.setItem("ntlSigStore", JSON.stringify(v)); }catch(e){} return true; } return false; }
+function sigCompress_(dataURL, cb){ try{ var img=new Image(); img.onload=function(){ var mw=180; var sc=Math.min(1, mw/(img.width||mw)); var w=Math.max(1,Math.round((img.width||mw)*sc)), h=Math.max(1,Math.round((img.height||60)*sc)); var c=document.createElement("canvas"); c.width=w; c.height=h; var x=c.getContext("2d"); x.drawImage(img,0,0,w,h); cb(c.toDataURL("image/png")); }; img.onerror=function(){ cb(dataURL); }; img.src=dataURL; }catch(e){ cb(dataURL); } }
 function sigEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 // 서명 관리(등록/삭제) — 파일 업로드 또는 직접 그리기
 function sigManagerOpen_(afterChange){
@@ -7180,7 +7183,8 @@ function sigManagerOpen_(afterChange){
   bindDel();
   ov.querySelector("#sigmgr-save").addEventListener("click",function(){ var nm=(ov.querySelector("#sigmgr-name")||{}).value||""; nm=nm.trim(); if(!nm){ alert("이름을 입력하세요."); return; }
     var url=fileURL || (dirty?cv.toDataURL("image/png"):""); if(!url){ alert("이미지를 업로드하거나 직접 그려주세요."); return; }
-    var st=sigStoreGet_(); st[nm]=url; sigStoreSet_(st); fileURL=""; ctx.clearRect(0,0,cv.width,cv.height); dirty=false; var ni=ov.querySelector("#sigmgr-name"); if(ni) ni.value=""; var fi=ov.querySelector("#sigmgr-file"); if(fi) fi.value=""; refresh(); });
+    sigCompress_(url, function(curl){ var st=sigStoreGet_(); st[nm]=curl; sigStoreSet_(st); refresh(); });
+    fileURL=""; ctx.clearRect(0,0,cv.width,cv.height); dirty=false; var ni=ov.querySelector("#sigmgr-name"); if(ni) ni.value=""; var fi=ov.querySelector("#sigmgr-file"); if(fi) fi.value=""; });
 }
 // 결재 셀 터치 시: 직접 서명 / 등록 서명 선택
 function sigChooser_(role, onPick){
@@ -8286,6 +8290,7 @@ window.__qualityInited = true;
     // 스플래시를 닫고 들어간 뒤, 아직 안 온 데이터가 있으면 상단 배너로 알린다.
     if(typeof updateLoadingBanner === "function") updateLoadingBanner();
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("defectLog", function(sv){ if(defectLogApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("defectLog",sv); }catch(_){}} else { try{ if(typeof idbGet==="function") idbGet("defectLog").then(defectLogApply_).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 1400);
+    setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("sigStore", function(sv){ if(typeof sigStoreApply_==="function") sigStoreApply_(sv); }); } }catch(e){} }, 1600);
     setTimeout(function(){ try{ (window.__afterEnter||[]).forEach(function(fn,i){ setTimeout(fn, i*150); }); window.__afterEnter=[]; }catch(e){} }, 300);
     setTimeout(function(){ try{ if(typeof noticeBindBtn_==="function") noticeBindBtn_(); }catch(e){}
       try{ if(typeof qShareLoad_==="function"){ qShareLoad_("noticeData", function(sv){ if(noticeApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("noticeData",sv); }catch(_){}}  else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(noticeApply_).catch(function(){}); }catch(_){}} try{ noticeShowToday_(); }catch(e){} }); } else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(function(v){ noticeApply_(v); noticeShowToday_(); }).catch(function(){}); }catch(_){} } }catch(e){}
@@ -16317,6 +16322,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.40 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.41 🔔</div>
 </body>
 </html>
