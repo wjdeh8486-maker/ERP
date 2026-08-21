@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.53</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.54</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -7153,10 +7153,10 @@ function sigPadOpen_(title, onDone){
   ov.querySelector("#sigpad-cancel").addEventListener("click",close);
   ov.querySelector("#sigpad-ok").addEventListener("click",function(){ var url=dirty?cv.toDataURL("image/png"):""; close(); if(typeof onDone==="function") onDone(url); });
 }
-var __sigStore = null;
-function sigStoreGet_(){ if(__sigStore) return __sigStore; try{ __sigStore=JSON.parse(localStorage.getItem("ntlSigStore")||"{}")||{}; }catch(e){ __sigStore={}; } return __sigStore; }
-function sigStoreSet_(o){ __sigStore=o||{}; try{ localStorage.setItem("ntlSigStore", JSON.stringify(__sigStore)); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("sigStore", __sigStore); }catch(e){} }
-function sigStoreApply_(v){ if(v && typeof v==="object" && !Array.isArray(v)){ __sigStore=v; try{ localStorage.setItem("ntlSigStore", JSON.stringify(v)); }catch(e){} return true; } return false; }
+var __sigStore = null, __sigStoreLoaded=false;
+function sigStoreGet_(){ if(__sigStore) return __sigStore; __sigStore={}; try{ if(typeof idbGet==="function") idbGet("sigStore").then(function(v){ if(v&&typeof v==="object"&&!__sigStoreLoaded){ __sigStore=v; __sigStoreLoaded=true; } }).catch(function(){}); }catch(e){} return __sigStore; }
+function sigStoreSet_(o){ __sigStore=o||{}; __sigStoreLoaded=true; try{ if(typeof idbSet==="function") idbSet("sigStore", __sigStore); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("sigStore", __sigStore); }catch(e){} try{ localStorage.removeItem("ntlSigStore"); }catch(e){} }
+function sigStoreApply_(v){ if(v && typeof v==="object" && !Array.isArray(v)){ __sigStore=v; __sigStoreLoaded=true; try{ if(typeof idbSet==="function") idbSet("sigStore", v); }catch(e){} try{ localStorage.removeItem("ntlSigStore"); }catch(e){} return true; } return false; }
 function sigCompress_(dataURL, cb){ try{ var img=new Image(); img.onload=function(){ var mw=180; var sc=Math.min(1, mw/(img.width||mw)); var w=Math.max(1,Math.round((img.width||mw)*sc)), h=Math.max(1,Math.round((img.height||60)*sc)); var c=document.createElement("canvas"); c.width=w; c.height=h; var x=c.getContext("2d"); x.drawImage(img,0,0,w,h); cb(c.toDataURL("image/png")); }; img.onerror=function(){ cb(dataURL); }; img.src=dataURL; }catch(e){ cb(dataURL); } }
 function sigEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 // 서명 관리(등록/삭제) — 파일 업로드 또는 직접 그리기
@@ -8423,15 +8423,20 @@ window.__qualityInited = true;
     // 스플래시를 닫고 들어간 뒤, 아직 안 온 데이터가 있으면 상단 배너로 알린다.
     if(typeof updateLoadingBanner === "function") updateLoadingBanner();
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("defectLog", function(sv){ if(defectLogApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("defectLog",sv); }catch(_){}} else { try{ if(typeof idbGet==="function") idbGet("defectLog").then(defectLogApply_).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 1400);
-    setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("sigStore", function(sv){ if(typeof sigStoreApply_==="function") sigStoreApply_(sv); }); } }catch(e){} }, 1600);
+    setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("sigStore", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof sigStoreApply_==="function") sigStoreApply_(sv); } else { try{ if(typeof idbGet==="function") idbGet("sigStore").then(function(v){ if(v&&typeof sigStoreApply_==="function") sigStoreApply_(v); }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 1600);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
-    setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }); } }catch(e){} }, 2000);
+    setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.53;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.54;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
     try{ if(!window.__verTimer){ window.__verTimer=setInterval(function(){ try{ window.versionCheck_(); }catch(e){} }, 300000); } }catch(e){}
+    // 용량 보호: 이미지/대용량 잔여물을 localStorage에서 제거(IndexedDB로 이전됨)
+    try{ ["ntlNcAttach","ntlSigStore","cache_invData"].forEach(function(k){ try{ localStorage.removeItem(k); }catch(_){} });
+      var used=0; Object.keys(localStorage).forEach(function(k){ used+=(localStorage.getItem(k)||"").length; });
+      if(used>3000000){ Object.keys(localStorage).forEach(function(k){ if(k.indexOf("cache_")===0) localStorage.removeItem(k); }); }
+    }catch(e){}
     setTimeout(function(){ try{ (window.__afterEnter||[]).forEach(function(fn,i){ setTimeout(fn, i*150); }); window.__afterEnter=[]; }catch(e){} }, 300);
     setTimeout(function(){ try{ if(typeof noticeBindBtn_==="function") noticeBindBtn_(); }catch(e){}
       try{ if(typeof qShareLoad_==="function"){ qShareLoad_("noticeData", function(sv){ if(noticeApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("noticeData",sv); }catch(_){}}  else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(noticeApply_).catch(function(){}); }catch(_){}} try{ noticeShowToday_(); }catch(e){} }); } else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(function(v){ noticeApply_(v); noticeShowToday_(); }).catch(function(){}); }catch(_){} } }catch(e){}
@@ -10673,7 +10678,12 @@ function renderDwgInspSpecTab(el){
   const hasData = (qd["수입검사(기능)"] && qd["수입검사(기능)"].length) ||
                   (qd["공정검사(치수,BOLT,LED)"] && qd["공정검사(치수,BOLT,LED)"].length);
   if(!hasData){
-    el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#B9C2D6;">품질(검사종합) 데이터를 불러온 뒤 표시됩니다. 상단 품질분석에서 동기화해 주세요.</div>`;
+    el.innerHTML = `<div class="table-wrap" style="padding:40px;text-align:center;color:#8A93A6;">🧭 검사 기준표<br><span style="font-size:13px;">검사종합 데이터를 불러오는 중입니다… 잠시만 기다려 주세요.</span></div>`;
+    try{ var __u=document.getElementById("quality-appsScriptUrl"); if(__u && !__u.value.trim() && typeof docmasterApiUrl==="function") __u.value=docmasterApiUrl(); }catch(e){}
+    if(!window.__dwgSpecLoading && typeof fetchQualityData==="function"){
+      window.__dwgSpecLoading=true;
+      Promise.resolve(fetchQualityData()).then(function(){ window.__dwgSpecLoading=false; try{ if(waitInspActiveTab==="검사기준표") renderDwgInspSpecTab(el); }catch(e){} }).catch(function(){ window.__dwgSpecLoading=false; try{ el.innerHTML='<div class="table-wrap" style="padding:40px;text-align:center;color:#C0392B;">검사종합 데이터를 불러오지 못했습니다. 네트워크를 확인하고 다시 시도해 주세요.</div>'; }catch(e){} });
+    }
     return;
   }
   const spec = buildDwgInspSpec();
@@ -13580,10 +13590,10 @@ var ncFilteredRows = [];
 var NC_OVERDUE_DAYS = 7;
 
 /* ==================== 📎 고객부적합 첨부(이미지/메일 캡처) ==================== */
-var __ncAttach = null;
-function ncAttachGet_(){ if(__ncAttach) return __ncAttach; try{ __ncAttach=JSON.parse(localStorage.getItem("ntlNcAttach")||"{}")||{}; }catch(e){ __ncAttach={}; } return __ncAttach; }
-function ncAttachSetAll_(o, statusId){ __ncAttach=o||{}; try{ localStorage.setItem("ntlNcAttach", JSON.stringify(__ncAttach)); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("ncAttach", __ncAttach, statusId); }catch(e){} try{ if(typeof idbSet==="function") idbSet("ncAttach", __ncAttach); }catch(e){} }
-function ncAttachApply_(v){ if(v && typeof v==="object" && !Array.isArray(v)){ __ncAttach=v; try{ localStorage.setItem("ntlNcAttach", JSON.stringify(v)); }catch(e){} return true; } return false; }
+var __ncAttach = null, __ncAttachLoaded=false;
+function ncAttachGet_(){ if(__ncAttach) return __ncAttach; __ncAttach={}; try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof v==="object"&&!__ncAttachLoaded){ __ncAttach=v; __ncAttachLoaded=true; if(typeof ncRender==="function"&&window.__ncInited) ncRender(); } }).catch(function(){}); }catch(e){} return __ncAttach; }
+function ncAttachSetAll_(o, statusId){ __ncAttach=o||{}; __ncAttachLoaded=true; try{ if(typeof idbSet==="function") idbSet("ncAttach", __ncAttach); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("ncAttach", __ncAttach, statusId); }catch(e){} try{ localStorage.removeItem("ntlNcAttach"); }catch(e){} }
+function ncAttachApply_(v){ if(v && typeof v==="object" && !Array.isArray(v)){ __ncAttach=v; __ncAttachLoaded=true; try{ if(typeof idbSet==="function") idbSet("ncAttach", v); }catch(e){} try{ localStorage.removeItem("ntlNcAttach"); }catch(e){} return true; } return false; }
 function ncAttachKey_(r){ if(!r) return ""; var d=String(r.date||"").replace(/[^0-9]/g,""); var pn=String(r.partNo||"").replace(/\s+/g,""); var ct=String(r.content||"").replace(/\s+/g,"").slice(0,20); var q=String(r.qty||"").replace(/[^0-9.]/g,""); return d+"|"+pn+"|"+ct+"|"+q; }
 function ncAttachList_(r){ var st=ncAttachGet_(); return st[ncAttachKey_(r)]||[]; }
 function ncAttachCount_(r){ return ncAttachList_(r).length; }
@@ -16579,6 +16589,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.53 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.54 🔔</div>
 </body>
 </html>
