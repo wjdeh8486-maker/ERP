@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.43</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.44</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -5626,10 +5626,11 @@ function ncClassifyCTQ_(content){
   }
   return "기타(미분류)";
 }
-function ncCTQSection_(rowsAll, year){
-  var yr=String(year||"");
+function ncCTQSection_(rowsAll, year, upto){
+  var yr=String(year||""); var mm=parseInt(upto,10)||12;
   var yof=function(d){ if(d instanceof Date) return isNaN(d.getTime())?"":String(d.getFullYear()); var dt=new Date(d); if(!isNaN(dt.getTime())) return String(dt.getFullYear()); var m=String(d||"").match(/(\d{4})/); return m?m[1]:""; };
-  var rows=(rowsAll||[]).filter(function(r){ return !(r&&r._deleted) && (!yr || yof(r.date)===yr); });
+  var mof=function(d){ if(d instanceof Date) return isNaN(d.getTime())?0:(d.getMonth()+1); var dt=new Date(d); if(!isNaN(dt.getTime())) return dt.getMonth()+1; var m=String(d||"").match(/\d{4}[-\/.](\d{1,2})/); return m?parseInt(m[1],10):0; };
+  var rows=(rowsAll||[]).filter(function(r){ return !(r&&r._deleted) && (!yr || yof(r.date)===yr) && (mof(r.date)<=mm); });
   if(!rows.length) return "";
   var map={};
   rows.forEach(function(r){ var cat=ncClassifyCTQ_(r.content); var o=map[cat]||(map[cat]={cnt:0,qty:0}); o.cnt++; o.qty+=Number(r.qty)||0; });
@@ -6862,7 +6863,7 @@ function renderCustomerNCPanel(){
   }
   drawLineChart(panel.querySelector(".qnc-weekly-chart"), weekly.map(w=>w.week+"주차"), weekly.map(w=>w.ppm), "주차별 고객부적합 부적합율(ppm)");
   drawBarChart(panel.querySelector(".qnc-type-chart"), ["개발부적합","양산부적합"], [tot.dev, tot.prod], "누적 부적합 수량 (개발 vs 양산)");
-  try{ panel.insertAdjacentHTML("beforeend", ncCTQSection_(rowsAll, qualityYear)); }catch(e){}
+  try{ panel.insertAdjacentHTML("beforeend", ncCTQSection_(rowsAll, qualityYear, qualityMonth)); }catch(e){}
 }
 /* ===== 시정조치(CAPA) : 고객부적합관리대장 데이터를 재구성해 조치 진행상태를 추적 =====
    [종결 규칙]  대책서송부일이 있는 건 → 유효성확인이 되면 종결
@@ -7262,7 +7263,7 @@ function apvView_(id){
       +'<div id="apvv-body" style="flex:1;overflow:auto;padding:16px;background:#fff;color:#111;">'+rec.html+'</div>';
     document.body.appendChild(ov);
     ov.querySelector("#apvv-close").addEventListener("click",function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); });
-    ov.querySelector("#apvv-print").addEventListener("click",function(){ var h=ov.querySelector("#apvv-body").innerHTML; if(typeof IS_MOBILE!=="undefined"&&IS_MOBILE&&typeof openPrintWindow==="function"){ openPrintWindow(h, qReportPrintCSS_(), "품질분석 보고서"); } else { var pa=document.getElementById("print-area"); if(pa){ pa.innerHTML=h; window.print(); } } });
+    ov.querySelector("#apvv-print").addEventListener("click",function(){ var h=ov.querySelector("#apvv-body").innerHTML; if(typeof openPrintWindow==="function"){ openPrintWindow(h, qReportPrintCSS_(), "품질분석 보고서"); } else { var pa=document.getElementById("print-area"); if(pa){ pa.innerHTML=h; window.print(); } } });
   };
   try{ if(typeof idbGet==="function"){ idbGet(id).then(function(rec){ if(rec&&rec.html) show(rec); else ls(); }).catch(ls); return; } }catch(e){}
   ls();
@@ -7354,11 +7355,8 @@ function qOpenSignPreview_(html){
   var __qs=ov.querySelector("#qsign-save"); if(__qs) __qs.addEventListener("click",function(){ apvSaveFromPreview_(body); });
   ov.querySelector("#qsign-print").addEventListener("click",function(){
     var printHTML=body.innerHTML;
-    if(typeof IS_MOBILE!=="undefined" && IS_MOBILE && typeof openPrintWindow==="function"){
-      openPrintWindow(printHTML, qReportPrintCSS_(), "품질분석 보고서");
-    } else {
-      var pa=document.getElementById("print-area"); if(pa){ pa.innerHTML=printHTML; window.print(); }
-    }
+    if(typeof openPrintWindow==="function"){ openPrintWindow(printHTML, qReportPrintCSS_(), "품질분석 보고서"); }
+    else { var pa=document.getElementById("print-area"); if(pa){ pa.innerHTML=printHTML; window.print(); } }
   });
 }
 function printQualityReport(){
@@ -16453,6 +16451,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.43 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.44 🔔</div>
 </body>
 </html>
