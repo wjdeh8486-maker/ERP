@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.48</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.49</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -4298,7 +4298,7 @@ function fetchWaitMap(url, datasetName, keyField, valueField, targetMap){
     })
     .catch(()=>{});
 }
-function cacheSet(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+function cacheSet(key, val){ try{ var __s=JSON.stringify(val); if(__s.length>2000000){ try{ localStorage.removeItem(key); }catch(_){} return; } localStorage.setItem(key, __s); }catch(e){ try{ Object.keys(localStorage).forEach(function(k){ if(k.indexOf("cache_")===0 && k!==key) localStorage.removeItem(k); }); localStorage.setItem(key, JSON.stringify(val)); }catch(e2){ try{ localStorage.removeItem(key); }catch(_){}} } }
 function cacheGet(key){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
 // 상단에 항상 보이는 "마지막 동기화 OO분 전" 배너. 색으로 신선도를 표시합니다
 // (초록 10분 이내 / 노랑 1시간 이내 / 빨강 그 이상 또는 기록 없음).
@@ -15686,7 +15686,15 @@ function insApplySnapshot(snap){
   var dt=document.getElementById("insrep-date"); if(dt && snap.date!=null) dt.value=snap.date;
 }
 function insSaveLocalNow(){
-  try{ localStorage.setItem(INSREP_LS_KEY, JSON.stringify(insSnapshot())); insSetStatus("💾 자동저장됨 "+new Date().toLocaleTimeString("ko-KR")); }catch(e){}
+  var __p; try{ __p=JSON.stringify(insSnapshot()); }catch(e){ return; }
+  var __tm=new Date().toLocaleTimeString("ko-KR");
+  try{ localStorage.setItem(INSREP_LS_KEY, __p); insSetStatus("💾 자동저장됨 "+__tm); return; }catch(e){}
+  // 저장공간 부족 → 재생성 가능한 캐시를 비우고 재시도(검사일보 데이터 우선 보존)
+  try{ Object.keys(localStorage).forEach(function(k){ if(k.indexOf("cache_")===0) localStorage.removeItem(k); }); }catch(_){}
+  try{ localStorage.setItem(INSREP_LS_KEY, __p); insSetStatus("💾 자동저장됨(캐시 정리) "+__tm); return; }catch(e2){}
+  // 그래도 실패 → 절대 성공처럼 표시하지 않고 경고
+  insSetStatus("⚠ 로컬 저장 실패(공간부족) — 반드시 ☁ 공유저장 하세요");
+  try{ if(!window.__quotaWarned){ window.__quotaWarned=true; alert("⚠ 브라우저 저장공간이 부족해 로컬 자동저장이 실패했습니다.\n\n입력한 내용이 사라지지 않도록 [☁ 공유저장]을 눌러 클라우드에 저장하세요.\n(재고 캐시를 정리했으니 다시 저장하면 됩니다.)"); } }catch(_){}
 }
 var __insSaveTimer=null;
 function insSaveLocal(){ if(__insSaveTimer) clearTimeout(__insSaveTimer); __insSaveTimer=setTimeout(insSaveLocalNow, 350); }
@@ -16530,6 +16538,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.48 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.49 🔔</div>
 </body>
 </html>
