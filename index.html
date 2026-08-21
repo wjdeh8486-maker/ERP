@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.45</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.46</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -13570,9 +13570,9 @@ var NC_OVERDUE_DAYS = 7;
 /* ==================== 📎 고객부적합 첨부(이미지/메일 캡처) ==================== */
 var __ncAttach = null;
 function ncAttachGet_(){ if(__ncAttach) return __ncAttach; try{ __ncAttach=JSON.parse(localStorage.getItem("ntlNcAttach")||"{}")||{}; }catch(e){ __ncAttach={}; } return __ncAttach; }
-function ncAttachSetAll_(o){ __ncAttach=o||{}; try{ localStorage.setItem("ntlNcAttach", JSON.stringify(__ncAttach)); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("ncAttach", __ncAttach); }catch(e){} try{ if(typeof idbSet==="function") idbSet("ncAttach", __ncAttach); }catch(e){} }
+function ncAttachSetAll_(o, statusId){ __ncAttach=o||{}; try{ localStorage.setItem("ntlNcAttach", JSON.stringify(__ncAttach)); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("ncAttach", __ncAttach, statusId); }catch(e){} try{ if(typeof idbSet==="function") idbSet("ncAttach", __ncAttach); }catch(e){} }
 function ncAttachApply_(v){ if(v && typeof v==="object" && !Array.isArray(v)){ __ncAttach=v; try{ localStorage.setItem("ntlNcAttach", JSON.stringify(v)); }catch(e){} return true; } return false; }
-function ncAttachKey_(r){ if(!r) return ""; return String(r.date||"")+"|"+String(r.partNo||"")+"|"+String(r.content||"").slice(0,24)+"|"+String(r.qty||""); }
+function ncAttachKey_(r){ if(!r) return ""; var d=String(r.date||"").replace(/[^0-9]/g,""); var pn=String(r.partNo||"").replace(/\s+/g,""); var ct=String(r.content||"").replace(/\s+/g,"").slice(0,20); var q=String(r.qty||"").replace(/[^0-9.]/g,""); return d+"|"+pn+"|"+ct+"|"+q; }
 function ncAttachList_(r){ var st=ncAttachGet_(); return st[ncAttachKey_(r)]||[]; }
 function ncAttachCount_(r){ return ncAttachList_(r).length; }
 function ncImgCompress_(dataURL, cb){
@@ -13605,7 +13605,7 @@ function ncAttachOpen_(r){
   ov.addEventListener("click",function(e){ if(e.target===ov) close(); });
   var status=ov.querySelector("#ncatt-status");
   var refresh=function(){ ov.querySelector("#ncatt-list").innerHTML=thumbs(); bindThumbs(); if(typeof ncRender==="function") ncRender(); };
-  var addImg=function(dataURL, name){ status.textContent="이미지 처리 중…"; ncImgCompress_(dataURL, function(curl){ var st=ncAttachGet_(); var k=key; st[k]=st[k]||[]; st[k].push({name:name||("캡처_"+new Date().toLocaleTimeString("ko-KR")), url:curl}); ncAttachSetAll_(st); status.textContent="✔ 추가됨 (공유 저장)"; refresh(); }); };
+  var addImg=function(dataURL, name){ status.textContent="이미지 처리 중…"; ncImgCompress_(dataURL, function(curl){ var st=ncAttachGet_(); var k=key; st[k]=st[k]||[]; st[k].push({name:name||("캡처_"+new Date().toLocaleTimeString("ko-KR")), url:curl}); ncAttachSetAll_(st, "ncatt-status"); status.textContent="☁ 공유 저장 중… (확인 대기)"; refresh(); }); };
   var bindThumbs=function(){
     ov.querySelectorAll(".ncatt-view").forEach(function(im){ im.addEventListener("click",function(){ ncAttachLightbox_(im.src); }); });
     ov.querySelectorAll(".ncatt-del").forEach(function(b){ b.addEventListener("click",function(){ var i=parseInt(b.getAttribute("data-i"),10); var st=ncAttachGet_(); if(st[key]){ st[key].splice(i,1); if(!st[key].length) delete st[key]; ncAttachSetAll_(st); refresh(); } }); });
@@ -16505,6 +16505,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.45 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.46 🔔</div>
 </body>
 </html>
