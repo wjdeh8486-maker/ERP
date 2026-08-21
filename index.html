@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.44</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.45</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -8419,6 +8419,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("defectLog", function(sv){ if(defectLogApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("defectLog",sv); }catch(_){}} else { try{ if(typeof idbGet==="function") idbGet("defectLog").then(defectLogApply_).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 1400);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("sigStore", function(sv){ if(typeof sigStoreApply_==="function") sigStoreApply_(sv); }); } }catch(e){} }, 1600);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
+    setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }); } }catch(e){} }, 2000);
     setTimeout(function(){ try{ (window.__afterEnter||[]).forEach(function(fn,i){ setTimeout(fn, i*150); }); window.__afterEnter=[]; }catch(e){} }, 300);
     setTimeout(function(){ try{ if(typeof noticeBindBtn_==="function") noticeBindBtn_(); }catch(e){}
       try{ if(typeof qShareLoad_==="function"){ qShareLoad_("noticeData", function(sv){ if(noticeApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("noticeData",sv); }catch(_){}}  else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(noticeApply_).catch(function(){}); }catch(_){}} try{ noticeShowToday_(); }catch(e){} }); } else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(function(v){ noticeApply_(v); noticeShowToday_(); }).catch(function(){}); }catch(_){} } }catch(e){}
@@ -13566,6 +13567,58 @@ var NC_PAGE_SIZE = 50;
 var ncFilteredRows = [];
 var NC_OVERDUE_DAYS = 7;
 
+/* ==================== 📎 고객부적합 첨부(이미지/메일 캡처) ==================== */
+var __ncAttach = null;
+function ncAttachGet_(){ if(__ncAttach) return __ncAttach; try{ __ncAttach=JSON.parse(localStorage.getItem("ntlNcAttach")||"{}")||{}; }catch(e){ __ncAttach={}; } return __ncAttach; }
+function ncAttachSetAll_(o){ __ncAttach=o||{}; try{ localStorage.setItem("ntlNcAttach", JSON.stringify(__ncAttach)); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("ncAttach", __ncAttach); }catch(e){} try{ if(typeof idbSet==="function") idbSet("ncAttach", __ncAttach); }catch(e){} }
+function ncAttachApply_(v){ if(v && typeof v==="object" && !Array.isArray(v)){ __ncAttach=v; try{ localStorage.setItem("ntlNcAttach", JSON.stringify(v)); }catch(e){} return true; } return false; }
+function ncAttachKey_(r){ if(!r) return ""; return String(r.date||"")+"|"+String(r.partNo||"")+"|"+String(r.content||"").slice(0,24)+"|"+String(r.qty||""); }
+function ncAttachList_(r){ var st=ncAttachGet_(); return st[ncAttachKey_(r)]||[]; }
+function ncAttachCount_(r){ return ncAttachList_(r).length; }
+function ncImgCompress_(dataURL, cb){
+  try{ var img=new Image(); img.onload=function(){ var mw=1100; var iw=img.width||mw, ih=img.height||800; var sc=Math.min(1, mw/iw); var w=Math.max(1,Math.round(iw*sc)), h=Math.max(1,Math.round(ih*sc));
+    var c=document.createElement("canvas"); c.width=w; c.height=h; var x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,w,h); x.drawImage(img,0,0,w,h);
+    var out; try{ out=c.toDataURL("image/jpeg",0.72); }catch(e){ out=dataURL; } cb(out); };
+    img.onerror=function(){ cb(dataURL); }; img.src=dataURL; }catch(e){ cb(dataURL); }
+}
+function ncAttEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function ncAttachLightbox_(url){
+  var ov=document.createElement("div"); ov.style.cssText="position:fixed;inset:0;z-index:100002;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out;";
+  ov.innerHTML='<img src="'+ncAttEsc_(url)+'" style="max-width:96%;max-height:96%;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,0.5);">';
+  document.body.appendChild(ov); ov.addEventListener("click",function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); });
+}
+function ncAttachOpen_(r){
+  if(!r){ return; }
+  var key=ncAttachKey_(r);
+  var ov=document.createElement("div"); ov.style.cssText="position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;padding:16px;";
+  var thumbs=function(){ var list=ncAttachList_(r); if(!list.length) return '<div style="color:#8A93A6;text-align:center;padding:18px;font-size:13px;">첨부된 이미지가 없습니다.<br>아래 영역에 <b>붙여넣기(Ctrl+V)</b> 하거나 파일을 선택하세요.</div>';
+    return '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+list.map(function(a,i){ return '<div style="border:1px solid #E1E8F0;border-radius:8px;padding:5px;width:120px;text-align:center;"><img class="ncatt-view" data-i="'+i+'" src="'+ncAttEsc_(a.url)+'" style="width:108px;height:80px;object-fit:cover;border-radius:5px;cursor:zoom-in;"><div style="font-size:10px;color:#5A6478;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+ncAttEsc_(a.name||("첨부"+(i+1)))+'</div><button class="ncatt-del" data-i="'+i+'" style="margin-top:3px;border:none;background:#F0F4F8;border-radius:5px;font-size:11px;padding:2px 8px;cursor:pointer;">삭제</button></div>'; }).join("")+'</div>'; };
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:18px;width:100%;max-width:600px;max-height:90vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,0.4);">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><b style="font-size:16px;color:#1F2A44;">📎 고객부적합 첨부</b><button id="ncatt-x" style="border:none;background:transparent;font-size:20px;cursor:pointer;">✕</button></div>'
+    +'<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">'+ncAttEsc_((r.date||"")+" · "+(r.partNo||"")+" · "+(r.customer||""))+'</div>'
+    +'<div id="ncatt-paste" tabindex="0" style="border:2px dashed #9AA7BC;border-radius:10px;padding:14px;text-align:center;color:#5A6478;font-size:13px;background:#F7F9FC;cursor:text;outline:none;">여기를 클릭 후 <b>Ctrl+V</b>로 캡처 붙여넣기<br><span style="font-size:11px;color:#8A93A6;">또는</span><br><input type="file" id="ncatt-file" accept="image/*" multiple style="margin-top:6px;font-size:12px;"></div>'
+    +'<div id="ncatt-status" style="font-size:11px;color:#0B5CAB;margin:6px 0;"></div>'
+    +'<div id="ncatt-list" style="margin-top:8px;">'+thumbs()+'</div></div>';
+  document.body.appendChild(ov);
+  var close=function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+  ov.querySelector("#ncatt-x").addEventListener("click",close);
+  ov.addEventListener("click",function(e){ if(e.target===ov) close(); });
+  var status=ov.querySelector("#ncatt-status");
+  var refresh=function(){ ov.querySelector("#ncatt-list").innerHTML=thumbs(); bindThumbs(); if(typeof ncRender==="function") ncRender(); };
+  var addImg=function(dataURL, name){ status.textContent="이미지 처리 중…"; ncImgCompress_(dataURL, function(curl){ var st=ncAttachGet_(); var k=key; st[k]=st[k]||[]; st[k].push({name:name||("캡처_"+new Date().toLocaleTimeString("ko-KR")), url:curl}); ncAttachSetAll_(st); status.textContent="✔ 추가됨 (공유 저장)"; refresh(); }); };
+  var bindThumbs=function(){
+    ov.querySelectorAll(".ncatt-view").forEach(function(im){ im.addEventListener("click",function(){ ncAttachLightbox_(im.src); }); });
+    ov.querySelectorAll(".ncatt-del").forEach(function(b){ b.addEventListener("click",function(){ var i=parseInt(b.getAttribute("data-i"),10); var st=ncAttachGet_(); if(st[key]){ st[key].splice(i,1); if(!st[key].length) delete st[key]; ncAttachSetAll_(st); refresh(); } }); });
+  };
+  bindThumbs();
+  var paste=ov.querySelector("#ncatt-paste");
+  paste.addEventListener("click",function(){ paste.focus(); });
+  paste.addEventListener("paste",function(e){ var items=(e.clipboardData||{}).items||[]; var found=false; for(var i=0;i<items.length;i++){ if(items[i].type && items[i].type.indexOf("image")===0){ var f=items[i].getAsFile(); if(f){ found=true; var rd=new FileReader(); rd.onload=function(){ addImg(rd.result, "메일캡처"); }; rd.readAsDataURL(f); } } } if(found) e.preventDefault(); });
+  ov.querySelector("#ncatt-file").addEventListener("change",function(e){ var fs=e.target.files||[]; for(var i=0;i<fs.length;i++){ (function(f){ var rd=new FileReader(); rd.onload=function(){ addImg(rd.result, f.name); }; rd.readAsDataURL(f); })(fs[i]); } e.target.value=""; });
+  setTimeout(function(){ paste.focus(); }, 100);
+}
+// _id로 레코드 찾아 첨부 열기
+function ncAttachOpenById_(id){ var r=(ncData||[]).filter(function(x){ return String(x._id)===String(id); })[0]; if(r) ncAttachOpen_(r); }
 function ncTag(list){ (list||[]).forEach(function(r){ if(r&&r._id==null) r._id=__ncSeq++; }); return list; }
 
 function ncInit(){
@@ -13667,7 +13720,7 @@ function ncRowsHTML(list){
       + '<td style="padding:8px;text-align:center;">'+docmasterEsc(r.owner||"-")+'</td>'
       + '<td style="padding:8px;text-align:center;white-space:nowrap;"><span style="background:'+j.stage.bg+';color:'+j.stage.color+';border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;">'+j.stage.label+'</span>'+(j.overdue?' <span style="background:#C0392B;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700;">지연'+(j.elapsed!=null?(" "+j.elapsed+"일"):"")+'</span>':'')+'</td>'
       + '<td style="padding:8px;text-align:center;white-space:nowrap;">'
-      +   '<button type="button" class="nc-editbtn" data-id="'+docmasterEsc(r._id)+'" title="수정" style="font-size:11px;padding:4px 8px;border:1px solid #BBD3F0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">✏️</button>'
+      +   '<button type="button" class="nc-attbtn" data-id="'+docmasterEsc(r._id)+'" title="첨부(메일 캡처)" style="font-size:11px;padding:4px 8px;border:1px solid #B7E0C4;border-radius:6px;background:#fff;color:#1E7A46;cursor:pointer;">📎'+(ncAttachCount_(r)?('<b style="color:#C0392B;">'+ncAttachCount_(r)+'</b>'):'')+'</button> '      +   '<button type="button" class="nc-editbtn" data-id="'+docmasterEsc(r._id)+'" title="수정" style="font-size:11px;padding:4px 8px;border:1px solid #BBD3F0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">✏️</button>'
       +   ' <button type="button" class="nc-delbtn" data-id="'+docmasterEsc(r._id)+'" title="삭제" style="font-size:11px;padding:4px 8px;border:1px solid #E4B4B4;border-radius:6px;background:#fff;color:#C0392B;cursor:pointer;">🗑️</button>'
       + '</td></tr>';
   });
@@ -13720,6 +13773,7 @@ function ncRender(){
   el.innerHTML=html;
   var stEl=document.getElementById("nc-status-text");
   if(stEl){ var src=ncSource==="sheet"?"🟢 공유(구글시트)":"🟡 내장(백엔드 미연결)"; var note=stEl.getAttribute("data-note")||""; stEl.textContent=src+" · 표시 "+rows.length+"건 / 전체 "+live.length+"건"+(note?(" · "+note):""); }
+  el.querySelectorAll(".nc-attbtn").forEach(function(b){ b.addEventListener("click",function(){ ncAttachOpenById_(b.getAttribute("data-id")); }); });
   el.querySelectorAll(".nc-editbtn").forEach(function(b){ b.addEventListener("click",function(){ ncOpenForm(b.getAttribute("data-id")); }); });
   el.querySelectorAll(".nc-delbtn").forEach(function(b){ b.addEventListener("click",function(){ ncDelete(b.getAttribute("data-id")); }); });
   el.querySelectorAll(".nc-rowchk").forEach(function(c){ c.addEventListener("change",function(){ var id=c.getAttribute("data-id"); if(c.checked) ncSelected[id]=true; else delete ncSelected[id]; ncUpdateBulkUI(); }); });
@@ -16451,6 +16505,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.44 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.45 🔔</div>
 </body>
 </html>
