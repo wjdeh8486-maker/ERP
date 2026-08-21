@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.46</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.48</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -1807,6 +1807,7 @@
         <button type="button" id="insrep-ncAlertBtn" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="현재 일보의 부적합을 전체 사용자에게 즉시 알립니다">🔔 부적합 알림</button>
         <button type="button" id="insrep-unrBtn" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="부적합이 있으나 조치완료일이 비어있는 항목 보기">⚠ 미조치 부적합</button>
         <button type="button" id="insrep-histBtn" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="부적합 발생~조치완료 종결 이력(감사 증빙)">📋 종결 이력</button>
+        <button type="button" id="insrep-recoverBtn" style="background:#B45309;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="오늘 입력했는데 안 보이는 데이터를 클라우드에서 되살립니다">🔧 오늘 복구</button>
         <span style="display:inline-flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:#5A6478;font-weight:700;">📅 날짜별 보기</span>
           <select id="insrep-dayFilter" style="padding:7px 8px;border:1px solid #0B5CAB;border-radius:7px;font-size:12px;font-weight:700;color:#0B5CAB;background:#F4F8FD;cursor:pointer;"><option value="all">전체</option></select>
@@ -3094,6 +3095,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="insrep"){
       if(!window.__insrepInited){ window.__insrepInited = true; insInit(); }
       insRender();
+      setTimeout(function(){ if(typeof insFocusLastDraw_==="function") insFocusLastDraw_(); }, 120);
     }
     if(target==="management"){
       // 도번 조회 메뉴: 마지막으로 보던 탭으로 복원
@@ -13576,9 +13578,12 @@ function ncAttachKey_(r){ if(!r) return ""; var d=String(r.date||"").replace(/[^
 function ncAttachList_(r){ var st=ncAttachGet_(); return st[ncAttachKey_(r)]||[]; }
 function ncAttachCount_(r){ return ncAttachList_(r).length; }
 function ncImgCompress_(dataURL, cb){
-  try{ var img=new Image(); img.onload=function(){ var mw=1100; var iw=img.width||mw, ih=img.height||800; var sc=Math.min(1, mw/iw); var w=Math.max(1,Math.round(iw*sc)), h=Math.max(1,Math.round(ih*sc));
+  try{ var img=new Image(); img.onload=function(){ var mw=1000; var iw=img.width||mw, ih=img.height||800; var sc=Math.min(1, mw/iw); var w=Math.max(1,Math.round(iw*sc)), h=Math.max(1,Math.round(ih*sc));
     var c=document.createElement("canvas"); c.width=w; c.height=h; var x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,w,h); x.drawImage(img,0,0,w,h);
-    var out; try{ out=c.toDataURL("image/jpeg",0.72); }catch(e){ out=dataURL; } cb(out); };
+    var out; try{ out=c.toDataURL("image/jpeg",0.5); }catch(e){ out=dataURL; }
+    // 여전히 너무 크면(>350KB) 한 번 더 축소
+    if(out.length>480000){ try{ var sc2=0.7; var w2=Math.max(1,Math.round(w*sc2)), h2=Math.max(1,Math.round(h*sc2)); var c2=document.createElement("canvas"); c2.width=w2; c2.height=h2; var x2=c2.getContext("2d"); x2.fillStyle="#fff"; x2.fillRect(0,0,w2,h2); x2.drawImage(img,0,0,w2,h2); out=c2.toDataURL("image/jpeg",0.45); }catch(e){} }
+    cb(out); };
     img.onerror=function(){ cb(dataURL); }; img.src=dataURL; }catch(e){ cb(dataURL); }
 }
 function ncAttEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
@@ -14059,7 +14064,7 @@ function insGridKeydown_(e){
 }
 function insInit(){
   var bind=function(id,ev,fn){ var e=document.getElementById(id); if(e) e.addEventListener(ev,fn); };
-  bind("insrep-addBtn","click",function(){ if(insType==="processin") return; insState[insType].rows.push(insBlankRow()); insRender(); insSaveLocal(); });
+  bind("insrep-addBtn","click",function(){ if(insType==="processin") return; insState[insType].rows.push(insBlankRow()); insRender(); insSaveLocal(); insFocusLastDraw_(); });
   bind("insrep-scanBtn","click",function(){ insScanAdd(); });
   bind("insrep-exportBtn","click",insExport);
   bind("insrep-formBtn","click",function(){ insOpenForm(-1); });
@@ -14068,6 +14073,7 @@ function insInit(){
   bind("insrep-ncAlertBtn","click",ncAlertSendCurrent);
   bind("insrep-unrBtn","click",insOpenUnresolved);
   bind("insrep-histBtn","click",insOpenDefectHistory);
+  bind("insrep-recoverBtn","click",insRecoverToday_);
   bind("insrep-qualBtn","click",insOpenQuality);
   bind("insrep-ctqBtn","click",insOpenCTQ);
   bind("insrep-ncrBtn","click",insOpenNcrExport);
@@ -14110,6 +14116,7 @@ function insInit(){
   insRender();
   try{ insCloudAutoLoad(); }catch(e){}   // 열 때 공유 최신본 자동 병합
 }
+function insFocusLastDraw_(){ try{ var el=document.getElementById("insrep-content"); if(!el) return; var ds=el.querySelectorAll('input[data-key="draw"]'); if(ds.length){ var last=ds[ds.length-1]; last.focus(); if(last.select) last.select(); last.scrollIntoView({block:"center",behavior:"smooth"}); } }catch(e){} }
 function insRender(){
   var el=document.getElementById("insrep-content"); if(!el) return;
   // 유형 소메뉴 값 동기화
@@ -15728,6 +15735,24 @@ function insCloudSave(){
 }
 /* 불러오기: 현재 유형(페이지)만 불러옴 — 다른 유형 작업분은 건드리지 않음 */
 // 접속(열기) 시 공유 저장 최신본을 조용히 병합 — 빈 상태로 열려도 자동으로 최신 내용을 채운다.
+function insRecoverToday_(){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; var t=insType; var today=(typeof insToday_==="function")?insToday_():"";
+  var apply=function(cloudRows){
+    var local=(insState[t]&&insState[t].rows)||[];
+    var haveSig={}; local.forEach(function(r){ haveSig[insRowSig_(r)]=1; });
+    var add=[], clr=0;
+    (cloudRows||[]).forEach(function(r){ if(!r) return; if(String(r.insDate||"").indexOf(today)!==0) return;
+      if(r._id && insDeletedIds[r._id]){ delete insDeletedIds[r._id]; clr++; }
+      var sg=insRowSig_(r); if(!haveSig[sg]){ add.push(r); haveSig[sg]=1; } });
+    if(!add.length && !clr){ alert("클라우드에 오늘("+today+") "+insTypeLabel(t)+" 데이터가 없습니다.\n\n오늘 입력한 그 PC(브라우저)에서 시도해 보세요."); insSetStatus(""); return; }
+    insState[t]={rows:insEnsureIds_(local.concat(add))};
+    insPersistDeleted_(); if(typeof insSaveLocalNow==="function") insSaveLocalNow(); insUpdateDayFilter(); insRender();
+    alert("복구 완료 · "+insTypeLabel(t)+"\n오늘 "+add.length+"행 되살림"+(clr?(" (삭제표시 "+clr+"건 해제)"):""));
+  };
+  if(!url){ apply([]); return; }
+  insSetStatus("🔧 오늘 데이터 복구 중…");
+  fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(t)+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var o={}; try{ o=JSON.parse(res.json||"{}"); }catch(e){} apply(Array.isArray(o.rows)?o.rows:[]); }).catch(function(){ apply([]); });
+}
 function insCloudAutoLoad(){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return;
   ["incoming","shipping","measureS","measureL"].forEach(function(t){
@@ -16505,6 +16530,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.46 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.48 🔔</div>
 </body>
 </html>
