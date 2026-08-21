@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.42</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.43</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -7245,12 +7245,13 @@ function apvOpenArchive_(){
   }).join("") : '<div style="text-align:center;color:#8A93A6;padding:24px;">저장된 결재본이 없습니다.<br><span style="font-size:12px;">품질분석 → 인쇄 → 서명 후 [💾 결재 저장]</span></div>';
   var ov=document.createElement("div"); ov.style.cssText="position:fixed;inset:0;z-index:99992;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:16px;";
   ov.innerHTML='<div style="background:#fff;width:100%;max-width:560px;max-height:88vh;overflow:auto;border-radius:14px;box-shadow:0 16px 50px rgba(0,0,0,0.35);">'
-    +'<div style="background:#1F2A44;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;"><b style="font-size:16px;">📁 결재 보관함 (품질분석 보고서)</b><button id="apv-x" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button></div>'
+    +'<div style="background:#1F2A44;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;"><b style="font-size:15px;">📁 결재 보관함</b><div style="display:flex;gap:8px;align-items:center;"><button id="apv-batch" style="background:#1D6F42;color:#fff;border:none;border-radius:6px;padding:7px 12px;font-weight:700;cursor:pointer;font-size:12px;">📥 소급 일괄</button><button id="apv-x" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button></div></div>'
     +'<div style="padding:14px 16px;">'+body+'</div></div>';
   document.body.appendChild(ov);
   var close=function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
   ov.querySelector("#apv-x").addEventListener("click",close);
   ov.addEventListener("click",function(e){ if(e.target===ov) close(); });
+  var __ab=ov.querySelector("#apv-batch"); if(__ab) __ab.addEventListener("click",function(){ close(); apvBatchOpen_(); });
   ov.querySelectorAll(".apv-view").forEach(function(b){ b.addEventListener("click",function(){ apvView_(b.getAttribute("data-id")); }); });
 }
 function apvView_(id){
@@ -7266,6 +7267,71 @@ function apvView_(id){
   try{ if(typeof idbGet==="function"){ idbGet(id).then(function(rec){ if(rec&&rec.html) show(rec); else ls(); }).catch(ls); return; } }catch(e){}
   ls();
   function ls(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_(id, function(rec){ show(rec); }); } else alert("불러오기 실패"); }catch(e){ alert("불러오기 실패"); } }
+}
+/* ===== 소급 결재 일괄 생성 ===== */
+function apvPanelSnap_(panel){
+  if(!panel) return "";
+  var clone=panel.cloneNode(true);
+  var src=panel.querySelectorAll("canvas"), cl=clone.querySelectorAll("canvas");
+  for(var i=0;i<cl.length;i++){ try{ var url=src[i].toDataURL("image/png"); var img=document.createElement("img"); img.src=url; if(src[i].width) img.width=src[i].width; if(src[i].height) img.height=src[i].height; img.style.cssText=src[i].style.cssText; cl[i].parentNode.replaceChild(img, cl[i]); }catch(e){} }
+  return clone.innerHTML;
+}
+function apvBuildSignedHTMLLive_(month, sigMap){
+  var order=["process","incoming","shipping","customer"]; var catLabelMap={customer:"고객부적합"};
+  var sigCell=function(role){ var url=sigMap[role]||""; return '<td class="qsig-cell" data-role="'+role+'">'+(url?'<img src="'+url+'" style="max-height:40px;max-width:84px;">':'')+'</td>'; };
+  var approvalBox='<table class="q-approval-table"><tbody><tr><th rowspan="2" class="q-approval-label">결재</th><th>작성</th><th>검토</th><th>승인</th></tr><tr>'+sigCell("작성")+sigCell("검토")+sigCell("승인")+'</tr></tbody></table>';
+  return order.map(function(key){ var cat=(QUALITY_CATEGORIES[key]||{label:(catLabelMap[key]||"고객부적합")}); var panel=document.getElementById("qpanel-"+key); return '<div class="q-report-page"><div class="q-page-header"><h2>품질분석 보고서 · '+cat.label+' ('+qualityYear+'년 1~'+month+'월 누적)</h2>'+approvalBox+'</div>'+apvPanelSnap_(panel)+'</div>'; }).join("");
+}
+function apvBatchGenerate_(fromM,toM,sigMap,onDone,onProg){
+  var prevMonth=qualityMonth; var months=[]; for(var m=fromM;m<=toM;m++) months.push(m); var i=0;
+  var step=function(){
+    if(i>=months.length){ qualityMonth=prevMonth; if(typeof renderQualityAll==="function") renderQualityAll(); if(onDone) onDone(); return; }
+    var m=months[i++]; if(onProg) onProg(m);
+    qualityMonth=m; if(typeof renderQualityAll==="function") renderQualityAll();
+    setTimeout(function(){
+      var html=apvBuildSignedHTMLLive_(m, sigMap);
+      var lastDay=new Date(qualityYear, m, 0).getDate();
+      var savedAt=qualityYear+"-"+("0"+m).slice(-2)+"-"+("0"+lastDay).slice(-2);
+      var key="approval_"+qualityYear+"_"+m; var signed=Object.keys(sigMap).filter(function(r){return sigMap[r];});
+      var rec={id:key,year:qualityYear,month:m,savedAt:savedAt,signers:signed,html:html};
+      try{ if(typeof qShareSave_==="function") qShareSave_(key,rec); }catch(e){}
+      try{ if(typeof idbSet==="function") idbSet(key,rec); }catch(e){}
+      var idx=apvIndexGet_().slice().filter(function(e){return e.id!==key;}); idx.push({id:key,year:qualityYear,month:m,savedAt:savedAt,signers:signed}); idx.sort(function(a,b){return (b.year-a.year)||(b.month-a.month);}); apvIndexSet_(idx);
+      step();
+    }, 600);
+  };
+  step();
+}
+function apvBatchOpen_(){
+  var store=(typeof sigStoreGet_==="function")?sigStoreGet_():{}; var names=Object.keys(store);
+  if(!names.length){ alert("먼저 서명을 등록하세요.\n(품질분석 → 인쇄 → ✍ 서명 등록/관리)"); return; }
+  var opt=function(){ return '<option value="">— 선택 —</option>'+names.map(function(n){ return '<option value="'+n.replace(/"/g,"&quot;")+'">'+n+'</option>'; }).join(""); };
+  var mopt=function(cur){ var o=""; for(var m=1;m<=12;m++) o+='<option value="'+m+'"'+(m===cur?" selected":"")+'>'+m+'월</option>'; return o; };
+  var ov=document.createElement("div"); ov.style.cssText="position:fixed;inset:0;z-index:99995;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;padding:16px;";
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:18px;width:100%;max-width:460px;box-shadow:0 16px 50px rgba(0,0,0,0.4);">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><b style="font-size:16px;color:#1F2A44;">📥 소급 결재 일괄 생성</b><button id="apvb-x" style="border:none;background:transparent;font-size:20px;cursor:pointer;">✕</button></div>'
+    +'<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">지정한 서명으로 여러 월 결재본을 한 번에 생성합니다. (각 월 말일 결재)</div>'
+    +'<div style="display:grid;grid-template-columns:60px 1fr;gap:8px;align-items:center;font-size:13px;">'
+    +'<div>작성</div><select id="apvb-w" style="padding:7px;border:1px solid #C9D3E0;border-radius:7px;">'+opt()+'</select>'
+    +'<div>검토</div><select id="apvb-c" style="padding:7px;border:1px solid #C9D3E0;border-radius:7px;">'+opt()+'</select>'
+    +'<div>승인</div><select id="apvb-a" style="padding:7px;border:1px solid #C9D3E0;border-radius:7px;">'+opt()+'</select>'
+    +'<div>기간</div><div style="display:flex;align-items:center;gap:6px;"><select id="apvb-from" style="padding:7px;border:1px solid #C9D3E0;border-radius:7px;">'+mopt(1)+'</select><span>~</span><select id="apvb-to" style="padding:7px;border:1px solid #C9D3E0;border-radius:7px;">'+mopt(7)+'</select></div>'
+    +'</div><div style="font-size:11px;color:#8A93A6;margin-top:8px;">※ '+qualityYear+'년 기준. 각 월은 1~해당월 누적 보고서로 저장됩니다.</div>'
+    +'<button id="apvb-go" style="margin-top:14px;width:100%;background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:12px;font-weight:800;cursor:pointer;">일괄 생성</button>'
+    +'<div id="apvb-status" style="text-align:center;font-size:12px;color:#0B5CAB;margin-top:8px;"></div></div>';
+  document.body.appendChild(ov);
+  var close=function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+  ov.querySelector("#apvb-x").addEventListener("click",close);
+  ov.querySelector("#apvb-go").addEventListener("click",function(){
+    var wn=ov.querySelector("#apvb-w").value, cn=ov.querySelector("#apvb-c").value, an=ov.querySelector("#apvb-a").value;
+    var fromM=parseInt(ov.querySelector("#apvb-from").value,10), toM=parseInt(ov.querySelector("#apvb-to").value,10);
+    if(toM<fromM){ alert("기간이 올바르지 않습니다."); return; }
+    var sigMap={}; if(wn) sigMap["작성"]=store[wn]; if(cn) sigMap["검토"]=store[cn]; if(an) sigMap["승인"]=store[an];
+    if(!Object.keys(sigMap).length){ if(!confirm("서명을 하나도 선택하지 않았습니다. 그래도 생성할까요?")) return; }
+    if(!confirm(qualityYear+"년 "+fromM+"~"+toM+"월 결재본을 생성할까요?")) return;
+    var st=ov.querySelector("#apvb-status"), go=ov.querySelector("#apvb-go"); go.disabled=true; go.textContent="생성 중…";
+    apvBatchGenerate_(fromM,toM,sigMap,function(){ st.textContent="✅ 완료"; setTimeout(function(){ close(); alert("소급 결재 "+fromM+"~"+toM+"월 생성 완료.\n📁 결재 보관함에서 확인하세요."); if(typeof apvOpenArchive_==="function") apvOpenArchive_(); },300); }, function(m){ st.textContent=m+"월 생성 중…"; });
+  });
 }
 function qOpenSignPreview_(html){
   var ov=document.createElement("div"); ov.id="qsign-ov";
@@ -16387,6 +16453,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.42 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.43 🔔</div>
 </body>
 </html>
