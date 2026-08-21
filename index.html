@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.41</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.42</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -1581,6 +1581,7 @@
       <h1>품질분석</h1>
       <button type="button" class="gs-inline-btn" onclick="gsOpen()" title="도번 하나로 전체 메뉴를 한 번에 조회합니다"><span aria-hidden="true">🔍</span>통합검색</button><button type="button" class="gs-inline-btn gs-scan-btn" onclick="scanOpen()" title="QR/바코드를 카메라로 스캔해 통합검색합니다"><span aria-hidden="true">📷</span>스캔</button>
       <div class="topbar-right">
+        <button id="quality-archiveBtn" type="button" title="결재완료 보고서 보관함">📁 결재 보관함</button>
         <button id="quality-printBtn">🖨️ 인쇄</button>
         <button id="quality-excelBtn" type="button" class="tb-download-btn">📥 다운로드</button>
         <span class="sync-toggle" id="quality-syncToggle">구글시트 연동 ▾</span>
@@ -7206,12 +7207,72 @@ function sigChooser_(role, onPick){
   ov.querySelector("#sigch-manage").addEventListener("click",function(){ close(); sigManagerOpen_(function(){ sigChooser_(role,onPick); }); });
 }
 function qReportPrintCSS_(){ return '*{box-sizing:border-box;} body{font-family:"맑은 고딕",sans-serif;} .q-report-page{page-break-after:always;} .q-report-page:last-child{page-break-after:auto;} table{width:100%;border-collapse:collapse;font-size:9px;} th,td{border:1px solid #999;padding:2px 3px;text-align:center;line-height:1.25;} .q-page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;} .q-approval-table{width:auto;flex-shrink:0;} .q-approval-table td{height:42px;min-width:74px;} .q-approval-table .q-approval-label{writing-mode:vertical-rl;} h2{font-size:13px;margin:0 0 4px;} .qsig-cell img{max-height:40px;max-width:90px;}'; }
+/* ==================== 📁 결재 보관함 (결재완료 보고서 저장·열람) ==================== */
+var __approvalIndex = null;
+function apvIndexGet_(){ if(__approvalIndex) return __approvalIndex; try{ __approvalIndex=JSON.parse(localStorage.getItem("ntlApprovalIndex")||"[]")||[]; }catch(e){ __approvalIndex=[]; } return __approvalIndex; }
+function apvIndexSet_(a){ __approvalIndex=a||[]; try{ localStorage.setItem("ntlApprovalIndex", JSON.stringify(__approvalIndex)); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("approvalIndex", __approvalIndex); }catch(e){} }
+function apvIndexApply_(v){ if(Array.isArray(v)){ __approvalIndex=v; try{ localStorage.setItem("ntlApprovalIndex", JSON.stringify(v)); }catch(e){} return true; } return false; }
+function apvSnapshotHTML_(bodyEl){
+  var clone=bodyEl.cloneNode(true);
+  var srcC=bodyEl.querySelectorAll("canvas"), clC=clone.querySelectorAll("canvas");
+  for(var i=0;i<clC.length;i++){ try{ var url=srcC[i].toDataURL("image/png"); var img=document.createElement("img"); img.src=url; img.style.cssText=srcC[i].style.cssText; if(srcC[i].width) img.width=srcC[i].width; if(srcC[i].height) img.height=srcC[i].height; clC[i].parentNode.replaceChild(img, clC[i]); }catch(e){} }
+  clone.querySelectorAll(".qsig-cell").forEach(function(td){ if(!td.querySelector("img")) td.innerHTML=""; td.style.cursor="default"; });
+  return clone.innerHTML;
+}
+function apvSaveFromPreview_(bodyEl){
+  var year=(typeof qualityYear!=="undefined")?qualityYear:new Date().getFullYear();
+  var month=(typeof qualityMonth!=="undefined")?qualityMonth:(new Date().getMonth()+1);
+  var signed=[]; bodyEl.querySelectorAll(".qsig-cell").forEach(function(td){ if(td.querySelector("img")) signed.push(td.getAttribute("data-role")); });
+  if(!signed.length){ if(!confirm("서명이 없습니다. 그래도 결재본으로 저장할까요?")) return; }
+  if(!confirm(year+"년 "+month+"월 (1~"+month+"월 누적) 품질분석 보고서를 결재본으로 저장할까요?\n서명: "+(signed.join(", ")||"없음"))) return;
+  var now=new Date(); var savedAt=now.getFullYear()+"-"+("0"+(now.getMonth()+1)).slice(-2)+"-"+("0"+now.getDate()).slice(-2);
+  var key="approval_"+year+"_"+month;
+  var rec={ id:key, year:year, month:month, savedAt:savedAt, signers:signed, html:apvSnapshotHTML_(bodyEl) };
+  try{ if(typeof qShareSave_==="function") qShareSave_(key, rec); }catch(e){}
+  try{ if(typeof idbSet==="function") idbSet(key, rec); }catch(e){}
+  var idx=apvIndexGet_().slice().filter(function(e){ return e.id!==key; });
+  idx.push({ id:key, year:year, month:month, savedAt:savedAt, signers:signed });
+  idx.sort(function(a,b){ return (b.year-a.year)||(b.month-a.month); });
+  apvIndexSet_(idx);
+  alert("✅ 결재본 저장 완료\n"+year+"년 "+month+"월 · 서명 "+signed.length+"개\n\n[품질분석 → 📁 결재 보관함]에서 다시 볼 수 있습니다.");
+}
+function apvOpenArchive_(){
+  var idx=apvIndexGet_();
+  var body = idx.length ? idx.map(function(e){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid #E1E8F0;border-radius:8px;padding:10px 12px;margin:6px 0;">'
+      +'<div><b style="color:#1F2A44;">'+e.year+'년 '+e.month+'월</b> <span style="color:#8A93A6;font-size:12px;">(1~'+e.month+'월 누적)</span><div style="font-size:11px;color:#5A6478;">결재일 '+e.savedAt+' · 서명 '+((e.signers||[]).join(", ")||"없음")+'</div></div>'
+      +'<button class="apv-view" data-id="'+e.id+'" style="background:#0B5CAB;color:#fff;border:none;border-radius:7px;padding:8px 14px;font-weight:700;cursor:pointer;">열람</button></div>';
+  }).join("") : '<div style="text-align:center;color:#8A93A6;padding:24px;">저장된 결재본이 없습니다.<br><span style="font-size:12px;">품질분석 → 인쇄 → 서명 후 [💾 결재 저장]</span></div>';
+  var ov=document.createElement("div"); ov.style.cssText="position:fixed;inset:0;z-index:99992;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:16px;";
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:560px;max-height:88vh;overflow:auto;border-radius:14px;box-shadow:0 16px 50px rgba(0,0,0,0.35);">'
+    +'<div style="background:#1F2A44;color:#fff;padding:13px 18px;display:flex;justify-content:space-between;align-items:center;"><b style="font-size:16px;">📁 결재 보관함 (품질분석 보고서)</b><button id="apv-x" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button></div>'
+    +'<div style="padding:14px 16px;">'+body+'</div></div>';
+  document.body.appendChild(ov);
+  var close=function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+  ov.querySelector("#apv-x").addEventListener("click",close);
+  ov.addEventListener("click",function(e){ if(e.target===ov) close(); });
+  ov.querySelectorAll(".apv-view").forEach(function(b){ b.addEventListener("click",function(){ apvView_(b.getAttribute("data-id")); }); });
+}
+function apvView_(id){
+  var show=function(rec){ if(!rec||!rec.html){ alert("결재본을 불러올 수 없습니다."); return; }
+    var ov=document.createElement("div"); ov.style.cssText="position:fixed;inset:0;z-index:99994;background:#F0F2F5;display:flex;flex-direction:column;";
+    ov.innerHTML='<style>#apvv-body .q-page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:10px;}#apvv-body .q-page-header h2{font-size:15px;margin:0;flex:1 1 auto;min-width:180px;word-break:keep-all;line-height:1.4;}#apvv-body .q-approval-table{table-layout:fixed;width:340px;max-width:52%;border-collapse:collapse;flex-shrink:0;}#apvv-body .q-approval-table th,#apvv-body .q-approval-table td{border:1px solid #999;padding:2px 6px;text-align:center;font-size:11px;}#apvv-body .q-approval-table th{background:#f2f2f2;font-weight:600;height:20px;width:88px;}#apvv-body .q-approval-table td{height:42px;width:88px;}#apvv-body .q-approval-table .q-approval-label{width:22px;min-width:22px;writing-mode:vertical-rl;}#apvv-body .qsig-cell img{max-height:40px;max-width:84px;}</style>'
+      +'<div style="background:#1F2A44;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:8px;flex-wrap:wrap;"><b>📄 '+rec.year+'년 '+rec.month+'월 품질분석 보고서 (결재완료 · '+rec.savedAt+')</b><div style="display:flex;gap:8px;"><button id="apvv-print" style="background:#fff;color:#1F2A44;border:none;border-radius:6px;padding:8px 16px;font-weight:800;cursor:pointer;">🖨 인쇄</button><button id="apvv-close" style="background:transparent;color:#fff;border:1px solid #fff;border-radius:6px;padding:8px 14px;cursor:pointer;">닫기</button></div></div>'
+      +'<div id="apvv-body" style="flex:1;overflow:auto;padding:16px;background:#fff;color:#111;">'+rec.html+'</div>';
+    document.body.appendChild(ov);
+    ov.querySelector("#apvv-close").addEventListener("click",function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); });
+    ov.querySelector("#apvv-print").addEventListener("click",function(){ var h=ov.querySelector("#apvv-body").innerHTML; if(typeof IS_MOBILE!=="undefined"&&IS_MOBILE&&typeof openPrintWindow==="function"){ openPrintWindow(h, qReportPrintCSS_(), "품질분석 보고서"); } else { var pa=document.getElementById("print-area"); if(pa){ pa.innerHTML=h; window.print(); } } });
+  };
+  try{ if(typeof idbGet==="function"){ idbGet(id).then(function(rec){ if(rec&&rec.html) show(rec); else ls(); }).catch(ls); return; } }catch(e){}
+  ls();
+  function ls(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_(id, function(rec){ show(rec); }); } else alert("불러오기 실패"); }catch(e){ alert("불러오기 실패"); } }
+}
 function qOpenSignPreview_(html){
   var ov=document.createElement("div"); ov.id="qsign-ov";
   ov.style.cssText="position:fixed;inset:0;z-index:99990;background:#F0F2F5;display:flex;flex-direction:column;";
   ov.innerHTML='<div style="background:#1F2A44;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:8px;flex-wrap:wrap;">'
     +'<b style="font-size:15px;">✍ 품질분석 보고서 — 결재란을 터치하여 서명</b><button id="qsign-manage" style="background:#0B7A8A;color:#fff;border:none;border-radius:6px;padding:8px 14px;font-weight:700;cursor:pointer;">✍ 서명 등록/관리</button>'
-    +'<div style="display:flex;gap:8px;"><button id="qsign-print" style="background:#fff;color:#1F2A44;border:none;border-radius:6px;padding:9px 18px;font-weight:800;cursor:pointer;">🖨 인쇄</button>'
+    +'<div style="display:flex;gap:8px;"><button id="qsign-save" style="background:#1D6F42;color:#fff;border:none;border-radius:6px;padding:9px 16px;font-weight:800;cursor:pointer;">💾 결재 저장</button><button id="qsign-print" style="background:#fff;color:#1F2A44;border:none;border-radius:6px;padding:9px 18px;font-weight:800;cursor:pointer;">🖨 인쇄</button>'
     +'<button id="qsign-close" style="background:transparent;color:#fff;border:1px solid #fff;border-radius:6px;padding:9px 14px;font-weight:700;cursor:pointer;">닫기</button></div></div>'
     +'<style>#qsign-body .q-page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:10px;flex-wrap:nowrap;}'+'#qsign-body .q-page-header h2{font-size:15px;margin:0;flex:1 1 auto;min-width:180px;word-break:keep-all;line-height:1.4;white-space:normal;}'+'#qsign-body .q-approval-table{border-collapse:collapse;flex-shrink:0;}'+'#qsign-body .q-approval-table th,#qsign-body .q-approval-table td{border:1px solid #999;padding:2px 6px;text-align:center;font-size:11px;}'+'#qsign-body .q-approval-table th{background:#f2f2f2;font-weight:600;height:20px;}'+'#qsign-body .q-approval-table{table-layout:fixed;width:340px;max-width:52%;}'+'#qsign-body .q-approval-table td{height:42px;width:88px;}'+'#qsign-body .q-approval-table th{width:88px;}'+'#qsign-body .q-approval-table .q-approval-label,#qsign-body .q-approval-table th.q-approval-label{width:22px;min-width:22px;}'+'#qsign-body .q-approval-table .q-approval-label{writing-mode:vertical-rl;white-space:nowrap;}</style>'+'<div id="qsign-body" style="flex:1;overflow:auto;padding:16px;background:#fff;color:#111;">'+html+'</div>';
   document.body.appendChild(ov);
@@ -7224,6 +7285,7 @@ function qOpenSignPreview_(html){
   ov.querySelector("#qsign-close").addEventListener("click",function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); });
 
   var __qm=ov.querySelector("#qsign-manage"); if(__qm) __qm.addEventListener("click",function(){ sigManagerOpen_(); });
+  var __qs=ov.querySelector("#qsign-save"); if(__qs) __qs.addEventListener("click",function(){ apvSaveFromPreview_(body); });
   ov.querySelector("#qsign-print").addEventListener("click",function(){
     var printHTML=body.innerHTML;
     if(typeof IS_MOBILE!=="undefined" && IS_MOBILE && typeof openPrintWindow==="function"){
@@ -7266,6 +7328,7 @@ function printQualityReport(){
   qOpenSignPreview_(html);
 }
 document.getElementById("quality-printBtn").addEventListener("click", ()=>runBusy(printQualityReport, "인쇄 준비 중..."));
+var __qab=document.getElementById("quality-archiveBtn"); if(__qab) __qab.addEventListener("click", apvOpenArchive_);
 document.getElementById("quality-excelBtn").addEventListener("click", ()=>runBusy(()=>{
   const wb = XLSX.utils.book_new();
   Object.keys(QUALITY_CATEGORIES).forEach(catKey=>{
@@ -8291,6 +8354,7 @@ window.__qualityInited = true;
     if(typeof updateLoadingBanner === "function") updateLoadingBanner();
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("defectLog", function(sv){ if(defectLogApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("defectLog",sv); }catch(_){}} else { try{ if(typeof idbGet==="function") idbGet("defectLog").then(defectLogApply_).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 1400);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("sigStore", function(sv){ if(typeof sigStoreApply_==="function") sigStoreApply_(sv); }); } }catch(e){} }, 1600);
+    setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ (window.__afterEnter||[]).forEach(function(fn,i){ setTimeout(fn, i*150); }); window.__afterEnter=[]; }catch(e){} }, 300);
     setTimeout(function(){ try{ if(typeof noticeBindBtn_==="function") noticeBindBtn_(); }catch(e){}
       try{ if(typeof qShareLoad_==="function"){ qShareLoad_("noticeData", function(sv){ if(noticeApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("noticeData",sv); }catch(_){}}  else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(noticeApply_).catch(function(){}); }catch(_){}} try{ noticeShowToday_(); }catch(e){} }); } else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(function(v){ noticeApply_(v); noticeShowToday_(); }).catch(function(){}); }catch(_){} } }catch(e){}
@@ -13755,6 +13819,7 @@ var INS_CFG = {
         {key:"d_scr",label:"기스",kind:"num",w:5},{key:"d_dnt",label:"찍힘",kind:"num",w:5},
         {key:"d_stn",label:"얼룩",kind:"num",w:5},{key:"d_etc",label:"기타",kind:"num",w:5}]},
       {label:"공정검사", leaf:{key:"tap", kind:"check", chk:"TAP", w:8}},
+      {label:"공정 검사수", leaf:{key:"tapCnt", kind:"num", w:7}},
       {label:"공정 부적합", subs:[
         {key:"p_fst",label:"체결",kind:"num",w:5},{key:"p_mis",label:"누락",kind:"num",w:5}]},
       {label:"조치 내용",   leaf:{key:"act", kind:"text", w:18}},
@@ -14401,7 +14466,7 @@ function _rowOut(r,c){
 function _rowProcTap(r,c){
   var bad=insMInt_(r.p_fst)+insMInt_(r.p_mis);   // 체결 + 누락 부적합 합
   return [ insNumIfDigits_(r.draw), r.sn||"", "", "", "", "", "", "", "", "", "", "", "", "", "",
-    "","","","","", r.insDate||"", c.insp||"", insMNum_(r.insCnt), (bad>0?bad:""), (r.led?(r.insDate||""):"") ];
+    "","","","","", r.insDate||"", c.insp||"", (String(r.tapCnt==null?"":r.tapCnt).trim()!==""? insMNum_(r.tapCnt): insMNum_(r.insCnt)), (bad>0?bad:""), (r.led?(r.insDate||""):"") ];
 }
 // 측정실 치수 → 공정검사 치수란
 function _rowProcDim(r,c){
@@ -16322,6 +16387,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.41 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.42 🔔</div>
 </body>
 </html>
