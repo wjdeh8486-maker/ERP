@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.52</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.53</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -8427,7 +8427,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.52;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.53;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -15726,6 +15726,26 @@ function insRestoreLocal(){
 function insSetStatus(msg){ var e=document.getElementById("insrep-status"); if(e) e.textContent=msg||""; }
 function insTypeLabel(t){ t=t||insType; return ({incoming:"수입검사",shipping:"출하검사",measureS:"측정실 소형",measureL:"측정실 대형",processin:"공정입고"})[t]||t; }
 /* 공유저장: 현재 유형(페이지)만 저장 — 백엔드가 유형별 행에 따로 저장하므로 다른 유형은 절대 건드리지 않음 */
+function insVerifyAfterSave_(url, t, myRows, label, attempt){
+  setTimeout(function(){
+    fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(t)+"&_v="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return null;}).then(function(res){
+      var cloudRows=[]; try{ if(res && res.json){ var o=JSON.parse(res.json); if(o && Array.isArray(o.rows)) cloudRows=o.rows; } }catch(e){}
+      if(!res || !res.success){ insSetStatus("\u26A0 ["+label+"] \uC800\uC7A5 \uD655\uC778 \uC2E4\uD328 \u2014 \uB124\uD2B8\uC6CC\uD06C \uD655\uC778 \uD6C4 \uB2E4\uC2DC \uC800\uC7A5\uD558\uC138\uC694"); return; }
+      var cloudIds={}; cloudRows.forEach(function(r){ if(r&&r._id) cloudIds[r._id]=1; });
+      var missing=(myRows||[]).filter(function(r){ return r && r._id && !cloudIds[r._id] && !insDeletedIds[r._id]; });
+      if(missing.length===0){ insSetStatus("\u2601 ["+label+"] \uC800\uC7A5 \uD655\uC778\uB428 "+new Date().toLocaleTimeString("ko-KR")); return; }
+      // 누락 = 다른 PC가 거의 동시에 덮어씀 → 재병합 후 재저장 (최대 2회)
+      if(attempt>=2){ insSetStatus("\u26A0 ["+label+"] \uB3D9\uC2DC \uC800\uC7A5 \uCDA9\uB3CC \u2014 [\uD83D\uDD04 \uBD88\uB7EC\uC624\uAE30] \uD6C4 \uB2E4\uC2DC \uC800\uC7A5\uD574 \uC8FC\uC138\uC694"); return; }
+      var reMerged=insDedup_(insEnsureIds_(cloudRows.concat(missing))).filter(function(r){ return !(r&&r._id&&insDeletedIds[r._id]); });
+      var payload={ rows:reMerged, deleted:Object.keys(insDeletedIds), savedAt:new Date().toISOString() };
+      insSetStatus("\u2601 ["+label+"] \uB3D9\uC2DC \uC800\uC7A5 \uAC10\uC9C0 \u2192 \uC7AC\uBCD1\uD569 \uC800\uC7A5 \uC911\u2026");
+      fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeInsrepMaster", key:t, json:JSON.stringify(payload)})}).then(function(){
+        if(insState[t]) insState[t].rows=reMerged; if(typeof insSaveLocalNow==="function") insSaveLocalNow(); insUpdateDayFilter(); if(t===insType) insRender();
+        insVerifyAfterSave_(url, t, reMerged, label, attempt+1);
+      }).catch(function(){ insSetStatus("\u26A0 ["+label+"] \uC7AC\uC800\uC7A5 \uC2E4\uD328 \u2014 \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694"); });
+    });
+  }, 2500);
+}
 function insCloudSave(){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
   var t=insType, label=insTypeLabel(t);
@@ -15757,7 +15777,8 @@ function insCloudSave(){
        if(insState[t]) insState[t].rows=merged;
        if(typeof insSaveLocalNow==="function") insSaveLocalNow(); else insSaveLocal();
        insUpdateDayFilter(); insRender();
-       insSetStatus("☁ ["+label+"] 공유 저장됨"+(keep.length?(" · 다른 내용 "+keep.length+"행 보존"):"")+" "+new Date().toLocaleTimeString("ko-KR"));
+       insSetStatus("☁ ["+label+"] 저장 중… 확인 대기"+(keep.length?(" · 다른 내용 "+keep.length+"행 병합"):""));
+       insVerifyAfterSave_(url, t, merged, label, 0);
      });
   }).catch(function(){ insSetStatus("["+label+"] 공유 저장 실패 — 네트워크 확인"); });
 }
@@ -16558,6 +16579,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.52 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.53 🔔</div>
 </body>
 </html>
