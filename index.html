@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.63</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.64</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -8475,7 +8475,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.63;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.64;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -14066,7 +14066,7 @@ function insRowId_(){ return "r"+Date.now().toString(36)+Math.random().toString(
 function insEnsureIds_(rows){ if(Array.isArray(rows)) rows.forEach(function(r){ if(r && !r._id) r._id=insRowId_(); }); return rows; }
 function insRowSig_(r){ if(!r||typeof r!=="object") return String(r); var ks=Object.keys(r).filter(function(k){return k!=="_id";}).sort(); return ks.map(function(k){ return k+"\u0001"+String(r[k]); }).join("\u0002"); }
 function insDedup_(rows){ if(!Array.isArray(rows)) return rows; var seen={}, out=[]; rows.forEach(function(r){ var sig=insRowSig_(r); if(seen[sig]) return; seen[sig]=1; out.push(r); }); return out; }
-function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); if("insDate" in r) r.insDate=insDefaultDate_(); r._id=insRowId_(); return r; }
+function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); if("insDate" in r) r.insDate=insDefaultDate_(); try{ var __m=insMetaByType[insType]; if(__m){ var __d=r.insDate||""; r.inspector=(__m.inspByDate&&__m.inspByDate[__d])||__m.inspector||""; } }catch(e){} r._id=insRowId_(); return r; }
 
 function insToday_(){ var d=new Date(),p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
 function insSyncMetaInputs(){
@@ -14157,7 +14157,7 @@ function insInit(){
   bind("insrep-saveFolderBtn","click",insPickSaveFolder);
   bind("insrep-validateBtn","click",insOpenValidate);
   bind("insrep-cloudLoadBtn","click",insCloudLoad);
-  bind("insrep-inspector","input",function(){ var __v=this.value; var __m=insMetaByType[insType]; if(__m){ __m.inspector=__v; __m.inspByDate=__m.inspByDate||{}; var __cur=(insDayFilter&&insDayFilter!=="all")?insDayFilter:(__m.date||(typeof insToday_==="function"?insToday_():"")); if(__cur){ if(__v.trim()) __m.inspByDate[__cur]=__v; else delete __m.inspByDate[__cur]; } } try{ if(__v.trim()) localStorage.setItem("insLastInspector", __v.trim()); }catch(e){} insSaveLocal(); });
+  bind("insrep-inspector","input",function(){ var __v=this.value; var __m=insMetaByType[insType]; if(__m){ __m.inspector=__v; __m.inspByDate=__m.inspByDate||{}; var __cur=(insDayFilter&&insDayFilter!=="all")?insDayFilter:(__m.date||(typeof insToday_==="function"?insToday_():"")); if(__cur){ if(__v.trim()) __m.inspByDate[__cur]=__v; else delete __m.inspByDate[__cur]; (insState[insType]&&insState[insType].rows||[]).forEach(function(r){ if(String(r.insDate||"")===__cur) r.inspector=__v; }); } } try{ if(__v.trim()) localStorage.setItem("insLastInspector", __v.trim()); }catch(e){} insSaveLocal(); });
   bind("insrep-date","change",function(){ var v=this.value; if(insMetaByType[insType]) insMetaByType[insType].date=v; insDayFilter = v ? v : "all"; insRender(); insSaveLocal(); });
   // PC 스캐너(키보드형) 입력: 찍으면 값+Enter → 행 추가, 연속 가능
   var scanInp=document.getElementById("insrep-scanInput");
@@ -14679,7 +14679,7 @@ function _rowOut(r,c){
     insMNum_(r.d_scr), insMNum_(r.d_dnt), insMNum_(r.d_stn), insMNum_(r.p_mis), insMNum_(r.d_etc),
     "", r.actDate||"", r.act||"", "","","","","", (r.led?(r.insDate||""):"") ];
 }
-function insInspFor_(c, r){ try{ var d=String((r&&r.insDate)||"").trim(); if(c&&c.byDate&&d&&c.byDate[d]) return c.byDate[d]; }catch(e){} return (c&&c.insp)||""; }
+function insInspFor_(c, r){ try{ if(r&&r.inspector) return r.inspector; var d=String((r&&r.insDate)||"").trim(); if(c&&c.byDate&&d&&c.byDate[d]) return c.byDate[d]; }catch(e){} return (c&&c.insp)||""; }
 // 수입검사 TAP → 공정검사 '체결란'만 채움 (도번·S/N·체결검사일·체결검사자·체결수·체결부적합·LED촬영)
 function _rowProcTap(r,c){
   var bad=insMInt_(r.p_fst)+insMInt_(r.p_mis);   // 체결 + 누락 부적합 합
@@ -14878,7 +14878,7 @@ function insPrintDay(){
     });
     return '<section>'
       + '<div class="rh"><span class="rt">'+insEsc(cfg.title)+'</span>'
-      +   '<span class="rm">검사일 : '+insEsc(gr.date)+' &nbsp;&nbsp; 검사자 : '+insEsc((__ibd[gr.date]||inspector)||"-")+' &nbsp;&nbsp; 건수 : '+gr.rows.length+'</span></div>'
+      +   '<span class="rm">검사일 : '+insEsc(gr.date)+' &nbsp;&nbsp; 검사자 : '+insEsc(((gr.rows&&gr.rows[0]&&gr.rows[0].inspector)||__ibd[gr.date]||inspector)||"-")+' &nbsp;&nbsp; 건수 : '+gr.rows.length+'</span></div>'
       + '<table><thead><tr>'+head1+'</tr><tr>'+head2+'</tr></thead><tbody>'+body+'</tbody></table>'
       + '</section>';
   }).join("");
@@ -16666,6 +16666,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.63 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.64 🔔</div>
 </body>
 </html>
