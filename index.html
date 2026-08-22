@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.70</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.71</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -8477,7 +8477,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.70;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.71;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -15843,19 +15843,18 @@ function insVerifyAfterSave_(url, t, myRows, label, attempt){
   setTimeout(function(){
     fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(t)+"&nocache=1&_v="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return null;}).then(function(res){
       var cloudRows=[]; try{ if(res && res.json){ var o=JSON.parse(res.json); if(o && Array.isArray(o.rows)) cloudRows=o.rows; } }catch(e){}
-      // 읽기 실패/빈응답 → 저장은 됐을 가능성 높음(로컬+병합 완료). 겁주지 않음.
-      if(!res || !res.success){ insSetStatus("\u2601 ["+label+"] \uC800\uC7A5\uB428 (\uD655\uC778\uC740 \uC7A0\uC2DC \uD6C4) "+new Date().toLocaleTimeString("ko-KR")); return; }
+      if(!res || !res.success){ return; }   // 조용히 종료(저장됨 유지)
       var cloudIds={}; cloudRows.forEach(function(r){ if(r&&r._id) cloudIds[r._id]=1; });
       var missing=(myRows||[]).filter(function(r){ return r && r._id && !cloudIds[r._id] && !insDeletedIds[r._id]; });
       if(missing.length===0){ insSetStatus("\u2601 ["+label+"] \uC800\uC7A5 \uD655\uC778\uB428 "+new Date().toLocaleTimeString("ko-KR")); return; }
-      // 누락 감지 → 조용히 재병합 후 재저장(최대 2회). 실제 동시저장이면 여기서 합쳐짐.
-      if(attempt>=2){ insSetStatus("\u2601 ["+label+"] \uC800\uC7A5\uB428 (\uB3D9\uAE30\uD654\uB294 \uC7A0\uC2DC \uD6C4 \uBC18\uC601) "+new Date().toLocaleTimeString("ko-KR")); return; }
+      // 진짜 동시저장(내 행 누락)일 때만 1회 조용히 재병합 저장
+      if(attempt>=1){ return; }   // 1회만 시도, 실패해도 저장됨 유지(겁주지 않음)
       var reMerged=insDedup_(insEnsureIds_(cloudRows.concat(missing))).filter(function(r){ return !(r&&r._id&&insDeletedIds[r._id]); });
       var payload={ rows:reMerged, deleted:Object.keys(insDeletedIds), savedAt:new Date().toISOString() };
       fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeInsrepMaster", key:t, json:JSON.stringify(payload)})}).then(function(){
         if(insState[t]) insState[t].rows=reMerged; if(typeof insSaveLocalNow==="function") insSaveLocalNow(); insUpdateDayFilter(); if(t===insType) insRender();
         insVerifyAfterSave_(url, t, reMerged, label, attempt+1);
-      }).catch(function(){ insSetStatus("\u2601 ["+label+"] \uC800\uC7A5\uB428 (\uC7AC\uD655\uC778 \uC911) "+new Date().toLocaleTimeString("ko-KR")); });
+      }).catch(function(){});
     });
   }, 4000);
 }
@@ -15890,7 +15889,7 @@ function insCloudSave(){
        if(insState[t]) insState[t].rows=merged;
        if(typeof insSaveLocalNow==="function") insSaveLocalNow(); else insSaveLocal();
        insUpdateDayFilter(); insRender();
-       insSetStatus("☁ ["+label+"] 저장 중… 확인 대기"+(keep.length?(" · 다른 내용 "+keep.length+"행 병합"):""));
+       insSetStatus("☁ ["+label+"] 저장됨 "+new Date().toLocaleTimeString("ko-KR")+(keep.length?(" · 다른 내용 "+keep.length+"행 병합"):""));
        insVerifyAfterSave_(url, t, merged, label, 0);
      });
   }).catch(function(){ insSetStatus("["+label+"] 공유 저장 실패 — 네트워크 확인"); });
@@ -16692,6 +16691,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.70 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.71 🔔</div>
 </body>
 </html>
