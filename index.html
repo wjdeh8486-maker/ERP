@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.60</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.61</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -5714,6 +5714,27 @@ function qShareLoad_(section, cb){ var url=qShareUrl_(); if(!url){ cb(null); ret
     } else { cb(obj); }
   }); }
 /* ==================== 🎯 CTQ 분석 (검사종합 업로드 → 부적합 유형별, 전체/년/월) ==================== */
+function ctqBuildFromRaw_(){
+  try{
+    if(typeof qualityRawData!=="object" || !qualityRawData) return null;
+    // CTQ 대상 시트(공정검사 사내외관 제외) + qualityRawData의 types 라벨 사용
+    var wantKeys={"수입검사(외관)":1,"출하검사":1,"공정검사(치수,BOLT,LED)":1,"수입검사(기능)":1};
+    var monthly={}; var any=false;
+    Object.keys(qualityRawData).forEach(function(key){
+      if(!wantKeys[key]) return;
+      var rows=qualityRawData[key]; if(!Array.isArray(rows)) return;
+      rows.forEach(function(r){
+        if(!r || !(r.date instanceof Date) || isNaN(r.date.getTime())) return;
+        var ym=r.date.getFullYear()+"-"+String(r.date.getMonth()+1).padStart(2,"0");
+        var mo=monthly[ym]||(monthly[ym]={ins:0, defs:{}});
+        mo.ins += Number(r.qty)||0; any=true;
+        var tv=r.types||{};
+        Object.keys(tv).forEach(function(tk){ var v=Number(tv[tk])||0; if(v>0) mo.defs[tk]=(mo.defs[tk]||0)+v; });
+      });
+    });
+    return any?monthly:null;
+  }catch(e){ return null; }
+}
 var CTQ_SHEETS = [
   { name:"수입검사(외관)", date:3, cnt:5, defs:[["기스",8],["찍힘",9],["얼룩",10],["누락",11],["기타",12]] },
   { name:"출하검사",        date:2, cnt:4, defs:[["기스",7],["찍힘",8],["얼룩",9],["누락",10],["기타",11]] },
@@ -5794,7 +5815,8 @@ function ctqTableHtml(agg){
 }
 function ctqRenderTable_(){
   var host=document.getElementById("ctq-table"); if(!host) return;
-  if(!__ctqMonthly){ host.innerHTML='<div style="padding:20px;color:var(--text-mute);">검사종합 파일을 업로드하면 부적합 유형별 CTQ가 여기에 표시됩니다.</div>'; return; }
+  if(!__ctqMonthly){ var __auto=(typeof ctqBuildFromRaw_==="function")?ctqBuildFromRaw_():null; if(__auto){ __ctqMonthly=__auto; } }
+  if(!__ctqMonthly){ host.innerHTML='<div style="padding:20px;color:var(--text-mute);">검사종합 데이터를 불러오는 중이거나 없습니다. 품질분석 동기화 후 표시됩니다. (또는 우측 상단 파일 업로드)</div>'; return; }
   host.innerHTML=ctqTableHtml(ctqAggregate(__ctqMonthly, ctqMode, ctqYear, ctqMonth));
 }
 function ctqBuildControls_(){
@@ -5813,6 +5835,7 @@ function ctqBuildControls_(){
 }
 function renderCTQPanel(){
   var panel=document.getElementById("qpanel-ctq"); if(!panel) return;
+  if(!__ctqMonthly && !(window.__qUserLoaded&&window.__qUserLoaded.ctqMonthly)){ var __a=(typeof ctqBuildFromRaw_==="function")?ctqBuildFromRaw_():null; if(__a) __ctqMonthly=__a; }
   var range="";
   if(__ctqMonthly){ var ks=Object.keys(__ctqMonthly).sort(); if(ks.length) range=ks[0]+" ~ "+ks[ks.length-1]+" · "+ks.length+"개월"; }
   panel.innerHTML='<div class="table-wrap" style="padding:16px;">'
@@ -5821,7 +5844,8 @@ function renderCTQPanel(){
     +  '<div style="display:flex;gap:8px;align-items:center;">'
     +    '<span id="ctq-range" style="font-size:12px;color:#5A6478;">'+(range||"파일 미업로드")+'</span>'
     +    '<input type="file" id="ctq-file" accept=".xlsx,.xlsm,.xls" style="display:none;">'
-    +    '<button type="button" id="ctq-upload" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📤 검사종합 업로드</button>'
+    +    '<button type="button" id="ctq-autoBtn" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="이미 동기화된 검사종합 데이터로 자동 생성">🔄 검사종합에서 자동</button>'
++    '<button type="button" id="ctq-upload" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="엑셀 파일 직접 업로드(폴백)">📤 파일 업로드</button>'
     +  '</div>'
     +'</div>'
     +'<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">검사종합 엑셀을 올리면 3년치를 한 번에 집계합니다. 소형/대형 구분 없이 측정(공정)까지 포함. 누적 80%까지가 <b style="color:#8A1F1F;">핵심(Vital Few)</b>입니다.</div>'
@@ -5830,6 +5854,7 @@ function renderCTQPanel(){
     +'</div>';
 
   var fileInp=document.getElementById("ctq-file");
+  var __ctqAuto=document.getElementById("ctq-autoBtn"); if(__ctqAuto) __ctqAuto.addEventListener("click", function(){ var a=(typeof ctqBuildFromRaw_==="function")?ctqBuildFromRaw_():null; if(a){ __ctqMonthly=a; try{ window.__qUserLoaded=window.__qUserLoaded||{}; window.__qUserLoaded.ctqMonthly=true; }catch(_){}; try{ if(typeof idbSet==="function") idbSet("ctqMonthly",a); }catch(_){}; try{ qShareSave_("ctqMonthly", a, "ctq-range"); }catch(_){}; renderCTQPanel(); } else { alert("검사종합(품질분석) 데이터가 아직 없습니다.\n상단 품질분석에서 먼저 불러온 뒤 다시 시도하세요."); if(typeof fetchQualityData==="function"){ var __u=document.getElementById("quality-appsScriptUrl"); if(__u && !__u.value.trim() && typeof docmasterApiUrl==="function") __u.value=docmasterApiUrl(); Promise.resolve(fetchQualityData()).then(function(){ var a2=ctqBuildFromRaw_(); if(a2){ __ctqMonthly=a2; renderCTQPanel(); } }); } } });
   document.getElementById("ctq-upload").addEventListener("click", function(){ fileInp.click(); });
   fileInp.addEventListener("change", function(){ if(fileInp.files&&fileInp.files[0]) ctqOnUpload_(fileInp.files[0]); });
   ctqBindControls_();
@@ -6466,9 +6491,9 @@ function qmsLoadUnresolvedShared_(cb){
     }).catch(function(){ cb&&cb(); });
   }catch(e){ cb&&cb(); }
 }
-function qmsLoadSchedShared_(cb){
+function qmsLoadSchedShared_(cb, force){
   try{
-    if(typeof schedEvents!=="undefined" && schedEvents && schedEvents.length){ cb&&cb(); return; }
+    if(!force && typeof schedEvents!=="undefined" && schedEvents && schedEvents.length){ cb&&cb(); return; }
     if(typeof SCHED_API==="undefined" || !SCHED_API){ cb&&cb(); return; }
     fetch(SCHED_API,{cache:"no-store"}).then(function(r){return r.json();}).then(function(data){
       try{ schedEvents = Array.isArray(data)?data.map(function(e){ return {id:String(e.id==null?"":e.id), date:String(e.date||"").trim(), text:String(e.text||""), fileUrl:e.fileUrl||""}; }):[]; schedLoaded=true; }catch(e){}
@@ -8451,7 +8476,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.60;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.61;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -8463,7 +8488,7 @@ window.__qualityInited = true;
     }catch(e){}
     setTimeout(function(){ try{ (window.__afterEnter||[]).forEach(function(fn,i){ setTimeout(fn, i*150); }); window.__afterEnter=[]; }catch(e){} }, 300);
     setTimeout(function(){ try{ if(typeof noticeBindBtn_==="function") noticeBindBtn_(); }catch(e){}
-      try{ if(typeof qShareLoad_==="function"){ qShareLoad_("noticeData", function(sv){ if(noticeApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("noticeData",sv); }catch(_){}}  else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(noticeApply_).catch(function(){}); }catch(_){}} try{ if(typeof qmsLoadSchedShared_==="function"){ qmsLoadSchedShared_(function(){ noticeShowToday_(); }); } else { noticeShowToday_(); } }catch(e){} }); } else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(function(v){ noticeApply_(v); noticeShowToday_(); }).catch(function(){}); }catch(_){} } }catch(e){}
+      try{ if(typeof qShareLoad_==="function"){ qShareLoad_("noticeData", function(sv){ if(noticeApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("noticeData",sv); }catch(_){}}  else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(noticeApply_).catch(function(){}); }catch(_){}} try{ if(typeof qmsLoadSchedShared_==="function"){ qmsLoadSchedShared_(function(){ noticeShowToday_(); }, true); } else { noticeShowToday_(); } }catch(e){} }); } else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(function(v){ noticeApply_(v); noticeShowToday_(); }).catch(function(){}); }catch(_){} } }catch(e){}
       try{ if(typeof qShareLoad_==="function"){ qShareLoad_("waitOverride", function(sv){ if(sv&&typeof sv==="object"){ __waitOverride=sv; try{ if(typeof idbSet==="function") idbSet("waitOverride",sv); }catch(_){}} else { try{ if(typeof idbGet==="function") idbGet("waitOverride").then(function(v){ if(v&&typeof v==="object") __waitOverride=v; }).catch(function(){}); }catch(_){}} try{ if(document.getElementById("waitinsp-content")) renderWaitInspTab(); }catch(e){} }); } }catch(e){}
     }, 1000);
     setTimeout(function(){ try{ if(typeof qmsMorningBindBadge_==="function") qmsMorningBindBadge_(); }catch(e){} try{ if(typeof qmsShowMorning_==="function") qmsShowMorning_(); }catch(e){} }, 1500);
@@ -16639,6 +16664,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.60 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.61 🔔</div>
 </body>
 </html>
