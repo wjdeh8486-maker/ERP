@@ -950,7 +950,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.61</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.62</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -8476,7 +8476,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.61;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.62;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -14051,7 +14051,7 @@ var insType = "incoming";
 var insState = { incoming:{rows:[]}, shipping:{rows:[]}, measureS:{rows:[]}, measureL:{rows:[]} };
 var insProcInSource = null;   // 공정입고 집계용 공유 버퍼(null이면 로컬 insState 사용)
 var insProcInMemo   = {};     // 도번 -> { m:측정실비고, c:크린룸비고 }
-var insMetaByType = { incoming:{inspector:"",date:""}, shipping:{inspector:"",date:""}, measureS:{inspector:"",date:""}, measureL:{inspector:"",date:""} };  // 검사자/검사일자 유형별 분리
+var insMetaByType = { incoming:{inspector:"",date:"",inspByDate:{}}, shipping:{inspector:"",date:"",inspByDate:{}}, measureS:{inspector:"",date:"",inspByDate:{}}, measureL:{inspector:"",date:"",inspByDate:{}} };  // 검사자/검사일자 유형별 + 날짜별 검사자
 var insDayFilter = "all";  // 검사 일보 날짜 필터
 var insDrawSearch = "";     // 검사 일보 도번 검색(있으면 전체 날짜에서 도번 매칭만 표시)
 var insDeletedIds = {};     // 삭제 흔적(tombstone)
@@ -14073,7 +14073,9 @@ function insToday_(){ var d=new Date(),p=function(n){return String(n).padStart(2
 function insSyncMetaInputs(){
   var meta=insMetaByType[insType];
   if(meta && insType!=="processin" && !meta.date) meta.date=insToday_();   // 검사일자 오늘 자동
-  if(meta && !meta.inspector){ try{ var __li=localStorage.getItem("insLastInspector")||""; if(__li) meta.inspector=__li; }catch(e){} }   // 검사자 마지막 이름 자동
+  if(meta){ meta.inspByDate=meta.inspByDate||{}; var __cur=(insDayFilter&&insDayFilter!=="all")?insDayFilter:(meta.date||"");
+    if(__cur && meta.inspByDate[__cur]){ meta.inspector=meta.inspByDate[__cur]; }   // 해당 날짜 검사자 표시
+    else if(!meta.inspector){ try{ var __li=localStorage.getItem("insLastInspector")||""; if(__li){ meta.inspector=__li; if(__cur) meta.inspByDate[__cur]=__li; } }catch(e){} } }   // 없으면 마지막 이름
   meta=meta||{inspector:"",date:""};
   var ip=document.getElementById("insrep-inspector"); if(ip) ip.value=meta.inspector||"";
   var dt=document.getElementById("insrep-date"); if(dt) dt.value=meta.date||"";
@@ -14156,7 +14158,7 @@ function insInit(){
   bind("insrep-saveFolderBtn","click",insPickSaveFolder);
   bind("insrep-validateBtn","click",insOpenValidate);
   bind("insrep-cloudLoadBtn","click",insCloudLoad);
-  bind("insrep-inspector","input",function(){ if(insMetaByType[insType]) insMetaByType[insType].inspector=this.value; try{ if(this.value.trim()) localStorage.setItem("insLastInspector", this.value.trim()); }catch(e){} insSaveLocal(); });
+  bind("insrep-inspector","input",function(){ var __v=this.value; var __m=insMetaByType[insType]; if(__m){ __m.inspector=__v; __m.inspByDate=__m.inspByDate||{}; var __cur=(insDayFilter&&insDayFilter!=="all")?insDayFilter:(__m.date||(typeof insToday_==="function"?insToday_():"")); if(__cur){ if(__v.trim()) __m.inspByDate[__cur]=__v; else delete __m.inspByDate[__cur]; } } try{ if(__v.trim()) localStorage.setItem("insLastInspector", __v.trim()); }catch(e){} insSaveLocal(); });
   bind("insrep-date","change",function(){ var v=this.value; if(insMetaByType[insType]) insMetaByType[insType].date=v; insDayFilter = v ? v : "all"; insRender(); insSaveLocal(); });
   // PC 스캐너(키보드형) 입력: 찍으면 값+Enter → 행 추가, 연속 가능
   var scanInp=document.getElementById("insrep-scanInput");
@@ -14673,27 +14675,28 @@ var _COL_FUNC= ["도 번","S/N","업 체","검사자","검사수","양품수","L
 
 // 수입검사(외관): 전체 행
 function _rowOut(r,c){
-  return [ insNumIfDigits_(r.draw), r.sn||"", r.vendor||"", r.insDate||"", c.insp||"",
+  return [ insNumIfDigits_(r.draw), r.sn||"", r.vendor||"", r.insDate||"", insInspFor_(c,r),
     insMNum_(r.insCnt), insMNum_(r.goodCnt), insMDefects_(r),
     insMNum_(r.d_scr), insMNum_(r.d_dnt), insMNum_(r.d_stn), insMNum_(r.p_mis), insMNum_(r.d_etc),
     "", r.actDate||"", r.act||"", "","","","","", (r.led?(r.insDate||""):"") ];
 }
+function insInspFor_(c, r){ try{ var d=String((r&&r.insDate)||"").trim(); if(c&&c.byDate&&d&&c.byDate[d]) return c.byDate[d]; }catch(e){} return (c&&c.insp)||""; }
 // 수입검사 TAP → 공정검사 '체결란'만 채움 (도번·S/N·체결검사일·체결검사자·체결수·체결부적합·LED촬영)
 function _rowProcTap(r,c){
   var bad=insMInt_(r.p_fst)+insMInt_(r.p_mis);   // 체결 + 누락 부적합 합
   return [ insNumIfDigits_(r.draw), r.sn||"", "", "", "", "", "", "", "", "", "", "", "", "", "",
-    "","","","","", r.insDate||"", c.insp||"", (String(r.tapCnt==null?"":r.tapCnt).trim()!==""? insMNum_(r.tapCnt): insMNum_(r.insCnt)), (bad>0?bad:""), (r.led?(r.insDate||""):"") ];
+    "","","","","", r.insDate||"", insInspFor_(c,r), (String(r.tapCnt==null?"":r.tapCnt).trim()!==""? insMNum_(r.tapCnt): insMNum_(r.insCnt)), (bad>0?bad:""), (r.led?(r.insDate||""):"") ];
 }
 // 측정실 치수 → 공정검사 치수란
 function _rowProcDim(r,c){
-  return [ insNumIfDigits_(r.draw), r.sn||"", r.insDate||"", c.insp||"", r.mode||"",
+  return [ insNumIfDigits_(r.draw), r.sn||"", r.insDate||"", insInspFor_(c,r), r.mode||"",
     insMNum_(r.insCnt), insMNum_(r.goodCnt), insMDefects_(r),
     insMNum_(r.d_gen), insMNum_(r.d_tol), insMNum_(r.d_mis), "", "", r.actDate||"", r.act||"",
     "","","","","", "","","","", "" ];
 }
 // 출하검사
 function _rowShip(r,c){
-  return [ insNumIfDigits_(r.draw), r.sn||"", r.insDate||"", c.insp||"",
+  return [ insNumIfDigits_(r.draw), r.sn||"", r.insDate||"", insInspFor_(c,r),
     insMNum_(r.insCnt), insMNum_(r.goodCnt), insMDefects_(r),
     insMNum_(r.d_scr), insMNum_(r.d_dnt), insMNum_(r.d_stn), "", insMNum_(r.d_etc),
     "", r.actDate||"", r.act||"", "","","","","", "" ];
@@ -14701,7 +14704,7 @@ function _rowShip(r,c){
 // 측정실 기능 → 수입검사(기능). 검사일은 각 항목 체크한 날(=검사일)
 function _rowFunc(r,c){
   var pressDate=(String(r.press||"").trim()!=="")?(r.insDate||""):"";
-  return [ insNumIfDigits_(r.draw), r.sn||"", "", c.insp||"", insMNum_(r.fnCnt), insMNum_(r.fnGood),
+  return [ insNumIfDigits_(r.draw), r.sn||"", "", insInspFor_(c,r), insMNum_(r.fnCnt), insMNum_(r.fnGood),
     insMNum_(r.fnBad), (r.leak?(r.insDate||""):""), (r.flow?(r.insDate||""):""), pressDate, (r.vac?(r.insDate||""):""),
     "", "", "", "", "", "" ];
 }
@@ -14786,7 +14789,7 @@ function insExportMaster(expand){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
   var EX=function(r){ return expand?insExpandRow_(r):[r]; };
   function rowsFor(t){ var a=(insState[t]&&insState[t].rows)||[]; return (insDayFilter==="all")?a:a.filter(function(r){ return String(r.insDate||"")===insDayFilter; }); }
-  function ctxFor(t){ return { insp:(insMetaByType[t]&&insMetaByType[t].inspector)||"" }; }
+  function ctxFor(t){ var m=insMetaByType[t]||{}; return { insp:m.inspector||"", byDate:m.inspByDate||{} }; }
   var inc=rowsFor("incoming"), shp=rowsFor("shipping"), mS=rowsFor("measureS"), mL=rowsFor("measureL");
   var CIN=ctxFor("incoming"), CSH=ctxFor("shipping"), CMS=ctxFor("measureS"), CML=ctxFor("measureL");
   // 4개 마스터 시트 구성 (모든 유형에서 모아서)
@@ -14866,7 +14869,7 @@ function insPrintDay(){
     if(g.subs){ head1+='<th colspan="'+g.subs.length+'">'+insEsc(g.label)+'</th>'; g.subs.forEach(function(s){ head2+='<th>'+insEsc(s.label)+'</th>'; }); }
     else { head1+='<th rowspan="2">'+insEsc(g.label)+(g.leaf&&g.leaf.chk?(' ('+g.leaf.chk+')'):'')+'</th>'; }
   });
-  var inspector=(insMetaByType[insType]&&insMetaByType[insType].inspector)||"";
+  var __meta0=insMetaByType[insType]||{}; var __ibd=__meta0.inspByDate||{}; var inspector=__meta0.inspector||"";
   var sections=groups.map(function(gr){
     var body="";
     gr.rows.forEach(function(r,i){
@@ -14876,7 +14879,7 @@ function insPrintDay(){
     });
     return '<section>'
       + '<div class="rh"><span class="rt">'+insEsc(cfg.title)+'</span>'
-      +   '<span class="rm">검사일 : '+insEsc(gr.date)+' &nbsp;&nbsp; 검사자 : '+insEsc(inspector||"-")+' &nbsp;&nbsp; 건수 : '+gr.rows.length+'</span></div>'
+      +   '<span class="rm">검사일 : '+insEsc(gr.date)+' &nbsp;&nbsp; 검사자 : '+insEsc((__ibd[gr.date]||inspector)||"-")+' &nbsp;&nbsp; 건수 : '+gr.rows.length+'</span></div>'
       + '<table><thead><tr>'+head1+'</tr><tr>'+head2+'</tr></thead><tbody>'+body+'</tbody></table>'
       + '</section>';
   }).join("");
@@ -16664,6 +16667,6 @@ function docmasterPrint(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.61 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.62 🔔</div>
 </body>
 </html>
