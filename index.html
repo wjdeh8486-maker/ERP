@@ -257,6 +257,8 @@
   .p-card-chk input{ width:18px; height:18px; cursor:pointer; accent-color:var(--navy); vertical-align:middle; }
   #main-reqFormBtn{ background:#0B7A8A; color:#fff; border:0; padding:0 14px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
   #main-reqFormBtn:disabled{ background:#B7C0CE; color:#EEF1F5; cursor:not-allowed; }
+  #main-reqClearBtn{ background:#fff; color:#C0392B; border:1px solid #E3B4B4; padding:0 12px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
+  #main-reqClearBtn:disabled{ background:#F4F5F7; color:#B7C0CE; border-color:#E1E5EC; cursor:not-allowed; }
   /* ===== 검사요청서 팝업(모달) ===== */
   #reqform-modal{ display:none; position:fixed; inset:0; z-index:10050; background:rgba(15,20,38,.55); align-items:flex-start; justify-content:center; overflow-y:auto; padding:24px 12px; }
   #reqform-modal .rf-box{ background:#fff; width:100%; max-width:1180px; border-radius:10px; box-shadow:0 12px 44px rgba(0,0,0,.34); overflow:hidden; }
@@ -1307,6 +1309,7 @@
         <button id="main-printBtn" class="tb-print-btn">🖨️ 분출 LIST 인쇄</button>
         <button id="main-listDownloadBtn" type="button" class="tb-download-btn">📥 LIST 다운로드</button>
         <button id="main-reqFormBtn" type="button" disabled>📋 검사요청서 (0)</button>
+        <button id="main-reqClearBtn" type="button" disabled>✕ 선택 해제</button>
       </div>
       <div style="width:100%;font-size:11.5px;color:var(--text-mute);margin-top:-6px;margin-bottom:12px;">※ ORDER NO 숨기기에 <b style="color:#B8860B;">26-175</b>처럼 프로젝트 번호만 입력하면 26-175-1부터 26-175-70까지 전부 한 번에 숨겨집니다 (세부 번호를 하나씩 입력할 필요 없음).</div>
       <div class="calendar-backdrop" id="main-calendarBackdrop"></div>
@@ -16703,6 +16706,12 @@ function reqUpdateButton(){
     btn.textContent = "📋 검사요청서 (" + n + ")";
     btn.disabled = (n === 0);
   }
+  var clr = document.getElementById("main-reqClearBtn");
+  if(clr){
+    var n2 = reqSelectedDwg.size;
+    clr.textContent = n2>0 ? ("✕ 선택 해제 (" + n2 + ")") : "✕ 선택 해제";
+    clr.disabled = (n2 === 0);
+  }
   var all = document.getElementById("main-reqSelectAll");
   if(all){
     var boxes = document.querySelectorAll("#main-tableBody .req-chk:not(:disabled)");
@@ -16929,10 +16938,21 @@ function reqPrintForm(){
   openPrintWindow('<h2>검사 요청서</h2>'+meta+table, extraCSS, "검사 요청서");
 }
 
+// 선택 전체 해제 (숨겨진 항목 포함 — 여러 LIST를 오가며 모은 선택을 한 번에 비움)
+function reqClearAll(){
+  if(reqSelectedDwg.size===0) return;
+  if(!confirm(reqSelectedDwg.size + "개 선택을 모두 해제할까요?")) return;
+  reqSelectedDwg.clear();
+  document.querySelectorAll(".req-chk:checked").forEach(function(cb){ cb.checked = false; });
+  reqUpdateButton();
+}
+
 // 버튼 연결 + 초기 상태
 (function(){
   var b = document.getElementById("main-reqFormBtn");
   if(b) b.addEventListener("click", reqOpenForm);
+  var c = document.getElementById("main-reqClearBtn");
+  if(c) c.addEventListener("click", reqClearAll);
   if(typeof reqUpdateButton==="function") reqUpdateButton();
 })();
 
