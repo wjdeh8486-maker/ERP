@@ -4244,7 +4244,7 @@ function mapRowToMain(row){
     processCost: Number(getFieldFlexible(row, "후처리(세정)")||getFieldFlexible(row, "처리비(세정)")||getFieldFlexible(row, "후처리")||getFieldFlexible(row, "처리비")||getFieldFlexible(row, "세정처리비")||getFieldFuzzy(row, "후처리")||getFieldFuzzy(row, "세정"))||0,
     // 수입검사 대기: 등록일자 2026년부터, 생산공정현황 - 수입검사(외관) = 대기 (음수면 0)
     waitIncomingInspection: computeWaitIncomingInspection(row),
-    prpo: (getFieldFlexible(row, "PR 및 PO") || row["PR 및 PO"] || ""),  // H열: PR/PO 번호 (값 있는 행만 대시보드 표시)
+    prpo: getFieldFlexible(row, "PR 및 PO"),  // H열: 열이 있으면 값 있는 행만 표시. 열 자체가 없으면(undefined) 필터 안 함
     _source: row["_source"]   // 연도 구분(2023~2026). 지연건수 등에서 최근 연도만 보기 위해 보존
   };
   return result;
@@ -4657,7 +4657,7 @@ async function fetchMainData(yearsParam){
        console.log("수입검사(외관) 샘플:", incomingInspectionData[0]);
        console.log("수입검사(외관) 필드명들:", Object.keys(incomingInspectionData[0]));
      }
-     mainData = res.rows.map(mapRowToMain);
+     mainData = mainFilterPRPO(res.rows.map(mapRowToMain));
 markMainStatusDirty();
 // 캐시 저장은 화면 표시와 무관하므로 await하지 않고 백그라운드로 저장한다.
 // (await하면 IndexedDB 저장이 느리거나 막힐 때 로딩 완료가 지연됨 → 30초 타임아웃 원인)
@@ -4691,7 +4691,7 @@ document.getElementById("main-syncBtn").addEventListener("click", ()=>{
   Papa.parse(url, { download:true, header:true, skipEmptyLines:true,
     complete:function(results){
       try{
-        mainData = results.data.map(mapRowToMain);
+        mainData = mainFilterPRPO(results.data.map(mapRowToMain));
         markMainStatusDirty();
         mainInitialRender(mainData);
         document.getElementById("main-syncPanel").classList.remove("open");
@@ -4739,7 +4739,7 @@ function setupDropZone(zoneId, inputId, labelId, onRows){
   }
 }
 setupDropZone("main-dropZone","main-fileInput","main-dropLabel", rows=>{
-  mainData = rows.map(mapRowToMain);
+  mainData = mainFilterPRPO(rows.map(mapRowToMain));
   markMainStatusDirty();
   mainInitialRender(mainData);
   document.getElementById("main-syncPanel").classList.remove("open");
@@ -8400,7 +8400,7 @@ window.__qualityInited = true;
           if(typeof idbGet === "function"){
             return idbGet("cache_mainData").then(function(cached){
               if(cached && cached.length){
-                mainData = cached;
+                mainData = mainFilterPRPO(cached);
                 if(typeof markMainStatusDirty==="function") markMainStatusDirty();
               }
               return doFetch();
@@ -8670,7 +8670,7 @@ function renderSummaryView(){
   const lastSync = cacheGet("mainLastSync");
   updateSyncBanner();
   if(cachedMain){
-    mainData = cachedMain;
+    mainData = mainFilterPRPO(cachedMain);
     markMainStatusDirty();
     mainInitialRender(mainData);
     document.getElementById("main-apiStatus").textContent =
