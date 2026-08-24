@@ -14021,6 +14021,7 @@ var INS_MEASURE_GROUPS = [
       {label:"도 번", leaf:{key:"draw", kind:"draw", w:16}},
       {label:"S/N",   leaf:{key:"sn",   kind:"text", w:55}},
       {label:"자동/수동", leaf:{key:"mode", kind:"seg", opts:["자동","수동"], w:12}},
+      {label:"S.P수", leaf:{key:"inQty", kind:"num", w:7}},
       {label:"치수검사수", leaf:{key:"insCnt", kind:"num", w:8}},
       {label:"치수양품수", leaf:{key:"goodCnt",kind:"num", w:8}},
       {label:"부적합", subs:[
@@ -14045,6 +14046,7 @@ var INS_CFG = {
       {label:"도 번", leaf:{key:"draw",   kind:"draw", w:16}},
       {label:"S/N",   leaf:{key:"sn",     kind:"text", w:55}},
       {label:"거래처",leaf:{key:"vendor", kind:"text", w:10}},
+      {label:"S.P수",leaf:{key:"inQty", kind:"num", w:7}},
       {label:"검사수",leaf:{key:"insCnt", kind:"num",  w:7}},
       {label:"양품수",leaf:{key:"goodCnt",kind:"num",  w:7}},
       {label:"수입검사", leaf:{key:"led", kind:"check", chk:"LED", w:8}},
@@ -14067,6 +14069,7 @@ var INS_CFG = {
       {label:"도 번", leaf:{key:"draw", kind:"draw", w:16}},
       {label:"S/N",   leaf:{key:"sn",   kind:"text", w:55}},
       {label:"구 분", leaf:{key:"seg",  kind:"checks",  opts:["재고","분출","검수"], w:22}},
+      {label:"S.P수",leaf:{key:"inQty", kind:"num", w:7}},
       {label:"검사수",leaf:{key:"insCnt", kind:"num", w:7}},
       {label:"양품수",leaf:{key:"goodCnt",kind:"num", w:7}},
       {label:"공정검사", leaf:{key:"pin", kind:"check", chk:"PIN", w:8}},
@@ -14261,7 +14264,7 @@ function insRender(){
     var totalQty = Number(row.insCnt) || 0;
     var defectQty = 0;
     leaves.forEach(function(lf) {
-      if (lf.kind === "num" && lf.key !== "insCnt" && lf.key !== "goodCnt" && lf.key.indexOf("fn") !== 0) {
+      if (lf.kind === "num" && lf.key !== "insCnt" && lf.key !== "goodCnt" && lf.key !== "inQty" && lf.key.indexOf("fn") !== 0) {
         defectQty += (Number(row[lf.key]) || 0);
       }
     });
@@ -14352,7 +14355,7 @@ function insRender(){
         var tot = Number(r.insCnt) || 0;
         var def = 0;
         leaves.forEach(function(lf) {
-          if (lf.kind === "num" && lf.key !== "insCnt" && lf.key !== "goodCnt" && lf.key.indexOf("fn") !== 0) {
+          if (lf.kind === "num" && lf.key !== "insCnt" && lf.key !== "goodCnt" && lf.key !== "inQty" && lf.key.indexOf("fn") !== 0) {
             def += (Number(r[lf.key]) || 0);
           }
         });
@@ -14387,7 +14390,7 @@ function insAutoFill(ri){
         var __ci=__host&&__host.querySelector('input[data-ri="'+ri+'"][data-key="insCnt"]');
         if(__ci) __ci.value=r.insCnt;
         var __gi=__host&&__host.querySelector('input[data-ri="'+ri+'"][data-key="goodCnt"]');
-        if(__gi){ var __tot=Number(r.insCnt)||0, __def=0; insLeaves().forEach(function(lf){ if(lf.kind==="num"&&lf.key!=="insCnt"&&lf.key!=="goodCnt"&&lf.key.indexOf("fn")!==0) __def+=(Number(r[lf.key])||0); }); r.goodCnt=Math.max(0,__tot-__def); __gi.value=r.goodCnt; }
+        if(__gi){ var __tot=Number(r.insCnt)||0, __def=0; insLeaves().forEach(function(lf){ if(lf.kind==="num"&&lf.key!=="insCnt"&&lf.key!=="goodCnt"&&lf.key!=="inQty"&&lf.key.indexOf("fn")!==0) __def+=(Number(r[lf.key])||0); }); r.goodCnt=Math.max(0,__tot-__def); __gi.value=r.goodCnt; }
       }catch(e){ insRender(); }
     }
   }
@@ -14424,7 +14427,7 @@ function insScanReceive(code){
   var res=(typeof scanResolveDrawing==="function")?scanResolveDrawing(code):null;
   var draw=(res&&res.drawing)?res.drawing:code;
   var row=insBlankRow(); row.draw=draw;
-  if(res&&res.row&&("insCnt" in row)){ row.insCnt=res.row["수량"]||""; }
+  if(res&&res.row){ if("insCnt" in row) row.insCnt=res.row["수량"]||""; if("inQty" in row) row.inQty=res.row["수량"]||""; }
   insState[insType].rows.push(row);
   var __ri=insState[insType].rows.length-1;
   insRender();
@@ -14510,7 +14513,7 @@ function insOpenForm(ri){
   // 양품수 실시간 계산
   var recompute=function(){
     var tot=Number((document.getElementById("insf-insCnt")||{}).value)||0, def=0;
-    leaves.forEach(function(lf){ if(lf.kind==="num" && lf.key!=="insCnt" && lf.key!=="goodCnt" && lf.key.indexOf("fn")!==0){ var e=document.getElementById("insf-"+lf.key); if(e) def+=Number(e.value)||0; } });
+    leaves.forEach(function(lf){ if(lf.kind==="num" && lf.key!=="insCnt" && lf.key!=="goodCnt" && lf.key!=="inQty" && lf.key.indexOf("fn")!==0){ var e=document.getElementById("insf-"+lf.key); if(e) def+=Number(e.value)||0; } });
     var g=document.getElementById("insf-goodCnt"); if(g) g.value=Math.max(0,tot-def);
   };
   var bodyEl=document.getElementById("insf-body");
