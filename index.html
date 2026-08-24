@@ -1915,6 +1915,7 @@
           <option value="출하">출하검사</option>
           <option value="재고">재고 (출하검사 대상)</option>
         </select>
+        <input type="text" id="qcprio-search" placeholder="도번·품명·ORDER NO 검색" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;min-width:190px;">
         <button id="qcprio-refreshBtn">🔄 새로고침</button>
       </div>
       <div class="topbar-right">
@@ -11553,6 +11554,8 @@ function qcprioInit(){
   if(pb) pb.addEventListener("click", qcprioPrint);
   if(cs) cs.addEventListener("change", qcprioRender);
   if(ps) ps.addEventListener("change", qcprioRender);
+  const sb = document.getElementById("qcprio-search");
+  if(sb) sb.addEventListener("input", qcprioRender);
 }
 function qcprioFillCustomers(rows){
   const sel = document.getElementById("qcprio-customer");
@@ -11584,6 +11587,16 @@ function qcprioRender(){
   const proc = procSel ? procSel.value : "all";
 
   if(cust) rows = rows.filter(function(r){ return String(r.customer||"").trim() === cust; });
+  // 도번·품명·ORDER NO 검색 (쉼표=OR, 부분일치, 대소문자 무시)
+  const sbEl = document.getElementById("qcprio-search");
+  const kw = sbEl ? String(sbEl.value||"").trim().toLowerCase() : "";
+  if(kw){
+    const terms = kw.split(",").map(function(s){ return s.trim(); }).filter(Boolean);
+    rows = rows.filter(function(r){
+      const hay = (String(r.oldDrawingNo||"") + " " + String(r.partName||"") + " " + String(r.orderNo||"") + " " + String(r.partNo||"")).toLowerCase();
+      return terms.some(function(t){ return hay.indexOf(t) >= 0; });
+    });
+  }
  if(proc === "수입"){
 
     rows = rows.filter(function(r){
