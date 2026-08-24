@@ -4244,12 +4244,22 @@ function mapRowToMain(row){
     processCost: Number(getFieldFlexible(row, "후처리(세정)")||getFieldFlexible(row, "처리비(세정)")||getFieldFlexible(row, "후처리")||getFieldFlexible(row, "처리비")||getFieldFlexible(row, "세정처리비")||getFieldFuzzy(row, "후처리")||getFieldFuzzy(row, "세정"))||0,
     // 수입검사 대기: 등록일자 2026년부터, 생산공정현황 - 수입검사(외관) = 대기 (음수면 0)
     waitIncomingInspection: computeWaitIncomingInspection(row),
+    prpo: (getFieldFlexible(row, "PR 및 PO") || row["PR 및 PO"] || ""),  // H열: PR/PO 번호 (값 있는 행만 대시보드 표시)
     _source: row["_source"]   // 연도 구분(2023~2026). 지연건수 등에서 최근 연도만 보기 위해 보존
   };
   return result;
 }
 
-// 수입검사 대기 대상 공정 판정
+// ===== PR·PO(H열) 필터 =====
+// H열 "PR 및 PO"에 값이 입력된 행만 MAIN 대시보드에 표시한다.
+// (대시보드에서 파생되는 목록·지연·매출·통합검색이 모두 이 필터를 따른다)
+// 구버전 캐시(예전에 저장돼 prpo 필드가 없는 행)는 통과시켜, 최신 데이터가 도착하기 전에
+// 화면이 통째로 비는 것을 방지한다. 새로 받은 데이터는 prpo가 항상 있어 정상 필터된다.
+function mainHasPRPO(r){
+  if(!r || typeof r.prpo === "undefined") return true;
+  return String(r.prpo).trim() !== "";
+}
+function mainFilterPRPO(arr){ return Array.isArray(arr) ? arr.filter(mainHasPRPO) : arr; }
 // 집계 대상: 사상 / E.P / CP / 외주가공 (작업종료) / 폴리싱(빠우)-01 (작업종료) / 값이 "종료" 단독인 행
 // ※ "종료"는 정확히 일치할 때만 인정한다. 부분일치로 두면 MCT-01 (작업종료) 등이 전부 딸려 들어온다.
 function isWaitTargetProcess(cp){
@@ -4406,7 +4416,7 @@ async function sharedCacheBoot(){
     var pick=function(sec){ return sec ? (sec.data||sec.payload||null) : null; };
     try{ var dm=pick(res.main);
       if(dm && Array.isArray(dm.mainData)){
-        mainData=dm.mainData;
+        mainData=mainFilterPRPO(dm.mainData);
         if(dm.measureWaitMap) measureWaitMap=dm.measureWaitMap;
         if(dm.cleanWaitMap) cleanWaitMap=dm.cleanWaitMap;
         if(dm.visionWaitMap) visionWaitMap=dm.visionWaitMap;
@@ -4470,7 +4480,7 @@ function applySharedCache(cache){
   let applied = false;
   if(cache.main && cache.main.data){
     const d = cache.main.data;
-    if(d.mainData) mainData = d.mainData;
+    if(d.mainData) mainData = mainFilterPRPO(d.mainData);
     if(d.measureWaitMap) measureWaitMap = d.measureWaitMap;
     if(d.cleanWaitMap) cleanWaitMap = d.cleanWaitMap;
     if(d.visionWaitMap) visionWaitMap = d.visionWaitMap;
@@ -4577,7 +4587,7 @@ async function fetchMainData(yearsParam){
       try{
         if(mainRes && mainRes.success && Array.isArray(mainRes.rows)){
           mainApiUrl = url;
-          mainData = mainRes.rows.map(mapRowToMain);
+          mainData = mainFilterPRPO(mainRes.rows.map(mapRowToMain));
           markMainStatusDirty();
           saveMainData();
           cacheSet("mainLastSync", Date.now());
@@ -14046,7 +14056,6 @@ var INS_CFG = {
       {label:"도 번", leaf:{key:"draw",   kind:"draw", w:16}},
       {label:"S/N",   leaf:{key:"sn",     kind:"text", w:55}},
       {label:"거래처",leaf:{key:"vendor", kind:"text", w:10}},
-      {label:"S.P수",leaf:{key:"inQty", kind:"num", w:7}},
       {label:"검사수",leaf:{key:"insCnt", kind:"num",  w:7}},
       {label:"양품수",leaf:{key:"goodCnt",kind:"num",  w:7}},
       {label:"수입검사", leaf:{key:"led", kind:"check", chk:"LED", w:8}},
@@ -14069,7 +14078,6 @@ var INS_CFG = {
       {label:"도 번", leaf:{key:"draw", kind:"draw", w:16}},
       {label:"S/N",   leaf:{key:"sn",   kind:"text", w:55}},
       {label:"구 분", leaf:{key:"seg",  kind:"checks",  opts:["재고","분출","검수"], w:22}},
-      {label:"S.P수",leaf:{key:"inQty", kind:"num", w:7}},
       {label:"검사수",leaf:{key:"insCnt", kind:"num", w:7}},
       {label:"양품수",leaf:{key:"goodCnt",kind:"num", w:7}},
       {label:"공정검사", leaf:{key:"pin", kind:"check", chk:"PIN", w:8}},
