@@ -16785,6 +16785,7 @@ function reqBuildModal(){
     +     '<span class="rf-title">📋 검사 요청서</span>'
     +     '<span style="display:flex;gap:8px;">'
     +       '<button id="reqform-printBtn" style="background:#fff;color:#1F2A44;">🖨️ 인쇄</button>'
+    +       '<button id="reqform-excelBtn" style="background:#fff;color:#1F2A44;">📥 엑셀</button>'
     +       '<button id="reqform-closeBtn" style="background:transparent;color:#fff;border:1px solid #fff;">✕ 닫기</button>'
     +     '</span>'
     +   '</div>'
@@ -16801,6 +16802,7 @@ function reqBuildModal(){
   document.body.appendChild(wrap);
   document.getElementById("reqform-closeBtn").addEventListener("click", function(){ wrap.style.display="none"; });
   document.getElementById("reqform-printBtn").addEventListener("click", reqPrintForm);
+  document.getElementById("reqform-excelBtn").addEventListener("click", reqDownloadExcel);
   wrap.addEventListener("click", function(e){ if(e.target===wrap) wrap.style.display="none"; });
   // 검사항목 셀 ●/○ 토글
   wrap.addEventListener("click", function(e){
@@ -16851,6 +16853,45 @@ function reqOpenForm(){
   if(dEl && !dEl.value){ var t=new Date(); dEl.value = t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0"); }
   modal.style.display = "flex";
   reqEnsureMaster().then(function(map){ reqRenderRows(map); });
+}
+
+// 엑셀(.xlsx) 다운로드 — 앱 공통 서식 헬퍼(styleAoaSheet) 재사용
+function reqDownloadExcel(){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리가 아직 로드되지 않았습니다. 잠시 후 다시 시도해 주세요."); return; }
+  var proc = (document.getElementById("reqform-proc")||{}).value || "";
+  var date = (document.getElementById("reqform-date")||{}).value || "";
+  var who  = (document.getElementById("reqform-who") ||{}).value || "";
+  var trs = Array.prototype.slice.call(document.querySelectorAll("#reqform-table tbody tr"));
+  if(!trs.length){ alert("요청 항목이 없습니다."); return; }
+  var header = ["No","도번","품명","요청수량"].concat(REQ_INS_COLS.map(function(c){ return c.label; })).concat(["비고"]);
+  var aoa = [];
+  aoa.push(["검사 요청서"]);                                                   // R0 제목
+  aoa.push(["공정 구분", proc, "요청일", date, "요청자", who, "대상 도번", trs.length+"개"]); // R1 메타
+  aoa.push(header);                                                            // R2 헤더
+  trs.forEach(function(tr, i){
+    var dwg = tr.getAttribute("data-dwg")||"";
+    var pn  = tr.getAttribute("data-partname")||"";
+    var qtyEl = tr.querySelector("input.rf-qty");   var qtyV = qtyEl ? qtyEl.value : "";
+    var qty = (qtyV===""||qtyV==null) ? "" : (isNaN(Number(qtyV)) ? qtyV : Number(qtyV));
+    var memoEl= tr.querySelector("input.rf-memo");  var memo = memoEl ? memoEl.value : "";
+    var ins = REQ_INS_COLS.map(function(c){
+      var td = tr.querySelector('td.rf-ins[data-key="'+c.key+'"]');
+      return (td && td.getAttribute("data-on")==="1") ? "●" : "";
+    });
+    aoa.push([i+1, dwg, pn, qty].concat(ins).concat([memo]));
+  });
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  var lastCol = header.length - 1;
+  ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:lastCol} }];                        // 제목행 병합
+  ws['!cols'] = [{wch:5},{wch:16},{wch:26},{wch:9}]
+    .concat(REQ_INS_COLS.map(function(){ return {wch:6}; }))
+    .concat([{wch:24}]);
+  if(typeof styleAoaSheet==="function") styleAoaSheet(ws, { titleRows:[0,1], headerRows:[2] });
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "검사요청서");
+  var d = new Date();
+  var ds = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  XLSX.writeFile(wb, "검사요청서_"+ds+".xlsx");
 }
 
 // 인쇄
