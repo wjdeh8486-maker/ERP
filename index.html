@@ -248,8 +248,35 @@
   thead th{background:var(--navy);color:#fff;font-weight:600;padding:10px 8px;position:sticky;top:0;white-space:nowrap;text-align:center;border-right:1px solid #33406099;}
   thead th.wait-col{color:var(--yellow);}
   thead th.wait-col, tbody td.wait-col-cell{min-width:58px;max-width:80px;font-size:12px;line-height:1.3;}
-  #main-tableBody td:nth-child(14), #main-tableBody td:nth-child(15), #main-tableBody td:nth-child(16){max-width:60px;font-size:12px;padding:8px 4px;}
-  #view-main thead th:nth-child(14), #view-main thead th:nth-child(15), #view-main thead th:nth-child(16){font-size:11.5px;padding:8px 4px;}
+  #main-tableBody td:nth-child(15), #main-tableBody td:nth-child(16), #main-tableBody td:nth-child(17){max-width:60px;font-size:12px;padding:8px 4px;}
+  #view-main thead th:nth-child(15), #view-main thead th:nth-child(16), #view-main thead th:nth-child(17){font-size:11.5px;padding:8px 4px;}
+  /* ===== 검사요청서 선택 체크박스 컬럼 (MAIN 대시보드) ===== */
+  #view-main th.req-col, #view-main td.req-col{ text-align:center; width:34px; min-width:34px; padding:6px 4px; }
+  #view-main td.req-col input, #view-main th.req-col input{ width:17px; height:17px; cursor:pointer; accent-color:var(--navy); }
+  .p-card-chk{ margin-right:8px; }
+  .p-card-chk input{ width:18px; height:18px; cursor:pointer; accent-color:var(--navy); vertical-align:middle; }
+  #main-reqFormBtn{ background:#0B7A8A; color:#fff; border:0; padding:0 14px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }
+  #main-reqFormBtn:disabled{ background:#B7C0CE; color:#EEF1F5; cursor:not-allowed; }
+  /* ===== 검사요청서 팝업(모달) ===== */
+  #reqform-modal{ display:none; position:fixed; inset:0; z-index:10050; background:rgba(15,20,38,.55); align-items:flex-start; justify-content:center; overflow-y:auto; padding:24px 12px; }
+  #reqform-modal .rf-box{ background:#fff; width:100%; max-width:1180px; border-radius:10px; box-shadow:0 12px 44px rgba(0,0,0,.34); overflow:hidden; }
+  #reqform-modal .rf-head{ display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 20px; background:var(--navy); }
+  #reqform-modal .rf-head .rf-title{ font-size:15.5px; font-weight:700; color:#fff; }
+  #reqform-modal .rf-head button{ padding:6px 12px; border-radius:5px; font-size:12.5px; font-weight:600; cursor:pointer; border:0; }
+  #reqform-modal .rf-body{ padding:16px 18px; max-height:calc(100vh - 150px); overflow:auto; }
+  #reqform-modal .rf-meta{ display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px; }
+  #reqform-modal .rf-meta .fld{ display:flex; flex-direction:column; gap:4px; }
+  #reqform-modal .rf-meta label{ font-size:11.5px; color:var(--text-mute); font-weight:600; }
+  #reqform-modal .rf-meta input, #reqform-modal .rf-meta select{ padding:7px 9px; border:1px solid var(--border); border-radius:6px; font-size:13px; }
+  #reqform-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  #reqform-table th, #reqform-table td{ border:1px solid #D7DEE8; padding:6px 6px; text-align:center; white-space:nowrap; }
+  #reqform-table thead th{ background:var(--navy); color:#fff; font-weight:600; position:sticky; top:0; z-index:2; }
+  #reqform-table td.rf-l{ text-align:left; }
+  #reqform-table td.rf-ins{ cursor:pointer; user-select:none; font-size:15px; color:#1D9E75; font-weight:700; }
+  #reqform-table td.rf-ins.off{ color:#D5DAE4; }
+  #reqform-table input.rf-qty{ width:60px; text-align:center; border:1px solid var(--border); border-radius:4px; padding:4px; font-size:12.5px; }
+  #reqform-table input.rf-memo{ width:100%; min-width:120px; border:1px solid var(--border); border-radius:4px; padding:4px 6px; font-size:12.5px; }
+  #reqform-modal .rf-hint{ font-size:11.5px; color:#8A93A6; margin:6px 2px 0; }
   thead th.defect-col{color:#ff9d9d;}
   tbody td{padding:8px;border-bottom:1px solid var(--border);text-align:center;white-space:nowrap;}
   tbody tr:hover{background:#F8F9FC;}
@@ -1279,6 +1306,7 @@
         <button type="button" id="main-calendarBtn" class="btn-plain tb-cal-apply">📅 검색 달력적용</button>
         <button id="main-printBtn" class="tb-print-btn">🖨️ 분출 LIST 인쇄</button>
         <button id="main-listDownloadBtn" type="button" class="tb-download-btn">📥 LIST 다운로드</button>
+        <button id="main-reqFormBtn" type="button" disabled>📋 검사요청서 (0)</button>
       </div>
       <div style="width:100%;font-size:11.5px;color:var(--text-mute);margin-top:-6px;margin-bottom:12px;">※ ORDER NO 숨기기에 <b style="color:#B8860B;">26-175</b>처럼 프로젝트 번호만 입력하면 26-175-1부터 26-175-70까지 전부 한 번에 숨겨집니다 (세부 번호를 하나씩 입력할 필요 없음).</div>
       <div class="calendar-backdrop" id="main-calendarBackdrop"></div>
@@ -1310,6 +1338,7 @@
         <table>
           <thead>
             <tr>
+              <th class="req-col" title="검사요청서 전체 선택/해제"><input type="checkbox" id="main-reqSelectAll"></th>
               <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th><th>기존도번</th><th>품명</th><th>수량</th>
               <th>최종납기</th><th>납품일자</th><th>납품여부</th><th>현재진행공정</th>
               <th class="wait-col">납품<br>대기</th><th class="wait-col">수입<br>검사대기</th><th class="wait-col">측정실<br>검사대기</th>
@@ -3490,7 +3519,10 @@ function mainRenderTable(data){
     const wClean = computeWaitClean(r);
     const wVision = computeWaitVision(r);
     const wIncoming = Number(r.waitIncomingInspection)||0;
+    const _reqDwg = String(r.oldDrawingNo||'').trim();
+    const _reqChecked = (_reqDwg && typeof reqSelectedDwg!=='undefined' && reqSelectedDwg.has(_reqDwg)) ? ' checked' : '';
     return `<tr class="${rowClass}">
+      <td class="req-col"><input type="checkbox" class="req-chk" data-dwg="${_reqDwg}" data-partname="${(r.partName||'').replace(/"/g,'&quot;')}" data-qty="${r.qty||''}"${_reqDwg?'':' disabled'}${_reqChecked}></td>
       <td>${statusBadge(_status)}</td><td>${r.orderNo}</td><td>${r.customer}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
       <td>${dwgLink(r.oldDrawingNo)}</td>
@@ -3512,8 +3544,11 @@ function mainRenderCards(data){
   mainCardsData = data; // 확대 팝업에서 참조
   const cardsHtml = data.map((r, idx)=>{
     const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
+    const _cdwg = String(r.oldDrawingNo||'').trim();
+    const _cchecked = (_cdwg && typeof reqSelectedDwg!=='undefined' && reqSelectedDwg.has(_cdwg)) ? ' checked' : '';
+    const _cchk = _cdwg ? `<label class="p-card-chk req-chk-wrap" onclick="event.stopPropagation();"><input type="checkbox" class="req-chk" data-dwg="${_cdwg}" data-partname="${(r.partName||'').replace(/"/g,'&quot;')}" data-qty="${r.qty||''}"${_cchecked}></label>` : '';
     return `<div class="p-card" data-cardidx="${idx}" title="탭하면 크게 보기">
-      <div class="p-card-top"><span class="p-card-title">${r.orderNo} · ${r.partName}</span>${statusBadge(computeProductStatus(r))}</div>
+      <div class="p-card-top"><span class="p-card-title">${_cchk}${r.orderNo} · ${r.partName}</span>${statusBadge(computeProductStatus(r))}</div>
       <div class="p-card-sub">${r.customer}${r.vendor ? ' · PROJECT NO. '+r.vendor : ''}${r.oldDrawingNo ? ' · 기존도번 '+r.oldDrawingNo : ''}</div>
       <div class="p-card-grid">
         <div><span>수량 </span>${r.qty}</div>
@@ -3584,7 +3619,7 @@ function mainInitialRender(data){
   mainShowSearchPrompt();
   if(typeof renderSummaryView==="function") renderSummaryView();
 }
-function mainRenderAll(data){ mainRenderStats(data); mainRenderTable(data); mainRenderCards(data); mainListRevealed = true; }
+function mainRenderAll(data){ mainRenderStats(data); mainRenderTable(data); mainRenderCards(data); mainListRevealed = true; if(typeof reqUpdateButton==="function") reqUpdateButton(); }
 const ALL_MAIN_STATUSES = ["생산","재고","출고","완료","외관","측정","비젼","수입","OK"];
 let mainSelectedStatuses = ALL_MAIN_STATUSES.slice();
 let mainHideCompleted = false;
@@ -10939,6 +10974,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const cardsView = document.getElementById("main-cardsView");
   if(cardsView){
     cardsView.addEventListener("click", (e)=>{
+      if(e.target.closest(".req-chk-wrap") || (e.target.classList && e.target.classList.contains("req-chk"))) return;
       const card = e.target.closest("[data-cardidx]");
       if(card) openMainCardPopup(parseInt(card.dataset.cardidx));
     });
@@ -16634,6 +16670,230 @@ function docmasterPrint(){
     + docmasterTheadHTML() + '<tbody>' + docmasterRowsHTML(allRows, curYear) + '</tbody></table></div>';
   openPrintWindow('<h2>문서 Master 목록 · 총 '+allRows.length+'건 ('+stamp+')</h2>' + fullTable, extraCSS, "문서 Master");
 }
+
+/* ==================== 📋 검사요청서 (MAIN 대시보드 체크 → 팝업) ====================
+   - MAIN 대시보드에서 도번을 체크 → [📋 검사요청서] 버튼 → 팝업 폼 생성
+   - 각 도번의 검사항목(측정·볼트·LEAK·FLOW·수압·외관·포장·LED·진공)을
+     검사이력MASTER(?mode=qcMaster)에서 자동으로 ● 표시. 클릭으로 토글 가능.
+   - 공정(수입/공정/출하)은 요청서 전체에 하나만 선택. 요청수량·비고 직접 입력.
+   ==================================================================== */
+var reqSelectedDwg = new Set();      // 체크된 도번(기존도번) 집합
+var reqMasterMap   = null;           // 도번 -> MASTER 레코드 캐시(1회 로드)
+
+// 검사항목 열: key는 qcMaster 필드, label은 요청서 표기 명칭
+var REQ_INS_COLS = [
+  { key:"dimension", label:"측정" },
+  { key:"bolt",      label:"볼트" },
+  { key:"leak",      label:"LEAK" },
+  { key:"flow",      label:"FLOW" },
+  { key:"pressure",  label:"수압" },
+  { key:"exterior",  label:"외관" },
+  { key:"packing",   label:"포장" },
+  { key:"led",       label:"LED"  },
+  { key:"vacuum",    label:"진공" }
+];
+
+function reqEsc(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// 버튼 라벨/활성화 + 전체선택 체크박스 상태 갱신
+function reqUpdateButton(){
+  var btn = document.getElementById("main-reqFormBtn");
+  if(btn){
+    var n = reqSelectedDwg.size;
+    btn.textContent = "📋 검사요청서 (" + n + ")";
+    btn.disabled = (n === 0);
+  }
+  var all = document.getElementById("main-reqSelectAll");
+  if(all){
+    var boxes = document.querySelectorAll("#main-tableBody .req-chk:not(:disabled)");
+    var checked = document.querySelectorAll("#main-tableBody .req-chk:checked").length;
+    all.checked = (boxes.length>0 && checked===boxes.length);
+    all.indeterminate = (checked>0 && checked<boxes.length);
+  }
+}
+
+// 체크박스 변경 위임 (테이블 + 카드 공용)
+document.addEventListener("change", function(e){
+  var cb = e.target;
+  if(!cb || !cb.classList || !cb.classList.contains("req-chk")) return;
+  var dwg = String(cb.getAttribute("data-dwg")||"").trim();
+  if(!dwg) return;
+  if(cb.checked) reqSelectedDwg.add(dwg); else reqSelectedDwg.delete(dwg);
+  // 같은 도번의 다른 체크박스(테이블/카드 중복 렌더)도 동기화
+  try{
+    if(dwg.indexOf('"')<0){
+      document.querySelectorAll('.req-chk[data-dwg="'+dwg+'"]').forEach(function(o){ if(o!==cb) o.checked = cb.checked; });
+    }
+  }catch(_){}
+  reqUpdateButton();
+});
+
+// 전체 선택/해제 (헤더 체크박스)
+(function(){
+  var all = document.getElementById("main-reqSelectAll");
+  if(!all) return;
+  all.addEventListener("change", function(){
+    document.querySelectorAll("#main-tableBody .req-chk:not(:disabled)").forEach(function(cb){
+      cb.checked = all.checked;
+      var dwg = String(cb.getAttribute("data-dwg")||"").trim();
+      if(!dwg) return;
+      if(all.checked) reqSelectedDwg.add(dwg); else reqSelectedDwg.delete(dwg);
+    });
+    reqUpdateButton();
+  });
+})();
+
+// 검사이력 MASTER 1회 로드 (?mode=qcMaster)
+function reqEnsureMaster(){
+  if(reqMasterMap) return Promise.resolve(reqMasterMap);
+  var url = (typeof qchistApiUrl==="function") ? qchistApiUrl() : "";
+  if(!url) return Promise.resolve(null);
+  return fetch(url + "?mode=qcMaster", { cache:"no-store" })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(!data || !data.success || !Array.isArray(data.list)) throw new Error((data&&data.error)||"MASTER 로드 실패");
+      var map = {};
+      data.list.forEach(function(rec){ var k=String(rec.partNo||"").trim(); if(k) map[k]=rec; });
+      reqMasterMap = map;
+      return map;
+    })
+    .catch(function(){ return null; });
+}
+
+// 선택된 도번 → 품명·수량 수집 (mainData 기준, 같은 도번 여러 행이면 수량 합산)
+function reqCollectRows(){
+  var out = [];
+  var dwgs = Array.from(reqSelectedDwg).sort(function(a,b){ return String(a).localeCompare(String(b), undefined, {numeric:true}); });
+  var src = (typeof mainData!=="undefined" && mainData) ? mainData : [];
+  dwgs.forEach(function(dwg){
+    var rows = src.filter(function(r){ return String(r.oldDrawingNo||"").trim()===dwg; });
+    var partName="", qty=0;
+    rows.forEach(function(r){ if(!partName && r.partName) partName=r.partName; qty += (Number(r.qty)||0); });
+    out.push({ dwg:dwg, partName:partName, qty:qty });
+  });
+  return out;
+}
+
+// 팝업 스켈레톤 (최초 1회 생성)
+function reqBuildModal(){
+  if(document.getElementById("reqform-modal")) return;
+  var wrap = document.createElement("div");
+  wrap.id = "reqform-modal";
+  wrap.innerHTML =
+      '<div class="rf-box">'
+    +   '<div class="rf-head">'
+    +     '<span class="rf-title">📋 검사 요청서</span>'
+    +     '<span style="display:flex;gap:8px;">'
+    +       '<button id="reqform-printBtn" style="background:#fff;color:#1F2A44;">🖨️ 인쇄</button>'
+    +       '<button id="reqform-closeBtn" style="background:transparent;color:#fff;border:1px solid #fff;">✕ 닫기</button>'
+    +     '</span>'
+    +   '</div>'
+    +   '<div class="rf-body">'
+    +     '<div class="rf-meta">'
+    +       '<div class="fld"><label>공정 구분</label><select id="reqform-proc"><option value="수입검사">수입검사</option><option value="공정검사">공정검사</option><option value="출하검사">출하검사</option></select></div>'
+    +       '<div class="fld"><label>요청일</label><input type="date" id="reqform-date"></div>'
+    +       '<div class="fld"><label>요청자</label><input type="text" id="reqform-who" placeholder="이름" style="width:120px;"></div>'
+    +     '</div>'
+    +     '<div id="reqform-body-slot"></div>'
+    +     '<div class="rf-hint">● = 이 도번이 받는 검사(MASTER 자동표시) · 셀을 클릭하면 ●/○ 토글 · 요청수량·비고는 직접 입력</div>'
+    +   '</div>'
+    + '</div>';
+  document.body.appendChild(wrap);
+  document.getElementById("reqform-closeBtn").addEventListener("click", function(){ wrap.style.display="none"; });
+  document.getElementById("reqform-printBtn").addEventListener("click", reqPrintForm);
+  wrap.addEventListener("click", function(e){ if(e.target===wrap) wrap.style.display="none"; });
+  // 검사항목 셀 ●/○ 토글
+  wrap.addEventListener("click", function(e){
+    var td = e.target.closest ? e.target.closest("#reqform-table td.rf-ins") : null;
+    if(!td) return;
+    var on = td.getAttribute("data-on")==="1"; on = !on;
+    td.setAttribute("data-on", on?"1":"0");
+    td.classList.toggle("off", !on);
+    td.textContent = on ? "●" : "○";
+  });
+}
+
+// 표 렌더 (MASTER 자동표시)
+function reqRenderRows(map){
+  var rows = reqCollectRows();
+  var head = '<tr><th>No</th><th>도번</th><th class="rf-l">품명</th><th>요청수량</th>'
+    + REQ_INS_COLS.map(function(c){ return '<th>'+c.label+'</th>'; }).join("")
+    + '<th class="rf-l">비고</th></tr>';
+  var body = rows.map(function(r, i){
+    var rec = map ? map[r.dwg] : null;
+    var noMaster = !rec;
+    var insTds = REQ_INS_COLS.map(function(c){
+      var on = rec && rec[c.key]==="Y";
+      return '<td class="rf-ins'+(on?'':' off')+'" data-key="'+c.key+'" data-on="'+(on?1:0)+'">'+(on?'●':'○')+'</td>';
+    }).join("");
+    return '<tr data-dwg="'+reqEsc(r.dwg)+'" data-partname="'+reqEsc(r.partName)+'">'
+      + '<td>'+(i+1)+'</td>'
+      + '<td>'+reqEsc(r.dwg)+(noMaster?' <span style="color:#C2410C;font-size:10px;">(이력없음)</span>':'')+'</td>'
+      + '<td class="rf-l">'+reqEsc(r.partName)+'</td>'
+      + '<td><input type="number" class="rf-qty" value="'+(r.qty||'')+'" min="0"></td>'
+      + insTds
+      + '<td class="rf-l"><input type="text" class="rf-memo" placeholder="비고"></td>'
+      + '</tr>';
+  }).join("");
+  var slot = document.getElementById("reqform-body-slot");
+  slot.innerHTML = '<div style="overflow:auto;"><table id="reqform-table"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>'
+    + (map ? '' : '<div style="margin-top:8px;color:#C0392B;font-size:12px;">※ 검사이력 MASTER를 불러오지 못했습니다. 검사항목을 직접 클릭해 체크해 주세요. (품질분석 화면의 구글시트 연동 확인)</div>');
+}
+
+// 팝업 열기
+function reqOpenForm(){
+  if(reqSelectedDwg.size===0){ alert("검사요청서를 만들 도번을 먼저 체크해 주세요."); return; }
+  reqBuildModal();
+  var modal = document.getElementById("reqform-modal");
+  var slot = document.getElementById("reqform-body-slot");
+  slot.innerHTML = '<div style="padding:40px;text-align:center;color:#6B7280;">검사이력 MASTER 불러오는 중…</div>';
+  var dEl = document.getElementById("reqform-date");
+  if(dEl && !dEl.value){ var t=new Date(); dEl.value = t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0"); }
+  modal.style.display = "flex";
+  reqEnsureMaster().then(function(map){ reqRenderRows(map); });
+}
+
+// 인쇄
+function reqPrintForm(){
+  var proc = (document.getElementById("reqform-proc")||{}).value || "";
+  var date = (document.getElementById("reqform-date")||{}).value || "";
+  var who  = (document.getElementById("reqform-who") ||{}).value || "";
+  var trs = Array.prototype.slice.call(document.querySelectorAll("#reqform-table tbody tr"));
+  if(!trs.length){ alert("요청 항목이 없습니다."); return; }
+  var head = '<tr><th>No</th><th>도번</th><th>품명</th><th>요청수량</th>'
+    + REQ_INS_COLS.map(function(c){ return '<th>'+c.label+'</th>'; }).join("")
+    + '<th>비고</th></tr>';
+  var bodyRows = trs.map(function(tr, i){
+    var dwg = tr.getAttribute("data-dwg")||"";
+    var pn  = tr.getAttribute("data-partname")||"";
+    var qtyEl = tr.querySelector("input.rf-qty");   var qty  = qtyEl ? qtyEl.value : "";
+    var memoEl= tr.querySelector("input.rf-memo");  var memo = memoEl? memoEl.value : "";
+    var insCells = REQ_INS_COLS.map(function(c){
+      var td = tr.querySelector('td.rf-ins[data-key="'+c.key+'"]');
+      var on = td && td.getAttribute("data-on")==="1";
+      return '<td style="text-align:center;font-weight:700;">'+(on?"●":"")+'</td>';
+    }).join("");
+    return '<tr><td>'+(i+1)+'</td><td>'+reqEsc(dwg)+'</td><td style="text-align:left;">'+reqEsc(pn)+'</td><td>'+reqEsc(qty)+'</td>'+insCells+'<td style="text-align:left;">'+reqEsc(memo)+'</td></tr>';
+  }).join("");
+  var meta = '<div style="display:flex;gap:26px;flex-wrap:wrap;margin:6px 0 12px;font-size:13px;">'
+    + '<div><b>공정 구분:</b> '+reqEsc(proc||"-")+'</div>'
+    + '<div><b>요청일:</b> '+reqEsc(date||"-")+'</div>'
+    + '<div><b>요청자:</b> '+reqEsc(who||"-")+'</div>'
+    + '<div><b>대상 도번:</b> '+trs.length+'개</div></div>';
+  var table = '<table style="width:100%;border-collapse:collapse;font-size:12.5px;"><thead>'+head+'</thead><tbody>'+bodyRows+'</tbody></table>';
+  var extraCSS = "@page{ size:A4 landscape; } "
+    + "#print-area h2{ margin:0 0 4px; } "
+    + "#print-area table th,#print-area table td{ border:1px solid #333; padding:5px 6px; text-align:center; } "
+    + "#print-area table thead th{ background:#1F2A44 !important; color:#fff !important; }";
+  openPrintWindow('<h2>검사 요청서</h2>'+meta+table, extraCSS, "검사 요청서");
+}
+
+// 버튼 연결 + 초기 상태
+(function(){
+  var b = document.getElementById("main-reqFormBtn");
+  if(b) b.addEventListener("click", reqOpenForm);
+  if(typeof reqUpdateButton==="function") reqUpdateButton();
+})();
 
 </script>
 <div id="print-area" style="display:none;"></div>
