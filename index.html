@@ -979,7 +979,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.76</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.77</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -8465,7 +8465,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.76;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.77;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -14057,6 +14057,7 @@ var insProcInMemo   = {};     // 도번 -> { m:측정실비고, c:크린룸비�
 var insMetaByType = { incoming:{inspector:"",date:"",inspByDate:{}}, shipping:{inspector:"",date:"",inspByDate:{}}, measureS:{inspector:"",date:"",inspByDate:{}}, measureL:{inspector:"",date:"",inspByDate:{}} };  // 검사자/검사일자 유형별 + 날짜별 검사자
 var insDayFilter = "all";  // 검사 일보 날짜 필터
 var insDrawSearch = "";     // 검사 일보 도번 검색(있으면 전체 날짜에서 도번 매칭만 표시)
+var insShowAllRows = false; // 대용량: 최근 N행만 표시(false) / 전체 표시(true) 토글
 var insDeletedIds = {};     // 삭제 흔적(tombstone)
 try{ var __insDel=localStorage.getItem("ntlInsrepDeleted"); if(__insDel) insDeletedIds=JSON.parse(__insDel)||{}; }catch(e){}
 function insPersistDeleted_(){ try{ localStorage.setItem("ntlInsrepDeleted", JSON.stringify(insDeletedIds)); }catch(e){} }
@@ -14154,7 +14155,7 @@ function insInit(){
   bind("insrep-ncrBtn","click",insOpenNcrExport);
   bind("insrep-printBtn","click",insPrintDay);
   bind("insrep-masterExBtn","click",function(){ insExportMaster(true); });
-  var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; if(insDayFilter!=="all" && insType!=="processin" && insMetaByType[insType]){ insMetaByType[insType].date=insDayFilter; insSyncMetaInputs(); } insRender(); insSaveLocal(); });
+  var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; insShowAllRows=false; if(insDayFilter!=="all" && insType!=="processin" && insMetaByType[insType]){ insMetaByType[insType].date=insDayFilter; insSyncMetaInputs(); } insRender(); insSaveLocal(); });
   var __ds=document.getElementById("insrep-drawSearch"); if(__ds) __ds.addEventListener("input",function(){ insDrawSearch=this.value; insRender(); });
   var __dc=document.getElementById("insrep-drawClear"); if(__dc) __dc.addEventListener("click",function(){ insDrawSearch=""; var e=document.getElementById("insrep-drawSearch"); if(e) e.value=""; insRender(); });
   bind("insrep-cloudSaveBtn","click",insCloudSave);
@@ -14179,7 +14180,7 @@ function insInit(){
   }
   // 유형 소메뉴(드롭다운)
   var __ts=document.getElementById("insrep-typeSel");
-  if(__ts) __ts.addEventListener("change",function(){ insType=this.value; insSyncMetaInputs(); insRender(); insSaveLocal(); });
+  if(__ts) __ts.addEventListener("change",function(){ insType=this.value; insShowAllRows=false; insSyncMetaInputs(); insRender(); insSaveLocal(); });
   var __ic=document.getElementById("insrep-content"); if(__ic) __ic.addEventListener("change",function(e){ var t=e.target; if(t&&t.getAttribute&&t.getAttribute("data-key")==="draw"){ var v=String(t.value||"").trim(); if(v) insNcHistoryPopup_(v); } });
   var __gc=document.getElementById("insrep-content"); if(__gc) __gc.addEventListener("keydown", insGridKeydown_);
   document.querySelectorAll("#topbar-insrep .ins-dd-btn").forEach(function(btn){ btn.addEventListener("click", function(e){ e.stopPropagation(); var id=btn.getAttribute("data-menu"); var menu=document.getElementById(id); var open=menu&&menu.classList.contains("open"); document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); if(menu&&!open) menu.classList.add("open"); }); });
@@ -14217,6 +14218,18 @@ function insRender(){
   var body="";
   if(!rows.length){ body='<tr><td colspan="'+(leaves.length+1)+'" style="padding:20px;text-align:center;color:#8A93A6;">행이 없습니다. ➕ 행 추가 또는 📷 스캔으로 시작하세요.</td></tr>'; }
   
+  // ── 대용량 대응: 표시 행 상한 (데이터는 그대로, DOM만 최근 N행으로 제한해 속도 유지) ──
+  var INS_RENDER_CAP = 400;
+  var __dq0=(insDrawSearch||"").trim().toLowerCase();
+  var __visIdx=[];
+  rows.forEach(function(row,ri){
+    if(__dq0){ if(String(row.draw||"").toLowerCase().indexOf(__dq0)<0) return; }
+    else if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="")) return;
+    __visIdx.push(ri);
+  });
+  var __capped=(!insShowAllRows && __visIdx.length>INS_RENDER_CAP);
+  var __allowIdx=__capped ? new Set(__visIdx.slice(-INS_RENDER_CAP)) : null;
+
   var __dispNo=0;
   rows.forEach(function(row,ri){
     // [양품수 자동 계산] 렌더링 시점에 검사수 - 부적합수 자동 계산
@@ -14232,6 +14245,7 @@ function insRender(){
     if(__dq){ if(String(row.draw||"").toLowerCase().indexOf(__dq)<0) return; }   // 도번 검색: 전체 날짜에서 매칭만
     else if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="")) return;   // 다른 날짜여도 미조치 부적합은 계속 표시
     __dispNo++;
+    if(__allowIdx && !__allowIdx.has(ri)) return;   // 상한 초과: 번호만 증가시키고 DOM은 생략
     var tds="";
     leaves.forEach(function(c){
       var v=row[c.key];
@@ -14275,6 +14289,17 @@ function insRender(){
     '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px;">'
     + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">'+insEsc(cfg.title)+'</div>'
     + '<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">도번을 입력/스캔하면 자동으로 채워지고, 각 칸은 직접 수정할 수 있습니다. 체크박스는 엑셀에서 ■/□ 로 나옵니다.</div>'
+    + (__capped
+        ? '<div style="background:#EAF3FF;border:1px solid #BBD6F5;border-radius:9px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:#1F4E79;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'
+          + '<span>⚡ 총 <b>'+__visIdx.length.toLocaleString()+'</b>행 중 <b>최근 '+INS_RENDER_CAP+'행</b>만 표시 중입니다 (빠른 편집용). 날짜별 보기·도번 검색으로 좁히면 원하는 행이 바로 나옵니다.</span>'
+          + '<button type="button" id="insrep-showAllBtn" style="border:1px solid #1F4E79;background:#fff;color:#1F4E79;border-radius:6px;padding:5px 12px;font-weight:700;cursor:pointer;white-space:nowrap;">전체 표시</button>'
+          + '</div>'
+        : (insShowAllRows && __visIdx.length>INS_RENDER_CAP
+            ? '<div style="background:#FFF7E6;border:1px solid #F0D9A0;border-radius:9px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:#8A5A00;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'
+              + '<span>⚠ 전체 <b>'+__visIdx.length.toLocaleString()+'</b>행 표시 중 — 행이 많으면 느려질 수 있습니다.</span>'
+              + '<button type="button" id="insrep-showRecentBtn" style="border:1px solid #8A5A00;background:#fff;color:#8A5A00;border-radius:6px;padding:5px 12px;font-weight:700;cursor:pointer;white-space:nowrap;">최근 '+INS_RENDER_CAP+'행만</button>'
+              + '</div>'
+            : ''))
     + (function(){ try{ var __tot=(insState[insType]&&insState[insType].rows||[]).length; if(false){ var __sz=0; try{ __sz=JSON.stringify(insState[insType].rows).length; }catch(e){} var __danger=(__tot>=450 || __sz>38000); return '<div style="background:'+(__danger?'#FDECEC':'#FFF7E6')+';border:1px solid '+(__danger?'#E4B4B4':'#F0D9A0')+';border-radius:9px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:'+(__danger?'#8A1F1F':'#8A5A00')+';font-weight:700;">'+(__danger?'\u26A0 ':'\uD83D\uDCA1 ')+'\uD604\uC7AC \uC774 \uC720\uD615\uC5D0 '+__tot+'\uD589\uC774 \uC313\uC5EC \uC788\uC2B5\uB2C8\uB2E4. '+(__danger?'\uC800\uC7A5 \uD55C\uB3C4\uC5D0 \uAC00\uAE4C\uC6CC\uC694 \u2014 ':'')+'[\uD83D\uDCE5 \uBD99\uC5EC\uB123\uAE30\uC6A9]\uC73C\uB85C \uAC80\uC0AC\uC885\uD569\uC5D0 \uC62E\uAE34 \uB4A4 \uB9C8\uAC10(\uD45C \uBE44\uC6C0)\uD558\uC138\uC694.</div>'; } }catch(e){} return ''; })()
     + '<div class="insrep-tablewrap" style="overflow:auto;max-height:calc(100vh - 300px);min-height:160px;-webkit-overflow-scrolling:touch;"><table style="border-collapse:collapse;font-size:12px;min-width:100%;"><thead><tr>'+head1+'<th rowspan="2" style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:5px;">삭제</th></tr><tr>'+head2+'</tr></thead><tbody>'+body+'</tbody></table></div>'
     + '</div>'
@@ -14337,6 +14362,8 @@ function insRender(){
     el.querySelectorAll(".insrep-del").forEach(function(b){ b.addEventListener("click",function(){ var __i=+b.getAttribute("data-ri"); var __r=insState[insType].rows[__i]; if(__r&&__r._id) insMarkDeleted_(__r._id); insState[insType].rows.splice(__i,1); insRender(); insSaveLocal(); }); });
     el.querySelectorAll(".ins-dwg-open").forEach(function(ic){ ic.addEventListener("click",function(e){ e.stopPropagation(); var __r=+ic.getAttribute("data-ri"); var __di=el.querySelector('input[data-ri="'+__r+'"][data-key="draw"]'); var __dv=String((__di&&__di.value)||"").trim(); if(!__dv){ alert("도번을 먼저 입력하세요."); return; } if(typeof openDrawing==="function") openDrawing(__dv); }); });
     el.querySelectorAll(".insrep-edit").forEach(function(b){ b.addEventListener("click",function(){ insOpenForm(+b.getAttribute("data-ri")); }); });
+    var __sab=document.getElementById("insrep-showAllBtn"); if(__sab) __sab.addEventListener("click",function(){ insShowAllRows=true; insRender(); });
+    var __srb=document.getElementById("insrep-showRecentBtn"); if(__srb) __srb.addEventListener("click",function(){ insShowAllRows=false; insRender(); });
 }
 // 도번으로 생산공정현황에서 품명/수량 참고 (검사수 비었으면 수량 채움)
 function insAutoFill(ri){
@@ -16981,6 +17008,6 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.76 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.77 🔔</div>
 </body>
 </html>
