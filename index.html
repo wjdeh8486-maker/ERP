@@ -13645,6 +13645,36 @@ var NC_OVERDUE_DAYS = 7;
 var __ncAttach = null, __ncAttachLoaded=false;
 function ncAttachGet_(){ if(__ncAttach) return __ncAttach; __ncAttach={}; try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof v==="object"&&!__ncAttachLoaded){ __ncAttach=v; __ncAttachLoaded=true; if(typeof ncRender==="function"&&window.__ncInited) ncRender(); } }).catch(function(){}); }catch(e){} return __ncAttach; }
 function ncAttachSetAll_(o, statusId){ __ncAttach=o||{}; __ncAttachLoaded=true; try{ if(typeof idbSet==="function") idbSet("ncAttach", __ncAttach); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("ncAttach", __ncAttach, statusId); }catch(e){} try{ localStorage.removeItem("ntlNcAttach"); }catch(e){} }
+function ncApiUrl_(){ return (typeof docmasterApiUrl==="function")?docmasterApiUrl():""; }
+function ncFileIsImage_(f){ return !!(f && f.type && f.type.indexOf("image")===0); }
+var NC_FILE_MAX = 10*1024*1024; // 파일당 10MB 상한(PDF/엑셀)
+// PDF/엑셀 → 드라이브 업로드 (응답으로 fileId/링크 수신)
+function ncFileUploadRemote_(file, onDone, onErr){
+  var url=ncApiUrl_(); if(!url){ onErr&&onErr("서버 URL이 설정되지 않았습니다."); return; }
+  var rd=new FileReader();
+  rd.onload=function(){ var b64=String(rd.result||""); var i=b64.indexOf(","); if(i>=0) b64=b64.slice(i+1);
+    fetch(url,{ method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({ mode:"ncFileUpload", name:file.name, mime:file.type||"application/octet-stream", dataB64:b64 }) })
+      .then(function(r){ return r.json(); })
+      .then(function(res){ if(res&&res.success){ onDone&&onDone(res); } else { onErr&&onErr((res&&res.error)||"업로드 실패"); } })
+      .catch(function(e){ onErr&&onErr(String(e)); });
+  };
+  rd.onerror=function(){ onErr&&onErr("파일 읽기 실패"); };
+  rd.readAsDataURL(file);
+}
+// 드라이브 파일 삭제(휴지통) — 응답 불필요
+function ncFileDeleteRemote_(fileId){ var url=ncApiUrl_(); if(!url||!fileId) return; try{ fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"ncFileDelete",fileId:fileId})}); }catch(e){} }
+function ncAttFileIcon_(a){ var s=String((a&&(a.name||a.mime))||"").toLowerCase(); if(/pdf/.test(s)) return "📄"; if(/xls|sheet|excel|csv/.test(s)) return "📊"; return "📎"; }
+// 첨부 카드 1개 렌더 — kind==="file"이면 드라이브 파일(아이콘+열기), 아니면 이미지 썸네일
+function ncAttCard_(a,i){
+  if(a && a.kind==="file"){
+    return '<div style="border:1px solid #E1E8F0;border-radius:8px;padding:8px;width:120px;text-align:center;">'
+      +'<a href="'+ncAttEsc_(a.url)+'" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:block;">'
+      +'<div style="font-size:34px;line-height:1;margin:4px 0;">'+ncAttFileIcon_(a)+'</div>'
+      +'<div style="font-size:10px;color:#0B5CAB;word-break:break-all;line-height:1.25;">'+ncAttEsc_(a.name||("첨부"+(i+1)))+'</div></a>'
+      +'<button class="ncatt-del" data-i="'+i+'" style="margin-top:4px;border:none;background:#F0F4F8;border-radius:5px;font-size:11px;padding:2px 8px;cursor:pointer;">삭제</button></div>';
+  }
+  return '<div style="border:1px solid #E1E8F0;border-radius:8px;padding:5px;width:120px;text-align:center;"><img class="ncatt-view" data-i="'+i+'" src="'+ncAttEsc_(a.url)+'" style="width:108px;height:80px;object-fit:cover;border-radius:5px;cursor:zoom-in;"><div style="font-size:10px;color:#5A6478;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+ncAttEsc_(a.name||("첨부"+(i+1)))+'</div><button class="ncatt-del" data-i="'+i+'" style="margin-top:3px;border:none;background:#F0F4F8;border-radius:5px;font-size:11px;padding:2px 8px;cursor:pointer;">삭제</button></div>';
+}
 function ncAttachApply_(v){ if(v && typeof v==="object" && !Array.isArray(v)){ __ncAttach=v; __ncAttachLoaded=true; try{ if(typeof idbSet==="function") idbSet("ncAttach", v); }catch(e){} try{ localStorage.removeItem("ntlNcAttach"); }catch(e){} return true; } return false; }
 function ncAttachKey_(r){ if(!r) return ""; var d=String(r.date||"").replace(/[^0-9]/g,""); var pn=String(r.partNo||"").replace(/\s+/g,""); var ct=String(r.content||"").replace(/\s+/g,"").slice(0,20); var q=String(r.qty||"").replace(/[^0-9.]/g,""); return d+"|"+pn+"|"+ct+"|"+q; }
 function ncAttachList_(r){ var st=ncAttachGet_(); return st[ncAttachKey_(r)]||[]; }
@@ -13668,12 +13698,12 @@ function ncAttachOpen_(r){
   if(!r){ return; }
   var key=ncAttachKey_(r);
   var ov=document.createElement("div"); ov.style.cssText="position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;padding:16px;";
-  var thumbs=function(){ var list=ncAttachList_(r); if(!list.length) return '<div style="color:#8A93A6;text-align:center;padding:18px;font-size:13px;">첨부된 이미지가 없습니다.<br>아래 영역에 <b>붙여넣기(Ctrl+V)</b> 하거나 파일을 선택하세요.</div>';
-    return '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+list.map(function(a,i){ return '<div style="border:1px solid #E1E8F0;border-radius:8px;padding:5px;width:120px;text-align:center;"><img class="ncatt-view" data-i="'+i+'" src="'+ncAttEsc_(a.url)+'" style="width:108px;height:80px;object-fit:cover;border-radius:5px;cursor:zoom-in;"><div style="font-size:10px;color:#5A6478;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+ncAttEsc_(a.name||("첨부"+(i+1)))+'</div><button class="ncatt-del" data-i="'+i+'" style="margin-top:3px;border:none;background:#F0F4F8;border-radius:5px;font-size:11px;padding:2px 8px;cursor:pointer;">삭제</button></div>'; }).join("")+'</div>'; };
+  var thumbs=function(){ var list=ncAttachList_(r); if(!list.length) return '<div style="color:#8A93A6;text-align:center;padding:18px;font-size:13px;">첨부가 없습니다.<br>이미지는 <b>붙여넣기(Ctrl+V)</b> 또는 선택, <b>PDF·엑셀</b>은 파일 선택으로 첨부하세요.</div>';
+    return '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+list.map(function(a,i){ return ncAttCard_(a,i); }).join("")+'</div>'; };
   ov.innerHTML='<div style="background:#fff;border-radius:14px;padding:18px;width:100%;max-width:600px;max-height:90vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,0.4);">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><b style="font-size:16px;color:#1F2A44;">📎 고객부적합 첨부</b><button id="ncatt-x" style="border:none;background:transparent;font-size:20px;cursor:pointer;">✕</button></div>'
     +'<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">'+ncAttEsc_((r.date||"")+" · "+(r.partNo||"")+" · "+(r.customer||""))+'</div>'
-    +'<div id="ncatt-paste" tabindex="0" style="border:2px dashed #9AA7BC;border-radius:10px;padding:14px;text-align:center;color:#5A6478;font-size:13px;background:#F7F9FC;cursor:text;outline:none;">여기를 클릭 후 <b>Ctrl+V</b>로 캡처 붙여넣기<br><span style="font-size:11px;color:#8A93A6;">또는</span><br><input type="file" id="ncatt-file" accept="image/*" multiple style="margin-top:6px;font-size:12px;"></div>'
+    +'<div id="ncatt-paste" tabindex="0" style="border:2px dashed #9AA7BC;border-radius:10px;padding:14px;text-align:center;color:#5A6478;font-size:13px;background:#F7F9FC;cursor:text;outline:none;">여기를 클릭 후 <b>Ctrl+V</b>로 캡처 붙여넣기<br><span style="font-size:11px;color:#8A93A6;">또는 파일 선택 (이미지·PDF·엑셀 / PDF·엑셀은 최대 10MB, 드라이브 저장)</span><br><input type="file" id="ncatt-file" accept="image/*,.pdf,.xlsx,.xls,.xlsm,.csv" multiple style="margin-top:6px;font-size:12px;"></div>'
     +'<div id="ncatt-status" style="font-size:11px;color:#0B5CAB;margin:6px 0;"></div>'
     +'<div id="ncatt-list" style="margin-top:8px;">'+thumbs()+'</div></div>';
   document.body.appendChild(ov);
@@ -13685,13 +13715,18 @@ function ncAttachOpen_(r){
   var addImg=function(dataURL, name){ status.textContent="이미지 처리 중…"; ncImgCompress_(dataURL, function(curl){ var st=ncAttachGet_(); var k=key; st[k]=st[k]||[]; st[k].push({name:name||("캡처_"+new Date().toLocaleTimeString("ko-KR")), url:curl}); ncAttachSetAll_(st, "ncatt-status"); status.textContent="☁ 공유 저장 중… (확인 대기)"; refresh(); }); };
   var bindThumbs=function(){
     ov.querySelectorAll(".ncatt-view").forEach(function(im){ im.addEventListener("click",function(){ ncAttachLightbox_(im.src); }); });
-    ov.querySelectorAll(".ncatt-del").forEach(function(b){ b.addEventListener("click",function(){ var i=parseInt(b.getAttribute("data-i"),10); var st=ncAttachGet_(); if(st[key]){ st[key].splice(i,1); if(!st[key].length) delete st[key]; ncAttachSetAll_(st); refresh(); } }); });
+    ov.querySelectorAll(".ncatt-del").forEach(function(b){ b.addEventListener("click",function(){ var i=parseInt(b.getAttribute("data-i"),10); var st=ncAttachGet_(); if(st[key]){ var __ent=st[key][i]; if(__ent&&__ent.kind==="file"&&__ent.fileId) ncFileDeleteRemote_(__ent.fileId); st[key].splice(i,1); if(!st[key].length) delete st[key]; ncAttachSetAll_(st); refresh(); } }); });
   };
   bindThumbs();
   var paste=ov.querySelector("#ncatt-paste");
   paste.addEventListener("click",function(){ paste.focus(); });
   paste.addEventListener("paste",function(e){ var items=(e.clipboardData||{}).items||[]; var found=false; for(var i=0;i<items.length;i++){ if(items[i].type && items[i].type.indexOf("image")===0){ var f=items[i].getAsFile(); if(f){ found=true; var rd=new FileReader(); rd.onload=function(){ addImg(rd.result, "메일캡처"); }; rd.readAsDataURL(f); } } } if(found) e.preventDefault(); });
-  ov.querySelector("#ncatt-file").addEventListener("change",function(e){ var fs=e.target.files||[]; for(var i=0;i<fs.length;i++){ (function(f){ var rd=new FileReader(); rd.onload=function(){ addImg(rd.result, f.name); }; rd.readAsDataURL(f); })(fs[i]); } e.target.value=""; });
+  ov.querySelector("#ncatt-file").addEventListener("change",function(e){ var fsl=e.target.files||[]; for(var i=0;i<fsl.length;i++){ (function(f){
+    if(ncFileIsImage_(f)){ var rd=new FileReader(); rd.onload=function(){ addImg(rd.result, f.name); }; rd.readAsDataURL(f); return; }
+    if(f.size > NC_FILE_MAX){ status.textContent="⚠ "+f.name+" — 10MB를 초과해 첨부할 수 없습니다."; return; }
+    status.textContent="☁ 드라이브 업로드 중… "+f.name;
+    ncFileUploadRemote_(f, function(res){ var st=ncAttachGet_(); var k=key; st[k]=st[k]||[]; st[k].push({ name:res.name||f.name, url:res.url, fileId:res.fileId, kind:"file", mime:f.type||"" }); ncAttachSetAll_(st, "ncatt-status"); status.textContent="✅ 첨부 완료: "+(res.name||f.name); refresh(); }, function(err){ status.textContent="⚠ 업로드 실패: "+err; });
+  })(fsl[i]); } e.target.value=""; });
   setTimeout(function(){ paste.focus(); }, 100);
 }
 // _id로 레코드 찾아 첨부 열기
