@@ -1864,7 +1864,8 @@
             <button type="button" id="insrep-printBtn" style="background:#334155;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">🖨 인쇄</button>
             <div style="border-top:1px solid #EEF1F6;margin:3px 0;"></div>
             <button type="button" id="insrep-qualBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;">📊 품질 요약</button>
-            <button type="button" id="insrep-ctqBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="부적합 유형별 CTQ 분석 (비중·누적·PPM·핵심등급)">🎯 CTQ 분석</button>
+            <button type="button" id="insrep-costBtn" style="background:#7A3EA8;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="부적합 불량수량 × 발주단가 = 실패비용(COPQ) 추정">💰 실패비용</button>
+            <button type="button" id="insrep-trendBtn" style="background:#1E7A46;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="초도양품률(FPY) 월별 추세 + 상습 불량 도번 순위">📈 품질 추세</button>
             <button type="button" id="insrep-ncrBtn" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer;" title="미조치 부적합에서 NCR(부적합보고서) 엑셀 발행">📄 NCR 출력</button>
           </div>
         </span>
@@ -14151,7 +14152,8 @@ function insInit(){
   bind("insrep-histBtn","click",insOpenDefectHistory);
   bind("insrep-recoverBtn","click",insRecoverToday_);
   bind("insrep-qualBtn","click",insOpenQuality);
-  bind("insrep-ctqBtn","click",insOpenCTQ);
+  bind("insrep-costBtn","click",insOpenFailureCost);
+  bind("insrep-trendBtn","click",insOpenQualityTrend);
   bind("insrep-ncrBtn","click",insOpenNcrExport);
   bind("insrep-printBtn","click",insPrintDay);
   bind("insrep-masterExBtn","click",function(){ insExportMaster(true); });
@@ -15163,76 +15165,6 @@ function insOpenValidate(){
   ov.style.display="flex";
   document.getElementById("insval-x").addEventListener("click",function(){ ov.style.display="none"; });
 }
-/* ==================== 🎯 CTQ 분석 (부적합 유형별: 비중·누적·PPM·핵심등급) ==================== */
-function insCTQRows_(){
-  var q=insQualitySummary_();
-  var defList=q.defList||[], tot=q.tot||{ins:0,bad:0};
-  var sumN=defList.reduce(function(a,d){ return a+(d.n||0); },0);
-  var cum=0;
-  var rows=defList.map(function(d,i){
-    var share=sumN? (d.n/sumN*100) : 0;
-    cum+=share;
-    var ppm=tot.ins? Math.round(d.n/tot.ins*1000000) : 0;
-    var grade=(cum<=80.00001)?"핵심":"일반";   // 파레토 80% = 핵심(Vital Few)
-    return { rank:i+1, label:d.label, n:d.n, share:share, cum:cum, ppm:ppm, grade:grade };
-  });
-  return { rows:rows, tot:tot, sumN:sumN };
-}
-function insOpenCTQ(){
-  var c=insCTQRows_();
-  var rows=c.rows, tot=c.tot;
-  var period=(insDayFilter==="all")?"전체 기간":("검사일 "+insDayFilter);
-  var f1=function(x){ return (Math.round(x*10)/10).toFixed(1); };
-  var body;
-  if(!rows.length){
-    body='<div style="color:#1E7A46;font-weight:700;padding:16px 4px;">부적합이 없습니다 👍 (해당 기간에 CTQ로 분석할 불량이 없음)</div>';
-  } else {
-    var maxShare=rows[0].share||1;
-    var trs=rows.map(function(r){
-      var barW=Math.max(2, (r.share/maxShare*100));
-      var barColor=(r.grade==="핵심")?"#C0392B":"#9AA6B2";
-      var gradeBadge=(r.grade==="핵심")
-        ? '<span style="background:#FDECEC;color:#8A1F1F;border:1px solid #E7C9C9;border-radius:6px;padding:1px 7px;font-weight:800;font-size:11px;">핵심</span>'
-        : '<span style="background:#EEF1F6;color:#5A6478;border-radius:6px;padding:1px 7px;font-size:11px;">일반</span>';
-      return '<tr>'
-        +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;color:#8A93A6;">'+r.rank+'</td>'
-        +'<td style="border:1px solid #E6EBF2;padding:6px;font-weight:700;white-space:nowrap;">'+insEsc(r.label)+'</td>'
-        +'<td style="border:1px solid #E6EBF2;padding:6px;">'
-        +'  <div style="display:flex;align-items:center;gap:8px;">'
-        +'    <div style="flex:1;min-width:80px;background:#F0F4F8;border-radius:5px;height:14px;overflow:hidden;"><div style="width:'+barW+'%;height:100%;background:'+barColor+';"></div></div>'
-        +'    <span style="font-size:12px;color:#33415C;white-space:nowrap;">'+f1(r.share)+'%</span>'
-        +'  </div></td>'
-        +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;font-weight:800;color:#C0392B;">'+r.n+'</td>'
-        +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+f1(r.cum)+'%</td>'
-        +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+r.ppm.toLocaleString()+'</td>'
-        +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+gradeBadge+'</td>'
-        +'</tr>';
-    }).join("");
-    var coreCnt=rows.filter(function(r){return r.grade==="핵심";}).length;
-    body='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'
-      +'<div style="flex:1;min-width:120px;background:#F4F8FD;border:1px solid #D6E4F5;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">총 검사수</div><div style="font-size:18px;font-weight:800;color:#0B5CAB;">'+(tot.ins||0).toLocaleString()+'</div></div>'
-      +'<div style="flex:1;min-width:120px;background:#FDF3F3;border:1px solid #F0D6D6;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">총 부적합</div><div style="font-size:18px;font-weight:800;color:#C0392B;">'+(c.sumN||0).toLocaleString()+'</div></div>'
-      +'<div style="flex:1;min-width:120px;background:#F6FFF9;border:1px solid #CFE9D8;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">불량률 / PPM</div><div style="font-size:18px;font-weight:800;color:#1E7A46;">'+f1(tot.rate||0)+'% · '+(tot.ppm||0).toLocaleString()+'</div></div>'
-      +'<div style="flex:1;min-width:120px;background:#FDECEC;border:1px solid #E7C9C9;border-radius:10px;padding:8px 12px;"><div style="font-size:11px;color:#5A6478;">핵심 CTQ 항목</div><div style="font-size:18px;font-weight:800;color:#8A1F1F;">'+coreCnt+'개</div></div>'
-      +'</div>'
-      +'<div style="font-size:12px;color:#5A6478;margin-bottom:6px;">누적 비중 80%까지를 <b style="color:#8A1F1F;">핵심(Vital Few)</b>으로 표시했습니다 — 이 항목들을 먼저 개선하면 불량의 대부분을 줄일 수 있습니다.</div>'
-      +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:13px;min-width:560px;"><thead><tr>'
-      +['순위','부적합 유형 (CTQ)','비중','부적합수','누적%','PPM','등급'].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
-      +'</tr></thead><tbody>'+trs+'</tbody></table></div>';
-  }
-
-  var ov=document.getElementById("insctq-ov");
-  if(!ov){ ov=document.createElement("div"); ov.id="insctq-ov"; ov.style.cssText="position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,0.5);display:flex;align-items:center;justify-content:center;padding:14px;"; ov.addEventListener("click",function(e){ if(e.target===ov) ov.style.display="none"; }); document.body.appendChild(ov); }
-  ov.innerHTML='<div style="background:#fff;width:100%;max-width:820px;max-height:90vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.35);">'
-    +'<div style="padding:14px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;">'
-    +  '<b style="font-size:16px;color:#0B5CAB;">🎯 CTQ 분석 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 부적합 유형별 · '+insEsc(period)+'</span></b>'
-    +  '<button type="button" id="insctq-x" style="border:none;background:#F0F4F8;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
-    +'</div>'
-    +'<div style="padding:12px 16px 16px;overflow:auto;">'+body+'</div>'
-    +'</div>';
-  ov.style.display="flex";
-  document.getElementById("insctq-x").addEventListener("click",function(){ ov.style.display="none"; });
-}
 /* ==================== ⚠ 도번 입력 시 고객부적합 이력 팝업 (지속 관리) ==================== */
 function insNcNorm_(x){ return String(x==null?"":x).trim().toUpperCase().replace(/\s+/g,""); }
 function insNcLoose_(x){ return insNcNorm_(x).replace(/[^A-Z0-9]/g,""); }   // 하이픈·점 등 제거(형식 차이 보정)
@@ -15459,6 +15391,201 @@ function insOpenQuality(){
     +'</div>';
   ov.style.display="flex";
   document.getElementById("insql-x").addEventListener("click",function(){ ov.style.display="none"; });
+}
+
+/* ==================== 💰 실패비용(COPQ) 추정 : 부적합 불량수량 × 발주단가 ==================== */
+function insFailureCostData_(){
+  // MAIN(도번→단가·품명·고객사) 맵 — mainData 기준
+  var priceMap={};
+  (typeof mainData!=="undefined" && mainData ? mainData : []).forEach(function(m){
+    var d=String(m.oldDrawingNo||"").trim(); if(!d) return;
+    if(!priceMap[d]) priceMap[d]={ unitPrice:Number(m.unitPrice)||0, partName:m.partName||"", customer:m.customer||"" };
+  });
+  var types=["incoming","shipping","measureS","measureL"];
+  var byDraw={}, totBad=0;
+  types.forEach(function(t){
+    insQualityRows_(t).forEach(function(r){
+      if(insDayFilter!=="all" && String(r.insDate||"")!==insDayFilter) return;
+      var draw=String(r.draw||"").trim(); if(!draw) return;
+      var bad=Math.max(0, (Number(r.insCnt)||0) - (Number(r.goodCnt)||0));
+      if(bad<=0) return;
+      if(!byDraw[draw]) byDraw[draw]={ draw:draw, bad:0 };
+      byDraw[draw].bad+=bad; totBad+=bad;
+    });
+  });
+  var rows=Object.keys(byDraw).map(function(d){
+    var x=byDraw[d], p=priceMap[d]||{}, up=Number(p.unitPrice)||0;
+    return { draw:d, partName:p.partName||"", customer:p.customer||"", bad:x.bad, unitPrice:up, cost:x.bad*up, matched:(!!priceMap[d] && up>0) };
+  }).sort(function(a,b){ return b.cost-a.cost || b.bad-a.bad; });
+  var totCost=rows.reduce(function(s,r){ return s+r.cost; },0);
+  var matchedDraws=rows.filter(function(r){ return r.matched; }).length;
+  var noPrice=rows.filter(function(r){ return !r.matched; }).length;
+  var byCust={};
+  rows.forEach(function(r){ var c=r.customer||"(미지정)"; if(!byCust[c]) byCust[c]={bad:0,cost:0}; byCust[c].bad+=r.bad; byCust[c].cost+=r.cost; });
+  var custList=Object.keys(byCust).map(function(c){ return {customer:c, bad:byCust[c].bad, cost:byCust[c].cost}; }).sort(function(a,b){ return b.cost-a.cost; });
+  return { rows:rows, totBad:totBad, totCost:totCost, matchedDraws:matchedDraws, noPrice:noPrice, custList:custList };
+}
+function insOpenFailureCost(){
+  var d=insFailureCostData_();
+  var period=(insDayFilter==="all")?"전체 기간":("검사일 "+insDayFilter);
+  var won=function(v){ return "₩"+Math.round(v||0).toLocaleString(); };
+  var kpi=function(lab,val,color){ return '<div style="flex:1;min-width:110px;background:#FAF6FF;border:1px solid #E6D6F5;border-radius:12px;padding:12px;text-align:center;"><div style="font-size:12px;color:#5A6478;">'+lab+'</div><div style="font-size:20px;font-weight:800;color:'+(color||"#1F2A44")+';margin-top:2px;">'+val+'</div></div>'; };
+  var kpis='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">'
+    +kpi("총 불량수량", d.totBad.toLocaleString()+"개","#C0392B")
+    +kpi("실패비용 추정", won(d.totCost),"#7A3EA8")
+    +kpi("단가매칭 도번", d.matchedDraws.toLocaleString()+"개")
+    +kpi("단가없는 도번", d.noPrice.toLocaleString()+"개","#B7791F")
+    +'</div>';
+  var custRows=d.custList.map(function(c){ return '<tr>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;white-space:nowrap;">'+insEsc(c.customer)+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;">'+c.bad.toLocaleString()+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;color:#7A3EA8;font-weight:700;">'+won(c.cost)+'</td>'
+    +'</tr>'; }).join("");
+  var custTable=d.custList.length? ('<div style="font-weight:800;color:#1F2A44;margin:6px 0;">고객사별</div>'
+    +'<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:14px;"><thead><tr>'
+    +["고객사","불량수량","실패비용"].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#F3EEFA;color:#1F2A44;padding:6px;">'+h+'</th>'; }).join("")
+    +'</tr></thead><tbody>'+custRows+'</tbody></table>') : "";
+  var CAP=100, shown=d.rows.slice(0,CAP);
+  var drawRows=shown.map(function(r,i){ return '<tr>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;color:#8A93A6;">'+(i+1)+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;white-space:nowrap;">'+insEsc(r.draw)+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;">'+insEsc(r.partName)+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;color:#C0392B;">'+r.bad.toLocaleString()+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;">'+(r.unitPrice? won(r.unitPrice):'<span style="color:#B7791F;">단가없음</span>')+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;font-weight:700;color:#7A3EA8;">'+won(r.cost)+'</td>'
+    +'</tr>'; }).join("");
+  var drawTable=d.rows.length? ('<div style="font-weight:800;color:#1F2A44;margin:6px 0;">도번별 실패비용 (상위 '+Math.min(CAP,d.rows.length)+(d.rows.length>CAP?' · 전체 '+d.rows.length+'건은 엑셀로':'')+')</div>'
+    +'<table style="border-collapse:collapse;width:100%;font-size:13px;"><thead><tr>'
+    +["#","도번","품명","불량수량","단가","실패비용"].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#F3EEFA;color:#1F2A44;padding:6px;">'+h+'</th>'; }).join("")
+    +'</tr></thead><tbody>'+drawRows+'</tbody></table>')
+    : '<div style="color:#1E7A46;font-weight:700;padding:8px 0;">집계된 불량이 없습니다 \uD83D\uDC4D</div>';
+  var ov=document.getElementById("inscost-ov");
+  if(!ov){ ov=document.createElement("div"); ov.id="inscost-ov"; ov.style.cssText="position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,0.5);display:flex;align-items:center;justify-content:center;padding:14px;"; ov.addEventListener("click",function(e){ if(e.target===ov) ov.style.display="none"; }); document.body.appendChild(ov); }
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:820px;max-height:90vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.35);">'
+    +'<div style="padding:14px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;gap:8px;">'
+    +  '<b style="font-size:16px;color:#1F2A44;">💰 실패비용(COPQ) 추정 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· '+insEsc(period)+' · 이 기기 기준</span></b>'
+    +  '<span style="display:flex;gap:6px;"><button type="button" id="inscost-xls" style="border:1px solid #7A3EA8;background:#fff;color:#7A3EA8;border-radius:9px;padding:6px 12px;font-weight:700;cursor:pointer;">📥 엑셀</button>'
+    +  '<button type="button" id="inscost-x" style="border:none;background:#F0F4F8;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button></span>'
+    +'</div>'
+    +'<div style="padding:14px 16px;overflow:auto;">'+kpis
+    +'<div style="font-size:11.5px;color:#8A93A6;margin:-6px 0 12px;">※ 실패비용 = 불량수량(검사수−양품수) × 발주단가(MAIN). 단가 없는 도번은 0으로 집계됩니다. 내부 실패비용(폐기·재작업) 추정치예요.</div>'
+    +custTable+drawTable+'</div>'
+    +'</div>';
+  ov.style.display="flex";
+  document.getElementById("inscost-x").addEventListener("click",function(){ ov.style.display="none"; });
+  document.getElementById("inscost-xls").addEventListener("click",function(){ insFailureCostExcel_(d, period); });
+}
+function insFailureCostExcel_(d, period){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
+  var won=function(v){ return Math.round(v||0); };
+  var aoa=[
+    ["실패비용(COPQ) 추정 · "+period],
+    ["총 불량수량", d.totBad, "실패비용 추정(원)", won(d.totCost), "단가매칭 도번", d.matchedDraws, "단가없는 도번", d.noPrice],
+    ["#","도번","품명","고객사","불량수량","단가(원)","실패비용(원)"]
+  ];
+  d.rows.forEach(function(r,i){ aoa.push([i+1, r.draw, r.partName, r.customer, r.bad, won(r.unitPrice), won(r.cost)]); });
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:6}}];
+  ws['!cols']=[{wch:5},{wch:16},{wch:26},{wch:12},{wch:10},{wch:12},{wch:14}];
+  if(typeof styleAoaSheet==="function") styleAoaSheet(ws, { titleRows:[0,1], headerRows:[2] });
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "실패비용");
+  var dt=new Date(); var ds=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+  XLSX.writeFile(wb, "실패비용_"+ds+".xlsx");
+}
+
+/* ==================== 📈 품질 추세 · 개선 우선순위 (FPY 월별 + 상습 불량 도번) ==================== */
+function insQualityTrendData_(){
+  var types=["incoming","shipping","measureS","measureL"];
+  var nameMap={};
+  (typeof mainData!=="undefined" && mainData ? mainData : []).forEach(function(m){ var d=String(m.oldDrawingNo||"").trim(); if(d && !nameMap[d]) nameMap[d]={partName:m.partName||"", customer:m.customer||""}; });
+  var byMonth={}, byDraw={};
+  types.forEach(function(t){
+    var lab=insDefectShortLabel_(INS_CFG[t]);
+    insQualityRows_(t).forEach(function(r){
+      var ic=Number(r.insCnt)||0, gc=Number(r.goodCnt)||0; if(ic<=0) return;
+      var bad=Math.max(0,ic-gc);
+      var mm=String(r.insDate||"").slice(0,7);
+      if(/^\d{4}-\d{2}$/.test(mm)){ if(!byMonth[mm]) byMonth[mm]={ins:0,good:0}; byMonth[mm].ins+=ic; byMonth[mm].good+=gc; }
+      var draw=String(r.draw||"").trim();
+      if(draw){
+        if(!byDraw[draw]) byDraw[draw]={draw:draw, ins:0, bad:0, defs:{}};
+        byDraw[draw].ins+=ic; byDraw[draw].bad+=bad;
+        Object.keys(r).forEach(function(k){ if(insIsDefectKey_(k)){ var n=Number(r[k])||0; if(n>0){ var L=lab[k]||k; byDraw[draw].defs[L]=(byDraw[draw].defs[L]||0)+n; } } });
+      }
+    });
+  });
+  var months=Object.keys(byMonth).sort();
+  var fpy=months.map(function(m){ var x=byMonth[m]; return { month:m, ins:x.ins, good:x.good, fpy:(x.ins? x.good/x.ins*100:0) }; });
+  var draws=Object.keys(byDraw).map(function(d){
+    var x=byDraw[d], nm=nameMap[d]||{};
+    var defTop=Object.keys(x.defs).map(function(k){return {k:k,n:x.defs[k]};}).sort(function(a,b){return b.n-a.n;}).slice(0,3).map(function(o){return o.k+"("+o.n+")";}).join(", ");
+    return { draw:d, partName:nm.partName||"", customer:nm.customer||"", ins:x.ins, bad:x.bad, rate:(x.ins? x.bad/x.ins*100:0), defTop:defTop };
+  }).filter(function(r){ return r.bad>0; }).sort(function(a,b){ return b.bad-a.bad || b.rate-a.rate; });
+  return { fpy:fpy, draws:draws };
+}
+function insOpenQualityTrend(){
+  var d=insQualityTrendData_();
+  var fpyRows=d.fpy.slice(-12).map(function(x){
+    var c=x.fpy>=99?"#1E7A46":(x.fpy>=95?"#B7791F":"#C0392B");
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12.5px;">'
+      +'<div style="width:66px;color:#33415C;">'+x.month+'</div>'
+      +'<div style="flex:1;background:#F0F4F8;border-radius:6px;overflow:hidden;height:16px;"><div style="width:'+Math.max(2,Math.min(100,x.fpy)).toFixed(0)+'%;height:100%;background:'+c+';"></div></div>'
+      +'<div style="width:64px;text-align:right;font-weight:700;color:'+c+';">'+x.fpy.toFixed(1)+'%</div>'
+      +'</div>';
+  }).join("");
+  var fpyBlock=d.fpy.length? ('<div style="font-weight:800;color:#1F2A44;margin:2px 0 8px;">초도 양품률(FPY) 월별 추세 <span style="font-size:11.5px;color:#8A93A6;font-weight:600;">· 최근 '+Math.min(12,d.fpy.length)+'개월</span></div>'+fpyRows)
+    : '<div style="color:#8A93A6;padding:6px 0;">월별 데이터가 없습니다.</div>';
+  var CAP=20, shown=d.draws.slice(0,CAP);
+  var drawRows=shown.map(function(r,i){
+    var rc=r.rate>=5?"#C0392B":(r.rate>=1?"#B7791F":"#33415C");
+    return '<tr>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;color:#8A93A6;">'+(i+1)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;white-space:nowrap;">'+insEsc(r.draw)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;">'+insEsc(r.partName)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;">'+r.ins.toLocaleString()+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;color:#C0392B;font-weight:700;">'+r.bad.toLocaleString()+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;color:'+rc+';font-weight:700;">'+r.rate.toFixed(2)+'%</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;font-size:12px;color:#5A6478;">'+insEsc(r.defTop||"-")+'</td>'
+      +'</tr>';
+  }).join("");
+  var drawTable=d.draws.length? ('<div style="font-weight:800;color:#1F2A44;margin:14px 0 6px;">상습 불량 도번 TOP '+Math.min(CAP,d.draws.length)+(d.draws.length>CAP?' <span style="font-size:11.5px;color:#8A93A6;font-weight:600;">· 전체 '+d.draws.length+'건은 엑셀로</span>':'')+'</div>'
+    +'<table style="border-collapse:collapse;width:100%;font-size:13px;"><thead><tr>'
+    +["#","도번","품명","검사수","불량수","불량률","주요 부적합"].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EAF6EE;color:#1F2A44;padding:6px;">'+h+'</th>'; }).join("")
+    +'</tr></thead><tbody>'+drawRows+'</tbody></table>')
+    : '<div style="color:#1E7A46;font-weight:700;padding:8px 0;">상습 불량 도번이 없습니다 \uD83D\uDC4D</div>';
+  var ov=document.getElementById("instrend-ov");
+  if(!ov){ ov=document.createElement("div"); ov.id="instrend-ov"; ov.style.cssText="position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,0.5);display:flex;align-items:center;justify-content:center;padding:14px;"; ov.addEventListener("click",function(e){ if(e.target===ov) ov.style.display="none"; }); document.body.appendChild(ov); }
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:840px;max-height:90vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.35);">'
+    +'<div style="padding:14px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;gap:8px;">'
+    +  '<b style="font-size:16px;color:#1F2A44;">📈 품질 추세 · 개선 우선순위 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 전체 기간 · 이 기기 기준</span></b>'
+    +  '<span style="display:flex;gap:6px;"><button type="button" id="instrend-xls" style="border:1px solid #1E7A46;background:#fff;color:#1E7A46;border-radius:9px;padding:6px 12px;font-weight:700;cursor:pointer;">📥 엑셀</button>'
+    +  '<button type="button" id="instrend-x" style="border:none;background:#F0F4F8;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button></span>'
+    +'</div>'
+    +'<div style="padding:14px 16px;overflow:auto;">'+fpyBlock+drawTable
+    +'<div style="font-size:11.5px;color:#8A93A6;margin-top:12px;">※ FPY = 양품수 ÷ 검사수. 불량률 = 불량수(검사수−양품수) ÷ 검사수. 상습 불량은 불량수 많은 순으로, 개선 우선순위 참고용입니다.</div>'
+    +'</div>'
+    +'</div>';
+  ov.style.display="flex";
+  document.getElementById("instrend-x").addEventListener("click",function(){ ov.style.display="none"; });
+  document.getElementById("instrend-xls").addEventListener("click",function(){ insQualityTrendExcel_(d); });
+}
+function insQualityTrendExcel_(d){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
+  var wb=XLSX.utils.book_new();
+  // FPY 월별
+  var a1=[["초도 양품률(FPY) 월별 추세"],["월","검사수","양품수","FPY(%)"]];
+  d.fpy.forEach(function(x){ a1.push([x.month, x.ins, x.good, Number(x.fpy.toFixed(2))]); });
+  var w1=XLSX.utils.aoa_to_sheet(a1); w1['!merges']=[{s:{r:0,c:0},e:{r:0,c:3}}]; w1['!cols']=[{wch:12},{wch:10},{wch:10},{wch:10}];
+  if(typeof styleAoaSheet==="function") styleAoaSheet(w1,{titleRows:[0],headerRows:[1]});
+  XLSX.utils.book_append_sheet(wb, w1, "FPY추세");
+  // 상습 불량 도번
+  var a2=[["상습 불량 도번 (개선 우선순위)"],["#","도번","품명","고객사","검사수","불량수","불량률(%)","주요 부적합"]];
+  d.draws.forEach(function(r,i){ a2.push([i+1, r.draw, r.partName, r.customer, r.ins, r.bad, Number(r.rate.toFixed(2)), r.defTop]); });
+  var w2=XLSX.utils.aoa_to_sheet(a2); w2['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}}]; w2['!cols']=[{wch:5},{wch:16},{wch:26},{wch:12},{wch:10},{wch:9},{wch:10},{wch:28}];
+  if(typeof styleAoaSheet==="function") styleAoaSheet(w2,{titleRows:[0],headerRows:[1]});
+  XLSX.utils.book_append_sheet(wb, w2, "상습불량도번");
+  var dt=new Date(); var ds=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+  XLSX.writeFile(wb, "품질추세_"+ds+".xlsx");
 }
 /* ==================== ⚠ 미조치 부적합 (부적합 있으나 조치완료일 비어있음) ==================== */
 var insUnresolvedSrc=null;   // 전체 공유본 버퍼 {type:{rows,insp}} — null이면 이 기기 데이터
