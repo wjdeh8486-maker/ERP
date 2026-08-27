@@ -13666,14 +13666,16 @@ function ncFileDeleteRemote_(fileId){ var url=ncApiUrl_(); if(!url||!fileId) ret
 function ncAttFileIcon_(a){ var s=String((a&&(a.name||a.mime))||"").toLowerCase(); if(/pdf/.test(s)) return "📄"; if(/xls|sheet|excel|csv/.test(s)) return "📊"; return "📎"; }
 // 첨부 카드 1개 렌더 — kind==="file"이면 드라이브 파일(아이콘+열기), 아니면 이미지 썸네일
 function ncAttCard_(a,i){
+  var delBtn='<button class="ncatt-del" data-i="'+i+'" style="margin-top:6px;border:1px solid #E7C9C9;background:#fff;border-radius:5px;font-size:10px;color:#B5423A;padding:3px 10px;cursor:pointer;">🗑 삭제</button>';
   if(a && a.kind==="file"){
-    return '<div style="border:1px solid #E1E8F0;border-radius:8px;padding:8px;width:120px;text-align:center;">'
+    return '<div style="border:1px solid #E1E8F0;border-radius:8px;padding:8px;width:124px;text-align:center;">'
       +'<a href="'+ncAttEsc_(a.url)+'" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:block;">'
-      +'<div style="font-size:34px;line-height:1;margin:4px 0;">'+ncAttFileIcon_(a)+'</div>'
-      +'<div style="font-size:10px;color:#0B5CAB;word-break:break-all;line-height:1.25;">'+ncAttEsc_(a.name||("첨부"+(i+1)))+'</div></a>'
-      +'<button class="ncatt-del" data-i="'+i+'" style="margin-top:4px;border:none;background:#F0F4F8;border-radius:5px;font-size:11px;padding:2px 8px;cursor:pointer;">삭제</button></div>';
+      +'<div style="font-size:34px;line-height:1;margin:2px 0;">'+ncAttFileIcon_(a)+'</div>'
+      +'<div style="font-size:10px;color:#5A6478;word-break:break-all;line-height:1.25;max-height:28px;overflow:hidden;">'+ncAttEsc_(a.name||("첨부"+(i+1)))+'</div></a>'
+      +'<a href="'+ncAttEsc_(a.url)+'" target="_blank" rel="noopener" style="display:block;margin-top:7px;text-decoration:none;background:#0B5CAB;color:#fff;border-radius:6px;font-size:11.5px;padding:5px 0;font-weight:700;">📂 열기</a>'
+      +delBtn+'</div>';
   }
-  return '<div style="border:1px solid #E1E8F0;border-radius:8px;padding:5px;width:120px;text-align:center;"><img class="ncatt-view" data-i="'+i+'" src="'+ncAttEsc_(a.url)+'" style="width:108px;height:80px;object-fit:cover;border-radius:5px;cursor:zoom-in;"><div style="font-size:10px;color:#5A6478;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+ncAttEsc_(a.name||("첨부"+(i+1)))+'</div><button class="ncatt-del" data-i="'+i+'" style="margin-top:3px;border:none;background:#F0F4F8;border-radius:5px;font-size:11px;padding:2px 8px;cursor:pointer;">삭제</button></div>';
+  return '<div style="border:1px solid #E1E8F0;border-radius:8px;padding:5px;width:124px;text-align:center;"><img class="ncatt-view" data-i="'+i+'" src="'+ncAttEsc_(a.url)+'" style="width:112px;height:80px;object-fit:cover;border-radius:5px;cursor:zoom-in;"><div style="font-size:10px;color:#5A6478;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+ncAttEsc_(a.name||("첨부"+(i+1)))+'</div>'+delBtn+'</div>';
 }
 function ncAttachApply_(v){ if(v && typeof v==="object" && !Array.isArray(v)){ __ncAttach=v; __ncAttachLoaded=true; try{ if(typeof idbSet==="function") idbSet("ncAttach", v); }catch(e){} try{ localStorage.removeItem("ntlNcAttach"); }catch(e){} return true; } return false; }
 function ncAttachKey_(r){ if(!r) return ""; var d=String(r.date||"").replace(/[^0-9]/g,""); var pn=String(r.partNo||"").replace(/\s+/g,""); var ct=String(r.content||"").replace(/\s+/g,"").slice(0,20); var q=String(r.qty||"").replace(/[^0-9.]/g,""); return d+"|"+pn+"|"+ct+"|"+q; }
@@ -13715,7 +13717,7 @@ function ncAttachOpen_(r){
   var addImg=function(dataURL, name){ status.textContent="이미지 처리 중…"; ncImgCompress_(dataURL, function(curl){ var st=ncAttachGet_(); var k=key; st[k]=st[k]||[]; st[k].push({name:name||("캡처_"+new Date().toLocaleTimeString("ko-KR")), url:curl}); ncAttachSetAll_(st, "ncatt-status"); status.textContent="☁ 공유 저장 중… (확인 대기)"; refresh(); }); };
   var bindThumbs=function(){
     ov.querySelectorAll(".ncatt-view").forEach(function(im){ im.addEventListener("click",function(){ ncAttachLightbox_(im.src); }); });
-    ov.querySelectorAll(".ncatt-del").forEach(function(b){ b.addEventListener("click",function(){ var i=parseInt(b.getAttribute("data-i"),10); var st=ncAttachGet_(); if(st[key]){ var __ent=st[key][i]; if(__ent&&__ent.kind==="file"&&__ent.fileId) ncFileDeleteRemote_(__ent.fileId); st[key].splice(i,1); if(!st[key].length) delete st[key]; ncAttachSetAll_(st); refresh(); } }); });
+    ov.querySelectorAll(".ncatt-del").forEach(function(b){ b.addEventListener("click",function(){ var i=parseInt(b.getAttribute("data-i"),10); var st=ncAttachGet_(); if(!st[key]) return; var __ent=st[key][i]; var __isFile=!!(__ent&&__ent.kind==="file"); var __nm=(__ent&&__ent.name)?(' "'+__ent.name+'"'):""; if(!confirm("첨부"+__nm+" 을(를) 삭제할까요?"+(__isFile?"\n\n※ 드라이브의 원본 파일도 함께 휴지통으로 이동합니다.":""))) return; if(__isFile&&__ent.fileId) ncFileDeleteRemote_(__ent.fileId); st[key].splice(i,1); if(!st[key].length) delete st[key]; ncAttachSetAll_(st); refresh(); }); });
   };
   bindThumbs();
   var paste=ov.querySelector("#ncatt-paste");
