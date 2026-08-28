@@ -14609,20 +14609,37 @@ function ocrToB64_(file, maxDim, quality){
 function ocrVisionText_(file){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
   if(!url) return Promise.reject(new Error("서버 URL 없음"));
-  return ocrToB64_(file,1600,0.85).then(function(b64){
-    return fetch(url,{ method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({ mode:"ocrSpace", dataB64:b64 }) }).then(function(r){ return r.json(); });
-  }).then(function(res){console.log("OCR 결과", res);
-    if(res && res.success){
-        return res.text || ""; 
-  }
-    if(res && res.error==="NO_KEY"){
+
+  return ocrToB64_(file,1600,0.85)
+    .then(function(b64){
+      return fetch(url,{
+        method:"POST",
+        headers:{"Content-Type":"text/plain;charset=utf-8"},
+        body:JSON.stringify({
+          mode:"ocrSpace",
+          dataB64:b64
+        })
+      }).then(function(r){
+        return r.json();
+      });
+    })
+    .then(function(res){
+
+      console.log("OCR 결과", res);
+
+      if(res && res.success){
+        return res.text || "";
+      }
+
+      if(res && res.error==="NO_KEY"){
         var e=new Error("NO_KEY");
         e.noKey=true;
         throw e;
-    }
+      }
 
-    throw new Error((res&&res.error)||"OCR 실패");
-});
+      throw new Error((res && res.error) || "OCR 실패");
+    });
+}
     if(res&&res.error==="NO_KEY"){ var e=new Error("NO_KEY"); e.noKey=true; throw e; }
     throw new Error((res&&res.error)||"OCR 실패");
   });
