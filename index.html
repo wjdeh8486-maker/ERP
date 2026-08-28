@@ -14526,13 +14526,14 @@ function ocrPrep_(file){
   return new Promise(function(res,rej){
     var img=new Image();
     img.onload=function(){
-      var MAX=1500, w=img.width, h=img.height, sc=Math.min(1, MAX/Math.max(w,h));
+      var TARGET=1800, w=img.width, h=img.height, sc=TARGET/Math.max(w,h);
+      if(sc>2) sc=2;   // 작은 사진은 최대 2배까지만 확대
       var cw=Math.round(w*sc), ch=Math.round(h*sc);
       var cv=document.createElement("canvas"); cv.width=cw; cv.height=ch;
       var cx=cv.getContext("2d"); cx.drawImage(img,0,0,cw,ch);
       try{ var d=cx.getImageData(0,0,cw,ch), a=d.data;
         for(var i=0;i<a.length;i+=4){ var g=(a[i]*0.299+a[i+1]*0.587+a[i+2]*0.114);
-          g=(g-128)*1.35+128; if(g<0)g=0; if(g>255)g=255; a[i]=a[i+1]=a[i+2]=g; }
+          g=(g-128)*1.7+128; if(g<0)g=0; if(g>255)g=255; a[i]=a[i+1]=a[i+2]=g; }
         cx.putImageData(d,0,0);
       }catch(e){}
       res(cv);
@@ -14587,17 +14588,20 @@ function ocrExtractSN_(file, onProgress){
 function ocrExtractSNMulti_(files, onProgress){
   var arr=Array.prototype.slice.call(files||[]);
   if(!arr.length) return Promise.resolve({sn:"",count:0});
+  var ANGLES=[0,180,90,270,30,330,45,315];   // 정방향 실패 시 대각선(30/45°)까지 시도
   var mergedText="", chain=Promise.resolve();
   arr.forEach(function(f, i){
     chain=chain.then(function(){
       return ocrEnsureLib_().then(function(){ return ocrPrep_(f); }).then(function(base){
-        var angles=[0,180,90,270], sub=Promise.resolve();
-        angles.forEach(function(deg,ai){
+        var got=false, sub=Promise.resolve();
+        ANGLES.forEach(function(deg){
           sub=sub.then(function(){
-            if(onProgress) onProgress("인식 중… 사진 "+(i+1)+"/"+arr.length+" · 방향 "+(ai+1)+"/4");
+            if(got) return;   // 이 사진에서 이미 S/N 찾음 → 남은 각도 생략(속도)
+            if(onProgress) onProgress("인식 중… 사진 "+(i+1)+"/"+arr.length+" · 각도 "+deg+"°");
             var cv=ocrRotate_(base,deg);
             return Tesseract.recognize(cv,"eng",{ tessedit_char_whitelist:"0123456789-", tessedit_pageseg_mode:"6" })
-              .then(function(r){ mergedText += "\n" + (((r&&r.data&&r.data.text)||"")); }).catch(function(){});
+              .then(function(r){ var tx=((r&&r.data&&r.data.text)||""); if(ocrParseSN_(tx).count>0){ mergedText+="\n"+tx; got=true; } })
+              .catch(function(){});
           });
         });
         return sub;
