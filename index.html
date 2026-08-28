@@ -14585,27 +14585,57 @@ function ocrExtractSN_(file, onProgress){
 }
 
 // 여러 장(FileList/배열)을 순차 OCR → 텍스트 전부 합쳐 A안 규칙으로 1개 S/N 문자열 생성
+// 파일 → 다운스케일 JPEG base64 (Vision 전송용)
+function ocrToB64_(file, maxDim, quality){
+  return new Promise(function(res,rej){
+    var img=new Image();
+    img.onload=function(){ var w=img.width,h=img.height,sc=Math.min(1,(maxDim||1600)/Math.max(w,h));
+      var cw=Math.round(w*sc),ch=Math.round(h*sc);
+      var cv=document.createElement("canvas"); cv.width=cw; cv.height=ch; cv.getContext("2d").drawImage(img,0,0,cw,ch);
+      try{ res(cv.toDataURL("image/jpeg", quality||0.85).split(",")[1]); }catch(e){ rej(e); } };
+    img.onerror=function(){ rej(new Error("이미지 열기 실패")); };
+    img.src=URL.createObjectURL(file);
+  });
+}
+// Google Vision 으로 텍스트 인식 (키 없으면 NO_KEY 에러)
+function ocrVisionText_(file){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
+  if(!url) return Promise.reject(new Error("서버 URL 없음"));
+  return ocrToB64_(file,1600,0.85).then(function(b64){
+    return fetch(url,{ method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({ mode:"ocrVision", dataB64:b64 }) }).then(function(r){ return r.json(); });
+  }).then(function(res){
+    if(res&&res.success) return res.text||"";
+    if(res&&res.error==="NO_KEY"){ var e=new Error("NO_KEY"); e.noKey=true; throw e; }
+    throw new Error((res&&res.error)||"vision 실패");
+  });
+}
+// (폴백) Tesseract 다각도 인식 — 한 장에서 텍스트 추출
+function ocrTessImage_(f, onProgress, label){
+  var ANGLES=[0,180,90,270,30,330,45,315], out="";
+  return ocrEnsureLib_().then(function(){ return ocrPrep_(f); }).then(function(base){
+    var got=false, sub=Promise.resolve();
+    ANGLES.forEach(function(deg){ sub=sub.then(function(){ if(got) return;
+      if(onProgress) onProgress((label||"")+"각도 "+deg+"°");
+      var cv=ocrRotate_(base,deg);
+      return Tesseract.recognize(cv,"eng",{ tessedit_char_whitelist:"0123456789-", tessedit_pageseg_mode:"6" })
+        .then(function(r){ var tx=((r&&r.data&&r.data.text)||""); if(ocrParseSN_(tx).count>0){ out+="\n"+tx; got=true; } }).catch(function(){}); }); });
+    return sub.then(function(){ return out; });
+  }).catch(function(){ return ""; });
+}
+// 여러 장 → Vision 우선, 안 되면 Tesseract 폴백 → 합쳐서 A안 규칙 정리
 function ocrExtractSNMulti_(files, onProgress){
   var arr=Array.prototype.slice.call(files||[]);
   if(!arr.length) return Promise.resolve({sn:"",count:0});
-  var ANGLES=[0,180,90,270,30,330,45,315];   // 정방향 실패 시 대각선(30/45°)까지 시도
-  var mergedText="", chain=Promise.resolve();
-  arr.forEach(function(f, i){
+  var mergedText="", visionOff=false, chain=Promise.resolve();
+  arr.forEach(function(f,i){
     chain=chain.then(function(){
-      return ocrEnsureLib_().then(function(){ return ocrPrep_(f); }).then(function(base){
-        var got=false, sub=Promise.resolve();
-        ANGLES.forEach(function(deg){
-          sub=sub.then(function(){
-            if(got) return;   // 이 사진에서 이미 S/N 찾음 → 남은 각도 생략(속도)
-            if(onProgress) onProgress("인식 중… 사진 "+(i+1)+"/"+arr.length+" · 각도 "+deg+"°");
-            var cv=ocrRotate_(base,deg);
-            return Tesseract.recognize(cv,"eng",{ tessedit_char_whitelist:"0123456789-", tessedit_pageseg_mode:"6" })
-              .then(function(r){ var tx=((r&&r.data&&r.data.text)||""); if(ocrParseSN_(tx).count>0){ mergedText+="\n"+tx; got=true; } })
-              .catch(function(){});
-          });
-        });
-        return sub;
-      }).catch(function(){});
+      var lab="사진 "+(i+1)+"/"+arr.length+" · ";
+      if(!visionOff){
+        if(onProgress) onProgress(lab+"인식 중(Vision)");
+        return ocrVisionText_(f).then(function(tx){ mergedText+="\n"+tx; })
+          .catch(function(e){ visionOff=true; if(onProgress) onProgress(lab+(e&&e.noKey?"Vision 미설정 → 기본 인식":"Vision 실패 → 기본 인식")); return ocrTessImage_(f,onProgress,lab).then(function(tx){ mergedText+="\n"+tx; }); });
+      }
+      return ocrTessImage_(f,onProgress,lab).then(function(tx){ mergedText+="\n"+tx; });
     });
   });
   return chain.then(function(){ return ocrParseSN_(mergedText); });
