@@ -14314,6 +14314,11 @@ function insRender(){
             +'<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'"'+extraAttr+' style="flex:1;min-width:0;border:none;'+bgStyle+'font-size:12px;" placeholder="도번">'
             +'<span class="ins-dwg-open" data-ri="'+ri+'" title="'+__ttl+'" style="cursor:pointer;font-size:13px;color:'+__col+';padding:0 1px;user-select:none;flex:0 0 auto;">📄</span>'
             +'</div>';
+        } else if(c.key==="sn"){
+          cell='<div style="display:flex;align-items:center;gap:1px;">'
+            +'<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'"'+extraAttr+' style="flex:1;min-width:0;border:none;'+bgStyle+'font-size:12px;">'
+            +'<span class="ins-sn-ocr" data-ri="'+ri+'" title="S/N 사진 인식(업로드)" style="cursor:pointer;font-size:14px;color:#0B7A8A;padding:0 2px;user-select:none;flex:0 0 auto;">📷</span>'
+            +'</div>';
         } else {
           cell='<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'"'+extraAttr+' style="width:100%;border:none;'+bgStyle+'font-size:12px;'+(c.kind==="num"?"text-align:center;":"")+'">';
         }
@@ -14400,6 +14405,24 @@ function insRender(){
   });
     el.querySelectorAll(".insrep-del").forEach(function(b){ b.addEventListener("click",function(){ var __i=+b.getAttribute("data-ri"); var __r=insState[insType].rows[__i]; if(__r&&__r._id) insMarkDeleted_(__r._id); insState[insType].rows.splice(__i,1); insRender(); insSaveLocal(); }); });
     el.querySelectorAll(".ins-dwg-open").forEach(function(ic){ ic.addEventListener("click",function(e){ e.stopPropagation(); var __r=+ic.getAttribute("data-ri"); var __di=el.querySelector('input[data-ri="'+__r+'"][data-key="draw"]'); var __dv=String((__di&&__di.value)||"").trim(); if(!__dv){ alert("도번을 먼저 입력하세요."); return; } if(typeof openDrawing==="function") openDrawing(__dv); }); });
+    // S/N 사진 인식(업로드) — 그 행에 바로 채움
+    (function(){
+      var f=document.getElementById("ins-sn-ocr-file");
+      if(!f){ f=document.createElement("input"); f.type="file"; f.accept="image/*"; f.multiple=true; f.id="ins-sn-ocr-file"; f.style.display="none"; document.body.appendChild(f);
+        f.addEventListener("change",function(ev){
+          var files=ev.target.files; var n=files?files.length:0; ev.target.value=""; if(!n) return;
+          var ri=window.__snOcrRi; if(ri==null) return;
+          var inp=el.querySelector('input[data-ri="'+ri+'"][data-key="sn"]');
+          insSetStatus("📷 S/N 인식 준비 중… ("+n+"장)");
+          ocrExtractSNMulti_(files, function(msg){ insSetStatus("📷 "+msg); }).then(function(res){
+            var r=insState[insType].rows[ri];
+            if(res&&res.sn){ var cur=String((r&&r.sn)||"").trim(); var next=cur?(cur+" / "+res.sn):res.sn; if(r) r.sn=next; if(inp) inp.value=next; insSaveLocal(); insSetStatus("✅ S/N 인식("+n+"장): "+res.sn); }
+            else { insSetStatus("⚠ S/N을 못 찾았습니다 — 수평·밝게 다시 촬영해 올려주세요."); }
+          }).catch(function(err){ insSetStatus("⚠ 인식 오류: "+(err&&err.message?err.message:err)); });
+        });
+      }
+      el.querySelectorAll(".ins-sn-ocr").forEach(function(ic){ ic.addEventListener("click",function(e){ e.stopPropagation(); window.__snOcrRi=+ic.getAttribute("data-ri"); f.click(); }); });
+    })();
     el.querySelectorAll(".insrep-edit").forEach(function(b){ b.addEventListener("click",function(){ insOpenForm(+b.getAttribute("data-ri")); }); });
     var __sab=document.getElementById("insrep-showAllBtn"); if(__sab) __sab.addEventListener("click",function(){ insShowAllRows=true; insRender(); });
     var __srb=document.getElementById("insrep-showRecentBtn"); if(__srb) __srb.addEventListener("click",function(){ insShowAllRows=false; insRender(); });
@@ -14486,6 +14509,104 @@ function insFormVV_(){
   var vv=window.visualViewport; if(!vv) return;
   ov.style.top=vv.offsetTop+"px"; ov.style.left=vv.offsetLeft+"px"; ov.style.width=vv.width+"px"; ov.style.height=vv.height+"px"; ov.style.right="auto"; ov.style.bottom="auto";
 }
+/* ==================== 📷 S/N 사진 인식(OCR) — 업로드 → 텍스트 → 규칙 정리 ==================== */
+// Tesseract.js 지연 로드(CDN)
+function ocrEnsureLib_(){
+  if(window.Tesseract) return Promise.resolve();
+  return new Promise(function(res,rej){
+    var s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    s.onload=function(){ res(); };
+    s.onerror=function(){ rej(new Error("OCR 라이브러리 로드 실패(인터넷 확인)")); };
+    document.head.appendChild(s);
+  });
+}
+// 파일 → (다운스케일+그레이스케일) 캔버스
+function ocrPrep_(file){
+  return new Promise(function(res,rej){
+    var img=new Image();
+    img.onload=function(){
+      var MAX=1500, w=img.width, h=img.height, sc=Math.min(1, MAX/Math.max(w,h));
+      var cw=Math.round(w*sc), ch=Math.round(h*sc);
+      var cv=document.createElement("canvas"); cv.width=cw; cv.height=ch;
+      var cx=cv.getContext("2d"); cx.drawImage(img,0,0,cw,ch);
+      try{ var d=cx.getImageData(0,0,cw,ch), a=d.data;
+        for(var i=0;i<a.length;i+=4){ var g=(a[i]*0.299+a[i+1]*0.587+a[i+2]*0.114);
+          g=(g-128)*1.35+128; if(g<0)g=0; if(g>255)g=255; a[i]=a[i+1]=a[i+2]=g; }
+        cx.putImageData(d,0,0);
+      }catch(e){}
+      res(cv);
+    };
+    img.onerror=function(){ rej(new Error("이미지 열기 실패")); };
+    img.src=URL.createObjectURL(file);
+  });
+}
+// 캔버스를 각도(deg)만큼 회전한 새 캔버스
+function ocrRotate_(cv, deg){
+  if(deg===0) return cv;
+  var r=(deg%360)*Math.PI/180, sw=cv.width, sh=cv.height;
+  var o=document.createElement("canvas");
+  if(deg===90||deg===270){ o.width=sh; o.height=sw; } else { o.width=sw; o.height=sh; }
+  var cx=o.getContext("2d"); cx.translate(o.width/2,o.height/2); cx.rotate(r); cx.drawImage(cv,-sw/2,-sh/2);
+  return o;
+}
+// A안 규칙: 00020- 제거, 그 외 유지, 앞5자리 그룹핑(뒤번호 콤마), 그룹 사이 " / "
+function ocrParseSN_(text){
+  var t=String(text||"");
+  var groups={}, order=[], m;
+  function add(head, tail){ if(!groups[head]){ groups[head]=[]; order.push(head); } if(groups[head].indexOf(tail)<0) groups[head].push(tail); }
+  // 00020-NNNNN-NN  → NNNNN 을 head, 마지막을 tail (00020 제거)
+  var reA=/0\s*0\s*0\s*2\s*0[-\s]+(\d{5})[-\s]+(\d{1,3})\b/g;
+  while((m=reA.exec(t))){ add(m[1], String(Number(m[2]))); }
+  // 10768-NNN (유지)
+  var reB=/\b10768[-\s]+(\d{1,4})\b/g;
+  while((m=reB.exec(t))){ add("10768", String(Number(m[1]))); }
+  order.forEach(function(h){ groups[h].sort(function(a,b){ return Number(a)-Number(b); }); });
+  var parts=order.map(function(h){ return h+"-"+groups[h].join(","); });
+  return { sn: parts.join(" / "), count: order.reduce(function(s,h){ return s+groups[h].length; },0) };
+}
+// 업로드 파일 하나에서 S/N 추출(0/90/180/270 회전 시도 후 병합)
+function ocrExtractSN_(file, onProgress){
+  var angles=[0,180,90,270], merged="";
+  return ocrEnsureLib_().then(function(){ return ocrPrep_(file); }).then(function(base){
+    var chain=Promise.resolve();
+    angles.forEach(function(deg,idx){
+      chain=chain.then(function(){
+        if(onProgress) onProgress("인식 중… ("+(idx+1)+"/4 방향)");
+        var cv=ocrRotate_(base,deg);
+        return Tesseract.recognize(cv, "eng", { tessedit_char_whitelist:"0123456789-", tessedit_pageseg_mode:"6" })
+          .then(function(r){ merged += "\n" + (((r&&r.data&&r.data.text)||"")); })
+          .catch(function(){});
+      });
+    });
+    return chain.then(function(){ return ocrParseSN_(merged); });
+  });
+}
+
+// 여러 장(FileList/배열)을 순차 OCR → 텍스트 전부 합쳐 A안 규칙으로 1개 S/N 문자열 생성
+function ocrExtractSNMulti_(files, onProgress){
+  var arr=Array.prototype.slice.call(files||[]);
+  if(!arr.length) return Promise.resolve({sn:"",count:0});
+  var mergedText="", chain=Promise.resolve();
+  arr.forEach(function(f, i){
+    chain=chain.then(function(){
+      return ocrEnsureLib_().then(function(){ return ocrPrep_(f); }).then(function(base){
+        var angles=[0,180,90,270], sub=Promise.resolve();
+        angles.forEach(function(deg,ai){
+          sub=sub.then(function(){
+            if(onProgress) onProgress("인식 중… 사진 "+(i+1)+"/"+arr.length+" · 방향 "+(ai+1)+"/4");
+            var cv=ocrRotate_(base,deg);
+            return Tesseract.recognize(cv,"eng",{ tessedit_char_whitelist:"0123456789-", tessedit_pageseg_mode:"6" })
+              .then(function(r){ mergedText += "\n" + (((r&&r.data&&r.data.text)||"")); }).catch(function(){});
+          });
+        });
+        return sub;
+      }).catch(function(){});
+    });
+  });
+  return chain.then(function(){ return ocrParseSN_(mergedText); });
+}
+
 function insOpenForm(ri){
   if(insType==="processin"){ alert("공정입고 화면에서는 입력 팝업이 없습니다."); return; }
   var cfg=insCfg(), leaves=insLeaves(cfg), labels=insLeafLabelMap(cfg);
@@ -14521,6 +14642,7 @@ function insOpenForm(ri){
       ctrl='<input type="'+typ+'"'+im+' id="insf-'+c.key+'" value="'+insEsc(val)+'" style="'+INSF_INP+'">';
     }
     var __extra=(c.key==="draw")?'<button type="button" id="insf-openDwg" style="margin-top:8px;width:100%;background:#0B5CAB;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:800;font-size:15px;cursor:pointer;">\uD83D\uDCC4 \uB3C4\uBA74 \uBCF4\uAE30</button>':'';
+    if(c.key==="sn"){ __extra+='<button type="button" id="insf-snOcr" style="margin-top:8px;width:100%;background:#0B7A8A;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:800;font-size:15px;cursor:pointer;">\uD83D\uDCF7 S/N \uC0AC\uC9C4\uC778\uC2DD (\uC5EC\uB7EC\uC7A5 \uAC00\uB2A5)</button><input type="file" id="insf-snFile" accept="image/*" multiple style="display:none;"><div id="insf-snOcrMsg" style="font-size:12px;color:#8A93A6;margin-top:6px;"></div>'; }
     body+='<div style="margin-bottom:13px;"><div style="font-size:13px;font-weight:800;color:#5A6478;margin-bottom:5px;">'+insEsc(lab)+'</div>'+ctrl+__extra+'</div>';
   });
   var head=(isNew?"➕ 새 입력":"✏️ 수정")+" · "+insEsc(cfg.title);
@@ -14541,6 +14663,28 @@ function insOpenForm(ri){
   document.getElementById("insf-x").addEventListener("click", insFormClose);
   document.getElementById("insf-save").addEventListener("click", function(){ insFormSave(false); });
   var __od=document.getElementById("insf-openDwg"); if(__od) __od.addEventListener("click", function(){ var __dv=String((document.getElementById("insf-draw")||{}).value||row.draw||"").trim(); if(!__dv){ alert("도번을 먼저 입력하세요."); return; } if(typeof openDrawing==="function") openDrawing(__dv); else alert("도면 열기 기능을 사용할 수 없습니다."); });
+  var __snB=document.getElementById("insf-snOcr"), __snF=document.getElementById("insf-snFile"), __snM=document.getElementById("insf-snOcrMsg");
+  if(__snB && __snF){
+    __snB.addEventListener("click", function(){ __snF.click(); });
+    __snF.addEventListener("change", function(e){
+      var files=e.target.files; var n=files?files.length:0; if(!n) return;
+      __snB.disabled=true; if(__snM) __snM.textContent="사진 준비 중… ("+n+"장)";
+      ocrExtractSNMulti_(files, function(msg){ if(__snM) __snM.textContent=msg; })
+        .then(function(res){
+          __snB.disabled=false; e.target.value="";
+          var snIn=document.getElementById("insf-sn");
+          if(res && res.sn){
+            var cur=String((snIn&&snIn.value)||"").trim();
+            var next=cur ? (cur+" / "+res.sn) : res.sn;
+            if(snIn){ snIn.value=next; }
+            if(__snM) __snM.textContent="✅ 인식("+n+"장): "+res.sn+"  (확인 후 수정 가능)";
+          } else {
+            if(__snM) __snM.textContent="⚠ S/N을 못 찾았습니다. 각인이 잘 보이게(수평·밝게) 다시 찍어 올려 주세요.";
+          }
+        })
+        .catch(function(err){ __snB.disabled=false; e.target.value=""; if(__snM) __snM.textContent="⚠ 오류: "+(err&&err.message?err.message:err); });
+    });
+  }
   var sc=document.getElementById("insf-savecont"); if(sc) sc.addEventListener("click", function(){ insFormSave(true); });
   var __fd=document.getElementById("insf-draw"); if(__fd) __fd.addEventListener("change", function(){ var v=String(this.value||"").trim(); if(v) insNcHistoryPopup_(v); });
   // 양품수 실시간 계산
