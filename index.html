@@ -14607,21 +14607,31 @@ function ocrToB64_(file, maxDim, quality){
 }
 // OCR.space 로 텍스트 인식 (키 없으면 NO_KEY 에러 → Tesseract 폴백)
 function ocrVisionText_(file){
-  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
-  if(!url) return Promise.reject(new Error("서버 URL 없음"));
+  var url=(typeof docmasterApiUrl==="function")
+    ? docmasterApiUrl()
+    : "";
+
+  if(!url){
+    return Promise.reject(new Error("서버 URL 없음"));
+  }
 
   return ocrToB64_(file,1600,0.85)
     .then(function(b64){
+
       return fetch(url,{
         method:"POST",
-        headers:{"Content-Type":"text/plain;charset=utf-8"},
+        headers:{
+          "Content-Type":"text/plain;charset=utf-8"
+        },
         body:JSON.stringify({
           mode:"ocrSpace",
           dataB64:b64
         })
-      }).then(function(r){
-        return r.json();
       });
+
+    })
+    .then(function(r){
+      return r.json();
     })
     .then(function(res){
 
@@ -14637,12 +14647,12 @@ function ocrVisionText_(file){
         throw e;
       }
 
-      throw new Error((res && res.error) || "OCR 실패");
+      throw new Error(
+        (res && res.error)
+        ? res.error
+        : "OCR 실패"
+      );
     });
-}
-    if(res&&res.error==="NO_KEY"){ var e=new Error("NO_KEY"); e.noKey=true; throw e; }
-    throw new Error((res&&res.error)||"OCR 실패");
-  });
 }
 // (폴백) Tesseract 다각도 인식 — 한 장에서 텍스트 추출
 function ocrTessImage_(f, onProgress, label){
