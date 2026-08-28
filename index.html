@@ -1556,12 +1556,14 @@
             <option value="outdate-desc">출고일자 늦은순</option>
           </select>
           <button id="inv-checkBtn">🔍 재고 검색</button>
+          <span id="inv-checkLocInline" style="display:none;align-self:center;font-size:13px;"></span>
         </div>
         <div class="stock-summary" id="inv-checkSummary" style="display:none;">
           <div class="stock-card"><div class="label">보유 재고</div><div class="value" id="inv-stockValue">0</div></div>
           <div class="stock-card"><div class="label">총 입고 이력</div><div class="value" id="inv-inCount" style="color:var(--blue);">0</div></div>
           <div class="stock-card"><div class="label">총 출고 이력</div><div class="value" id="inv-outCount" style="color:var(--red);">0</div></div>
         </div>
+        <div id="inv-checkLocWrap" style="display:none;margin-bottom:14px;"></div>
         <div class="table-scroll">
           <table>
             <thead><tr><th>품번</th><th>입고일자</th><th>S/N</th><th>입고수량</th><th>출고일자</th><th>출고수량</th><th>관리번호</th><th>비고</th></tr></thead>
@@ -4738,11 +4740,33 @@ function invComputeStock(partNo){
   const totalOut = rows.reduce((s,r)=>s+(Number(r.outQty)||0),0);
   return {rows, totalIn, totalOut, stock: totalIn-totalOut};
 }
+// 비고에서 보관 위치(A-1~F-4) 추출 → "A-1" 형태
+function invExtractLoc_(note){
+  var m=String(note||"").match(/([A-Fa-f])\s*-\s*([1-4])/);
+  return m ? (m[1].toUpperCase()+"-"+m[2]) : "";
+}
+// 보관 레이아웃(A~F행 × 1~4열) 렌더 — occ:점유위치 Set, cur:현재(강조) 위치
+function invLayoutHtml_(occ, cur){
+  var rows=["A","B","C","D","E","F"], html='<div style="overflow-x:auto;"><table style="border-collapse:separate;border-spacing:6px;">';
+  rows.forEach(function(R){
+    html+='<tr><td style="font-weight:800;color:#5A6478;padding-right:4px;">'+R+'</td>';
+    for(var c=1;c<=4;c++){ var code=R+"-"+c; var isCur=(cur&&cur.indexOf(code)>=0); var isOcc=(occ&&occ.has(code));
+      var bg=isCur?"#0B5CAB":(isOcc?"#DBEAFE":"#F0F4F8"), fg=isCur?"#fff":(isOcc?"#0B5CAB":"#8A93A6"), bd=isCur?"#0B5CAB":(isOcc?"#93C5FD":"#E1E8F0");
+      html+='<td style="min-width:56px;height:40px;text-align:center;vertical-align:middle;border:1.5px solid '+bd+';border-radius:8px;background:'+bg+';color:'+fg+';font-weight:'+(isCur||isOcc?"800":"600")+';font-size:13px;">'+code+(isCur?' 📍':'')+'</td>';
+    }
+    html+='</tr>';
+  });
+  html+='</table></div>';
+  return html;
+}
+
 function invRenderCheck(criteria){
   const empty = document.getElementById("inv-checkEmpty");
   const summary = document.getElementById("inv-checkSummary");
   const body = document.getElementById("inv-checkBody");
   body.innerHTML = "";
+  var __lw0=document.getElementById("inv-checkLocWrap"); if(__lw0){ __lw0.style.display="none"; __lw0.innerHTML=""; }
+  var __li0=document.getElementById("inv-checkLocInline"); if(__li0){ __li0.style.display="none"; __li0.innerHTML=""; }
   const partNoQ = (criteria.partNo||"").trim().toLowerCase();
   const snQ = (criteria.sn||"").trim().toLowerCase();
   const ctrlNoQ = (criteria.ctrlNo||"").trim().toLowerCase();
@@ -4771,6 +4795,31 @@ function invRenderCheck(criteria){
   document.getElementById("inv-stockValue").textContent = totalIn-totalOut;
   document.getElementById("inv-inCount").textContent = totalIn;
   document.getElementById("inv-outCount").textContent = totalOut;
+  // ── 보관 위치(비고 A-1~F-4) 추출: 최근 위치 + 점유 위치 ──
+  var __occ=new Set(); rows.forEach(function(r){ var L=invExtractLoc_(r.note); if(L) __occ.add(L); });
+  var __locRows=rows.filter(function(r){ return invExtractLoc_(r.note); }).slice().sort(function(a,b){
+    var da=String(a.inDate||""), db=String(b.inDate||""); if(da!==db) return db.localeCompare(da);
+    return String(b.sn||"").localeCompare(String(a.sn||""), undefined, {numeric:true});
+  });
+  var __curLoc=__locRows.length ? invExtractLoc_(__locRows[0].note) : "";
+  var __li=document.getElementById("inv-checkLocInline");
+  if(__li){
+    __li.style.display="inline-flex";
+    __li.innerHTML = __curLoc
+      ? '<span style="color:#5A6478;margin-right:6px;">최근 위치</span><span style="background:#0B5CAB;color:#fff;font-weight:800;font-size:16px;padding:3px 12px;border-radius:8px;">📍 '+__curLoc+'</span>'
+      : '<span style="color:#8A93A6;">위치정보 없음</span>';
+  }
+  var __lw=document.getElementById("inv-checkLocWrap");
+  if(__lw){
+    if(__occ.size){
+      __lw.style.display="block";
+      __lw.innerHTML=
+        '<div style="font-size:12px;color:#8A93A6;margin:2px 0 6px;">📦 보관 레이아웃 (파랑=점유 · 📍=최근'
+        + (__occ.size>1 ? ' · 이 검색의 위치: '+Array.from(__occ).sort().join(", ") : '')
+        + ')</div>'
+        + invLayoutHtml_(__occ, __curLoc);
+    } else { __lw.style.display="none"; __lw.innerHTML=""; }
+  }
   rows.forEach(r=>{
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${r.partNo}</td><td>${r.inDate||''}</td><td>${r.sn||''}</td>
