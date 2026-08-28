@@ -14585,29 +14585,36 @@ function ocrExtractSN_(file, onProgress){
 }
 
 // 여러 장(FileList/배열)을 순차 OCR → 텍스트 전부 합쳐 A안 규칙으로 1개 S/N 문자열 생성
-// 파일 → 다운스케일 JPEG base64 (Vision 전송용)
+// 파일 → 다운스케일 JPEG base64 (OCR.space 무료 1MB 제한 이하로 자동 압축)
 function ocrToB64_(file, maxDim, quality){
   return new Promise(function(res,rej){
     var img=new Image();
-    img.onload=function(){ var w=img.width,h=img.height,sc=Math.min(1,(maxDim||1600)/Math.max(w,h));
-      var cw=Math.round(w*sc),ch=Math.round(h*sc);
-      var cv=document.createElement("canvas"); cv.width=cw; cv.height=ch; cv.getContext("2d").drawImage(img,0,0,cw,ch);
-      try{ res(cv.toDataURL("image/jpeg", quality||0.85).split(",")[1]); }catch(e){ rej(e); } };
+    img.onload=function(){
+      function enc(dim,q){ var sc=Math.min(1, dim/Math.max(img.width,img.height));
+        var cw=Math.round(img.width*sc), ch=Math.round(img.height*sc);
+        var cv=document.createElement("canvas"); cv.width=cw; cv.height=ch; cv.getContext("2d").drawImage(img,0,0,cw,ch);
+        return cv.toDataURL("image/jpeg", q).split(",")[1]; }
+      try{
+        var dim=maxDim||1600, q=quality||0.85, b64=enc(dim,q), t=0;
+        // base64 약 1,300,000자(≈1MB) 이하가 되도록 품질/크기 축소
+        while(b64.length>1300000 && t<6){ t++; q-=0.12; if(q<0.4){ q=0.65; dim=Math.round(dim*0.82); } b64=enc(dim,q); }
+        res(b64);
+      }catch(e){ rej(e); }
+    };
     img.onerror=function(){ rej(new Error("이미지 열기 실패")); };
     img.src=URL.createObjectURL(file);
   });
 }
-// Google Vision 으로 텍스트 인식 (키 없으면 NO_KEY 에러)
+// OCR.space 로 텍스트 인식 (키 없으면 NO_KEY 에러 → Tesseract 폴백)
 function ocrVisionText_(file){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
   if(!url) return Promise.reject(new Error("서버 URL 없음"));
   return ocrToB64_(file,1600,0.85).then(function(b64){
-    return fetch(url,{ method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({ mode:"ocrVision", dataB64:b64 }) }).then(function(r){ return r.json(); });
+    return fetch(url,{ method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({ mode:"ocrSpace", dataB64:b64 }) }).then(function(r){ return r.json(); });
   }).then(function(res){
-    if(res&&res.success){ if(res.used!=null) window.__visionUsed=res.used+"/"+res.limit; return res.text||""; }
+    if(res&&res.success){ return res.text||""; }
     if(res&&res.error==="NO_KEY"){ var e=new Error("NO_KEY"); e.noKey=true; throw e; }
-    if(res&&res.error==="MONTH_LIMIT"){ var e2=new Error("MONTH_LIMIT"); e2.monthLimit=true; throw e2; }
-    throw new Error((res&&res.error)||"vision 실패");
+    throw new Error((res&&res.error)||"OCR 실패");
   });
 }
 // (폴백) Tesseract 다각도 인식 — 한 장에서 텍스트 추출
@@ -14634,7 +14641,7 @@ function ocrExtractSNMulti_(files, onProgress){
       if(!visionOff){
         if(onProgress) onProgress(lab+"인식 중(Vision)");
         return ocrVisionText_(f).then(function(tx){ mergedText+="\n"+tx; })
-          .catch(function(e){ visionOff=true; var fmsg = (e&&e.noKey)?"Vision 미설정 → 기본 인식":((e&&e.monthLimit)?"이번 달 무료 한도 도달 → 기본 인식":"Vision 실패 → 기본 인식"); if(onProgress) onProgress(lab+fmsg); return ocrTessImage_(f,onProgress,lab).then(function(tx){ mergedText+="\n"+tx; }); });
+          .catch(function(e){ visionOff=true; var fmsg = (e&&e.noKey)?"클라우드 OCR 미설정 → 기본 인식":"클라우드 OCR 실패 → 기본 인식"; if(onProgress) onProgress(lab+fmsg); return ocrTessImage_(f,onProgress,lab).then(function(tx){ mergedText+="\n"+tx; }); });
       }
       return ocrTessImage_(f,onProgress,lab).then(function(tx){ mergedText+="\n"+tx; });
     });
