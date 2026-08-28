@@ -14263,7 +14263,7 @@ function insRender(){
   var __visIdx=[];
   rows.forEach(function(row,ri){
     if(__dq0){ if(String(row.draw||"").toLowerCase().indexOf(__dq0)<0) return; }
-    else if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="")) return;
+    else if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && String(row.actDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="")) return;
     __visIdx.push(ri);
   });
   var __capped=(!insShowAllRows && __visIdx.length>INS_RENDER_CAP);
@@ -14282,7 +14282,7 @@ function insRender(){
     row.goodCnt = Math.max(0, totalQty - defectQty);
     var __dq=(insDrawSearch||"").trim().toLowerCase();
     if(__dq){ if(String(row.draw||"").toLowerCase().indexOf(__dq)<0) return; }   // 도번 검색: 전체 날짜에서 매칭만
-    else if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="")) return;   // 다른 날짜여도 미조치 부적합은 계속 표시
+    else if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && String(row.actDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="")) return;   // 다른 날짜여도 미조치 부적합은 계속 표시
     __dispNo++;
     if(__allowIdx && !__allowIdx.has(ri)) return;   // 상한 초과: 번호만 증가시키고 DOM은 생략
     var tds="";
@@ -14657,7 +14657,8 @@ function insExport(){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
   var cfg=insCfg(), leaves=insLeaves(cfg);
   var __all=insState[insType].rows||[];
-  var rows=(insDayFilter==="all")?__all:__all.filter(function(r){ return String(r.insDate||"")===insDayFilter; });
+  // 화면 표시와 동일 기준: 검사일 일치 OR 조치완료일 일치 OR 미조치 부적합(캐리오버)
+  var rows=(insDayFilter==="all")?__all:__all.filter(function(r){ return String(r.insDate||"")===insDayFilter || String(r.actDate||"")===insDayFilter || (insRowDefect_(insType,r) && String(r.actDate||"").trim()===""); });
   if(!rows.length){ alert("선택한 날짜에 내보낼 행이 없습니다."); return; }
   var insp=(document.getElementById("insrep-inspector")||{}).value||"";
   var dateV=(document.getElementById("insrep-date")||{}).value||"";
