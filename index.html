@@ -14604,8 +14604,9 @@ function ocrVisionText_(file){
   return ocrToB64_(file,1600,0.85).then(function(b64){
     return fetch(url,{ method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({ mode:"ocrVision", dataB64:b64 }) }).then(function(r){ return r.json(); });
   }).then(function(res){
-    if(res&&res.success) return res.text||"";
+    if(res&&res.success){ if(res.used!=null) window.__visionUsed=res.used+"/"+res.limit; return res.text||""; }
     if(res&&res.error==="NO_KEY"){ var e=new Error("NO_KEY"); e.noKey=true; throw e; }
+    if(res&&res.error==="MONTH_LIMIT"){ var e2=new Error("MONTH_LIMIT"); e2.monthLimit=true; throw e2; }
     throw new Error((res&&res.error)||"vision 실패");
   });
 }
@@ -14633,7 +14634,7 @@ function ocrExtractSNMulti_(files, onProgress){
       if(!visionOff){
         if(onProgress) onProgress(lab+"인식 중(Vision)");
         return ocrVisionText_(f).then(function(tx){ mergedText+="\n"+tx; })
-          .catch(function(e){ visionOff=true; if(onProgress) onProgress(lab+(e&&e.noKey?"Vision 미설정 → 기본 인식":"Vision 실패 → 기본 인식")); return ocrTessImage_(f,onProgress,lab).then(function(tx){ mergedText+="\n"+tx; }); });
+          .catch(function(e){ visionOff=true; var fmsg = (e&&e.noKey)?"Vision 미설정 → 기본 인식":((e&&e.monthLimit)?"이번 달 무료 한도 도달 → 기본 인식":"Vision 실패 → 기본 인식"); if(onProgress) onProgress(lab+fmsg); return ocrTessImage_(f,onProgress,lab).then(function(tx){ mergedText+="\n"+tx; }); });
       }
       return ocrTessImage_(f,onProgress,lab).then(function(tx){ mergedText+="\n"+tx; });
     });
