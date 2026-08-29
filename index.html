@@ -4782,9 +4782,17 @@ function invLayoutHtml_(hlLoc, hlParts){
     for(var c=1;c<=4;c++){ var code=R+"-"+c, items=map[code]||[], isCur=(hlLoc&&hlLoc===code), occ=items.length>0;
       var bg=isCur?"#0B5CAB":(occ?"#F4F8FF":"#F8FAFB"), bd=isCur?"#0B5CAB":(occ?"#BBD3F0":"#E8ECF2");
       var head='<div style="font-weight:800;font-size:11px;color:'+(isCur?"#fff":"#5A6478")+';margin-bottom:2px;">'+code+(isCur?" 📍":"")+'</div>';
-      var list=items.map(function(it){ var on=hp[it.partNo];
-        return '<div style="font-size:10.5px;line-height:1.35;color:'+(isCur?"#EAF2FF":(on?"#0B5CAB":"#33415C"))+';font-weight:'+(on?"800":"500")+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+docmasterEsc(it.partNo)+' <b>('+it.stock+')</b></div>'; }).join("");
-      html+='<td style="min-width:100px;max-width:140px;vertical-align:top;text-align:left;border:1.5px solid '+bd+';border-radius:8px;background:'+bg+';padding:5px 7px;">'+head+(list||'<div style="font-size:10px;color:#C2CAD6;">-</div>')+'</td>';
+      var list="";
+      if(items.length){
+        var chunks=[];
+        for(var k=0;k<items.length;k+=3){
+          var seg=items.slice(k,k+3).map(function(it){ var on=hp[it.partNo];
+            return '<span style="font-weight:'+(on?"800":"600")+';color:'+(isCur?"#EAF2FF":(on?"#0B5CAB":"#33415C"))+';">'+docmasterEsc(it.partNo)+'('+it.stock+')</span>'; }).join(' <span style="color:#9AA6B6;">/</span> ');
+          chunks.push('<div style="font-size:11px;line-height:1.5;white-space:normal;word-break:break-all;">'+seg+'</div>');
+        }
+        list=chunks.join("");
+      }
+      html+='<td style="min-width:190px;max-width:260px;vertical-align:top;text-align:left;border:1.5px solid '+bd+';border-radius:8px;background:'+bg+';padding:6px 8px;">'+head+(list||'<div style="font-size:10px;color:#C2CAD6;">-</div>')+'</td>';
     }
     html+='</tr>';
   });
@@ -4813,7 +4821,52 @@ function invOpenModal_(title, bodyHtml){
 }
 // 🗺 레이아웃 재고현황판(전체 지도)
 function invOpenBoard(){
-  invOpenModal_("🗺 레이아웃 재고현황판", '<div style="font-size:12px;color:#8A93A6;margin-bottom:10px;">칸 = 도번(보유수량) · 보유수량&gt;0 만 표시</div>'+invLayoutHtml_("", {}));
+  invOpenModal_("🗺 레이아웃 재고현황판",
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">'
+    +'<span style="font-size:12px;color:#8A93A6;">칸 = 도번(보유수량) · 보유수량&gt;0 만 표시</span>'
+    +'<button id="inv-boardPrint" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🖨️ A3 가로 인쇄(꽉 채움)</button>'
+    +'</div>'+invLayoutHtml_("", {}));
+  var pb=document.getElementById("inv-boardPrint"); if(pb) pb.addEventListener("click", invPrintBoard);
+}
+// A3 가로로 6×4 격자를 꽉 채워 인쇄(재고 라인 게시용)
+function invPrintBoard(){
+  var map=invGetLocMap_(), rows=["A","B","C","D","E","F"];
+  var trs=rows.map(function(R){
+    var tds='<td class="rlab">'+R+'</td>';
+    for(var c=1;c<=4;c++){ var code=R+"-"+c, items=(map[code]||[]);
+      var list="";
+      if(items.length){
+        var chunks=[];
+        for(var k=0;k<items.length;k+=3){
+          chunks.push('<div class="it">'+items.slice(k,k+3).map(function(it){ return docmasterEsc(it.partNo)+'('+it.stock+')'; }).join(' / ')+'</div>');
+        }
+        list=chunks.join("");
+      } else { list='<span class="empty">비어있음</span>'; }
+      tds+='<td class="cell"><div class="code">'+code+'</div><div class="list">'+list+'</div></td>';
+    }
+    return '<tr>'+tds+'</tr>';
+  }).join("");
+  var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>재고 보관 현황판</title><style>'
+    +'@page{ size:A3 landscape; margin:7mm; }'
+    +'*{ box-sizing:border-box; } html,body{ margin:0; padding:0; font-family:"맑은 고딕","Malgun Gothic",sans-serif; }'
+    +'h1{ text-align:center; font-size:24px; margin:2px 0 8px; }'
+    +'table{ width:100%; border-collapse:collapse; table-layout:fixed; }'
+    +'col.lab{ width:5%; } col.dat{ width:23.75%; }'
+    +'tr{ page-break-inside:avoid; }'
+    +'td{ border:2.5px solid #222; vertical-align:top; }'
+    +'td.rlab{ text-align:center; vertical-align:middle; font-size:40px; font-weight:800; background:#EEE; }'
+    +'td.cell{ padding:7px 9px; height:40mm; }'
+    +'.code{ font-size:20px; font-weight:800; color:#0B5CAB; margin-bottom:5px; border-bottom:1.5px solid #DCE4EE; padding-bottom:3px; }'
+    +'.it{ font-size:14px; line-height:1.55; font-weight:600; word-break:break-all; }'
+    +'.empty{ color:#BBB; font-size:14px; }'
+    +'</style></head><body>'
+    +'<h1>📦 재고 보관 현황판 &nbsp;('+new Date().toLocaleDateString("ko-KR")+' 기준)</h1>'
+    +'<table><colgroup><col class="lab"><col class="dat"><col class="dat"><col class="dat"><col class="dat"></colgroup><tbody>'+trs+'</tbody></table>'
+    +'</body></html>';
+  var w=window.open("", "_blank");
+  if(!w){ alert("팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요."); return; }
+  w.document.write(html); w.document.close(); w.focus();
+  setTimeout(function(){ try{ w.print(); }catch(e){} }, 350);
 }
 // 도번 내림차순 · 보유수량>0 목록
 function invListRows_(){
@@ -4830,7 +4883,7 @@ function invOpenList(){
     +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;font-weight:700;">'+x.stock+'</td>'
     +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+(x.loc?'<span style="background:#0B5CAB;color:#fff;font-weight:700;padding:2px 8px;border-radius:6px;font-size:12px;">'+x.loc+'</span>':'<span style="color:#C9D3E0;">-</span>')+'</td></tr>'; }).join("");
   var table='<div style="max-height:62vh;overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:13px;"><thead><tr>'
-    +["#","도번","보유수량","위치"].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#F3F6FA;padding:7px;position:sticky;top:0;">'+h+'</th>'; }).join("")
+    +["#","도번","보유수량","위치"].map(function(h){ return '<th style="border:1px solid #1F2A44;background:#1F2A44;color:#fff;padding:8px;position:sticky;top:0;font-weight:700;">'+h+'</th>'; }).join("")
     +'</tr></thead><tbody>'+(body||'<tr><td colspan="4" style="padding:16px;text-align:center;color:#8A93A6;">보유수량&gt;0 인 재고가 없습니다.</td></tr>')+'</tbody></table></div>';
   invOpenModal_("📋 재고 LIST · 도번 내림차순 · 보유&gt;0 ("+arr.length+"건)",
     '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;"><button id="inv-listExcel" style="border:1px solid #1D6F42;background:#fff;color:#1D6F42;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button></div>'+table);
