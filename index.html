@@ -4775,8 +4775,8 @@ function invExtractLoc_(note){
 // 보관 레이아웃(A~F × 1~4) — 각 칸에 도번(보유수량). hlLoc=강조 위치, hlParts=강조 품번 맵
 function invLayoutHtml_(hlLoc, hlParts){
   var map=invGetLocMap_(), cols=["A","B","C","D","E","F"], hp=hlParts||{};
-  var html='<div style="overflow-x:auto;"><table style="border-collapse:separate;border-spacing:6px;">';
-  html+='<tr><td></td>'+cols.map(function(C){ return '<td style="text-align:center;font-weight:800;color:#5A6478;font-size:14px;padding-bottom:2px;">'+C+'</td>'; }).join("")+'</tr>';
+  var html='<div style="overflow:auto;max-height:70vh;-webkit-overflow-scrolling:touch;"><table style="border-collapse:separate;border-spacing:6px;">';
+  html+='<tr><td style="position:sticky;top:0;background:#fff;z-index:2;"></td>'+cols.map(function(C){ return '<td style="text-align:center;font-weight:800;color:#5A6478;font-size:14px;padding-bottom:2px;position:sticky;top:0;background:#fff;z-index:2;">'+C+'</td>'; }).join("")+'</tr>';
   for(var n=1;n<=4;n++){
     html+='<tr><td style="font-weight:800;color:#5A6478;padding-right:4px;vertical-align:middle;font-size:15px;text-align:center;">'+n+'</td>';
     cols.forEach(function(C){ var code=C+"-"+n, items=map[code]||[], isCur=(hlLoc&&hlLoc===code), occ=items.length>0;
@@ -15622,35 +15622,87 @@ function insNcHistoryFor_(draw){
 }
 function insNcDate_(d){ if(d instanceof Date){ if(isNaN(d.getTime())) return ""; var p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); } var s=String(d==null?"":d).trim(); var m=s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/); if(m) return m[1]+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[3]).slice(-2); return s; }
 var __insNcLast={draw:"",t:0};
+/* ===== 🚦 출하 전 최종검사 게이트 (검사종합 + 오늘 공유 검사일보 병합) ===== */
+// 유형 → 필수검사 매핑: 수입=외관+BOLT / 측정실=치수+기능(LEAK·FLOW·가압·진공)
+var INS_GATE_LOGS = { t:0, rows:{ incoming:[], measureS:[], measureL:[] } };
+function insGateApiUrl_(){ return (typeof qchistApiUrl==="function"&&qchistApiUrl())||(typeof docmasterApiUrl==="function"?docmasterApiUrl():""); }
+// 오늘 공유 검사일보(수입/측정실) 2분 캐시로 로드
+function insGateLoadLogs_(cb){
+  var now=Date.now();
+  if(now-INS_GATE_LOGS.t < 120000){ cb(INS_GATE_LOGS.rows); return; }
+  var url=insGateApiUrl_(); if(!url){ cb(INS_GATE_LOGS.rows); return; }
+  var get=function(k){ return fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(k)+"&_t="+now,{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var o={}; try{o=JSON.parse(res.json||"{}");}catch(e){} return Array.isArray(o.rows)?o.rows:[]; }).catch(function(){return [];}); };
+  Promise.all([get("incoming"),get("measureS"),get("measureL")]).then(function(a){
+    INS_GATE_LOGS={ t:Date.now(), rows:{ incoming:a[0]||[], measureS:a[1]||[], measureL:a[2]||[] } }; cb(INS_GATE_LOGS.rows);
+  }).catch(function(){ cb(INS_GATE_LOGS.rows); });
+}
+// 그 도번이 오늘 그 유형 검사일보에서 "완료"인가? (양품수 입력 + 부적합 미조치 아님)
+function insGateDoneToday_(rows, draw, type){
+  var d=insNormDraw_(draw);
+  for(var i=0;i<rows.length;i++){ var r=rows[i];
+    if(insNormDraw_(r.draw)!==d) continue;
+    if(!(Number(r.goodCnt)>0)) continue;                       // 양품수 없음 → 미완료
+    var def=(typeof insRowDefect_==="function")?insRowDefect_(type,r):null; var bad=def?def.qty:0;
+    if(bad>0 && !String(r.actDate||"").trim()) continue;       // 부적합인데 미조치 → 누락으로 간주
+    return true;
+  }
+  return false;
+}
+// 게이트 판정 → cb({missing:[라벨...], noMaster:bool})
+function insShipGate_(draw, cb){
+  var url=insGateApiUrl_(); if(!url){ cb(null); return; }
+  insGateLoadLogs_(function(logs){
+    fetch(url+"?mode=qcSearch&partNo="+encodeURIComponent(draw)+"&sn=",{cache:"no-store"})
+      .then(function(r){return r.json();})
+      .then(function(data){
+        if(!data||!data.success||!data.master){ cb({noMaster:true}); return; }   // 검사종합 기준 없음(신규/당일 가능) → 경고 안 함
+        var master=data.master, list=data.list||[], done={};
+        list.forEach(function(it){ QC_COLS.forEach(function(c){ if(it[c.key]==="O") done[c.key]=true; }); });   // 검사종합 O
+        if(insGateDoneToday_(logs.incoming, draw, "incoming")){ done.exterior=true; done.bolt=true; }             // 오늘 수입=외관+BOLT
+        if(insGateDoneToday_(logs.measureS, draw, "measureS") || insGateDoneToday_(logs.measureL, draw, "measureL")){ done.dimension=true; done.leak=true; done.flow=true; done.pressure=true; done.vacuum=true; }  // 오늘 측정실=치수+기능
+        var missing=[]; QC_COLS.forEach(function(c){ if(master[c.key]==="Y" && !done[c.key]) missing.push(c.label); });
+        cb({ missing:missing });
+      })
+      .catch(function(){ cb(null); });
+  });
+}
+
 function insNcHistoryPopup_(draw){
   var d=String(draw||"").trim(); if(!d) return;
   // 같은 도번 연속 트리거 방지(3초)
   var now=Date.now(); if(__insNcLast.draw===d && (now-__insNcLast.t)<3000) return; __insNcLast={draw:d,t:now};
   var hits=insNcHistoryFor_(d);
+  if(insType==="shipping"){ insShipGate_(d, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[]); }); return; }
   if(!hits.length){ try{ insSetStatus("✔ "+d+" — 고객부적합 이력 없음"); }catch(e){} return; }
-
+  insNcRenderPopup_(d, hits, []);
+}
+function insNcRenderPopup_(d, hits, missing){
+  hits=hits||[]; missing=missing||[];
+  if(!hits.length && !missing.length){ try{ insSetStatus("✔ "+d+" — 이력/미검사 없음"); }catch(e){} return; }
   var esc=(typeof insEsc==="function")?insEsc:function(x){return String(x==null?"":x);};
-  var td=function(x,extra){ return '<td style="border:1px solid #EEE1E1;padding:6px;'+(extra||"")+'">'+esc(x)+'</td>'; };
-  var trs=hits.map(function(r){
-    return '<tr>'
-      +td(insNcDate_(r.date),"white-space:nowrap;text-align:center;")
-      +td(r.content||"","font-weight:700;color:#8A1F1F;")
-      +'</tr>';
-  }).join("");
   var openCnt=hits.filter(function(r){ return !String(r.doneDate||"").trim(); }).length;
-
+  var gateBanner = missing.length
+    ? '<div style="padding:12px 16px;background:#FDECEC;border-bottom:2px solid #E02424;">'
+      + '<div style="font-size:15px;font-weight:800;color:#C0392B;">⛔ 출하 전 미검사: '+esc(missing.join(", "))+'</div>'
+      + '<div style="font-size:12px;color:#8A1F1F;margin-top:3px;">위 검사가 아직 완료되지 않았습니다(검사종합·오늘 검사일보 기준). 출하 전 확인하세요.</div></div>'
+    : '';
+  var ncSection='';
+  if(hits.length){
+    var td=function(x,extra){ return '<td style="border:1px solid #EEE1E1;padding:6px;'+(extra||"")+'">'+esc(x)+'</td>'; };
+    var trs=hits.map(function(r){ return '<tr>'+td(insNcDate_(r.date),"white-space:nowrap;text-align:center;")+td(r.content||"","font-weight:700;color:#8A1F1F;")+'</tr>'; }).join("");
+    ncSection='<div style="padding:8px 14px 4px;font-size:12px;color:#8A1F1F;">이 도번은 과거 고객부적합이 있었습니다. 아래 유형을 특히 주의해서 검사하세요.</div>'
+      +'<div style="padding:6px 14px 16px;overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:280px;"><thead><tr>'
+      +['발생일','부적합 내용'].map(function(h){ return '<th style="border:1px solid #E7C9C9;background:#FDECEC;color:#8A1F1F;padding:6px;white-space:nowrap;">'+h+'</th>'; }).join("")
+      +'</tr></thead><tbody>'+trs+'</tbody></table></div>';
+  }
+  var headTitle=(missing.length?'⛔ ':'⚠ ')+esc(d)+(hits.length?(' — 고객부적합 '+hits.length+'건'+(openCnt?(' (미완 '+openCnt+')'):'')):(missing.length?' — 출하 전 확인':''));
   var ov=document.getElementById("insnch-ov");
   if(!ov){ ov=document.createElement("div"); ov.id="insnch-ov"; ov.style.cssText="position:fixed;inset:0;z-index:2147483200;background:rgba(15,23,42,0.5);display:flex;align-items:flex-start;justify-content:center;padding:40px 14px;"; ov.addEventListener("click",function(e){ if(e.target===ov) ov.style.display="none"; }); document.body.appendChild(ov); }
-  ov.innerHTML='<div style="background:#fff;width:100%;max-width:760px;max-height:80vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.4);">'
-    +'<div style="padding:13px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;background:#FDF3F3;border-radius:16px 16px 0 0;">'
-    +  '<b style="font-size:15px;color:#8A1F1F;">⚠ '+esc(d)+' — 고객부적합 이력 '+hits.length+'건'+(openCnt?(' <span style="color:#C0392B;">(미완 '+openCnt+')</span>'):'')+'</b>'
+  ov.innerHTML='<div style="background:#fff;width:100%;max-width:760px;max-height:80vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.4);overflow:hidden;">'
+    +'<div style="padding:13px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;background:#FDF3F3;">'
+    +  '<b style="font-size:15px;color:#8A1F1F;">'+headTitle+'</b>'
     +  '<button type="button" id="insnch-x" style="border:none;background:#fff;border:1px solid #E7C9C9;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
-    +'</div>'
-    +'<div style="padding:8px 14px 4px;font-size:12px;color:#8A1F1F;">이 도번은 과거 고객부적합이 있었습니다. 아래 유형을 특히 주의해서 검사하세요.</div>'
-    +'<div style="padding:6px 14px 16px;overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:280px;"><thead><tr>'
-    +  ['발생일','부적합 내용'].map(function(h){ return '<th style="border:1px solid #E7C9C9;background:#FDECEC;color:#8A1F1F;padding:6px;white-space:nowrap;">'+h+'</th>'; }).join("")
-    +  '</tr></thead><tbody>'+trs+'</tbody></table></div>'
-    +'</div>';
+    +'</div>'+gateBanner+ncSection+'</div>';
   ov.style.display="flex";
   document.getElementById("insnch-x").addEventListener("click",function(){ ov.style.display="none"; });
 }
