@@ -1560,7 +1560,7 @@
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;">
           <button id="inv-boardBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">🗺 레이아웃 재고현황판</button>
-          <button id="inv-listBtn" style="background:#fff;color:#0B5CAB;border:1.5px solid #0B5CAB;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📋 재고 LIST (도번↓)</button>
+          <button id="inv-listBtn" style="background:#fff;color:#0B5CAB;border:1.5px solid #0B5CAB;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📋 재고 LIST (도번↑)</button>
         </div>
         <div class="stock-summary" id="inv-checkSummary" style="display:none;">
           <div class="stock-card"><div class="label">보유 재고</div><div class="value" id="inv-stockValue">0</div></div>
@@ -4867,12 +4867,12 @@ function invBoardExcel(){
     XLSX.writeFile(wb, "재고보관현황판_A3가로_"+new Date().toISOString().slice(0,10).replace(/-/g,"")+".xlsx");
   }catch(e){ alert("엑셀 생성 오류: "+(e&&e.message?e.message:e)); }
 }
-// 도번 내림차순 · 보유수량>0 목록
+// 도번 오름차순 · 보유수량>0 목록
 function invListRows_(){
   var pinfo=invGetPartInfo_();
   return Object.keys(pinfo).map(function(p){ return {partNo:p, stock:pinfo[p].stock, loc:pinfo[p].loc}; })
     .filter(function(x){ return x.stock>0; })
-    .sort(function(a,b){ return String(b.partNo).localeCompare(String(a.partNo), undefined, {numeric:true}); });
+    .sort(function(a,b){ return String(a.partNo).localeCompare(String(b.partNo), undefined, {numeric:true}); });
 }
 function invOpenList(){
   var arr=invListRows_();
@@ -4884,7 +4884,7 @@ function invOpenList(){
   var table='<div style="max-height:62vh;overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:13px;"><thead><tr>'
     +["#","도번","보유수량","위치"].map(function(h){ return '<th style="border:1px solid #1F2A44;background:#1F2A44;color:#fff;padding:8px;position:sticky;top:0;font-weight:700;">'+h+'</th>'; }).join("")
     +'</tr></thead><tbody>'+(body||'<tr><td colspan="4" style="padding:16px;text-align:center;color:#8A93A6;">보유수량&gt;0 인 재고가 없습니다.</td></tr>')+'</tbody></table></div>';
-  invOpenModal_("📋 재고 LIST · 도번 내림차순 · 보유&gt;0 ("+arr.length+"건)",
+  invOpenModal_("📋 재고 LIST · 도번 오름차순 · 보유&gt;0 ("+arr.length+"건)",
     '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;"><button id="inv-listExcel" style="border:1px solid #1D6F42;background:#fff;color:#1D6F42;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button></div>'+table);
   var xb=document.getElementById("inv-listExcel"); if(xb) xb.addEventListener("click", invListExcel_);
 }
@@ -11842,7 +11842,7 @@ else if(proc === "재고"){
       + '<td class="qp-stockcol" style="padding:8px;text-align:center;background:#EAF3FC;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+(r.stockQty>0?'<b style="color:#0B5CAB;">'+r.stockQty+'</b>':'<span style="color:#AEB9CC;">·</span>')+'</td>'
 + '<td style="padding:8px;text-align:center;font-weight:700;color:'+(r.requestType==="재고"?"#0B5CAB":"#E02424")+';">'+r.requestType+'</td>'
 + '<td style="padding:8px;text-align:center;font-weight:700;">'+r.requestQty+'</td>'
-+ '<td style="padding:8px;text-align:center;white-space:nowrap;color:#0B5CAB;">'+qcEsc(getCurrentProcess(r.orderNo)||"-")+'</td>'
++ '<td style="padding:8px;text-align:center;white-space:nowrap;color:#0B5CAB;font-weight:'+(r.requestType==="재고"?"700":"400")+';">'+(r.requestType==="재고" ? (function(){ var L=invPartLoc_(r.partNo||"")||invPartLoc_(r.oldDrawingNo||""); return L?("📍 "+L):"-"; })() : qcEsc(getCurrentProcess(r.orderNo)||"-"))+'</td>'
       + '</tr>';
   }).join("");
   listEl.innerHTML =
