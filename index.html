@@ -1558,6 +1558,10 @@
           <button id="inv-checkBtn">🔍 재고 검색</button>
           <span id="inv-checkLocInline" style="display:none;align-self:center;font-size:13px;"></span>
         </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;">
+          <button id="inv-boardBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">🗺 레이아웃 재고현황판</button>
+          <button id="inv-listBtn" style="background:#fff;color:#0B5CAB;border:1.5px solid #0B5CAB;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📋 재고 LIST (도번↓)</button>
+        </div>
         <div class="stock-summary" id="inv-checkSummary" style="display:none;">
           <div class="stock-card"><div class="label">보유 재고</div><div class="value" id="inv-stockValue">0</div></div>
           <div class="stock-card"><div class="label">총 입고 이력</div><div class="value" id="inv-inCount" style="color:var(--blue);">0</div></div>
@@ -3780,6 +3784,7 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
   const filtered = mainGetPrintListRows();
   const rowsHtml = filtered.map(r=>{
     const status = computeProductStatus(r);
+    const loc = (invPartLoc_(r.partNo||"")||invPartLoc_(r.oldDrawingNo||""));
     return `<tr>
       <td style="color:${mainStatusTextColor(status)};font-weight:400;">${status}</td><td>${r.orderNo}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
@@ -3790,19 +3795,20 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
       <td>${r.dueDate||''}</td>
       <td></td>
       <td>${computeWaitDeliver(r)}</td>
+      <td style="text-align:center;font-weight:700;">${loc||''}</td>
     </tr>`;
   }).join("");
   document.getElementById("print-area").innerHTML = `
     <h2>NTL QMS Portal · MAIN 대시보드 (${new Date().toLocaleString("ko-KR")})</h2>
     <table>
       <colgroup>
-        <col style="width:6%"><col style="width:8%"><col style="width:9%"><col style="width:13%">
-        <col style="width:22%"><col style="width:6%"><col style="width:10%"><col style="width:10%">
-        <col style="width:10%"><col style="width:6%">
+        <col style="width:6%"><col style="width:8%"><col style="width:8%"><col style="width:12%">
+        <col style="width:20%"><col style="width:5%"><col style="width:9%"><col style="width:9%">
+        <col style="width:9%"><col style="width:6%"><col style="width:8%">
       </colgroup>
       <thead><tr>
         <th>제품상태</th><th>ORDER NO.</th><th>PROJECT NO.</th><th>기존도번</th><th>S/N</th>
-        <th>수량</th><th>출고날짜</th><th>최종납기</th><th>비고</th><th>납품 대기</th>
+        <th>수량</th><th>출고날짜</th><th>최종납기</th><th>비고</th><th>납품 대기</th><th>위치</th>
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
@@ -3811,15 +3817,16 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
 }, "인쇄 준비 중..."));
 document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
-  const aoa = [["제품상태","ORDER NO.","PROJECT NO.","기존도번","S/N","수량","출고날짜","최종납기","비고","납품 대기"]];
+  const aoa = [["제품상태","ORDER NO.","PROJECT NO.","기존도번","S/N","수량","출고날짜","최종납기","비고","납품 대기","위치"]];
   filtered.forEach(r=>{
     aoa.push([
       computeProductStatus(r), r.orderNo||'', r.vendor||'', r.oldDrawingNo||'',
-      "", r.qty||0, "", r.dueDate||'', "", computeWaitDeliver(r)
+      "", r.qty||0, "", r.dueDate||'', "", computeWaitDeliver(r),
+      (invPartLoc_(r.partNo||"")||invPartLoc_(r.oldDrawingNo||""))
     ]);
   });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:10},{wch:14},{wch:16},{wch:18},{wch:10},{wch:8},{wch:12},{wch:12},{wch:12},{wch:10}];
+  ws['!cols'] = [{wch:10},{wch:14},{wch:16},{wch:18},{wch:10},{wch:8},{wch:12},{wch:12},{wch:12},{wch:10},{wch:8}];
   styleAoaSheet(ws, { headerRows:[0] });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "분출 LIST");
@@ -4433,7 +4440,7 @@ async function sharedCacheBoot(){
     }catch(e){}
     try{ var di=pick(res.inv);
       if(di && Array.isArray(di.invData)){
-        invData=di.invData; invServerLoaded=true;
+        invData=di.invData; invInvalidateMaps_(); invServerLoaded=true;
         if(typeof invRenderAll==="function") invRenderAll();
         if(typeof markDataArrived==="function") markDataArrived("inv");
         if(typeof setLoadDone==="function") setLoadDone("inv");
@@ -4740,24 +4747,104 @@ function invComputeStock(partNo){
   const totalOut = rows.reduce((s,r)=>s+(Number(r.outQty)||0),0);
   return {rows, totalIn, totalOut, stock: totalIn-totalOut};
 }
+// 위치별 점유 캐시: {"A-1":[{partNo,stock},...]} + 도번별 {loc,stock}  — invData 로드 시에만 갱신
+var invLocMap=null, invPartInfo=null;
+function invBuildMaps_(){
+  var agg={};
+  (typeof invData!=="undefined" && invData ? invData : []).forEach(function(r){
+    var p=String(r.partNo||"").trim(); if(!p) return;
+    var a=agg[p]||(agg[p]={in:0,out:0,locDate:"",loc:""});
+    a.in+=Number(r.inQty)||0; a.out+=Number(r.outQty)||0;
+    var L=invExtractLoc_(r.note);
+    if(L){ var d=String(r.inDate||""); if(d>=a.locDate){ a.locDate=d; a.loc=L; } }  // 가장 최근 입고 비고의 위치
+  });
+  var map={}, pinfo={};
+  Object.keys(agg).forEach(function(p){ var a=agg[p], stock=a.in-a.out; pinfo[p]={loc:a.loc||"", stock:stock}; if(stock>0 && a.loc){ (map[a.loc]||(map[a.loc]=[])).push({partNo:p, stock:stock}); } });
+  Object.keys(map).forEach(function(k){ map[k].sort(function(x,y){ return y.stock-x.stock; }); });
+  invLocMap=map; invPartInfo=pinfo;
+}
+function invInvalidateMaps_(){ invLocMap=null; invPartInfo=null; }
+function invGetLocMap_(){ if(!invLocMap) invBuildMaps_(); return invLocMap; }
+function invGetPartInfo_(){ if(!invPartInfo) invBuildMaps_(); return invPartInfo; }
+function invPartLoc_(p){ var i=invGetPartInfo_()[String(p||"").trim()]; return i?i.loc:""; }
+function invPartStock_(p){ var i=invGetPartInfo_()[String(p||"").trim()]; return i?i.stock:0; }
 // 비고에서 보관 위치(A-1~F-4) 추출 → "A-1" 형태
 function invExtractLoc_(note){
   var m=String(note||"").match(/([A-Fa-f])\s*-\s*([1-4])/);
   return m ? (m[1].toUpperCase()+"-"+m[2]) : "";
 }
-// 보관 레이아웃(A~F행 × 1~4열) 렌더 — occ:점유위치 Set, cur:현재(강조) 위치
-function invLayoutHtml_(occ, cur){
-  var rows=["A","B","C","D","E","F"], html='<div style="overflow-x:auto;"><table style="border-collapse:separate;border-spacing:6px;">';
+// 보관 레이아웃(A~F × 1~4) — 각 칸에 도번(보유수량). hlLoc=강조 위치, hlParts=강조 품번 맵
+function invLayoutHtml_(hlLoc, hlParts){
+  var map=invGetLocMap_(), rows=["A","B","C","D","E","F"], hp=hlParts||{};
+  var html='<div style="overflow-x:auto;"><table style="border-collapse:separate;border-spacing:6px;">';
   rows.forEach(function(R){
-    html+='<tr><td style="font-weight:800;color:#5A6478;padding-right:4px;">'+R+'</td>';
-    for(var c=1;c<=4;c++){ var code=R+"-"+c; var isCur=(cur&&cur.indexOf(code)>=0); var isOcc=(occ&&occ.has(code));
-      var bg=isCur?"#0B5CAB":(isOcc?"#DBEAFE":"#F0F4F8"), fg=isCur?"#fff":(isOcc?"#0B5CAB":"#8A93A6"), bd=isCur?"#0B5CAB":(isOcc?"#93C5FD":"#E1E8F0");
-      html+='<td style="min-width:56px;height:40px;text-align:center;vertical-align:middle;border:1.5px solid '+bd+';border-radius:8px;background:'+bg+';color:'+fg+';font-weight:'+(isCur||isOcc?"800":"600")+';font-size:13px;">'+code+(isCur?' 📍':'')+'</td>';
+    html+='<tr><td style="font-weight:800;color:#5A6478;padding-right:4px;vertical-align:middle;">'+R+'</td>';
+    for(var c=1;c<=4;c++){ var code=R+"-"+c, items=map[code]||[], isCur=(hlLoc&&hlLoc===code), occ=items.length>0;
+      var bg=isCur?"#0B5CAB":(occ?"#F4F8FF":"#F8FAFB"), bd=isCur?"#0B5CAB":(occ?"#BBD3F0":"#E8ECF2");
+      var head='<div style="font-weight:800;font-size:11px;color:'+(isCur?"#fff":"#5A6478")+';margin-bottom:2px;">'+code+(isCur?" 📍":"")+'</div>';
+      var list=items.map(function(it){ var on=hp[it.partNo];
+        return '<div style="font-size:10.5px;line-height:1.35;color:'+(isCur?"#EAF2FF":(on?"#0B5CAB":"#33415C"))+';font-weight:'+(on?"800":"500")+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+docmasterEsc(it.partNo)+' <b>('+it.stock+')</b></div>'; }).join("");
+      html+='<td style="min-width:100px;max-width:140px;vertical-align:top;text-align:left;border:1.5px solid '+bd+';border-radius:8px;background:'+bg+';padding:5px 7px;">'+head+(list||'<div style="font-size:10px;color:#C2CAD6;">-</div>')+'</td>';
     }
     html+='</tr>';
   });
   html+='</table></div>';
   return html;
+}
+// 레이아웃 컨테이너에 전체 지도 렌더(검색 위치/품번 강조)
+function invRenderLayout_(hlLoc, hlParts){
+  var lw=document.getElementById("inv-checkLocWrap"); if(!lw) return;
+  lw.style.display="block";
+  lw.innerHTML='<div style="font-size:12px;color:#8A93A6;margin:2px 0 6px;">📦 보관 레이아웃 · 칸=도번(보유수량) · 파랑 📍=검색한 품번 위치</div>'+invLayoutHtml_(hlLoc, hlParts||{});
+}
+// 공용 모달
+function invOpenModal_(title, bodyHtml){
+  var old=document.getElementById("inv-modal"); if(old) old.remove();
+  var ov=document.createElement("div"); ov.id="inv-modal";
+  ov.style.cssText="position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;";
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:940px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #EEF2F7;position:sticky;top:0;background:#fff;z-index:1;">'
+    +'<div style="font-weight:800;font-size:16px;color:#1F2A44;">'+title+'</div>'
+    +'<button id="inv-modalClose" style="border:none;background:#F0F4F8;border-radius:8px;width:32px;height:32px;font-size:18px;cursor:pointer;">×</button></div>'
+    +'<div style="padding:16px 18px;">'+bodyHtml+'</div></div>';
+  ov.addEventListener("click", function(e){ if(e.target===ov) ov.remove(); });
+  document.body.appendChild(ov);
+  var cb=document.getElementById("inv-modalClose"); if(cb) cb.addEventListener("click", function(){ ov.remove(); });
+}
+// 🗺 레이아웃 재고현황판(전체 지도)
+function invOpenBoard(){
+  invOpenModal_("🗺 레이아웃 재고현황판", '<div style="font-size:12px;color:#8A93A6;margin-bottom:10px;">칸 = 도번(보유수량) · 보유수량&gt;0 만 표시</div>'+invLayoutHtml_("", {}));
+}
+// 도번 내림차순 · 보유수량>0 목록
+function invListRows_(){
+  var pinfo=invGetPartInfo_();
+  return Object.keys(pinfo).map(function(p){ return {partNo:p, stock:pinfo[p].stock, loc:pinfo[p].loc}; })
+    .filter(function(x){ return x.stock>0; })
+    .sort(function(a,b){ return String(b.partNo).localeCompare(String(a.partNo), undefined, {numeric:true}); });
+}
+function invOpenList(){
+  var arr=invListRows_();
+  var body=arr.map(function(x,i){ return '<tr>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;color:#8A93A6;">'+(i+1)+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;">'+docmasterEsc(x.partNo)+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:right;font-weight:700;">'+x.stock+'</td>'
+    +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+(x.loc?'<span style="background:#0B5CAB;color:#fff;font-weight:700;padding:2px 8px;border-radius:6px;font-size:12px;">'+x.loc+'</span>':'<span style="color:#C9D3E0;">-</span>')+'</td></tr>'; }).join("");
+  var table='<div style="max-height:62vh;overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:13px;"><thead><tr>'
+    +["#","도번","보유수량","위치"].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#F3F6FA;padding:7px;position:sticky;top:0;">'+h+'</th>'; }).join("")
+    +'</tr></thead><tbody>'+(body||'<tr><td colspan="4" style="padding:16px;text-align:center;color:#8A93A6;">보유수량&gt;0 인 재고가 없습니다.</td></tr>')+'</tbody></table></div>';
+  invOpenModal_("📋 재고 LIST · 도번 내림차순 · 보유&gt;0 ("+arr.length+"건)",
+    '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;"><button id="inv-listExcel" style="border:1px solid #1D6F42;background:#fff;color:#1D6F42;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button></div>'+table);
+  var xb=document.getElementById("inv-listExcel"); if(xb) xb.addEventListener("click", invListExcel_);
+}
+function invListExcel_(){
+  try{
+    var arr=invListRows_(), aoa=[["No","도번","보유수량","위치"]];
+    arr.forEach(function(x,i){ aoa.push([i+1, x.partNo, x.stock, x.loc||""]); });
+    var wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=[{wch:6},{wch:22},{wch:12},{wch:10}];
+    XLSX.utils.book_append_sheet(wb, ws, "재고LIST");
+    XLSX.writeFile(wb, "재고LIST_도번순_"+new Date().toISOString().slice(0,10).replace(/-/g,"")+".xlsx");
+  }catch(e){ alert("엑셀 생성 오류: "+(e&&e.message?e.message:e)); }
 }
 
 function invRenderCheck(criteria){
@@ -4809,17 +4896,9 @@ function invRenderCheck(criteria){
       ? '<span style="color:#5A6478;margin-right:6px;">최근 위치</span><span style="background:#0B5CAB;color:#fff;font-weight:800;font-size:16px;padding:3px 12px;border-radius:8px;">📍 '+__curLoc+'</span>'
       : '<span style="color:#8A93A6;">위치정보 없음</span>';
   }
-  var __lw=document.getElementById("inv-checkLocWrap");
-  if(__lw){
-    if(__occ.size){
-      __lw.style.display="block";
-      __lw.innerHTML=
-        '<div style="font-size:12px;color:#8A93A6;margin:2px 0 6px;">📦 보관 레이아웃 (파랑=점유 · 📍=최근'
-        + (__occ.size>1 ? ' · 이 검색의 위치: '+Array.from(__occ).sort().join(", ") : '')
-        + ')</div>'
-        + invLayoutHtml_(__occ, __curLoc);
-    } else { __lw.style.display="none"; __lw.innerHTML=""; }
-  }
+  // 전체 보관 지도(캐시) + 검색한 품번/위치 강조
+  var __hp={}; rows.forEach(function(r){ var p=String(r.partNo||"").trim(); if(p) __hp[p]=true; });
+  invRenderLayout_(__curLoc, __hp);
   rows.forEach(r=>{
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${r.partNo}</td><td>${r.inDate||''}</td><td>${r.sn||''}</td>
@@ -5011,12 +5090,13 @@ function getInvCheckCriteria(){
   };
 }
 document.getElementById("inv-checkBtn").addEventListener("click", (e)=> withSearchIndicator(e.currentTarget, ()=>invRenderCheck(getInvCheckCriteria())));
+(function(){ var b1=document.getElementById("inv-boardBtn"); if(b1) b1.addEventListener("click", invOpenBoard); var b2=document.getElementById("inv-listBtn"); if(b2) b2.addEventListener("click", invOpenList); })();
 document.getElementById("inv-checkSort").addEventListener("change", ()=> invRenderCheck(getInvCheckCriteria()));
 ["inv-checkPartNo","inv-checkSN","inv-checkCtrlNo"].forEach(id=>{
   document.getElementById(id).addEventListener("keydown", e=>{ if(e.key==="Enter") invRenderCheck(getInvCheckCriteria()); });
 });
 document.getElementById("inv-syncToggle").addEventListener("click", ()=>document.getElementById("inv-syncPanel").classList.toggle("open"));
-document.getElementById("inv-resetBtn").addEventListener("click", ()=>{ invData = INV_SAMPLE.slice(); markMainStatusDirty(); invRenderCheck(""); invRenderAll(); });
+document.getElementById("inv-resetBtn").addEventListener("click", ()=>{ invData = INV_SAMPLE.slice(); invInvalidateMaps_(); markMainStatusDirty(); invRenderCheck(""); invRenderAll(); });
 function mapRowToInv(row){
   return {
     partNo:row["품 번"]||row["품번"]||"", inDate:normalizeDateValue(row["입고 일자"]||row["입고일자"]), sn:row["S/N"]||"",
@@ -5035,7 +5115,7 @@ function fetchInvData(){
     .then(res=>{
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       invApiUrl = url;
-      invData = res.rows.map(mapRowToInv);
+      invData = res.rows.map(mapRowToInv); invInvalidateMaps_();
 markMainStatusDirty();
 invRenderCheck("");
 invRenderAll();
@@ -5070,7 +5150,7 @@ document.getElementById("inv-syncBtn").addEventListener("click", ()=>{
   Papa.parse(url, { download:true, header:true, skipEmptyLines:true,
     complete:function(results){
       try{
-        invData = results.data.map(mapRowToInv);
+        invData = results.data.map(mapRowToInv); invInvalidateMaps_();
         markMainStatusDirty();
         invRenderCheck(""); invRenderAll();
         document.getElementById("inv-syncPanel").classList.remove("open");
@@ -17207,12 +17287,13 @@ function reqBuildModal(){
 // 표 렌더 (MASTER 자동표시)
 function reqRenderRows(map){
   var rows = reqCollectRows();
-  var head = '<tr><th>No</th><th>도번</th><th class="rf-l">품명</th><th>요청수량</th>'
+  var head = '<tr><th>No</th><th>도번</th><th class="rf-l">품명</th><th>위치</th><th>요청수량</th>'
     + REQ_INS_COLS.map(function(c){ return '<th>'+c.label+'</th>'; }).join("")
     + '<th class="rf-l">비고</th></tr>';
   var body = rows.map(function(r, i){
     var rec = map ? map[r.dwg] : null;
     var noMaster = !rec;
+    var __loc = (invPartStock_(r.dwg)>0 ? invPartLoc_(r.dwg) : "");
     var insTds = REQ_INS_COLS.map(function(c){
       var on = rec && rec[c.key]==="Y";
       return '<td class="rf-ins'+(on?'':' off')+'" data-key="'+c.key+'" data-on="'+(on?1:0)+'">'+(on?'●':'○')+'</td>';
@@ -17221,6 +17302,7 @@ function reqRenderRows(map){
       + '<td>'+(i+1)+'</td>'
       + '<td>'+reqEsc(r.dwg)+(noMaster?' <span style="color:#C2410C;font-size:10px;">(이력없음)</span>':'')+'</td>'
       + '<td class="rf-l">'+reqEsc(r.partName)+'</td>'
+      + '<td style="text-align:center;font-weight:700;color:#0B5CAB;">'+(__loc||'')+'</td>'
       + '<td><input type="number" class="rf-qty" value="'+(r.qty||'')+'" min="0"></td>'
       + insTds
       + '<td class="rf-l"><input type="text" class="rf-memo" placeholder="비고"></td>'
@@ -17252,7 +17334,7 @@ function reqDownloadExcel(){
   var who  = (document.getElementById("reqform-who") ||{}).value || "";
   var trs = Array.prototype.slice.call(document.querySelectorAll("#reqform-table tbody tr"));
   if(!trs.length){ alert("요청 항목이 없습니다."); return; }
-  var header = ["No","도번","품명","요청수량"].concat(REQ_INS_COLS.map(function(c){ return c.label; })).concat(["비고"]);
+  var header = ["No","도번","품명","위치","요청수량"].concat(REQ_INS_COLS.map(function(c){ return c.label; })).concat(["비고"]);
   var aoa = [];
   aoa.push(["검사 요청서"]);                                                   // R0 제목
   aoa.push(["공정 구분", proc, "요청일", date, "요청자", who, "대상 도번", trs.length+"개"]); // R1 메타
@@ -17267,12 +17349,12 @@ function reqDownloadExcel(){
       var td = tr.querySelector('td.rf-ins[data-key="'+c.key+'"]');
       return (td && td.getAttribute("data-on")==="1") ? "●" : "";
     });
-    aoa.push([i+1, dwg, pn, qty].concat(ins).concat([memo]));
+    aoa.push([i+1, dwg, pn, (invPartStock_(dwg)>0 ? invPartLoc_(dwg) : ""), qty].concat(ins).concat([memo]));
   });
   var ws = XLSX.utils.aoa_to_sheet(aoa);
   var lastCol = header.length - 1;
   ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:lastCol} }];                        // 제목행 병합
-  ws['!cols'] = [{wch:5},{wch:16},{wch:26},{wch:9}]
+  ws['!cols'] = [{wch:5},{wch:16},{wch:26},{wch:8},{wch:9}]
     .concat(REQ_INS_COLS.map(function(){ return {wch:6}; }))
     .concat([{wch:24}]);
   if(typeof styleAoaSheet==="function") styleAoaSheet(ws, { titleRows:[0,1], headerRows:[2] });
@@ -17290,12 +17372,13 @@ function reqPrintForm(){
   var who  = (document.getElementById("reqform-who") ||{}).value || "";
   var trs = Array.prototype.slice.call(document.querySelectorAll("#reqform-table tbody tr"));
   if(!trs.length){ alert("요청 항목이 없습니다."); return; }
-  var head = '<tr><th>No</th><th>도번</th><th>품명</th><th>요청수량</th>'
+  var head = '<tr><th>No</th><th>도번</th><th>품명</th><th>위치</th><th>요청수량</th>'
     + REQ_INS_COLS.map(function(c){ return '<th>'+c.label+'</th>'; }).join("")
     + '<th>비고</th></tr>';
   var bodyRows = trs.map(function(tr, i){
     var dwg = tr.getAttribute("data-dwg")||"";
     var pn  = tr.getAttribute("data-partname")||"";
+    var loc = (invPartStock_(dwg)>0 ? invPartLoc_(dwg) : "");
     var qtyEl = tr.querySelector("input.rf-qty");   var qty  = qtyEl ? qtyEl.value : "";
     var memoEl= tr.querySelector("input.rf-memo");  var memo = memoEl? memoEl.value : "";
     var insCells = REQ_INS_COLS.map(function(c){
@@ -17303,7 +17386,7 @@ function reqPrintForm(){
       var on = td && td.getAttribute("data-on")==="1";
       return '<td style="text-align:center;font-weight:700;">'+(on?"●":"")+'</td>';
     }).join("");
-    return '<tr><td>'+(i+1)+'</td><td>'+reqEsc(dwg)+'</td><td style="text-align:left;">'+reqEsc(pn)+'</td><td>'+reqEsc(qty)+'</td>'+insCells+'<td style="text-align:left;">'+reqEsc(memo)+'</td></tr>';
+    return '<tr><td>'+(i+1)+'</td><td>'+reqEsc(dwg)+'</td><td style="text-align:left;">'+reqEsc(pn)+'</td><td style="font-weight:700;">'+reqEsc(loc)+'</td><td>'+reqEsc(qty)+'</td>'+insCells+'<td style="text-align:left;">'+reqEsc(memo)+'</td></tr>';
   }).join("");
   var meta = '<div style="display:flex;gap:26px;flex-wrap:wrap;margin:6px 0 12px;font-size:13px;">'
     + '<div><b>공정 구분:</b> '+reqEsc(proc||"-")+'</div>'
