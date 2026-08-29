@@ -4775,11 +4775,12 @@ function invExtractLoc_(note){
 }
 // 보관 레이아웃(A~F × 1~4) — 각 칸에 도번(보유수량). hlLoc=강조 위치, hlParts=강조 품번 맵
 function invLayoutHtml_(hlLoc, hlParts){
-  var map=invGetLocMap_(), rows=["A","B","C","D","E","F"], hp=hlParts||{};
+  var map=invGetLocMap_(), cols=["A","B","C","D","E","F"], hp=hlParts||{};
   var html='<div style="overflow-x:auto;"><table style="border-collapse:separate;border-spacing:6px;">';
-  rows.forEach(function(R){
-    html+='<tr><td style="font-weight:800;color:#5A6478;padding-right:4px;vertical-align:middle;">'+R+'</td>';
-    for(var c=1;c<=4;c++){ var code=R+"-"+c, items=map[code]||[], isCur=(hlLoc&&hlLoc===code), occ=items.length>0;
+  html+='<tr><td></td>'+cols.map(function(C){ return '<td style="text-align:center;font-weight:800;color:#5A6478;font-size:14px;padding-bottom:2px;">'+C+'</td>'; }).join("")+'</tr>';
+  for(var n=1;n<=4;n++){
+    html+='<tr><td style="font-weight:800;color:#5A6478;padding-right:4px;vertical-align:middle;font-size:15px;text-align:center;">'+n+'</td>';
+    cols.forEach(function(C){ var code=C+"-"+n, items=map[code]||[], isCur=(hlLoc&&hlLoc===code), occ=items.length>0;
       var bg=isCur?"#0B5CAB":(occ?"#F4F8FF":"#F8FAFB"), bd=isCur?"#0B5CAB":(occ?"#BBD3F0":"#E8ECF2");
       var head='<div style="font-weight:800;font-size:11px;color:'+(isCur?"#fff":"#5A6478")+';margin-bottom:2px;">'+code+(isCur?" 📍":"")+'</div>';
       var list="";
@@ -4793,9 +4794,9 @@ function invLayoutHtml_(hlLoc, hlParts){
         list=chunks.join("");
       }
       html+='<td style="min-width:190px;max-width:260px;vertical-align:top;text-align:left;border:1.5px solid '+bd+';border-radius:8px;background:'+bg+';padding:6px 8px;">'+head+(list||'<div style="font-size:10px;color:#C2CAD6;">-</div>')+'</td>';
-    }
+    });
     html+='</tr>';
-  });
+  }
   html+='</table></div>';
   return html;
 }
@@ -4824,49 +4825,54 @@ function invOpenBoard(){
   invOpenModal_("🗺 레이아웃 재고현황판",
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">'
     +'<span style="font-size:12px;color:#8A93A6;">칸 = 도번(보유수량) · 보유수량&gt;0 만 표시</span>'
-    +'<button id="inv-boardPrint" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🖨️ A3 가로 인쇄(꽉 채움)</button>'
+    +'<button id="inv-boardPrint" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">📥 A3 가로 엑셀 다운로드</button>'
     +'</div>'+invLayoutHtml_("", {}));
-  var pb=document.getElementById("inv-boardPrint"); if(pb) pb.addEventListener("click", invPrintBoard);
+  var pb=document.getElementById("inv-boardPrint"); if(pb) pb.addEventListener("click", invBoardExcel);
 }
-// A3 가로로 6×4 격자를 꽉 채워 인쇄(재고 라인 게시용)
-function invPrintBoard(){
-  var map=invGetLocMap_(), rows=["A","B","C","D","E","F"];
-  var trs=rows.map(function(R){
-    var tds='<td class="rlab">'+R+'</td>';
-    for(var c=1;c<=4;c++){ var code=R+"-"+c, items=(map[code]||[]);
-      var list="";
-      if(items.length){
-        var chunks=[];
-        for(var k=0;k<items.length;k+=3){
-          chunks.push('<div class="it">'+items.slice(k,k+3).map(function(it){ return docmasterEsc(it.partNo)+'('+it.stock+')'; }).join(' / ')+'</div>');
-        }
-        list=chunks.join("");
-      } else { list='<span class="empty">비어있음</span>'; }
-      tds+='<td class="cell"><div class="code">'+code+'</div><div class="list">'+list+'</div></td>';
+// A3 가로 엑셀로 재고현황판 내보내기(열어서 확인·수정 후 인쇄)
+function invBoardExcel(){
+  try{
+    if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다. 잠시 후 다시."); return; }
+    var map=invGetLocMap_(), cols=["A","B","C","D","E","F"];
+    function cellText(code){
+      var items=(map[code]||[]); if(!items.length) return "";
+      var chunks=[];
+      for(var k=0;k<items.length;k+=3){ chunks.push(items.slice(k,k+3).map(function(it){ return it.partNo+"("+it.stock+")"; }).join(" / ")); }
+      return chunks.join("\n");   // 3개씩 묶고 줄바꿈
     }
-    return '<tr>'+tds+'</tr>';
-  }).join("");
-  var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>재고 보관 현황판</title><style>'
-    +'@page{ size:A3 landscape; margin:7mm; }'
-    +'*{ box-sizing:border-box; } html,body{ margin:0; padding:0; font-family:"맑은 고딕","Malgun Gothic",sans-serif; }'
-    +'h1{ text-align:center; font-size:24px; margin:2px 0 8px; }'
-    +'table{ width:100%; border-collapse:collapse; table-layout:fixed; }'
-    +'col.lab{ width:5%; } col.dat{ width:23.75%; }'
-    +'tr{ page-break-inside:avoid; }'
-    +'td{ border:2.5px solid #222; vertical-align:top; }'
-    +'td.rlab{ text-align:center; vertical-align:middle; font-size:40px; font-weight:800; background:#EEE; }'
-    +'td.cell{ padding:7px 9px; height:40mm; }'
-    +'.code{ font-size:20px; font-weight:800; color:#0B5CAB; margin-bottom:5px; border-bottom:1.5px solid #DCE4EE; padding-bottom:3px; }'
-    +'.it{ font-size:14px; line-height:1.55; font-weight:600; word-break:break-all; }'
-    +'.empty{ color:#BBB; font-size:14px; }'
-    +'</style></head><body>'
-    +'<h1>📦 재고 보관 현황판 &nbsp;('+new Date().toLocaleDateString("ko-KR")+' 기준)</h1>'
-    +'<table><colgroup><col class="lab"><col class="dat"><col class="dat"><col class="dat"><col class="dat"></colgroup><tbody>'+trs+'</tbody></table>'
-    +'</body></html>';
-  var w=window.open("", "_blank");
-  if(!w){ alert("팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요."); return; }
-  w.document.write(html); w.document.close(); w.focus();
-  setTimeout(function(){ try{ w.print(); }catch(e){} }, 350);
+    // AoA: 헤더행(빈칸, A~F) + 1~4행(세로)
+    var aoa=[[""].concat(cols)];
+    for(var n=1;n<=4;n++){ var r=[String(n)]; cols.forEach(function(C){ r.push(cellText(C+"-"+n)); }); aoa.push(r); }
+    var ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=[{wch:5},{wch:26},{wch:26},{wch:26},{wch:26},{wch:26},{wch:26}];
+    // 행 높이: 헤더 얇게, 데이터행(1~4)은 그 행에서 가장 긴 칸의 줄 수에 비례
+    var rowH=[{hpt:24}];
+    for(var i=1;i<aoa.length;i++){
+      var lines=1; for(var c2=1;c2<aoa[i].length;c2++){ var v=aoa[i][c2]; var ln=v?String(v).split("\n").length:1; if(ln>lines) lines=ln; }
+      rowH.push({hpt: Math.max(46, lines*15+8)});
+    }
+    ws["!rows"]=rowH;
+    // 줄바꿈(wrapText) + 테두리 + 정렬 서식
+    var range=XLSX.utils.decode_range(ws["!ref"]);
+    for(var Rr=range.s.r; Rr<=range.e.r; Rr++){
+      for(var Cc=range.s.c; Cc<=range.e.c; Cc++){
+        var ad=XLSX.utils.encode_cell({r:Rr,c:Cc}); var cell=ws[ad]; if(!cell){ ws[ad]=cell={t:"s",v:""}; }
+        var isHeader=(Rr===0), isLabel=(Cc===0);
+        cell.s={
+          alignment:{ vertical:"top", horizontal:(isHeader||isLabel)?"center":"left", wrapText:true },
+          font:{ name:"맑은 고딕", sz:(isHeader||isLabel)?16:11, bold:(isHeader||isLabel), color:{rgb:(isHeader||isLabel)?"1F2A44":"222222"} },
+          fill:(isHeader||isLabel)?{ patternType:"solid", fgColor:{rgb:"EEEEEE"} }:undefined,
+          border:{ top:{style:"thin",color:{rgb:"333333"}}, bottom:{style:"thin",color:{rgb:"333333"}}, left:{style:"thin",color:{rgb:"333333"}}, right:{style:"thin",color:{rgb:"333333"}} }
+        };
+      }
+    }
+    // A3 가로 + 여백 좁게 + 한 페이지 폭 맞춤(인쇄 설정)
+    ws["!margins"]={ left:0.3, right:0.3, top:0.4, bottom:0.4, header:0.2, footer:0.2 };
+    ws["!printSetup"]={ orientation:"landscape", paperSize:8, fitToWidth:1, fitToHeight:0, scale:100 }; // paperSize 8 = A3
+    var wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "재고현황판");
+    XLSX.writeFile(wb, "재고보관현황판_A3가로_"+new Date().toISOString().slice(0,10).replace(/-/g,"")+".xlsx");
+  }catch(e){ alert("엑셀 생성 오류: "+(e&&e.message?e.message:e)); }
 }
 // 도번 내림차순 · 보유수량>0 목록
 function invListRows_(){
