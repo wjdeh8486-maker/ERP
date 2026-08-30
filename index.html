@@ -15630,7 +15630,7 @@ function insGateApiUrl_(){ return (typeof qchistApiUrl==="function"&&qchistApiUr
 // 오늘 공유 검사일보(수입/측정실) 2분 캐시로 로드
 function insGateLoadLogs_(cb){
   var now=Date.now();
-  if(now-INS_GATE_LOGS.t < 120000){ cb(INS_GATE_LOGS.rows); return; }
+  if(now-INS_GATE_LOGS.t < 600000){ cb(INS_GATE_LOGS.rows); return; }   // 10분 캐시
   var url=insGateApiUrl_(); if(!url){ cb(INS_GATE_LOGS.rows); return; }
   var get=function(k){ return fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(k)+"&_t="+now,{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var o={}; try{o=JSON.parse(res.json||"{}");}catch(e){} return Array.isArray(o.rows)?o.rows:[]; }).catch(function(){return [];}); };
   Promise.all([get("incoming"),get("measureS"),get("measureL")]).then(function(a){
@@ -15663,34 +15663,54 @@ function insGateDoneToday_(rows, draw, type, targetTail){
   return false;
 }
 // 게이트 판정 → cb({missing:[라벨...], noMaster:bool}). sn 주면 S/N 단위, 없으면 도번 단위
+var __gateQcCache={};   // 도번별 qcSearch 결과 캐시(10분) — 서버 호출 절감
 function insShipGate_(draw, sn, cb){
   if(typeof sn==="function"){ cb=sn; sn=""; }   // 옛 호출(draw,cb) 호환
   var url=insGateApiUrl_(); if(!url){ cb(null); return; }
   var targetTail=insSnTail_(sn);
   insGateLoadLogs_(function(logs){
-    fetch(url+"?mode=qcSearch&partNo="+encodeURIComponent(draw)+"&sn="+encodeURIComponent(sn||""),{cache:"no-store"})
+    var judge=function(data){
+      if(!data||!data.success||!data.master){ cb({noMaster:true}); return; }
+      var master=data.master, list=data.list||[], done={};
+      list.forEach(function(it){ if(targetTail && insSnTail_(it.sn)!==targetTail) return; QC_COLS.forEach(function(c){ if(it[c.key]==="O") done[c.key]=true; }); });
+      if(insGateDoneToday_(logs.incoming, draw, "incoming", targetTail)){ done.exterior=true; done.bolt=true; }
+      if(insGateDoneToday_(logs.measureS, draw, "measureS", targetTail) || insGateDoneToday_(logs.measureL, draw, "measureL", targetTail)){ done.dimension=true; done.leak=true; done.flow=true; done.pressure=true; done.vacuum=true; }
+      var missing=[]; QC_COLS.forEach(function(c){ if(master[c.key]==="Y" && !done[c.key]) missing.push(c.label); });
+      cb({ missing:missing, sn:sn });
+    };
+    // 검사종합은 도번 단위라 도번별 캐시(10분). S/N 필터는 캐시된 list에서 처리.
+    var ce=__gateQcCache[draw];
+    if(ce && (Date.now()-ce.t)<600000){ judge(ce.data); return; }
+    fetch(url+"?mode=qcSearch&partNo="+encodeURIComponent(draw)+"&sn=",{cache:"no-store"})
       .then(function(r){return r.json();})
-      .then(function(data){
-        if(!data||!data.success||!data.master){ cb({noMaster:true}); return; }
-        var master=data.master, list=data.list||[], done={};
-        list.forEach(function(it){ if(targetTail && insSnTail_(it.sn)!==targetTail) return; QC_COLS.forEach(function(c){ if(it[c.key]==="O") done[c.key]=true; }); });
-        if(insGateDoneToday_(logs.incoming, draw, "incoming", targetTail)){ done.exterior=true; done.bolt=true; }
-        if(insGateDoneToday_(logs.measureS, draw, "measureS", targetTail) || insGateDoneToday_(logs.measureL, draw, "measureL", targetTail)){ done.dimension=true; done.leak=true; done.flow=true; done.pressure=true; done.vacuum=true; }
-        var missing=[]; QC_COLS.forEach(function(c){ if(master[c.key]==="Y" && !done[c.key]) missing.push(c.label); });
-        cb({ missing:missing, sn:sn });
-      })
+      .then(function(data){ __gateQcCache[draw]={t:Date.now(), data:data}; judge(data); })
       .catch(function(){ cb(null); });
   });
+}
+
+// 디바운스: 연속 입력 시 마지막 것만 600ms 후 서버 조회(호출 급감)
+var __gateDebT=null, __gateDebLast="";
+function insShipGateDebounced_(draw, sn, cb){
+  var key=draw+"|"+sn;
+  if(__gateDebT) clearTimeout(__gateDebT);
+  __gateDebLast=key;
+  __gateDebT=setTimeout(function(){ if(__gateDebLast!==key) return; insShipGate_(draw, sn, cb); }, 600);
 }
 
 function insNcHistoryPopup_(draw, sn){
   var d=String(draw||"").trim(); if(!d) return;
   sn=String(sn||"").trim();
-  // 같은 도번+S/N 연속 트리거 방지(1.5초) — S/N 입력 시 재판정되도록 키에 sn 포함
+  // 출하검사 게이트: 서버조회는 S/N이 있을 때만(도번만 입력한 단계에선 생략) → 서버 호출 절반
+  if(insType==="shipping" && !sn){
+    var __hd=insNcHistoryFor_(d);
+    if(__hd.length){ insNcRenderPopup_(d, __hd, []); } else { try{ insSetStatus("도번 확인 — S/N 입력 시 출하검사 판정"); }catch(e){} }
+    return;
+  }
+  // 같은 도번+S/N 연속 트리거 방지(1.5초)
   var __k=d+"|"+sn;
   var now=Date.now(); if(__insNcLast.draw===__k && (now-__insNcLast.t)<1500) return; __insNcLast={draw:__k,t:now};
   var hits=insNcHistoryFor_(d);
-  if(insType==="shipping"){ insShipGate_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[]); }); return; }
+  if(insType==="shipping"){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[]); }); return; }
   if(!hits.length){ try{ insSetStatus("✔ "+d+" — 고객부적합 이력 없음"); }catch(e){} return; }
   insNcRenderPopup_(d, hits, []);
 }
