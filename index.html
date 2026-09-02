@@ -15676,7 +15676,7 @@ function insGateDoneToday_(rows, draw, type, targetTail){
 }
 // 게이트 판정 → cb({missing:[라벨...], noMaster:bool}). sn 주면 S/N 단위, 없으면 도번 단위
 var __gateQcCache={};   // 도번별 qcSearch 결과 캐시(10분) — 서버 호출 절감
-function insShipGate_(draw, sn, cb){
+function insShipGate_(draw, sn, cb, reqKeys){
   if(typeof sn==="function"){ cb=sn; sn=""; }   // 옛 호출(draw,cb) 호환
   var url=insGateApiUrl_(); if(!url){ cb(null); return; }
   var targetTail=insSnTail_(sn);
@@ -15687,8 +15687,12 @@ function insShipGate_(draw, sn, cb){
       list.forEach(function(it){ if(targetTail){ var _s=insSnSet_(it.sn); if(!_s[targetTail]) return; } QC_COLS.forEach(function(c){ if(it[c.key]==="O") done[c.key]=true; }); });
       if(insGateDoneToday_(logs.incoming, draw, "incoming", targetTail)){ done.exterior=true; done.bolt=true; }
       if(insGateDoneToday_(logs.measureS, draw, "measureS", targetTail) || insGateDoneToday_(logs.measureL, draw, "measureL", targetTail)){ done.dimension=true; done.leak=true; done.flow=true; done.pressure=true; done.vacuum=true; }
-      var __gateSkip={ exterior:true, packing:true };   // 외관·포장은 출하검사 자체 항목 → 게이트 알람 제외
-      var missing=[]; QC_COLS.forEach(function(c){ if(__gateSkip[c.key]) return; if(master[c.key]==="Y" && !done[c.key]) missing.push(c.label); });
+     var __gateSkip={ exterior:true, packing:true };   // 외관·포장은 출하검사 자체 항목 → 게이트 알람 제외
+      var missing=[]; QC_COLS.forEach(function(c){
+        // reqKeys가 있으면(측정실) 그 항목만, 없으면(출하) master Y 전체(외관·포장 제외)
+     var need = reqKeys ? (reqKeys.indexOf(c.key)>=0 && master[c.key]==="Y") : (master[c.key]==="Y" && !__gateSkip[c.key]);
+      if(need && !done[c.key]) missing.push(c.label);
+      });
       cb({ missing:missing, sn:sn });
     };
     // 검사종합은 도번 단위라 도번별 캐시(10분). S/N 필터는 캐시된 list에서 처리.
@@ -15703,13 +15707,13 @@ function insShipGate_(draw, sn, cb){
 
 // 디바운스: 연속 입력 시 마지막 것만 600ms 후 서버 조회(호출 급감)
 var __gateDebT=null, __gateDebLast="";
-function insShipGateDebounced_(draw, sn, cb){
+function insShipGateDebounced_(draw, sn, cb, reqKeys){
   var key=draw+"|"+sn;
   if(__gateDebT) clearTimeout(__gateDebT);
   __gateDebLast=key;
-  __gateDebT=setTimeout(function(){ if(__gateDebLast!==key) return; insShipGate_(draw, sn, cb); }, 600);
+  __gateDebT=setTimeout(function(){ if(__gateDebLast!==key) return; insShipGate_(draw, sn, cb, reqKeys); }, 600);
 }
-
+  
 function insNcHistoryPopup_(draw, sn){
   var d=String(draw||"").trim(); if(!d) return;
   sn=String(sn||"").trim();
@@ -15723,7 +15727,8 @@ function insNcHistoryPopup_(draw, sn){
   var __k=d+"|"+sn;
   var now=Date.now(); if(__insNcLast.draw===__k && (now-__insNcLast.t)<1500) return; __insNcLast={draw:__k,t:now};
   var hits=insNcHistoryFor_(d);
-  if(insType==="shipping"){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[]); }); return; }
+   if(insType==="shipping"){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[]); }); return; }
+  if((insType==="measureS"||insType==="measureL") && sn){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[]); }, ["bolt","led"]); return; }
   if(!hits.length){ try{ insSetStatus("✔ "+d+" — 고객부적합 이력 없음"); }catch(e){} return; }
   insNcRenderPopup_(d, hits, []);
 }
