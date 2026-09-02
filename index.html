@@ -15675,33 +15675,81 @@ function insGateDoneToday_(rows, draw, type, targetTail){
   return false;
 }
 // 게이트 판정 → cb({missing:[라벨...], noMaster:bool}). sn 주면 S/N 단위, 없으면 도번 단위
-var __gateQcCache={};   // 도번별 qcSearch 결과 캐시(10분) — 서버 호출 절감
+var __gateQcCache={};                 // 도번별 qcSearch(완료여부) 단기 캐시(3분)
+var __gateMasterMap=null, __gateMasterDay="";   // 필수정의(qcMaster) 하루 공유 캐시
+
+function insGateTodayStr_(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+
+// 필수검사 정의(qcMaster)를 하루 1회만 로드: 메모리 → 드라이브 공유캐시 → 서버
+function insGateLoadMaster_(cb){
+  var today=insGateTodayStr_();
+  if(__gateMasterMap && __gateMasterDay===today){ cb(__gateMasterMap); return; }   // 오늘자 메모리 있으면 즉시
+  try{
+    if(typeof qShareLoad_==="function"){
+      qShareLoad_("gateMaster", function(sv){
+        if(sv && sv.date===today && Array.isArray(sv.list)){                         // 공유캐시가 오늘자면 그대로 사용
+          var map={}; sv.list.forEach(function(r){ if(r&&r.partNo) map[String(r.partNo).trim()]=r; });
+          __gateMasterMap=map; __gateMasterDay=today; cb(map); return;
+        }
+        insGateFetchMaster_(today, cb);                                             // 없거나 날짜 지남 → 서버에서 받아 저장
+      });
+      return;
+    }
+  }catch(e){}
+  insGateFetchMaster_(today, cb);
+}
+function insGateFetchMaster_(today, cb){
+  var url=insGateApiUrl_(); if(!url){ cb(null); return; }
+  fetch(url+"?mode=qcMaster",{cache:"no-store"})
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(!data||!data.success||!Array.isArray(data.list)){ cb(null); return; }
+      var map={}; data.list.forEach(function(r){ if(r&&r.partNo) map[String(r.partNo).trim()]=r; });
+      __gateMasterMap=map; __gateMasterDay=today;
+      try{ if(typeof qShareSave_==="function") qShareSave_("gateMaster", {date:today, list:data.list}); }catch(e){}   // 드라이브 공유캐시에 저장(하루 1회)
+      cb(map);
+    })
+    .catch(function(){ cb(null); });
+}
+
 function insShipGate_(draw, sn, cb, reqKeys){
   if(typeof sn==="function"){ cb=sn; sn=""; }   // 옛 호출(draw,cb) 호환
   var url=insGateApiUrl_(); if(!url){ cb(null); return; }
   var targetTail=insSnTail_(sn);
-  insGateLoadLogs_(function(logs){
-    var judge=function(data){
-      if(!data||!data.success||!data.master){ cb({noMaster:true}); return; }
-      var master=data.master, list=data.list||[], done={};
-      list.forEach(function(it){ if(targetTail){ var _s=insSnSet_(it.sn); if(!_s[targetTail]) return; } QC_COLS.forEach(function(c){ if(it[c.key]==="O") done[c.key]=true; }); });
-      if(insGateDoneToday_(logs.incoming, draw, "incoming", targetTail)){ done.exterior=true; done.bolt=true; }
-      if(insGateDoneToday_(logs.measureS, draw, "measureS", targetTail) || insGateDoneToday_(logs.measureL, draw, "measureL", targetTail)){ done.dimension=true; done.leak=true; done.flow=true; done.pressure=true; done.vacuum=true; }
-     var __gateSkip={ exterior:true, packing:true };   // 외관·포장은 출하검사 자체 항목 → 게이트 알람 제외
-      var missing=[]; QC_COLS.forEach(function(c){
-        // reqKeys가 있으면(측정실) 그 항목만, 없으면(출하) master Y 전체(외관·포장 제외)
-     var need = reqKeys ? (reqKeys.indexOf(c.key)>=0 && master[c.key]==="Y") : (master[c.key]==="Y" && !__gateSkip[c.key]);
-      if(need && !done[c.key]) missing.push(c.label);
-      });
-      cb({ missing:missing, sn:sn });
-    };
-    // 검사종합은 도번 단위라 도번별 캐시(10분). S/N 필터는 캐시된 list에서 처리.
-    var ce=__gateQcCache[draw];
-    if(ce && (Date.now()-ce.t)<600000){ judge(ce.data); return; }
-    fetch(url+"?mode=qcSearch&partNo="+encodeURIComponent(draw)+"&sn=",{cache:"no-store"})
-      .then(function(r){return r.json();})
-      .then(function(data){ __gateQcCache[draw]={t:Date.now(), data:data}; judge(data); })
-      .catch(function(){ cb(null); });
+  var __gateSkip={ exterior:true, packing:true };   // 외관·포장은 출하검사 자체 항목 → 게이트 제외
+
+  insGateLoadMaster_(function(mmap){
+    var mrow = mmap ? mmap[String(draw).trim()] : null;
+    // 후보 항목: 측정실=reqKeys(bolt,led) / 출하=전체(외관·포장 제외)
+    var candKeys = reqKeys ? reqKeys.slice() : QC_COLS.map(function(c){return c.key;}).filter(function(k){ return !__gateSkip[k]; });
+    // 이 도번에서 실제 '필수(Y)'인 것만 남김. 필수정의를 못 받았으면 보수적으로 후보 전체를 확인
+    var needKeys = (mmap && mrow) ? candKeys.filter(function(k){ return mrow[k]==="Y"; }) : candKeys;
+    // 필수 대상이 없으면 → 서버 왕복 없이 즉시 통과
+    if(!needKeys.length){ cb({ missing:[], sn:sn }); return; }
+
+    // 필수 대상 있음 → 완료 여부만 실시간 확인(3분 단기 캐시)
+    insGateLoadLogs_(function(logs){
+      var judge=function(data){
+        if(!data||!data.success||!data.master){ cb({noMaster:true}); return; }
+        var master=data.master, list=data.list||[], done={};
+        list.forEach(function(it){ if(targetTail){ var _s=insSnSet_(it.sn); if(!_s[targetTail]) return; } QC_COLS.forEach(function(c){ if(it[c.key]==="O") done[c.key]=true; }); });
+        if(insGateDoneToday_(logs.incoming, draw, "incoming", targetTail)){ done.exterior=true; done.bolt=true; }
+        if(insGateDoneToday_(logs.measureS, draw, "measureS", targetTail) || insGateDoneToday_(logs.measureL, draw, "measureL", targetTail)){ done.dimension=true; done.leak=true; done.flow=true; done.pressure=true; done.vacuum=true; }
+        var missing=[];
+        needKeys.forEach(function(k){
+          if(done[k]) return;
+          if(master[k]!=="Y") return;   // 실시간 master로 이중 확인(오탐 방지)
+          for(var i=0;i<QC_COLS.length;i++){ if(QC_COLS[i].key===k){ missing.push(QC_COLS[i].label); break; } }
+        });
+        cb({ missing:missing, sn:sn });
+      };
+      var ce=__gateQcCache[draw];
+      if(ce && (Date.now()-ce.t)<180000){ judge(ce.data); return; }   // 3분 캐시
+      fetch(url+"?mode=qcSearch&partNo="+encodeURIComponent(draw)+"&sn=",{cache:"no-store"})
+        .then(function(r){return r.json();})
+        .then(function(data){ __gateQcCache[draw]={t:Date.now(), data:data}; judge(data); })
+        .catch(function(){ cb(null); });
+    });
   });
 }
 
