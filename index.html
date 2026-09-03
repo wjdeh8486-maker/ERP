@@ -3916,12 +3916,31 @@ function mainGetCalendarRows(){
   return rows;
 }
 // ===== 📋 검수LIST: ORDER NO. 검색 → 세부별 완료/부족/S/N =====
-function insplistShipCnt_(orderNo, shipRows){     // 출하검사 일보에서 출고No(=ORDER NO.) 매칭 검사수(insCnt) 합
-  var n=0, o=String(orderNo||"").trim(); if(!o) return 0;
-  (shipRows||[]).forEach(function(r){
-    if(String(r.outNo||"").trim()===o) n+=Number(r.insCnt||0)||0;
+function insplistExpandOutNo_(s){                  // 출고No 분할: "26-356-1,26-356-13" / "26-356-1,13" → [26-356-1, 26-356-13]
+  s=String(s||"").trim(); if(!s) return [];
+  var parts=s.split(/[,\/\n]+/).map(function(x){return x.trim();}).filter(Boolean);
+  var out=[], prefix="";
+  parts.forEach(function(p){
+    var m=p.match(/^(\d+-\d+)-(\d+)$/);            // 26-356-13 (완전형)
+    if(m){ out.push(p); prefix=m[1]+"-"; return; }
+    if(/^\d+$/.test(p) && prefix){ out.push(prefix+p); return; }   // 13 → 직전 prefix 이어받아 26-356-13
+    if(p) out.push(p);                              // 기타 형식은 그대로
   });
-  return n;
+  return out;
+}
+function insplistShipAlloc_(shipRows, qtyOf){     // 출하검사 검사수를 출고No 순서대로 각 ORDER 수량만큼 순차 배분
+  var alloc={};
+  (shipRows||[]).forEach(function(r){
+    var cnt=Number(r.insCnt||0)||0; if(cnt<=0) return;
+    var list=insplistExpandOutNo_(r.outNo);
+    for(var i=0;i<list.length && cnt>0;i++){
+      var o=list[i];
+      var room=Math.max(0, (qtyOf(o)||0) - (alloc[o]||0));   // 그 ORDER의 남은 자리
+      var take=Math.min(room, cnt);
+      if(take>0){ alloc[o]=(alloc[o]||0)+take; cnt-=take; }   // 앞에서부터 채우고 남은 만큼 다음으로
+    }
+  });
+  return alloc;
 }
 function insplistBuildRows_(q, shipRows){
   q=String(q||"").trim(); if(!q) return [];
@@ -3935,6 +3954,9 @@ function insplistBuildRows_(q, shipRows){
     var hit=(o===q || o.indexOf(q+"-")===0 || (pj && pj.toUpperCase().indexOf(q.toUpperCase())>=0));
     return hit && (Number(r.qty)||0)>0;
   });
+  // 출하검사 검사수를 순차 배분(앞 ORDER부터 수량만큼) — 전체 MAIN 수량 기준
+  var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
+  var shipAlloc=insplistShipAlloc_(shipRows, function(o){ return qtyMap[o]||0; });
   return matched.map(function(m){
     var orderNo=String(m.orderNo||"").trim();
     var qty=Number(m.qty)||0;
@@ -3948,8 +3970,9 @@ function insplistBuildRows_(q, shipRows){
         if(r.sn) sns.push(String(r.sn).trim());
       }
     });
-    var shipCnt=insplistShipCnt_(orderNo, shipRows);
-    var done=Math.min(qty, stockOut + shipCnt);      // 중복 합산 방지: 완료는 수량이 상한
+    // 완료 = 재고 출고수량 + 출하검사 순차배분(앞 ORDER부터 수량만큼 채우고 남은 건 다음 ORDER로)
+    var shipDone=shipAlloc[orderNo]||0;
+    var done=Math.min(qty, stockOut + shipDone);     // 완료는 수량이 상한(중복 방지)
     var lack=Math.max(0, qty-done);                  // 부족 = 수량 − 완료 (0 이상)
     return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:sns.join(", "),
              status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[String(m.partNo||"").trim()]||"") };
@@ -3972,7 +3995,7 @@ function renderInspList(){
       return '<tr>'
         +'<td style="'+td+'text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
         +'<td style="'+td+'text-align:center;">'+qcEsc(r.project)+'</td>'
-        +'<td style="'+td+'text-align:center;">'+qcEsc(r.oldDraw)+'</td>'
+        +'<td style="'+td+'text-align:center;">'+((typeof dwgLink==="function"&&r.oldDraw)?dwgLink(r.oldDraw):qcEsc(r.oldDraw))+'</td>'
         +'<td style="'+td+'">'+qcEsc(r.name)+'</td>'
         +'<td style="'+td+'text-align:center;">'+r.qty+'</td>'
         +'<td style="'+td+'text-align:center;">'+r.done+'</td>'
