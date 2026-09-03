@@ -1823,13 +1823,25 @@
       #view-insplist #insplist-table thead th{ position:sticky; top:0; z-index:10; background:#1F2A44; color:#fff; font-weight:700; }
       #view-insplist #insplist-wrap{ -webkit-overflow-scrolling:touch; }
       @media (max-width:860px){
-        #view-insplist #insplist-table{ font-size:10.5px; min-width:720px; }
-        #view-insplist #insplist-table th, #view-insplist #insplist-table td{ padding:5px 4px !important; }
-        #view-insplist input#insplist-search{ min-width:140px; font-size:13px; }
+        #view-insplist #insplist-table{ font-size:10.5px; min-width:0; }
+        #view-insplist #insplist-table th, #view-insplist #insplist-table td{ padding:5px 3px !important; }
+        #view-insplist input#insplist-search{ min-width:100px; font-size:12px; }
+      }
+      @media (max-width:600px){
+        /* 모바일: PROJECT NO.(2번째), 기존도번(3번째) 컬럼 숨김 */
+        #view-insplist #insplist-table th:nth-child(2),
+        #view-insplist #insplist-table td:nth-child(2),
+        #view-insplist #insplist-table th:nth-child(3),
+        #view-insplist #insplist-table td:nth-child(3) { display:none; }
+        #view-insplist #insplist-table{ font-size:9.5px; min-width:0; }
+        #view-insplist #insplist-table th, #view-insplist #insplist-table td{ padding:4px 2px !important; }
+        #view-insplist input#insplist-search{ min-width:80px; font-size:11px; }
+        #view-insplist button { font-size:12px; padding:6px 10px !important; }
       }
       @media (max-width:420px){
-        #view-insplist #insplist-table{ font-size:10px; min-width:680px; }
-        #view-insplist #insplist-table th, #view-insplist #insplist-table td{ padding:4px 3px !important; }
+        #view-insplist #insplist-table{ font-size:9px; }
+        #view-insplist #insplist-table th, #view-insplist #insplist-table td{ padding:3px 2px !important; }
+        #view-insplist input#insplist-search{ min-width:60px; font-size:10px; }
       }
     </style>
     <div id="topbar-insrep" class="topbar" style="display:none;">
@@ -1899,7 +1911,7 @@
           <button id="insplist-refresh" onclick="renderInspList()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🔄 새로고침</button>
           <button id="insplist-print" onclick="insplistPrint_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🖨️ 인쇄</button>
           <button id="insplist-excel" onclick="insplistExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">📊 엑셀 다운로드</button>
-          <input id="insplist-search" type="text" placeholder="ORDER NO. 또는 PROJECT NO. (예: 26-386 / JB0130311)" onkeydown="if(event.key==='Enter')renderInspList()" style="flex:1;min-width:180px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
+          <input id="insplist-search" type="text" placeholder="ORDER NO. 또는 PROJECT NO. (예: 26-386 / JB0130311 / 26-386,26-124)" onkeydown="if(event.key==='Enter')renderInspList()" style="flex:1;min-width:180px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
           <button onclick="renderInspList()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🔍 검색</button>
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;cursor:pointer;user-select:none;"><input type="checkbox" id="insplist-onlyLack" onchange="renderInspList()" style="width:16px;height:16px;cursor:pointer;"> 미완료품만</label>
         </div>
@@ -3971,12 +3983,18 @@ function insplistBuildRows_(q, shipRows){
   var md=(typeof mainData!=="undefined"&&mainData)?mainData:[];
   var iv=(typeof invData!=="undefined"&&invData)?invData:[];
   var locMap=(typeof invGetLocMap_==="function")?(invGetLocMap_()||{}):{};
-  // 검색: ORDER NO.(26-386 → 26-386-1,2,3…) 또는 PROJECT NO. 포함 · 수량>0만 (MAIN은 이미 PR&PO 필터됨)
+  
+  // 검색어 처리: 쉼표로 여러 개 가능 (예: 26-386,26-124 또는 JB0130311,JB0130312)
+  var queries=q.indexOf(',')>=0 ? q.split(',').map(function(x){return x.trim();}).filter(Boolean) : [q];
+  
+  // 검색: 각 query가 ORDER NO. 또는 PROJECT NO.와 매칭되면 포함 (OR)
   var matched=md.filter(function(r){
     var o=String(r.orderNo||"").trim();
     var pj=String(r.vendor||"").trim();
-    var hit=(o===q || o.indexOf(q+"-")===0 || (pj && pj.toUpperCase().indexOf(q.toUpperCase())>=0));
-    return hit && (Number(r.qty)||0)>0;
+    // queries 중 하나라도 매칭되면 include
+    return queries.some(function(sq){
+      return (o===sq || o.indexOf(sq+"-")===0 || (pj && pj.toUpperCase().indexOf(sq.toUpperCase())>=0));
+    }) && (Number(r.qty)||0)>0;
   });
   // 출하검사 검사수를 순차 배분(앞 ORDER부터 수량만큼) — 전체 MAIN 수량 기준
   var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
