@@ -3916,14 +3916,25 @@ function mainGetCalendarRows(){
   return rows;
 }
 // ===== 📋 검수LIST: ORDER NO. 검색 → 세부별 완료/부족/S/N =====
-function insplistExpandOutNo_(s){                  // 출고No 분할: "26-356-1,26-356-13" / "26-356-1,13" → [26-356-1, 26-356-13]
+function insplistExpandOutNo_(s){                  // 출고No 분할+연도 정규화: "124-134" → "26-124-134" (연도 없으면 현재 연도 추가)
   s=String(s||"").trim(); if(!s) return [];
+  var yr=String(new Date().getFullYear()).slice(-2);  // 현재 연도 마지막 2자리 (2026→26)
+  // 각 부분의 연도 정규화: "124-134" → "26-124-134"
+  s=s.split(/[,\/\n]+/).map(function(x){
+    x=x.trim();
+    if(!x) return "";
+    var m=x.match(/^(\d+)-(\d+-\d+)$/);             // "26-124-134" 형식
+    if(m) return x;                                  // 이미 연도 있음
+    if(/^\d+-\d+$/.test(x)) return yr+"-"+x;        // "124-134" → "26-124-134"
+    return x;
+  }).join(",");
+  // 이제 s는 모두 "26-124-134" 형식
   var parts=s.split(/[,\/\n]+/).map(function(x){return x.trim();}).filter(Boolean);
   var out=[], prefix="";
   parts.forEach(function(p){
-    var m=p.match(/^(\d+-\d+)-(\d+)$/);            // 26-356-13 (완전형)
+    var m=p.match(/^(\d+-\d+)-(\d+)$/);            // 26-124-134 (완전형)
     if(m){ out.push(p); prefix=m[1]+"-"; return; }
-    if(/^\d+$/.test(p) && prefix){ out.push(prefix+p); return; }   // 13 → 직전 prefix 이어받아 26-356-13
+    if(/^\d+$/.test(p) && prefix){ out.push(prefix+p); return; }   // 134 → 직전 prefix 이어받아 26-124-134
     if(p) out.push(p);                              // 기타 형식은 그대로
   });
   return out;
@@ -15279,6 +15290,19 @@ function insExport(){
   // 다운로드 기준: 검사일이 그날 OR 조치완료일이 그날 (미조치 캐리오버는 다운로드에서 제외 — 화면에는 계속 표시)
   var rows=(insDayFilter==="all")?__all:__all.filter(function(r){ return String(r.insDate||"")===insDayFilter || String(r.actDate||"")===insDayFilter; });
   if(!rows.length){ alert("선택한 날짜에 내보낼 행이 없습니다."); return; }
+  // 출고NO 정규화: "124-134" → "26-124-134" (연도 없으면 현재 연도 추가)
+  var yr=String(new Date().getFullYear()).slice(-2);
+  rows.forEach(function(r){
+    if(r.outNo){
+      var normalized=String(r.outNo).trim().split(/[,\/\n]+/).map(function(x){
+        x=x.trim(); if(!x) return "";
+        if(/^(\d+)-(\d+-\d+)$/.test(x)) return x;            // 이미 연도 있음
+        if(/^\d+-\d+$/.test(x)) return yr+"-"+x;             // "124-134" → "26-124-134"
+        return x;
+      }).filter(Boolean).join(",");
+      r.outNo=normalized;
+    }
+  });
   var insp=(document.getElementById("insrep-inspector")||{}).value||"";
   var dateV=(document.getElementById("insrep-date")||{}).value||"";
   var nCols=leaves.length;
