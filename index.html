@@ -979,7 +979,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.82</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.84</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -1884,9 +1884,10 @@
           <div style="font-size:18px;font-weight:800;color:#1F2A44;">📋 검수LIST</div>
           <button id="insplist-refresh" onclick="renderInspList()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🔄 새로고침</button>
           <button id="insplist-print" onclick="insplistPrint_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🖨️ 인쇄</button>
+          <button id="insplist-excel" onclick="insplistExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">📊 엑셀 다운로드</button>
           <input id="insplist-search" type="text" placeholder="ORDER NO. 입력 (예: 26-386)" oninput="renderInspList()" style="flex:1;min-width:180px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
         </div>
-        <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">ORDER NO.(예: 26-386)를 입력하면 세부(26-386-1, 2 …)가 펼쳐집니다 · 완료 = 출하검사 검사수(출고NO 매칭) · 부족 = 수량 − 완료 · S/N은 재고관리에서 · 비고는 인쇄 후 수기 체크용</div>
+        <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">ORDER NO.(예: 26-386)를 입력하면 세부(26-386-1, 2 …)가 펼쳐집니다 · 완료 = 재고 출고수량(관리번호 매칭) · 부족 = 수량 − 완료 · S/N은 재고관리에서 · 수량 0·PR&PO 미등록 건은 제외 · 비고는 인쇄 후 수기 체크용</div>
         <div id="insplist-wrap" style="overflow:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:13px;" id="insplist-table">
             <thead><tr>
@@ -3898,32 +3899,38 @@ function mainGetCalendarRows(){
   return rows;
 }
 // ===== 📋 검수LIST: ORDER NO. 검색 → 세부별 완료/부족/S/N =====
-function insplistShipQtyByOrder_(orderNo){        // 출하검사 완료수 = 출고NO(=ORDER NO.) 매칭 검사수 합
+function insplistShipCnt_(orderNo, shipRows){     // 출하검사 일보에서 출고No(=ORDER NO.) 매칭 검사수(insCnt) 합
   var n=0, o=String(orderNo||"").trim(); if(!o) return 0;
-  (typeof shipInspectionData!=="undefined"?shipInspectionData:[]||[]).forEach(function(i){
-    var on=String(i["출고NO"]||i["출고 NO"]||i["출고No"]||i["ORDER NO."]||i["ORDER NO"]||i["관리번호"]||"").trim();
-    if(on && on===o) n+=Number(i["검사수"]||0)||0;
+  (shipRows||[]).forEach(function(r){
+    if(String(r.outNo||"").trim()===o) n+=Number(r.insCnt||0)||0;
   });
   return n;
 }
-function insplistBuildRows_(q){
+function insplistBuildRows_(q, shipRows){
   q=String(q||"").trim(); if(!q) return [];
   var md=(typeof mainData!=="undefined"&&mainData)?mainData:[];
   var iv=(typeof invData!=="undefined"&&invData)?invData:[];
-  // ORDER NO.가 검색어로 시작(26-386 → 26-386-1,2,3…) 또는 정확히 일치
+  // ORDER NO.가 검색어로 시작(26-386 → 26-386-1,2,3…) 또는 일치 · 수량>0만 (MAIN은 이미 PR&PO 필터됨)
   var matched=md.filter(function(r){
     var o=String(r.orderNo||"").trim();
-    return o===q || o.indexOf(q+"-")===0;
+    return (o===q || o.indexOf(q+"-")===0) && (Number(r.qty)||0)>0;
   });
   return matched.map(function(m){
     var orderNo=String(m.orderNo||"").trim();
     var qty=Number(m.qty)||0;
     var name=m.partName||"";
     var project=m.projectNo || orderNo.replace(/-\d+$/,"") || "";
-    var done=insplistShipQtyByOrder_(orderNo);       // 완료 = 출하검사 검사수(출고NO 매칭)
-    var lack=Math.max(0, qty-done);                  // 부족 = 수량 − 완료
-    var sns=[];                                       // S/N = 재고 관리번호(=ORDER NO.) 매칭
-    iv.forEach(function(r){ if(String(r.ctrlNo||"").trim()===orderNo && r.sn) sns.push(String(r.sn).trim()); });
+    // 완료 = 재고 출고수량(관리번호 매칭) + 출하검사 검사수(출고No 매칭). S/N도 재고 매칭
+    var stockOut=0, sns=[];
+    iv.forEach(function(r){
+      if(String(r.ctrlNo||"").trim()===orderNo){
+        stockOut += Number(r.outQty)||0;
+        if(r.sn) sns.push(String(r.sn).trim());
+      }
+    });
+    var shipCnt=insplistShipCnt_(orderNo, shipRows);
+    var done=Math.min(qty, stockOut + shipCnt);      // 중복 합산 방지: 완료는 수량이 상한
+    var lack=Math.max(0, qty-done);                  // 부족 = 수량 − 완료 (0 이상)
     return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:sns.join(", ") };
   }).sort(function(a,b){ return String(a.orderNo).localeCompare(String(b.orderNo), undefined, {numeric:true}); });
 }
@@ -3931,30 +3938,65 @@ function renderInspList(){
   var body=document.getElementById("insplist-body"); if(!body) return;
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
   if(!q){ body.innerHTML='<tr><td colspan="8" style="text-align:center;color:#8A93A6;padding:18px;">위 검색창에 ORDER NO.(예: <b>26-386</b>)를 입력하면 세부 항목이 펼쳐집니다.</td></tr>'; return; }
-  var rows=insplistBuildRows_(q);
-  if(!rows.length){ body.innerHTML='<tr><td colspan="8" style="text-align:center;color:#8A93A6;padding:18px;">"'+qcEsc(q)+'" 에 해당하는 ORDER NO.가 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
   var td='padding:7px 8px;border:1px solid #E1E8F0;';
-  body.innerHTML=rows.map(function(r){
-    var lc=r.lack>0?"#C0392B":"#1E7A46";
-    return '<tr>'
-      +'<td style="'+td+'text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
-      +'<td style="'+td+'text-align:center;">'+qcEsc(r.project)+'</td>'
-      +'<td style="'+td+'">'+qcEsc(r.name)+'</td>'
-      +'<td style="'+td+'text-align:center;">'+r.qty+'</td>'
-      +'<td style="'+td+'text-align:center;">'+r.done+'</td>'
-      +'<td style="'+td+'text-align:center;font-weight:800;color:'+lc+';">'+r.lack+'</td>'
-      +'<td style="'+td+'font-size:11.5px;">'+qcEsc(r.sn)+'</td>'
-      +'<td style="'+td+'"></td>'
-      +'</tr>';
-  }).join("");
+  var paint=function(shipRows){
+    var rows=insplistBuildRows_(q, shipRows);
+    if(!rows.length){ body.innerHTML='<tr><td colspan="8" style="text-align:center;color:#8A93A6;padding:18px;">"'+qcEsc(q)+'" 에 해당하는 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
+    body.innerHTML=rows.map(function(r){
+      var lc=r.lack>0?"#C0392B":"#1E7A46";
+      return '<tr>'
+        +'<td style="'+td+'text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
+        +'<td style="'+td+'text-align:center;">'+qcEsc(r.project)+'</td>'
+        +'<td style="'+td+'">'+qcEsc(r.name)+'</td>'
+        +'<td style="'+td+'text-align:center;">'+r.qty+'</td>'
+        +'<td style="'+td+'text-align:center;">'+r.done+'</td>'
+        +'<td style="'+td+'text-align:center;font-weight:800;color:'+lc+';">'+r.lack+'</td>'
+        +'<td style="'+td+'font-size:11.5px;">'+qcEsc(r.sn)+'</td>'
+        +'<td style="'+td+'"></td>'
+        +'</tr>';
+    }).join("");
+  };
+  // 화면 로드분으로 즉시 표시 → 서버 최신 출하검사 일보로 갱신
+  var local=(typeof insState!=="undefined"&&insState.shipping&&Array.isArray(insState.shipping.rows))?insState.shipping.rows:[];
+  paint(local);
+  if(typeof insGateLoadLogs_==="function"){
+    body.setAttribute("data-q", q);
+    insGateLoadLogs_(function(logs){
+      if(body.getAttribute("data-q")!==q) return;   // 그 사이 검색어가 바뀌면 무시
+      __insplistShip=(logs&&logs.shipping)||local;   // 엑셀/인쇄에서 재사용
+      paint(__insplistShip);
+    });
+  }
 }
+var __insplistShip=[];
 function insplistPrint_(){
   var t=document.getElementById("insplist-table"); if(!t) return;
+  var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
   var win=window.open("","_blank"); if(!win) return;
   win.document.write('<html><head><title>검수LIST</title><meta charset="utf-8">'
-    +'<style>body{font-family:Malgun Gothic,sans-serif;padding:16px;}table{width:100%;border-collapse:collapse;font-size:12px;}th,td{border:1px solid #999;padding:5px 7px;}th{background:#eee;}</style></head><body>'
-    +'<h3>검수LIST ('+new Date().toLocaleDateString("ko-KR")+')</h3>'+t.outerHTML+'</body></html>');
+    +'<style>@page{size:A4 portrait;margin:8mm;} '
+    +'body{font-family:Malgun Gothic,sans-serif;} '
+    +'h3{margin:0 0 8px;} '
+    +'table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;} '
+    +'th,td{border:1px solid #999;padding:4px 5px;word-break:break-all;text-align:center;} '
+    +'th{background:#eee;} td:nth-child(3){text-align:left;}</style></head><body>'
+    +'<h3>검수LIST'+(q?(" · "+q):"")+' ('+new Date().toLocaleDateString("ko-KR")+')</h3>'+t.outerHTML+'</body></html>');
   win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 200);
+}
+function insplistExcel_(){
+  var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
+  if(!q){ alert("먼저 ORDER NO.(예: 26-386)를 검색하세요."); return; }
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
+  var rows=insplistBuildRows_(q, __insplistShip);
+  if(!rows.length){ alert("다운로드할 항목이 없습니다."); return; }
+  var aoa=[["ORDER NO.","PROJECT NO.","품명","수량","완료수량","부족수량","S/N","비고"]];
+  rows.forEach(function(r){ aoa.push([r.orderNo, r.project, r.name, r.qty, r.done, r.lack, r.sn, ""]); });
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=[{wch:14},{wch:12},{wch:26},{wch:7},{wch:9},{wch:9},{wch:24},{wch:16}];
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "검수LIST");
+  var fn="검수LIST_"+q+"_"+new Date().toISOString().slice(0,10)+".xlsx";
+  XLSX.writeFile(wb, fn);
 }
 
 function renderMainCalendar(){
@@ -8736,7 +8778,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.82;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.84;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -17828,6 +17870,6 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.82 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.84 🔔</div>
 </body>
 </html>
