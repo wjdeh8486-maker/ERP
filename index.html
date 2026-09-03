@@ -979,7 +979,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.80</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.81</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -1037,6 +1037,7 @@
       <div class="nav-item nav-sub" data-view="management"><span class="dot"></span>🔎 도번 조회</div>
       <div class="nav-item nav-sub" data-view="waitinsp"><span class="dot"></span>검사대기현황</div>
       <div class="nav-item nav-sub" data-view="sched"><span class="dot"></span>📅 일정 달력</div>
+      <div class="nav-item nav-sub" data-view="insplist"><span class="dot"></span>📋 검수LIST</div>
     </div></div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>📦 입출고 · 재고관리</div>
     <div class="nav-dd"><div class="nav-item" data-view="insrep" data-navgroup="insgrp"><span class="dot"></span>🧾 검사 일보<span class="nav-caret" data-caret="insgrp">▾</span></div>
@@ -1876,6 +1877,32 @@
         </span>
       </div>
       <div style="width:100%;text-align:right;font-size:11.5px;color:#8A93A6;margin-top:-2px;"><span id="insrep-status">💾 입력하면 이 기기에 자동 저장됩니다</span></div>
+    </div>
+    <div class="view" id="view-insplist">
+      <div style="background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+          <div style="font-size:18px;font-weight:800;color:#1F2A44;">📋 검수LIST</div>
+          <button id="insplist-refresh" onclick="renderInspList()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🔄 새로고침</button>
+          <button id="insplist-print" onclick="insplistPrint_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🖨️ 인쇄</button>
+          <input id="insplist-search" type="text" placeholder="관리번호·품명·도번 검색" oninput="renderInspList()" style="flex:1;min-width:180px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
+        </div>
+        <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">일정 달력의 검수 일정 기준 · 분출 = 선출고 + 출하검사 완료수 · 부족 = 수량 − 분출 (검사 진행 시 실시간 감소) · 비고는 인쇄 후 수기 체크용</div>
+        <div id="insplist-wrap" style="overflow:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;" id="insplist-table">
+            <thead><tr>
+              <th style="padding:8px;border:1px solid #E1E8F0;">관리번호</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">PROJECT NO.</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">품명</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">수량</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">분출수량</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">부족수량</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">S/N</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">비고</th>
+            </tr></thead>
+            <tbody id="insplist-body"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
     <div class="view" id="view-insrep">
       <div id="insrep-content"></div>
@@ -3102,6 +3129,9 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="waitinsp"){
       runBusy(initWaitInspView);   // 검사대기는 자동 최신화가 걸려 있으므로 항상 갱신
     }
+    if(target==="insplist"){
+      if(typeof renderInspList==="function") renderInspList();
+    }
     if(target==="quality"){
       if(typeof ncInit==="function" && !window.__ncInited){ window.__ncInited = true; ncInit(); }
       if(!window.__qualityInited){
@@ -3867,6 +3897,90 @@ function mainGetCalendarRows(){
   });
   return rows;
 }
+// ===== 📋 검수LIST: 달력 검수일정 × MAIN × 재고 × 출하검사 =====
+function insplistParseSched_(text){
+  var t=String(text||""); if(t.indexOf("검수")<0) return null;
+  var draw=""; var m1=t.match(/([A-Za-z]{1,4}[0-9][A-Za-z0-9\-]*)/); if(m1) draw=m1[1];   // 도번(영문+숫자)
+  var ctrl=""; var m2=t.match(/(\d+\-\d+)/); if(m2) ctrl=m2[1];                              // 관리번호(숫자-숫자)
+  if(!draw && !ctrl) return null;
+  return { draw:draw, ctrlNo:ctrl };
+}
+function insplistShipQty_(draw){          // 출하검사 완료수(도번별 검사수 합)
+  var n=0, d=String(draw||"").trim(); if(!d) return 0;
+  (typeof shipInspectionData!=="undefined"?shipInspectionData:[]||[]).forEach(function(i){
+    var dn=String(i["도 번"]||i["도번"]||"").trim();
+    if(dn===d) n+=Number(i["검사수"]||0)||0;
+  });
+  return n;
+}
+function insplistBuildRows_(){
+  var evs=(typeof schedEvents!=="undefined"&&Array.isArray(schedEvents))?schedEvents:[];
+  var md=(typeof mainData!=="undefined"&&mainData)?mainData:[];
+  var iv=(typeof invData!=="undefined"&&invData)?invData:[];
+  var out=[];
+  evs.forEach(function(e){
+    var p=insplistParseSched_(e.text); if(!p) return;
+    // MAIN에서 도번으로 품명·수량·PROJECT 조회
+    var m=null;
+    for(var k=0;k<md.length;k++){
+      var dn=String(md[k].oldDrawingNo||md[k].partNo||"").trim();
+      if(dn && dn===p.draw){ m=md[k]; break; }
+    }
+    var qty=m?(Number(m.qty)||0):0;
+    var project=m?(m.orderNo||m.partNo||""):"";
+    var name=m?(m.partName||""):"";
+    // 재고에서 관리번호로 S/N·선출고 조회
+    var sns=[], preShip=0;
+    if(p.ctrlNo){
+      iv.forEach(function(r){
+        var c=String(r.ctrlNo||"").trim();
+        if(c===p.ctrlNo || c.indexOf(p.ctrlNo+"-")===0){
+          if(r.sn) sns.push(String(r.sn).trim());
+          preShip += Number(r.outQty)||0;
+        }
+      });
+    }
+    var shipQty=insplistShipQty_(p.draw);
+    var disp=preShip+shipQty;                 // 분출 = 선출고 + 출하검사 완료수
+    var lack=Math.max(0, qty-disp);           // 부족 = 수량 − 분출
+    out.push({ ctrlNo:p.ctrlNo||"", project:project, name:name, qty:qty, disp:disp, lack:lack, sn:sns.join(", "), date:String(e.date||"").slice(0,10) });
+  });
+  // 같은 관리번호가 여러 검수 일정에 있으면 최신 날짜 1건만
+  out.sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); });
+  var seen={}, uniq=[];
+  out.forEach(function(r){ var key=r.ctrlNo+"|"+r.project; if(seen[key]) return; seen[key]=1; uniq.push(r); });
+  return uniq;
+}
+function renderInspList(){
+  var body=document.getElementById("insplist-body"); if(!body) return;
+  var q=String((document.getElementById("insplist-search")||{}).value||"").trim().toLowerCase();
+  var rows=insplistBuildRows_();
+  if(q) rows=rows.filter(function(r){ return (r.ctrlNo+" "+r.name+" "+r.project).toLowerCase().indexOf(q)>=0; });
+  if(!rows.length){ body.innerHTML='<tr><td colspan="8" style="text-align:center;color:#8A93A6;padding:18px;">검수 일정이 없거나 MAIN·재고 데이터가 아직 로드되지 않았습니다. (MAIN 대시보드를 먼저 한 번 열어주세요)</td></tr>'; return; }
+  body.innerHTML=rows.map(function(r){
+    var lc=r.lack>0?"#C0392B":"#1E7A46";
+    var td='padding:7px 8px;border:1px solid #E1E8F0;';
+    return '<tr>'
+      +'<td style="'+td+'text-align:center;font-weight:700;">'+qcEsc(r.ctrlNo)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+qcEsc(r.project)+'</td>'
+      +'<td style="'+td+'">'+qcEsc(r.name)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+r.qty+'</td>'
+      +'<td style="'+td+'text-align:center;">'+r.disp+'</td>'
+      +'<td style="'+td+'text-align:center;font-weight:800;color:'+lc+';">'+r.lack+'</td>'
+      +'<td style="'+td+'font-size:11.5px;">'+qcEsc(r.sn)+'</td>'
+      +'<td style="'+td+'"></td>'
+      +'</tr>';
+  }).join("");
+}
+function insplistPrint_(){
+  var t=document.getElementById("insplist-table"); if(!t) return;
+  var win=window.open("","_blank"); if(!win) return;
+  win.document.write('<html><head><title>검수LIST</title><meta charset="utf-8">'
+    +'<style>body{font-family:Malgun Gothic,sans-serif;padding:16px;}table{width:100%;border-collapse:collapse;font-size:12px;}th,td{border:1px solid #999;padding:5px 7px;}th{background:#eee;}</style></head><body>'
+    +'<h3>검수LIST ('+new Date().toLocaleDateString("ko-KR")+')</h3>'+t.outerHTML+'</body></html>');
+  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 200);
+}
+
 function renderMainCalendar(){
   const year = mainCalendarDate.getFullYear();
   const month = mainCalendarDate.getMonth();
@@ -4478,6 +4592,7 @@ function fmtCacheTime(iso){
 let processData = []; // 생산공정현황 (도면번호, 수량, 등록일자, 현재진행공정)
 let incomingInspectionData = []; // 수입검사(외관) 검사결과
 let inhouseInspectionData = []; // 공정검사(사내외관) 검사결과 (수입검사 대기에서 추가 차감)
+let shipInspectionData = [];    // 출하검사 검사결과 (검수LIST 분출 계산용)
 
 /* ===== 도번별 검사 기준표 (검사 우선순위 1단계) =====
  * 과거 검사 기록에서 "이 도번이 실제로 받는 검사"를 뽑아낸다.
@@ -4556,11 +4671,12 @@ async function fetchMainData(yearsParam){
     fetch(url + "?dataset=" + encodeURIComponent("생산공정현황")).then(r=>r.json()).catch(()=>({success:false})),
     fetch(url + "?dataset=" + encodeURIComponent("수입검사(외관)")).then(r=>r.json()).catch(()=>({success:false})),
     fetch(url + "?dataset=" + encodeURIComponent("공정검사(사내외관)")).then(r=>r.json()).catch(()=>({success:false})),
+    fetch(url + "?dataset=" + encodeURIComponent("출하검사")).then(r=>r.json()).catch(()=>({success:false})),
     fetchWaitMap(url, "측정실검사대기", "품 번", "측정실대기", measureWaitMap),
     fetchWaitMap(url, "크린룸검사대기", "품 번", "검사대기", cleanWaitMap),
     fetchWaitMap(url, "비젼검사대기", "구 분", "검사대기", visionWaitMap)
   ])
-    .then(async ([res, processRes, incomingRes, inhouseRes])=>{
+    .then(async ([res, processRes, incomingRes, inhouseRes, shipRes])=>{
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       mainApiUrl = url;
      // 디버그: 개발자도구(F12) > Console 탭에서 실제 MAIN 시트 열 이름을 확인할 수 있습니다.
@@ -4569,6 +4685,7 @@ async function fetchMainData(yearsParam){
      processData = processRes.success ? processRes.rows : [];
      incomingInspectionData = incomingRes.success ? incomingRes.rows : [];
      inhouseInspectionData = (inhouseRes && inhouseRes.success) ? inhouseRes.rows : [];
+     shipInspectionData = (shipRes && shipRes.success) ? shipRes.rows : [];
      invalidateWaitInspIndex(); // 도면번호별 합계 인덱스 재계산 예약
      console.log("생산공정현황 데이터:", processData.length, "건");
      // 공정현황 연동 상태 배지: 연동 여부 + 데이터 최신일(등록일자 최대값)
@@ -8643,7 +8760,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.80;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.81;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -17735,6 +17852,6 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.80 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.81 🔔</div>
 </body>
 </html>
