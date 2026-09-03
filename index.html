@@ -1885,7 +1885,8 @@
           <button id="insplist-refresh" onclick="renderInspList()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🔄 새로고침</button>
           <button id="insplist-print" onclick="insplistPrint_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🖨️ 인쇄</button>
           <button id="insplist-excel" onclick="insplistExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">📊 엑셀 다운로드</button>
-          <input id="insplist-search" type="text" placeholder="ORDER NO. 입력 (예: 26-386)" oninput="renderInspList()" style="flex:1;min-width:180px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
+          <input id="insplist-search" type="text" placeholder="ORDER NO. 또는 PROJECT NO. (예: 26-386 / JB0130311)" onkeydown="if(event.key==='Enter')renderInspList()" style="flex:1;min-width:180px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
+          <button onclick="renderInspList()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🔍 검색</button>
         </div>
         <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">ORDER NO.(예: 26-386)를 입력하면 세부(26-386-1, 2 …)가 펼쳐집니다 · 완료 = 재고 출고수량(관리번호 매칭) · 부족 = 수량 − 완료 · S/N은 재고관리에서 · 수량 0·PR&PO 미등록 건은 제외 · 비고는 인쇄 후 수기 체크용</div>
         <div id="insplist-wrap" style="overflow:auto;">
@@ -3910,16 +3911,19 @@ function insplistBuildRows_(q, shipRows){
   q=String(q||"").trim(); if(!q) return [];
   var md=(typeof mainData!=="undefined"&&mainData)?mainData:[];
   var iv=(typeof invData!=="undefined"&&invData)?invData:[];
-  // ORDER NO.가 검색어로 시작(26-386 → 26-386-1,2,3…) 또는 일치 · 수량>0만 (MAIN은 이미 PR&PO 필터됨)
+  var locMap=(typeof invGetLocMap_==="function")?(invGetLocMap_()||{}):{};
+  // 검색: ORDER NO.(26-386 → 26-386-1,2,3…) 또는 PROJECT NO. 포함 · 수량>0만 (MAIN은 이미 PR&PO 필터됨)
   var matched=md.filter(function(r){
     var o=String(r.orderNo||"").trim();
-    return (o===q || o.indexOf(q+"-")===0) && (Number(r.qty)||0)>0;
+    var pj=String(r.vendor||"").trim();
+    var hit=(o===q || o.indexOf(q+"-")===0 || (pj && pj.toUpperCase().indexOf(q.toUpperCase())>=0));
+    return hit && (Number(r.qty)||0)>0;
   });
   return matched.map(function(m){
     var orderNo=String(m.orderNo||"").trim();
     var qty=Number(m.qty)||0;
     var name=m.partName||"";
-    var project=m.projectNo || orderNo.replace(/-\d+$/,"") || "";
+    var project=m.vendor||"";                        // 실제 PROJECT NO. (예: JB0130311-BJM)
     // 완료 = 재고 출고수량(관리번호 매칭) + 출하검사 검사수(출고No 매칭). S/N도 재고 매칭
     var stockOut=0, sns=[];
     iv.forEach(function(r){
@@ -3931,7 +3935,8 @@ function insplistBuildRows_(q, shipRows){
     var shipCnt=insplistShipCnt_(orderNo, shipRows);
     var done=Math.min(qty, stockOut + shipCnt);      // 중복 합산 방지: 완료는 수량이 상한
     var lack=Math.max(0, qty-done);                  // 부족 = 수량 − 완료 (0 이상)
-    return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:sns.join(", ") };
+    return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:sns.join(", "),
+             status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[String(m.partNo||"").trim()]||"") };
   }).sort(function(a,b){ return String(a.orderNo).localeCompare(String(b.orderNo), undefined, {numeric:true}); });
 }
 function renderInspList(){
@@ -3970,33 +3975,46 @@ function renderInspList(){
 }
 var __insplistShip=[];
 function insplistPrint_(){
-  var t=document.getElementById("insplist-table"); if(!t) return;
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
+  if(!q){ alert("먼저 ORDER NO. 또는 PROJECT NO.를 검색하세요."); return; }
+  var rows=insplistBuildRows_(q, __insplistShip);
+  if(!rows.length){ alert("인쇄할 항목이 없습니다."); return; }
+  var head=["제품상태","ORDER NO.","PROJECT NO.","기존도번","품명","수량","완료","부족","S/N","최종납기","위치","비고"];
+  var body=rows.map(function(r){
+    var lc=r.lack>0?"#C0392B":"#1E7A46";
+    return '<tr>'
+      +'<td>'+qcEsc(r.status)+'</td><td>'+qcEsc(r.orderNo)+'</td><td>'+qcEsc(r.project)+'</td>'
+      +'<td>'+qcEsc(r.oldDraw)+'</td><td class="l">'+qcEsc(r.name)+'</td><td>'+r.qty+'</td>'
+      +'<td>'+r.done+'</td><td style="color:'+lc+';font-weight:700;">'+r.lack+'</td>'
+      +'<td>'+qcEsc(r.sn)+'</td><td>'+qcEsc(r.due)+'</td><td>'+qcEsc(r.loc)+'</td><td></td></tr>';
+  }).join("");
   var win=window.open("","_blank"); if(!win) return;
   win.document.write('<html><head><title>검수LIST</title><meta charset="utf-8">'
-    +'<style>@page{size:A4 portrait;margin:8mm;} '
-    +'body{font-family:Malgun Gothic,sans-serif;} '
-    +'h3{margin:0 0 8px;} '
-    +'table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;} '
-    +'th,td{border:1px solid #999;padding:4px 5px;word-break:break-all;text-align:center;} '
-    +'th{background:#eee;} td:nth-child(3){text-align:left;}</style></head><body>'
-    +'<h3>검수LIST'+(q?(" · "+q):"")+' ('+new Date().toLocaleDateString("ko-KR")+')</h3>'+t.outerHTML+'</body></html>');
-  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 200);
+    +'<style>@page{size:A4 portrait;margin:7mm;} body{font-family:Malgun Gothic,sans-serif;} h3{margin:0 0 8px;font-size:15px;} '
+    +'table{width:100%;border-collapse:collapse;font-size:9.5px;table-layout:fixed;} '
+    +'th,td{border:1px solid #333;padding:3px 3px;text-align:center;word-break:break-all;} '
+    +'td.l{text-align:left;} th{background:#1F2A44;color:#fff;} '
+    +'col.c-name{width:15%;} col.c-sn{width:12%;} col.c-status,col.c-qty,col.c-done,col.c-lack{width:5%;} col.c-loc{width:5%;}</style></head><body>'
+    +'<h3>검수LIST · '+qcEsc(q)+' ('+new Date().toLocaleString("ko-KR")+')</h3>'
+    +'<table><colgroup>'
+    +'<col class="c-status"><col><col><col><col class="c-name"><col class="c-qty"><col class="c-done"><col class="c-lack"><col class="c-sn"><col><col class="c-loc"><col>'
+    +'</colgroup><thead><tr>'+head.map(function(h){return '<th>'+h+'</th>';}).join("")+'</tr></thead><tbody>'+body+'</tbody></table>'
+    +'</body></html>');
+  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
 }
 function insplistExcel_(){
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
-  if(!q){ alert("먼저 ORDER NO.(예: 26-386)를 검색하세요."); return; }
+  if(!q){ alert("먼저 ORDER NO. 또는 PROJECT NO.를 검색하세요."); return; }
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
   var rows=insplistBuildRows_(q, __insplistShip);
   if(!rows.length){ alert("다운로드할 항목이 없습니다."); return; }
-  var aoa=[["ORDER NO.","PROJECT NO.","품명","수량","완료수량","부족수량","S/N","비고"]];
-  rows.forEach(function(r){ aoa.push([r.orderNo, r.project, r.name, r.qty, r.done, r.lack, r.sn, ""]); });
+  var aoa=[["제품상태","ORDER NO.","PROJECT NO.","기존도번","품명","수량","완료","부족","S/N","최종납기","위치","비고"]];
+  rows.forEach(function(r){ aoa.push([r.status, r.orderNo, r.project, r.oldDraw, r.name, r.qty, r.done, r.lack, r.sn, r.due, r.loc, ""]); });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"]=[{wch:14},{wch:12},{wch:26},{wch:7},{wch:9},{wch:9},{wch:24},{wch:16}];
+  ws["!cols"]=[{wch:8},{wch:12},{wch:16},{wch:14},{wch:24},{wch:6},{wch:6},{wch:6},{wch:20},{wch:12},{wch:6},{wch:14}];
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "검수LIST");
-  var fn="검수LIST_"+q+"_"+new Date().toISOString().slice(0,10)+".xlsx";
-  XLSX.writeFile(wb, fn);
+  XLSX.writeFile(wb, "검수LIST_"+q+"_"+new Date().toISOString().slice(0,10)+".xlsx");
 }
 
 function renderMainCalendar(){
