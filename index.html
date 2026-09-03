@@ -1819,17 +1819,17 @@
       #insrep-content .insrep-tablewrap thead tr:last-child th{ top:27px; }
     </style>
     <style>
-      /* 검수LIST 반응형 (모바일/태블릿) */
+      /* 검수LIST 반응형 (모바일/태블릿) + 헤더 고정 */
+      #view-insplist #insplist-table thead th{ position:sticky; top:0; z-index:10; background:#1F2A44; color:#fff; font-weight:700; }
       #view-insplist #insplist-wrap{ -webkit-overflow-scrolling:touch; }
-      #view-insplist #insplist-table thead th{ position:sticky; top:0; z-index:5; background:#1F2A44; color:#fff; }
       @media (max-width:860px){
-        #view-insplist #insplist-table{ font-size:11px; min-width:680px; }
-        #view-insplist #insplist-table th, #view-insplist #insplist-table td{ padding:5px 5px !important; }
+        #view-insplist #insplist-table{ font-size:10.5px; min-width:720px; }
+        #view-insplist #insplist-table th, #view-insplist #insplist-table td{ padding:5px 4px !important; }
         #view-insplist input#insplist-search{ min-width:140px; font-size:13px; }
       }
       @media (max-width:420px){
-        #view-insplist #insplist-table{ font-size:10.5px; min-width:640px; }
-        #view-insplist #insplist-table th, #view-insplist #insplist-table td{ padding:4px 4px !important; }
+        #view-insplist #insplist-table{ font-size:10px; min-width:680px; }
+        #view-insplist #insplist-table th, #view-insplist #insplist-table td{ padding:4px 3px !important; }
       }
     </style>
     <div id="topbar-insrep" class="topbar" style="display:none;">
@@ -1905,7 +1905,7 @@
         </div>
         <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">ORDER NO.(예: 26-386)를 입력하면 세부(26-386-1, 2 …)가 펼쳐집니다 · 완료 = 재고 출고수량(관리번호 매칭) · 부족 = 수량 − 완료 · S/N은 재고관리에서 · 수량 0·PR&PO 미등록 건은 제외 · 비고는 인쇄 후 수기 체크용</div>
         <div id="insplist-wrap" style="overflow:auto;">
-          <table style="width:100%;border-collapse:collapse;font-size:13px;" id="insplist-table">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;" id="insplist-table">
             <thead><tr>
               <th style="padding:8px;border:1px solid #E1E8F0;">ORDER NO.</th>
               <th style="padding:8px;border:1px solid #E1E8F0;">PROJECT NO.</th>
@@ -1915,6 +1915,7 @@
               <th style="padding:8px;border:1px solid #E1E8F0;">완료수량</th>
               <th style="padding:8px;border:1px solid #E1E8F0;">부족수량</th>
               <th style="padding:8px;border:1px solid #E1E8F0;">S/N</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">최종납기</th>
               <th style="padding:8px;border:1px solid #E1E8F0;">비고</th>
             </tr></thead>
             <tbody id="insplist-body"></tbody>
@@ -3996,11 +3997,11 @@ function insplistBuildRows_(q, shipRows){
 function renderInspList(){
   var body=document.getElementById("insplist-body"); if(!body) return;
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
-  if(!q){ body.innerHTML='<tr><td colspan="9" style="text-align:center;color:#8A93A6;padding:18px;">위 검색창에 ORDER NO.(예: <b>26-386</b>)를 입력하면 세부 항목이 펼쳐집니다.</td></tr>'; return; }
-  var td='padding:7px 8px;border:1px solid #E1E8F0;';
+  if(!q){ body.innerHTML='<tr><td colspan="10" style="text-align:center;color:#0B5CAB;padding:18px;font-weight:600;">위 검색창에 ORDER NO.(예: <b>26-386</b>)를 입력하면 세부 항목이 펼쳐집니다.</td></tr>'; return; }
+  var td='padding:6px 6px;border:1px solid #E1E8F0;';  // 패딩 축소
   var paint=function(shipRows){
     var rows=insplistBuildRows_(q, shipRows);
-    if(!rows.length){ body.innerHTML='<tr><td colspan="9" style="text-align:center;color:#8A93A6;padding:18px;">"'+qcEsc(q)+'" 에 해당하는 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
+    if(!rows.length){ body.innerHTML='<tr><td colspan="10" style="text-align:center;color:#8A93A6;padding:18px;">"'+qcEsc(q)+'" 에 해당하는 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
     body.innerHTML=rows.map(function(r){
       var lc=r.lack>0?"#C0392B":"#1E7A46";
       return '<tr>'
@@ -4012,6 +4013,7 @@ function renderInspList(){
         +'<td style="'+td+'text-align:center;">'+r.done+'</td>'
         +'<td style="'+td+'text-align:center;font-weight:800;color:'+lc+';">'+r.lack+'</td>'
         +'<td style="'+td+'font-size:11.5px;">'+qcEsc(r.sn)+'</td>'
+        +'<td style="'+td+'text-align:center;font-size:12px;">'+qcEsc(r.due)+'</td>'
         +'<td style="'+td+'"></td>'
         +'</tr>';
     }).join("");
