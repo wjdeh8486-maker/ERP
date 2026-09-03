@@ -3985,25 +3985,26 @@ function insplistPrint_(){
   var rows=insplistBuildRows_(q, __insplistShip);
   if(!rows.length){ alert("인쇄할 항목이 없습니다."); return; }
   var onlyLack=(document.getElementById("insplist-onlyLack")||{}).checked;
-  var head=["제품상태","ORDER NO.","PROJECT NO.","기존도번","품명","수량","완료","부족","S/N","최종납기","위치","비고"];
+  var head=["ORDER NO.","PROJECT NO.","기존도번","품명","수량","완료","부족","S/N","최종납기","비고"];
   var body=rows.map(function(r){
     var lc=r.lack>0?"#C0392B":"#1E7A46";
     return '<tr>'
-      +'<td>'+qcEsc(r.status)+'</td><td>'+qcEsc(r.orderNo)+'</td><td>'+qcEsc(r.project)+'</td>'
+      +'<td>'+qcEsc(r.orderNo)+'</td><td>'+qcEsc(r.project)+'</td>'
       +'<td>'+qcEsc(r.oldDraw)+'</td><td class="l">'+qcEsc(r.name)+'</td><td>'+r.qty+'</td>'
-      +'<td>'+r.done+'</td><td style="color:'+lc+';font-weight:700;">'+r.lack+'</td>'
-      +'<td>'+qcEsc(r.sn)+'</td><td>'+qcEsc(r.due)+'</td><td>'+qcEsc(r.loc)+'</td><td></td></tr>';
+      +'<td>'+r.done+'</td><td style="color:'+lc+';font-weight:800;">'+r.lack+'</td>'
+      +'<td>'+qcEsc(r.sn)+'</td><td>'+qcEsc(r.due)+'</td><td></td></tr>';
   }).join("");
   var win=window.open("","_blank"); if(!win) return;
   win.document.write('<html><head><title>검수LIST</title><meta charset="utf-8">'
     +'<style>@page{size:A4 portrait;margin:7mm;} body{font-family:Malgun Gothic,sans-serif;} h3{margin:0 0 8px;font-size:15px;} '
-    +'table{width:100%;border-collapse:collapse;font-size:9.5px;table-layout:fixed;} '
-    +'th,td{border:1px solid #333;padding:3px 3px;text-align:center;word-break:break-all;} '
-    +'td.l{text-align:left;} th{background:#1F2A44;color:#fff;} '
-    +'col.c-name{width:15%;} col.c-sn{width:12%;} col.c-status,col.c-qty,col.c-done,col.c-lack{width:5%;} col.c-loc{width:5%;}</style></head><body>'
+    +'table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;} '
+    +'th,td{border:1px solid #333;padding:4px 4px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} '
+    +'td.l{text-align:left;} '
+    +'thead th{background:#1F2A44 !important;color:#fff !important;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact;} '
+    +'tbody tr:nth-child(even) td{background:#F4F7FB;-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body>'
     +'<h3>검수LIST · '+qcEsc(q)+(onlyLack?" · 미완료품만":"")+' ('+new Date().toLocaleString("ko-KR")+')</h3>'
     +'<table><colgroup>'
-    +'<col class="c-status"><col><col><col><col class="c-name"><col class="c-qty"><col class="c-done"><col class="c-lack"><col class="c-sn"><col><col class="c-loc"><col>'
+    +'<col style="width:11%"><col style="width:15%"><col style="width:13%"><col style="width:22%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:11%"><col style="width:10%"><col style="width:10%">'
     +'</colgroup><thead><tr>'+head.map(function(h){return '<th>'+h+'</th>';}).join("")+'</tr></thead><tbody>'+body+'</tbody></table>'
     +'</body></html>');
   win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
@@ -4015,10 +4016,10 @@ function insplistExcel_(){
   var rows=insplistBuildRows_(q, __insplistShip);
   if(!rows.length){ alert("다운로드할 항목이 없습니다."); return; }
   var onlyLack=(document.getElementById("insplist-onlyLack")||{}).checked;
-  var aoa=[["제품상태","ORDER NO.","PROJECT NO.","기존도번","품명","수량","완료","부족","S/N","최종납기","위치","비고"]];
-  rows.forEach(function(r){ aoa.push([r.status, r.orderNo, r.project, r.oldDraw, r.name, r.qty, r.done, r.lack, r.sn, r.due, r.loc, ""]); });
+  var aoa=[["ORDER NO.","PROJECT NO.","기존도번","품명","수량","완료","부족","S/N","최종납기","비고"]];
+  rows.forEach(function(r){ aoa.push([r.orderNo, r.project, r.oldDraw, r.name, r.qty, r.done, r.lack, r.sn, r.due, ""]); });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"]=[{wch:8},{wch:12},{wch:16},{wch:14},{wch:24},{wch:6},{wch:6},{wch:6},{wch:20},{wch:12},{wch:6},{wch:14}];
+  ws["!cols"]=[{wch:12},{wch:16},{wch:14},{wch:24},{wch:6},{wch:6},{wch:6},{wch:20},{wch:12},{wch:14}];
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "검수LIST");
   XLSX.writeFile(wb, "검수LIST_"+q+(onlyLack?"_미완료":"")+"_"+new Date().toISOString().slice(0,10)+".xlsx");
