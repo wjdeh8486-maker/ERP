@@ -17786,6 +17786,11 @@ function schedInit(){
       schedRender(); return;
     }
     var chip=(e.target.closest)?e.target.closest(".sched-chip"):null;
+    // 검수 항목: ✏️ 클릭 → 수정 팝업 / 텍스트 클릭 → 검수LIST 이동
+    var editIcon=(e.target.closest)?e.target.closest(".sched-insp-edit"):null;
+    if(editIcon && editIcon.getAttribute("data-eid")){ schedOpenForm(editIcon.getAttribute("data-eid"),null,null); return; }
+    var inspChip=(e.target.closest)?e.target.closest(".sched-insp"):null;
+    if(inspChip && inspChip.getAttribute("data-proj")){ schedGoInspList_(inspChip.getAttribute("data-proj")); return; }
     if(chip && chip.getAttribute("data-eid")){ schedOpenForm(chip.getAttribute("data-eid"),null,null); return; }
     if(chip && chip.getAttribute("data-due")){ schedFromDue(chip.getAttribute("data-due"), chip.getAttribute("data-duelabel")||""); return; }
     var day=(e.target.closest)?e.target.closest(".sched-day"):null;
@@ -17820,6 +17825,17 @@ function schedCollectEvents(y,m,show){
   if(show.due && typeof mainGetCalendarRows==="function"){ try{ mainGetCalendarRows().forEach(function(r){ if(!r.dueDate) return; var dd=inMonth(r.dueDate); if(dd){ var lbl=(r.drawingNo||r.orderNo||""); add(dd,{due:String(r.dueDate).slice(0,10), duelabel:lbl, order:2, label:"📦 "+lbl, full:"납기: "+(r.orderNo||"")+" · 클릭 → 전일 출장검수 등록", color:"#1F2A44", bg:"#E7ECF4"}); } }); }catch(e){} }
   Object.keys(byDay).forEach(function(k){ byDay[k].sort(function(a,b){ return (a.order||9)-(b.order||9); }); });
   return byDay;
+}
+// 검수 일정 → 검수LIST 이동+검색 (PROJECT NO.로)
+function schedGoInspList_(proj){
+  proj=String(proj||"").trim(); if(!proj) return;
+  var nav=document.querySelector('.nav-item[data-view="insplist"]');
+  if(nav) nav.click();   // 검수LIST 화면으로 전환
+  setTimeout(function(){
+    var inp=document.getElementById("insplist-search");
+    if(inp){ inp.value=proj; }
+    if(typeof renderInspList==="function") renderInspList();
+  }, 150);
 }
 function schedRender(){
   var el=document.getElementById("sched-content"); if(!el) return;
@@ -17856,7 +17872,18 @@ function schedRender(){
       var attrs=''; var clickable=false;
       if(ev.eid){ attrs=' data-eid="'+schedEsc(ev.eid)+'"'; clickable=true; }
       else if(ev.due){ attrs=' data-due="'+schedEsc(ev.due)+'" data-duelabel="'+schedEsc(ev.duelabel||"")+'"'; clickable=true; }
-      html+='<div class="sched-chip"'+attrs+' title="'+schedEsc(ev.full||ev.label)+'" style="font-size:10.5px;line-height:1.35;padding:1px 5px;margin-bottom:2px;border-radius:5px;background:'+ev.bg+';color:'+ev.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(clickable?"cursor:pointer;":"")+'">'+schedEsc(ev.label)+'</div>';
+      // 검수 항목이면: 텍스트=검수LIST 이동, ✏️=수정. PROJECT NO.(예: JB0130311)를 앞에서 추출
+      var lbl=String(ev.label||"");
+      var isInsp = ev.eid && /검수/.test(lbl);
+      var proj="";
+      if(isInsp){ var mProj=lbl.match(/([A-Za-z]{1,4}\d[\w\-]*)/); proj=mProj?mProj[1]:""; }
+      if(isInsp && proj){
+        html+='<div class="sched-chip sched-insp" data-proj="'+schedEsc(proj)+'" data-eid="'+schedEsc(ev.eid)+'" title="클릭: 검수LIST 보기 · ✏️: 수정" style="display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.35;padding:1px 3px 1px 5px;margin-bottom:2px;border-radius:5px;background:'+ev.bg+';color:'+ev.color+';overflow:hidden;white-space:nowrap;cursor:pointer;">'
+          +'<span class="sched-insp-text" style="flex:1;overflow:hidden;text-overflow:ellipsis;">'+schedEsc(ev.label)+'</span>'
+          +'<span class="sched-insp-edit" data-eid="'+schedEsc(ev.eid)+'" title="수정" style="flex-shrink:0;cursor:pointer;padding:0 2px;opacity:0.75;">✏️</span></div>';
+      } else {
+        html+='<div class="sched-chip"'+attrs+' title="'+schedEsc(ev.full||ev.label)+'" style="font-size:10.5px;line-height:1.35;padding:1px 5px;margin-bottom:2px;border-radius:5px;background:'+ev.bg+';color:'+ev.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(clickable?"cursor:pointer;":"")+'">'+schedEsc(ev.label)+'</div>';
+      }
     });
     if(evs.length>5) html+='<div style="font-size:10px;color:#8A93A6;">+'+(evs.length-5)+'건 더</div>';
     html+='</div>';
