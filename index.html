@@ -1037,7 +1037,6 @@
       <div class="nav-item nav-sub" data-view="management"><span class="dot"></span>🔎 도번 조회</div>
       <div class="nav-item nav-sub" data-view="waitinsp"><span class="dot"></span>검사대기현황</div>
       <div class="nav-item nav-sub" data-view="sched"><span class="dot"></span>📅 일정 달력</div>
-      <div class="nav-item nav-sub" data-view="insplist"><span class="dot"></span>📋 검수LIST</div>
     </div></div>
     <div class="nav-item" data-view="inventory"><span class="dot"></span>📦 입출고 · 재고관리</div>
     <div class="nav-dd"><div class="nav-item" data-view="insrep" data-navgroup="insgrp"><span class="dot"></span>🧾 검사 일보<span class="nav-caret" data-caret="insgrp">▾</span></div>
@@ -1048,16 +1047,15 @@
     <div class="nav-dd"><div class="nav-item" data-view="quality" data-navgroup="quality"><span class="dot"></span>📈 품질분석<span class="nav-caret" data-caret="quality">▾</span></div>
     <div class="nav-group" id="navgroup-quality">
       <div class="nav-item nav-sub" data-view="nc"><span class="dot"></span>⚠ 고객부적합관리</div>
+      <div class="nav-item nav-sub" data-view="sales"><span class="dot"></span>💼 매출현황</div>
+      <div class="nav-item nav-sub" data-view="vendor"><span class="dot"></span>거래처 관리</div>
     </div></div>
     <div class="nav-dd"><div class="nav-item" data-view="docmaster" data-navgroup="docmaster"><span class="dot"></span>📑 문서 Master<span class="nav-caret" data-caret="docmaster">▾</span></div>
     <div class="nav-group" id="navgroup-docmaster">
       <div class="nav-item nav-sub" data-view="instr"><span class="dot"></span>🔧 계측기 관리</div>
       <div class="nav-item nav-sub" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
     </div></div>
-    <div class="nav-dd"><div class="nav-item" data-view="sales" data-navgroup="salesgrp"><span class="dot"></span>💼 매출현황<span class="nav-caret" data-caret="salesgrp">▾</span></div>
-    <div class="nav-group" id="navgroup-salesgrp">
-      <div class="nav-item nav-sub" data-view="vendor"><span class="dot"></span>거래처 관리</div>
-    </div></div>
+    <div class="nav-item" data-view="insplist"><span class="dot"></span>📋 검수LIST</div>
     <div class="nav-item" id="dataCheckNavBtn" title="데이터 이상 점검 (관리자용)"><span class="dot"></span>🔍 데이터 점검</div>
     <div class="nav-item" id="helpNavBtn" title="사용법 안내"><span class="dot"></span>❓ 사용법</div>
   </div>
@@ -1939,7 +1937,7 @@
               <th style="padding:8px;border:1px solid #E1E8F0;"><input type="checkbox" id="insplist-checkAll" title="전체 선택" style="width:15px;height:15px;cursor:pointer;"></th>
               <th style="padding:8px;border:1px solid #E1E8F0;">ORDER NO.</th>
               <th style="padding:8px;border:1px solid #E1E8F0;">PROJECT NO.</th>
-              <th style="padding:8px;border:1px solid #E1E8F0;">기존도번</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;cursor:pointer;user-select:none;" onclick="insplistToggleDrawSort_()" title="클릭: 도번 오름차순/내림차순 정렬">기존도번 <span id="insplist-drawSortIcon" style="font-size:11px;">⇅</span></th>
               <th style="padding:8px;border:1px solid #E1E8F0;">품명</th>
               <th style="padding:8px;border:1px solid #E1E8F0;">수량</th>
               <th style="padding:8px;border:1px solid #E1E8F0;">완료수량</th>
@@ -2504,7 +2502,7 @@ function setNavGroup(name, open){
 }
 // 프로그램을 열 때는 소메뉴(월별 현황 / MAIN 대시보드)를 항상 접힌 상태로 시작한다.
 // 세션 중 펼친 상태는 그대로 유지되고, 새로 열면 다시 접힌다.
-["summary","main","insgrp","quality","docmaster","salesgrp"].forEach(name => setNavGroup(name, false));
+["summary","main","insgrp","quality","docmaster"].forEach(name => setNavGroup(name, false));
 document.querySelectorAll(".nav-caret").forEach(caret => {
   caret.addEventListener("click", (e) => {
     e.stopPropagation(); // 화면 전환 없이 접고/펴기만
@@ -4095,12 +4093,22 @@ function insplistBuildRows_(q, shipRows){
     // "미완료품만" 체크 시 부족수량>0 인 것만
     var only=document.getElementById("insplist-onlyLack");
     return (only && only.checked) ? (r.lack>0) : true;
-  }).sort(function(a,b){ return String(a.orderNo).localeCompare(String(b.orderNo), undefined, {numeric:true}); });
+  }).sort(function(a,b){
+    var mode=(typeof window!=="undefined" && window.__insplistSort)||"order";
+    if(mode==="draw-asc")  return String(a.oldDraw||"").localeCompare(String(b.oldDraw||""), undefined, {numeric:true});
+    if(mode==="draw-desc") return String(b.oldDraw||"").localeCompare(String(a.oldDraw||""), undefined, {numeric:true});
+    return String(a.orderNo).localeCompare(String(b.orderNo), undefined, {numeric:true});   // 기본: ORDER NO.
+  });
 }
 function renderInspList(){
   var body=document.getElementById("insplist-body"); if(!body) return;
   // 재고사용 목록 최초 1회 서버 로드 후 재렌더
-  if(!window.__inspUsedLoaded){ window.__inspUsedLoaded=true; insplistLoadUsedNotes_(function(){ renderInspList(); }); }
+  // 재고사용 목록 서버 로드 (30초마다 갱신 → 새로고침/재검색 시에도 반영)
+  var nowT=Date.now();
+  if(!window.__inspUsedAt || (nowT-window.__inspUsedAt)>30000){
+    window.__inspUsedAt=nowT;
+    insplistLoadUsedNotes_(function(){ renderInspList(); });
+  }
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
   if(!q){ body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#0B5CAB;padding:18px;font-weight:600;">위 검색창에 ORDER NO.(예: <b>26-386</b>)를 입력하면 세부 항목이 펼쳐집니다.</td></tr>'; return; }
   var td='padding:6px 6px;border:1px solid #E1E8F0;';  // 패딩 축소
@@ -4157,7 +4165,7 @@ function insplistStockUseOpen_(){
   var byOrder={}; all.forEach(function(r){ byOrder[r.orderNo]=r; });
   __stockUseRows=checks.map(function(c){
     var o=c.getAttribute("data-order"); var r=byOrder[o]||{};
-    return { orderNo:o, project:r.project||"", name:r.name||"", qty:r.qty||0,
+    return { orderNo:o, project:r.project||"", oldDraw:r.oldDraw||"", name:r.name||"", qty:r.qty||0,
              partNo:c.getAttribute("data-part")||r.partNo||"", loc:r.lastLoc||r.loc||"", sn:"" };
   });
   insplistStockUseRender_();
@@ -4200,7 +4208,7 @@ function insplistStockUseShare_(){
       + "\n\n재고에 등록된 S/N만 입력하세요.");
     return;
   }
-  var rows=__stockUseRows.map(function(r){ return {orderNo:r.orderNo, project:r.project, name:r.name, qty:r.qty, sn:r.sn, loc:r.loc}; });
+  var rows=__stockUseRows.map(function(r){ return {orderNo:r.orderNo, project:r.project, oldDraw:r.oldDraw||"", name:r.name, qty:r.qty, sn:r.sn, loc:r.loc}; });
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
   var by=(typeof __clientId!=="undefined")?__clientId:"";
   if(url){
@@ -4262,6 +4270,15 @@ function insplistStockUseExcel_(){
   XLSX.writeFile(wb, "재고사용_"+new Date().toISOString().slice(0,10)+".xlsx");
 }
 
+// 기존도번 정렬 토글: 없음 → 오름차순 → 내림차순 → 없음(ORDER순)
+function insplistToggleDrawSort_(){
+  var cur=(typeof window!=="undefined" && window.__insplistSort)||"order";
+  var next = cur==="order" ? "draw-asc" : (cur==="draw-asc" ? "draw-desc" : "order");
+  window.__insplistSort=next;
+  var icon=document.getElementById("insplist-drawSortIcon");
+  if(icon) icon.textContent = next==="draw-asc" ? "▲" : (next==="draw-desc" ? "▼" : "⇅");
+  renderInspList();
+}
 // 서버에서 재고사용된 ORDER 목록 로드 (검수LIST 열 때 호출)
 function insplistLoadUsedNotes_(cb){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
@@ -4304,7 +4321,7 @@ function insplistPrint_(){
       +'<td>'+qcEsc(r.orderNo)+'</td><td>'+qcEsc(r.project)+'</td>'
       +'<td>'+qcEsc(r.oldDraw)+'</td><td class="l">'+qcEsc(r.name)+'</td><td>'+r.qty+'</td>'
       +'<td>'+r.done+'</td><td style="color:'+lc+';font-weight:800;">'+r.lack+'</td>'
-      +'<td>'+qcEsc(r.sn)+'</td><td>'+qcEsc(r.due)+'</td><td></td></tr>';
+      +'<td>'+qcEsc(r.sn)+'</td><td>'+qcEsc(r.due)+'</td><td>'+qcEsc(r.note||"")+'</td></tr>';
   }).join("");
   var win=window.open("","_blank"); if(!win) return;
   win.document.write('<html><head><title>검수LIST</title><meta charset="utf-8">'
@@ -4365,7 +4382,7 @@ function insplistExcel_(){
   if(!rows.length){ alert("다운로드할 항목이 없습니다."); return; }
   var onlyLack=(document.getElementById("insplist-onlyLack")||{}).checked;
   var aoa=[["ORDER NO.","PROJECT NO.","기존도번","품명","수량","완료","부족","S/N","최종납기","비고"]];
-  rows.forEach(function(r){ aoa.push([r.orderNo, r.project, r.oldDraw, r.name, r.qty, r.done, r.lack, r.sn, r.due, ""]); });
+  rows.forEach(function(r){ aoa.push([r.orderNo, r.project, r.oldDraw, r.name, r.qty, r.done, r.lack, r.sn, r.due, r.note||""]); });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
   ws["!cols"]=[{wch:11},{wch:16},{wch:14},{wch:30},{wch:5},{wch:5},{wch:5},{wch:26},{wch:12},{wch:16}];
   ws["!margins"]={left:0.3,right:0.3,top:0.4,bottom:0.4,header:0.2,footer:0.2};
@@ -17102,11 +17119,11 @@ function insplistStockUseExcelByOrders_(orders){
       var rows=all.filter(function(r){ return want[String(r.orderNo).trim()]; });
       if(!rows.length && all.length){ rows=all.slice(-Math.max(1,(orders||[]).length)); }   // 매칭 실패 시 최근분
       if(!rows.length){ alert("재고분출 내역을 찾지 못했습니다.\n(서버 저장이 아직 반영되지 않았을 수 있습니다)"); return; }
-      // 검수LIST 엑셀과 동일한 컬럼 구성 (등록자·일시 제외)
-      var aoa=[["ORDER NO.","PROJECT NO.","품명","수량","S/N","위치"]];
-      rows.forEach(function(r){ aoa.push([ r.orderNo||"", r.project||"", r.name||"", Number(r.qty||0), r.sn||"", r.loc||"" ]); });
+      // 검수LIST 엑셀과 동일한 컬럼 구성 (기존도번 추가, 위치·등록자·일시 제외)
+      var aoa=[["ORDER NO.","PROJECT NO.","기존도번","품명","수량","S/N"]];
+      rows.forEach(function(r){ aoa.push([ r.orderNo||"", r.project||"", r.oldDraw||"", r.name||"", Number(r.qty||0), r.sn||"" ]); });
       var ws=XLSX.utils.aoa_to_sheet(aoa);
-      ws["!cols"]=[{wch:12},{wch:16},{wch:26},{wch:6},{wch:24},{wch:8}];
+      ws["!cols"]=[{wch:12},{wch:16},{wch:14},{wch:26},{wch:6},{wch:24}];
       insplistStyleSheet_(ws, aoa, rows, -1);   // 인쇄물 디자인 (부족 컬럼 없음)
       var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "재고분출");
       XLSX.writeFile(wb, "재고분출_"+new Date().toISOString().slice(0,10)+".xlsx");
