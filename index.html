@@ -4126,7 +4126,7 @@ function renderInspList(){
         +'<td style="'+td+'text-align:center;"><input type="checkbox" class="insplist-chk" data-order="'+qcEsc(r.orderNo)+'" data-part="'+qcEsc(r.partNo)+'" style="width:15px;height:15px;cursor:pointer;"></td>'
         +'<td style="'+td+'text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
         +'<td style="'+td+'text-align:center;">'+qcEsc(r.project)+'</td>'
-        +'<td style="'+td+'text-align:center;">'+((typeof dwgLink==="function"&&r.oldDraw)?dwgLink(r.oldDraw):qcEsc(r.oldDraw))+'</td>'
+        +'<td style="'+td+'text-align:center;">'+((typeof dwgLink==="function"&&r.oldDraw)?dwgLink(r.oldDraw):qcEsc(r.oldDraw))+(r.oldDraw?(' <span class="insplist-qchist" data-draw="'+qcEsc(r.oldDraw)+'" title="검사이력 조회" style="cursor:pointer;opacity:0.7;font-size:12px;">🔬</span>'):'')+'</td>'
         +'<td style="'+td+'text-align:center;">'+qcEsc(r.name)+'</td>'
         +'<td style="'+td+'text-align:center;">'+r.qty+'</td>'
         +'<td style="'+td+'text-align:center;">'+r.done+'</td>'
@@ -4139,6 +4139,10 @@ function renderInspList(){
     // 전체선택 체크박스 초기화 + 개별 연동
     var chkAll=document.getElementById("insplist-checkAll");
     if(chkAll){ chkAll.checked=false; chkAll.onclick=function(){ document.querySelectorAll(".insplist-chk").forEach(function(c){ c.checked=chkAll.checked; }); }; }
+    // 검사이력(🔬) 클릭 → 검사이력조회로 이동
+    body.querySelectorAll(".insplist-qchist").forEach(function(ic){
+      ic.addEventListener("click", function(ev){ ev.stopPropagation(); insplistGoQcHist_(ic.getAttribute("data-draw")); });
+    });
   };
   // 화면 로드분으로 즉시 표시 → 서버 최신 출하검사 일보로 갱신
   var local=(typeof insState!=="undefined"&&insState.shipping&&Array.isArray(insState.shipping.rows))?insState.shipping.rows:[];
@@ -4283,6 +4287,20 @@ function insplistToggleDrawSort_(){
   var icon=document.getElementById("insplist-drawSortIcon");
   if(icon) icon.textContent = next==="draw-asc" ? "▲" : (next==="draw-desc" ? "▼" : "⇅");
   renderInspList();
+}
+// 검수LIST 기존도번 🔬 → 검사이력조회 이동 + 도번 검색 (최신순: 최근 검사 공정이 위)
+function insplistGoQcHist_(draw){
+  draw=String(draw||"").trim(); if(!draw) return;
+  var nav=document.querySelector('.nav-item[data-view="qchist"]');
+  if(nav) nav.click();   // 검사이력조회 화면으로 전환
+  setTimeout(function(){
+    var inp=document.getElementById("qchist-partNo");
+    if(inp){ inp.value=draw; }
+    var sortSel=document.getElementById("qchist-sort");
+    if(sortSel){ sortSel.value="date-desc"; }   // 검사일 최신순 → 가장 최근 검사가 맨 위
+    var btn=document.getElementById("qchist-searchBtn");
+    if(btn) btn.click();
+  }, 200);
 }
 // 서버에서 재고사용된 ORDER 목록 로드 (검수LIST 열 때 호출)
 function insplistLoadUsedNotes_(cb){
@@ -17790,7 +17808,12 @@ function schedInit(){
     var editIcon=(e.target.closest)?e.target.closest(".sched-insp-edit"):null;
     if(editIcon && editIcon.getAttribute("data-eid")){ schedOpenForm(editIcon.getAttribute("data-eid"),null,null); return; }
     var inspChip=(e.target.closest)?e.target.closest(".sched-insp"):null;
-    if(inspChip && inspChip.getAttribute("data-proj")){ schedGoInspList_(inspChip.getAttribute("data-proj")); return; }
+    if(inspChip && inspChip.getAttribute("data-proj")){
+      var dest=inspChip.getAttribute("data-dest")||"insplist";
+      if(dest==="main") schedGoMain_(inspChip.getAttribute("data-proj"));
+      else schedGoInspList_(inspChip.getAttribute("data-proj"));
+      return;
+    }
     if(chip && chip.getAttribute("data-eid")){ schedOpenForm(chip.getAttribute("data-eid"),null,null); return; }
     if(chip && chip.getAttribute("data-due")){ schedFromDue(chip.getAttribute("data-due"), chip.getAttribute("data-duelabel")||""); return; }
     var day=(e.target.closest)?e.target.closest(".sched-day"):null;
@@ -17837,6 +17860,18 @@ function schedGoInspList_(proj){
     if(typeof renderInspList==="function") renderInspList();
   }, 150);
 }
+// 납기 일정 → MAIN 대시보드 이동+검색 (PROJECT NO.로)
+function schedGoMain_(proj){
+  proj=String(proj||"").trim(); if(!proj) return;
+  var nav=document.querySelector('.nav-item[data-view="main"]');
+  if(nav) nav.click();   // MAIN 대시보드 화면으로 전환
+  setTimeout(function(){
+    var inp=document.getElementById("main-searchInput");
+    if(inp){ inp.value=proj; }
+    var btn=document.getElementById("main-searchBtn");
+    if(btn) btn.click();
+  }, 150);
+}
 function schedRender(){
   var el=document.getElementById("sched-content"); if(!el) return;
   var y=schedMonthDate.getFullYear(), m=schedMonthDate.getMonth();
@@ -17872,13 +17907,16 @@ function schedRender(){
       var attrs=''; var clickable=false;
       if(ev.eid){ attrs=' data-eid="'+schedEsc(ev.eid)+'"'; clickable=true; }
       else if(ev.due){ attrs=' data-due="'+schedEsc(ev.due)+'" data-duelabel="'+schedEsc(ev.duelabel||"")+'"'; clickable=true; }
-      // 검수 항목이면: 텍스트=검수LIST 이동, ✏️=수정. PROJECT NO.(예: JB0130311)를 앞에서 추출
+      // 검수→검수LIST, 납기→MAIN 대시보드. 텍스트=이동, ✏️=수정. PROJECT NO. 앞에서 추출
       var lbl=String(ev.label||"");
       var isInsp = ev.eid && /검수/.test(lbl);
+      var isDue  = ev.eid && !isInsp && /납기/.test(lbl);
       var proj="";
-      if(isInsp){ var mProj=lbl.match(/([A-Za-z]{1,4}\d[\w\-]*)/); proj=mProj?mProj[1]:""; }
-      if(isInsp && proj){
-        html+='<div class="sched-chip sched-insp" data-proj="'+schedEsc(proj)+'" data-eid="'+schedEsc(ev.eid)+'" title="클릭: 검수LIST 보기 · ✏️: 수정" style="display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.35;padding:1px 3px 1px 5px;margin-bottom:2px;border-radius:5px;background:'+ev.bg+';color:'+ev.color+';overflow:hidden;white-space:nowrap;cursor:pointer;">'
+      if(isInsp||isDue){ var mProj=lbl.match(/([A-Za-z]{1,4}\d[\w\-]*)/); proj=mProj?mProj[1]:""; }
+      if((isInsp||isDue) && proj){
+        var _dest = isInsp ? "insplist" : "main";
+        var _title = isInsp ? "검수LIST 보기" : "MAIN 대시보드 보기";
+        html+='<div class="sched-chip sched-insp" data-proj="'+schedEsc(proj)+'" data-dest="'+_dest+'" data-eid="'+schedEsc(ev.eid)+'" title="클릭: '+_title+' · ✏️: 수정" style="display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.35;padding:1px 3px 1px 5px;margin-bottom:2px;border-radius:5px;background:'+ev.bg+';color:'+ev.color+';overflow:hidden;white-space:nowrap;cursor:pointer;">'
           +'<span class="sched-insp-text" style="flex:1;overflow:hidden;text-overflow:ellipsis;">'+schedEsc(ev.label)+'</span>'
           +'<span class="sched-insp-edit" data-eid="'+schedEsc(ev.eid)+'" title="수정" style="flex-shrink:0;cursor:pointer;padding:0 2px;opacity:0.75;">✏️</span></div>';
       } else {
