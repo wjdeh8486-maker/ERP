@@ -16204,17 +16204,49 @@ function insShipGate_(draw, sn, cb, reqKeys){
     insGateLoadLogs_(function(logs){
       var judge=function(data){
         if(!data||!data.success||!data.master){ cb({noMaster:true}); return; }
-        var master=data.master, list=data.list||[], done={};
-        list.forEach(function(it){ if(targetTail){ var _s=insSnSet_(it.sn); if(!_s[targetTail]) return; } QC_COLS.forEach(function(c){ if(it[c.key]==="O") done[c.key]=true; }); });
-        if(insGateDoneToday_(logs.incoming, draw, "incoming", targetTail)){ done.exterior=true; done.bolt=true; }
-        if(insGateDoneToday_(logs.measureS, draw, "measureS", targetTail) || insGateDoneToday_(logs.measureL, draw, "measureL", targetTail)){ done.dimension=true; done.leak=true; done.flow=true; done.pressure=true; done.vacuum=true; }
-        var missing=[];
-        needKeys.forEach(function(k){
-          if(done[k]) return;
-          if(master[k]!=="Y") return;   // 실시간 master로 이중 확인(오탐 방지)
-          for(var i=0;i<QC_COLS.length;i++){ if(QC_COLS[i].key===k){ missing.push(QC_COLS[i].label); break; } }
+        var master=data.master, list=data.list||[];
+        // 입력된 S/N을 개별로 분리 (250,253,278 → ["250","253","278"])
+        var snTails=Object.keys(insSnSet_(sn));
+        var multiSn = snTails.length>1;
+
+        // S/N별 완료맵: doneBySn[snTail][key]=true
+        var doneBySn={}; snTails.forEach(function(t){ doneBySn[t]={}; });
+        var doneAll={};   // S/N 구분 없는 전체 완료(단일/미지정용)
+
+        list.forEach(function(it){
+          var itSet=insSnSet_(it.sn);
+          QC_COLS.forEach(function(c){
+            if(it[c.key]!=="O") return;
+            doneAll[c.key]=true;
+            snTails.forEach(function(t){ if(itSet[t]) doneBySn[t][c.key]=true; });
+          });
         });
-        cb({ missing:missing, sn:sn });
+        // 오늘 검사일보 완료분도 S/N 반영
+        var markDay=function(logRows, kind, keys){
+          snTails.forEach(function(t){
+            if(insGateDoneToday_(logRows, draw, kind, t)){ keys.forEach(function(k){ doneBySn[t][k]=true; }); }
+          });
+          if(insGateDoneToday_(logRows, draw, kind, targetTail)){ keys.forEach(function(k){ doneAll[k]=true; }); }
+        };
+        markDay(logs.incoming, "incoming", ["exterior","bolt"]);
+        markDay(logs.measureS, "measureS", ["dimension","leak","flow","pressure","vacuum"]);
+        markDay(logs.measureL, "measureL", ["dimension","leak","flow","pressure","vacuum"]);
+
+        // 미완료 항목 + 항목별 미완료 S/N 수집
+        var missing=[], missingDetail=[];
+        needKeys.forEach(function(k){
+          if(master[k]!=="Y") return;   // 실시간 master 이중 확인
+          var label="";
+          for(var i=0;i<QC_COLS.length;i++){ if(QC_COLS[i].key===k){ label=QC_COLS[i].label; break; } }
+          if(multiSn){
+            // S/N별 판정: 이 항목이 미완료인 S/N만 모음
+            var badSns=snTails.filter(function(t){ return !doneBySn[t][k]; });
+            if(badSns.length){ missing.push(label); missingDetail.push({ label:label, sns:badSns }); }
+          } else {
+            if(!doneAll[k]){ missing.push(label); missingDetail.push({ label:label, sns:snTails }); }
+          }
+        });
+        cb({ missing:missing, missingDetail:missingDetail, sn:sn });
       };
       var ce=__gateQcCache[draw];
       if(ce && (Date.now()-ce.t)<180000){ judge(ce.data); return; }   // 3분 캐시
@@ -16248,19 +16280,28 @@ function insNcHistoryPopup_(draw, sn){
   var __k=d+"|"+sn;
   var now=Date.now(); if(__insNcLast.draw===__k && (now-__insNcLast.t)<1500) return; __insNcLast={draw:__k,t:now};
   var hits=insNcHistoryFor_(d);
-   if(insType==="shipping"){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[]); }); return; }
-  if((insType==="measureS"||insType==="measureL") && sn){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[]); }, ["bolt","led"]); return; }
+   if(insType==="shipping"){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[], (g&&g.missingDetail)||[]); }); return; }
+  if((insType==="measureS"||insType==="measureL") && sn){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[], (g&&g.missingDetail)||[]); }, ["bolt","led"]); return; }
   if(!hits.length){ try{ insSetStatus("✔ "+d+" — 고객부적합 이력 없음"); }catch(e){} return; }
   insNcRenderPopup_(d, hits, []);
 }
-function insNcRenderPopup_(d, hits, missing){
-  hits=hits||[]; missing=missing||[];
+function insNcRenderPopup_(d, hits, missing, missingDetail){
+  hits=hits||[]; missing=missing||[]; missingDetail=missingDetail||[];
   if(!hits.length && !missing.length){ try{ insSetStatus("✔ "+d+" — 이력/미검사 없음"); }catch(e){} return; }
   var esc=(typeof insEsc==="function")?insEsc:function(x){return String(x==null?"":x);};
   var openCnt=hits.filter(function(r){ return !String(r.doneDate||"").trim(); }).length;
+  // 미검사 항목 표시 — S/N 상세가 있으면 "항목(미완료 S/N: ...)" 형태로
+  var missingHtml;
+  if(missingDetail.length){
+    missingHtml=missingDetail.map(function(m){
+      return esc(m.label)+(m.sns&&m.sns.length?(' <span style="color:#E02424;">(미완료 S/N: '+esc(m.sns.join(", "))+')</span>'):'');
+    }).join(" · ");
+  } else {
+    missingHtml=esc(missing.join(", "));
+  }
   var gateBanner = missing.length
     ? '<div style="padding:12px 16px;background:#FDECEC;border-bottom:2px solid #E02424;">'
-      + '<div style="font-size:15px;font-weight:800;color:#C0392B;">⛔ 출하 전 미검사: '+esc(missing.join(", "))+'</div>'
+      + '<div style="font-size:15px;font-weight:800;color:#C0392B;">⛔ 출하 전 미검사: '+missingHtml+'</div>'
       + '<div style="font-size:12px;color:#8A1F1F;margin-top:3px;">위 검사가 아직 완료되지 않았습니다(검사종합·오늘 검사일보 기준). 출하 전 확인하세요.</div></div>'
     : '';
   var ncSection='';
