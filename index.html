@@ -1910,6 +1910,7 @@
           <button onclick="renderInspList()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🔍 검색</button>
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;cursor:pointer;user-select:none;"><input type="checkbox" id="insplist-onlyLack" onchange="renderInspList()" style="width:16px;height:16px;cursor:pointer;"> 미완료품만</label>
           <button onclick="insplistStockUseOpen_()" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">📦 재고사용</button>
+          <button onclick="insplistStockUseCancel_()" style="background:#B0662A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;" title="재고사용된 항목을 다시 되돌립니다">↩ 재고사용 취소</button>
         </div>
         <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">ORDER NO.(예: 26-386)를 입력하면 세부(26-386-1, 2 …)가 펼쳐집니다 · 완료 = 재고 출고수량(관리번호 매칭) · 부족 = 수량 − 완료 · S/N은 재고관리에서 · 수량 0·PR&PO 미등록 건은 제외 · 비고는 인쇄 후 수기 체크용</div>
         <div id="insplist-wrap" style="overflow:auto;">
@@ -4193,7 +4194,7 @@ function insplistStockUseShare_(){
     // 전체 브로드캐스트 (부적합 알림 방식 재사용)
     try{
       if(typeof __clientId!=="undefined"){
-        var a={ proc:"재고사용", draw:"", qty:rows.length, types:"__STOCKUSE__", by:__clientId };
+        var a={ proc:"재고분출", draw:"", qty:rows.length, types:"__STOCKUSE__", by:__clientId, stockRows:rows };
         fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
           body:JSON.stringify({mode:"writeNcAlert", alerts:[a]})}).catch(function(){});
       }
@@ -4253,6 +4254,25 @@ function insplistLoadUsedNotes_(cb){
     .then(function(r){ return r.json(); })
     .then(function(j){ if(j&&j.success&&j.orders){ __inspUsedOrders={}; j.orders.forEach(function(o){ __inspUsedOrders[o]=true; }); } cb&&cb(); })
     .catch(function(){ cb&&cb(); });
+}
+
+// 재고사용 취소(복구): 체크한 항목 중 재고사용된 것만 서버에서 삭제
+function insplistStockUseCancel_(){
+  var checks=Array.prototype.slice.call(document.querySelectorAll(".insplist-chk:checked"));
+  if(!checks.length){ alert("취소할 항목을 먼저 체크하세요."); return; }
+  var orders=checks.map(function(c){ return c.getAttribute("data-order"); })
+                   .filter(function(o){ return __inspUsedOrders[o]===true; });   // 재고사용된 것만
+  if(!orders.length){ alert("체크한 항목 중 '재고사용' 상태인 것이 없습니다.\n(재고사용된 항목만 취소할 수 있습니다.)"); return; }
+  if(!confirm("다음 "+orders.length+"건의 재고사용을 취소(복구)할까요?\n\n"+orders.join(", ")+"\n\n※ 검사 후 출고로 처리하려면 취소하세요.")) return;
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
+  if(url){
+    fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({mode:"cancelStockUse", orders:orders})}).catch(function(){});
+  }
+  // 로컬 즉시 반영
+  orders.forEach(function(o){ delete __inspUsedOrders[o]; });
+  renderInspList();
+  alert("재고사용을 취소했습니다. ("+orders.length+"건)\n비고란이 원래대로 복구됩니다.");
 }
 
 function insplistPrint_(){
@@ -16929,8 +16949,54 @@ function ncAlertPoll(){
   }).catch(function(){});
 }
 
+function stockUseNotifShow_(a){
+  var rows=(a && a.stockRows)||[];
+  var when=a.ts?new Date(Number(a.ts)).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}):"";
+  var wrap=document.getElementById("ncalert-wrap");
+  if(!wrap){
+    wrap=document.createElement("div"); wrap.id="ncalert-wrap";
+    wrap.style.cssText="position:fixed;right:16px;top:16px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:380px;";
+    document.body.appendChild(wrap);
+  }
+  var card=document.createElement("div");
+  card.style.cssText="background:#fff;border:1px solid #A9D5B9;border-left:6px solid #1E7A46;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.18);padding:12px 14px;font-size:13px;color:#26324A;";
+  var listHtml=rows.slice(0,8).map(function(r){
+    return '<div style="padding:2px 0;border-bottom:1px dashed #E1E8F0;"><b>'+insEsc(r.orderNo)+'</b> · '+insEsc(r.name||"")+' · 수량 '+insEsc(String(r.qty||0))+(r.sn?(' · S/N '+insEsc(r.sn)):'')+'</div>';
+  }).join("");
+  if(rows.length>8) listHtml+='<div style="color:#5A6478;padding-top:3px;">… 외 '+(rows.length-8)+'건</div>';
+  card.innerHTML=
+     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
+    +  '<b style="color:#1E7A46;font-size:14px;">📦 재고분출</b>'
+    +  '<span style="color:#8A93A6;font-size:11px;">'+insEsc(when)+'</span>'
+    +'</div>'
+    +'<div style="line-height:1.6;max-height:220px;overflow:auto;">'+listHtml+'</div>'
+    +(a.by?('<div style="color:#5A6478;margin-top:4px;">등록자 : '+insEsc(a.by)+'</div>'):'')
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">'
+    +  '<button type="button" class="su-notif-excel" style="border:none;background:#1E7A46;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:700;">📥 엑셀 다운로드</button>'
+    +  '<button type="button" class="su-notif-close" style="border:none;background:#F0F4F8;color:#26324A;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;">닫기</button>'
+    +'</div>';
+  var kill=function(){ if(card.parentNode) card.parentNode.removeChild(card); };
+  card.querySelector(".su-notif-close").addEventListener("click", kill);
+  card.querySelector(".su-notif-excel").addEventListener("click", function(){
+    if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
+    var aoa=[["ORDER NO.","PROJECT NO.","품명","수량","S/N","위치"]];
+    rows.forEach(function(r){ aoa.push([r.orderNo, r.project||"", r.name, r.qty, r.sn, r.loc]); });
+    var ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"]=[{wch:12},{wch:16},{wch:24},{wch:6},{wch:24},{wch:8}];
+    var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "재고분출");
+    XLSX.writeFile(wb, "재고분출_"+new Date().toISOString().slice(0,10)+".xlsx");
+  });
+  wrap.appendChild(card);
+  try{ if(typeof scanBeep==="function") scanBeep(); }catch(e){}
+}
 function ncAlertShow(a){
   if(a && a.types==="__SAVE__"){ if(a.by && a.by===__clientId) return; saveNotifShow_(a); return; }
+  // 재고분출(재고사용) 전용 알림 — 초록색 카드 + 수신자 엑셀 다운로드
+  if(a && a.types==="__STOCKUSE__"){
+    if(a.by && a.by===__clientId) return;   // 등록자 본인은 알림 안 뜸(이미 팝업 봄)
+    stockUseNotifShow_(a);
+    return;
+  }
   var wrap=document.getElementById("ncalert-wrap");
   if(!wrap){
     wrap=document.createElement("div"); wrap.id="ncalert-wrap";
