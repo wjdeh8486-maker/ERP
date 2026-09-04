@@ -16135,11 +16135,20 @@ function insSnSet_(field){
   return set;
 }
 // 그 도번(+S/N)이 오늘 그 유형 검사일보에서 "완료"인가? targetTail 지정 시 그 S/N이 행에 포함돼야 완료
-function insGateDoneToday_(rows, draw, type, targetTail){
+function insGateDoneToday_(rows, draw, type, targetTail, needKey){
   var d=insNormDraw_(draw);
   for(var i=0;i<rows.length;i++){ var r=rows[i];
     if(insNormDraw_(r.draw)!==d) continue;
-    if(!(Number(r.goodCnt)>0)) continue;                       // 양품수 없음 → 미완료
+    // 양품수 확인: 측정실 대형은 치수(goodCnt)·기능(fnGood)이 분리됨 → 판정 항목에 맞는 필드 사용
+    var good;
+    if(type==="measureL" || type==="measureS"){
+      var isFunc = (needKey==="leak"||needKey==="flow"||needKey==="pressure"||needKey==="vacuum");
+      if(isFunc){ good = Number(r.fnGood!=null ? r.fnGood : r.goodCnt)||0; }   // 기능양품수(없으면 치수양품수)
+      else      { good = Number(r.goodCnt)||0; }                              // 치수양품수
+    } else {
+      good = Number(r.goodCnt)||0;
+    }
+    if(!(good>0)) continue;                                     // 양품수 없음 → 미완료
     var def=(typeof insRowDefect_==="function")?insRowDefect_(type,r):null; var bad=def?def.qty:0;
     if(bad>0 && !String(r.actDate||"").trim()) continue;       // 부적합 미조치 → 누락
     if(targetTail){ var set=insSnSet_(r.sn); if(!set[targetTail]) continue; }   // S/N 지정 시 그 S/N 포함해야
@@ -16222,11 +16231,14 @@ function insShipGate_(draw, sn, cb, reqKeys){
           });
         });
         // 오늘 검사일보 완료분도 S/N 반영
+        // 오늘 검사일보 완료분도 S/N 반영 (측정실은 항목별로 양품수 필드가 달라 key별 판정)
         var markDay=function(logRows, kind, keys){
-          snTails.forEach(function(t){
-            if(insGateDoneToday_(logRows, draw, kind, t)){ keys.forEach(function(k){ doneBySn[t][k]=true; }); }
+          keys.forEach(function(k){
+            snTails.forEach(function(t){
+              if(insGateDoneToday_(logRows, draw, kind, t, k)){ doneBySn[t][k]=true; }
+            });
+            if(insGateDoneToday_(logRows, draw, kind, targetTail, k)){ doneAll[k]=true; }
           });
-          if(insGateDoneToday_(logRows, draw, kind, targetTail)){ keys.forEach(function(k){ doneAll[k]=true; }); }
         };
         markDay(logs.incoming, "incoming", ["exterior","bolt"]);
         markDay(logs.measureS, "measureS", ["dimension","leak","flow","pressure","vacuum"]);
