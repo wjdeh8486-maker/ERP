@@ -1822,6 +1822,13 @@
       /* 검수LIST 반응형 (모바일/태블릿) + 헤더 고정 */
       #view-insplist #insplist-table thead th{ position:sticky; top:0; z-index:10; background:#1F2A44; color:#fff; font-weight:700; }
       #view-insplist #insplist-wrap{ -webkit-overflow-scrolling:touch; overflow-x:auto; }
+      /* 부적합·재고분출 알림 카드: 모바일/태블릿에서 화면 폭 넘지 않게 */
+      @media (max-width:600px){
+        #ncalert-wrap{ left:8px !important; right:8px !important; max-width:none !important; }
+        #ncalert-wrap > div{ min-width:0 !important; max-width:none !important; width:100% !important; box-sizing:border-box; font-size:16px !important; padding:14px 16px !important; }
+        #ncalert-wrap > div b{ font-size:18px !important; }
+        #ncalert-wrap > div div[style*="font-size:18px"], #ncalert-wrap > div div[style*="font-size:20px"]{ font-size:16px !important; }
+      }
       @media (max-width:860px){
         #view-insplist #insplist-table{ font-size:10.5px; min-width:820px; }   /* 10컬럼 전부 · 가로 스크롤 */
         #view-insplist #insplist-table th, #view-insplist #insplist-table td{ padding:5px 4px !important; }
@@ -4039,16 +4046,22 @@ function insplistBuildRows_(q, shipRows){
   
   // 검색어 처리: 쉼표로 여러 개 가능 (예: 26-386,26-124 또는 JB0130311,JB0130312)
   var queries=q.indexOf(',')>=0 ? q.split(',').map(function(x){return x.trim();}).filter(Boolean) : [q];
-  
+
   // 검색: 각 query가 ORDER NO. 또는 PROJECT NO.와 매칭되면 포함 (OR)
+  // ※ PROJECT NO. 부분검색은 3자 이상일 때만 — "2" 같은 1~2자로 수천 행이 걸려 멈추는 것 방지
   var matched=md.filter(function(r){
     var o=String(r.orderNo||"").trim();
     var pj=String(r.vendor||"").trim();
-    // queries 중 하나라도 매칭되면 include
     return queries.some(function(sq){
-      return (o===sq || o.indexOf(sq+"-")===0 || (pj && pj.toUpperCase().indexOf(sq.toUpperCase())>=0));
+      if(o===sq || o.indexOf(sq+"-")===0) return true;                 // ORDER NO. 정확/접두 매칭
+      if(sq.length>=3 && pj && pj.toUpperCase().indexOf(sq.toUpperCase())>=0) return true;  // PROJECT는 3자↑만
+      return false;
     }) && (Number(r.qty)||0)>0;
   });
+  // 결과 과다 시 안전장치: 200건 초과면 잘라냄(재고 계산 폭주 방지)
+  var __tooMany=false;
+  if(matched.length>200){ matched=matched.slice(0,200); __tooMany=true; }
+  if(typeof window!=="undefined") window.__insplistTooMany=__tooMany;
   // 출하검사 검사수를 순차 배분(앞 ORDER부터 수량만큼) — 전체 MAIN 수량 기준
   var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
   var shipAlloc=insplistShipAlloc_(shipRows, function(o){ return qtyMap[o]||0; });
@@ -4094,7 +4107,9 @@ function renderInspList(){
   var paint=function(shipRows){
     var rows=insplistBuildRows_(q, shipRows);
     if(!rows.length){ body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#8A93A6;padding:18px;">"'+qcEsc(q)+'" 에 해당하는 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
-    body.innerHTML=rows.map(function(r){
+    var tooMany=(typeof window!=="undefined" && window.__insplistTooMany);
+    var notice = tooMany ? '<tr><td colspan="11" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">⚠ 검색 결과가 너무 많아 앞 200건만 표시합니다. ORDER NO.를 더 구체적으로 입력하세요 (예: 26-386)</td></tr>' : '';
+    body.innerHTML=notice+rows.map(function(r){
       var lc=r.lack>0?"#C0392B":"#1E7A46";
       var noteHtml="";
       if(r.note==="재고사용"){ noteHtml='<span style="color:#5A3E7A;font-weight:700;">재고사용</span>'; }
@@ -4306,6 +4321,42 @@ function insplistPrint_(){
     +'</body></html>');
   win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
 }
+// 엑셀 인쇄물 디자인 헬퍼: 네이비 헤더·흰글씨·테두리·얼룩무늬·부족 빨강
+function insplistStyleSheet_(ws, aoa, dataRows, lackCol){
+  if(!ws["!ref"]) return;
+  var range=XLSX.utils.decode_range(ws["!ref"]);
+  var thin={ style:"thin", color:{ rgb:"33415C" } };
+  for(var R=range.s.r; R<=range.e.r; R++){
+    for(var C=range.s.c; C<=range.e.c; C++){
+      var addr=XLSX.utils.encode_cell({r:R,c:C}); var cell=ws[addr];
+      if(!cell){ cell={t:"s", v:""}; ws[addr]=cell; }
+      if(R===0){
+        cell.s={ font:{ name:"맑은 고딕", sz:10, bold:true, color:{ rgb:"FFFFFF" } },
+          fill:{ patternType:"solid", fgColor:{ rgb:"1F2A44" } },
+          alignment:{ horizontal:"center", vertical:"center", wrapText:true },
+          border:{ top:thin, bottom:thin, left:thin, right:thin } };
+      } else {
+        var even=(R%2===0);
+        var col={ rgb:"1A1E27" };
+        // 부족 컬럼: 값>0 빨강, 0 초록
+        if(typeof lackCol==="number" && C===lackCol){
+          var v=Number(cell.v)||0; col={ rgb: v>0 ? "C0392B" : "1E7A46" };
+          cell.s={ font:{ name:"맑은 고딕", sz:10, bold:true, color:col },
+            fill:{ patternType:"solid", fgColor:{ rgb: even?"F4F7FB":"FFFFFF" } },
+            alignment:{ horizontal:"center", vertical:"center" },
+            border:{ top:thin, bottom:thin, left:thin, right:thin } };
+        } else {
+          cell.s={ font:{ name:"맑은 고딕", sz:10, color:col },
+            fill:{ patternType:"solid", fgColor:{ rgb: even?"F4F7FB":"FFFFFF" } },
+            alignment:{ horizontal:(C===3?"left":"center"), vertical:"center" },
+            border:{ top:thin, bottom:thin, left:thin, right:thin } };
+        }
+      }
+    }
+  }
+  var rowsMeta=[]; for(var r2=range.s.r; r2<=range.e.r; r2++){ rowsMeta.push(r2===0?{hpt:24}:{hpt:18}); }
+  ws["!rows"]=rowsMeta;
+}
 function insplistExcel_(){
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
   if(!q){ alert("먼저 ORDER NO. 또는 PROJECT NO.를 검색하세요."); return; }
@@ -4320,6 +4371,7 @@ function insplistExcel_(){
   ws["!margins"]={left:0.3,right:0.3,top:0.4,bottom:0.4,header:0.2,footer:0.2};
   ws["!pageSetup"]={orientation:"portrait", fitToWidth:1, fitToHeight:0, scale:100};   // 세로 · 가로 1페이지 맞춤
   ws["!sheetPr"]={pageSetUpPr:{fitToPage:true}};
+  insplistStyleSheet_(ws, aoa, rows, 6);   // 인쇄물 디자인 (부족 컬럼 index=6)
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "검수LIST");
   XLSX.writeFile(wb, "검수LIST_"+q+(onlyLack?"_미완료":"")+"_"+new Date().toISOString().slice(0,10)+".xlsx");
@@ -17050,11 +17102,12 @@ function insplistStockUseExcelByOrders_(orders){
       var rows=all.filter(function(r){ return want[String(r.orderNo).trim()]; });
       if(!rows.length && all.length){ rows=all.slice(-Math.max(1,(orders||[]).length)); }   // 매칭 실패 시 최근분
       if(!rows.length){ alert("재고분출 내역을 찾지 못했습니다.\n(서버 저장이 아직 반영되지 않았을 수 있습니다)"); return; }
-      // 검수LIST 엑셀과 동일한 컬럼 구성
-      var aoa=[["ORDER NO.","PROJECT NO.","품명","수량","S/N","위치","등록자","일시"]];
-      rows.forEach(function(r){ aoa.push([ r.orderNo||"", r.project||"", r.name||"", Number(r.qty||0), r.sn||"", r.loc||"", r.by||"", r.at||"" ]); });
+      // 검수LIST 엑셀과 동일한 컬럼 구성 (등록자·일시 제외)
+      var aoa=[["ORDER NO.","PROJECT NO.","품명","수량","S/N","위치"]];
+      rows.forEach(function(r){ aoa.push([ r.orderNo||"", r.project||"", r.name||"", Number(r.qty||0), r.sn||"", r.loc||"" ]); });
       var ws=XLSX.utils.aoa_to_sheet(aoa);
-      ws["!cols"]=[{wch:12},{wch:16},{wch:26},{wch:6},{wch:24},{wch:8},{wch:12},{wch:18}];
+      ws["!cols"]=[{wch:12},{wch:16},{wch:26},{wch:6},{wch:24},{wch:8}];
+      insplistStyleSheet_(ws, aoa, rows, -1);   // 인쇄물 디자인 (부족 컬럼 없음)
       var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "재고분출");
       XLSX.writeFile(wb, "재고분출_"+new Date().toISOString().slice(0,10)+".xlsx");
     })
@@ -17076,20 +17129,20 @@ function ncAlertShow(a){
   }
   var when=a.ts?new Date(Number(a.ts)).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}):"";
   var card=document.createElement("div");
-  card.style.cssText="background:#fff;border:1px solid #E4B4B4;border-left:6px solid #C0392B;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.18);padding:12px 14px;font-size:13px;color:#26324A;";
+  card.style.cssText="background:#fff;border:2px solid #E4B4B4;border-left:9px solid #C0392B;border-radius:14px;box-shadow:0 10px 36px rgba(0,0,0,0.22);padding:18px 21px;font-size:19px;color:#26324A;min-width:420px;max-width:540px;";
   card.innerHTML=
-     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
-    +  '<b style="color:#C0392B;font-size:14px;">\uD83D\uDD14 부적합 발생</b>'
-    +  '<span style="color:#8A93A6;font-size:11px;">'+insEsc(when)+'</span>'
+     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;">'
+    +  '<b style="color:#C0392B;font-size:21px;">\uD83D\uDD14 부적합 발생</b>'
+    +  '<span style="color:#8A93A6;font-size:16px;">'+insEsc(when)+'</span>'
     +'</div>'
-    +'<div style="line-height:1.7;">'
+    +'<div style="line-height:1.8;font-size:18px;">'
     +  '<div><b>공정</b> : '+insEsc(a.proc||"-")+'</div>'
     +  '<div><b>도번</b> : <a href="#" class="ncalert-dwg" style="color:#1a4fbd;text-decoration:underline;font-weight:700;cursor:pointer;" title="도면 PDF 열기">'+insEsc(a.draw||"-")+'</a></div>'
     +  '<div><b>부적합 수량</b> : <b style="color:#C0392B;">'+insEsc(String(a.qty||0))+'</b></div>'
     +  '<div><b>유형</b> : '+insEsc(a.types||"-")+'</div>'
     +  (a.by?('<div style="color:#5A6478;">검사자 : '+insEsc(a.by)+'</div>'):'')
     +'</div>'
-    +'<div style="text-align:right;margin-top:6px;"><button type="button" style="border:none;background:#F0F4F8;color:#26324A;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;">닫기</button></div>';
+    +'<div style="text-align:right;margin-top:10px;"><button type="button" style="border:none;background:#F0F4F8;color:#26324A;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:17px;">닫기</button></div>';
   var kill=function(){ if(card.parentNode) card.parentNode.removeChild(card); };
   card.querySelector("button").addEventListener("click", kill);
   var dl=card.querySelector(".ncalert-dwg");
