@@ -4335,23 +4335,38 @@ function shipJudgeGateBySn_(draw, cb){
     var needKeys=(typeof QC_COLS!=="undefined"?QC_COLS:[]).map(function(c){return c.key;})
       .filter(function(k){ return !skip[k] && master[k]==="Y"; });
     if(!needKeys.length){ cb({fail:false, passCnt:9999, totalSn:0, missLabels:[]}); return; }
-    // ① 모든 S/N 수집 + 완료맵 (검사종합 list)
+
+    // 검사 완료 판정 헬퍼: 그 기록이 needKeys를 모두 받았는지
+    var recDone=function(rec){
+      for(var i=0;i<needKeys.length;i++){ if(rec[needKeys[i]]!=="O") return false; }
+      return true;
+    };
+
+    var passCnt=0, perKeyShort={}, snSeen={}, hasSn=false;
+    needKeys.forEach(function(k){ perKeyShort[k]=0; });
+
+    // ① S/N 있는 기록: S/N별로 합쳐서 판정
     var bySn={};
-    var ensure=function(sn){ if(!bySn[sn]) bySn[sn]={}; return bySn[sn]; };
     list.forEach(function(it){
       var tails=Object.keys(insSnSet_(it.sn));
-      tails.forEach(function(t){ ensure(t); });   // S/N 등록
-      QC_COLS.forEach(function(c){ if(it[c.key]==="O"){ tails.forEach(function(t){ bySn[t][c.key]=true; }); } });
+      if(tails.length){
+        hasSn=true;
+        tails.forEach(function(t){
+          if(!bySn[t]) bySn[t]={};
+          QC_COLS.forEach(function(c){ if(it[c.key]==="O") bySn[t][c.key]=true; });
+        });
+      }
     });
-    // ② 당일 검사일보(공유저장분) 반영 — 게이트와 동일
+    // 당일 검사일보 반영 (S/N 있는 것)
     if(logs){
       var markDay=function(rows, kind, keys){
         (rows||[]).forEach(function(r){
           if((typeof insNormDraw_==="function"?insNormDraw_(r.draw):String(r.draw||"").trim())!==d) return;
           var tails=Object.keys(insSnSet_(r.sn));
-          tails.forEach(function(t){ ensure(t); });   // 당일에만 있는 S/N도 등록
-          keys.forEach(function(k){
-            tails.forEach(function(t){ if(insGateDoneToday_([r], draw, kind, t, k)) bySn[t][k]=true; });
+          if(!tails.length) return;
+          hasSn=true;
+          tails.forEach(function(t){ if(!bySn[t]) bySn[t]={};
+            keys.forEach(function(k){ if(insGateDoneToday_([r], draw, kind, t, k)) bySn[t][k]=true; });
           });
         });
       };
@@ -4359,17 +4374,33 @@ function shipJudgeGateBySn_(draw, cb){
       markDay(logs.measureS, "measureS", ["dimension","leak","flow","pressure","vacuum"]);
       markDay(logs.measureL, "measureL", ["dimension","leak","flow","pressure","vacuum"]);
     }
-    // ③ 각 S/N이 필수검사(needKeys)를 모두 받았는지 → 완전검사 개수 + 부족 항목
-    var passCnt=0, perKeyShort={};
-    needKeys.forEach(function(k){ perKeyShort[k]=0; });
-    var snList=Object.keys(bySn);
-    snList.forEach(function(sn){
-      var ok=true;
-      needKeys.forEach(function(k){ if(!bySn[sn][k]){ ok=false; perKeyShort[k]++; } });
+    // S/N별 완전검사 개수
+    Object.keys(bySn).forEach(function(sn){
+      var ok=true; needKeys.forEach(function(k){ if(!bySn[sn][k]){ ok=false; perKeyShort[k]++; } });
       if(ok) passCnt++;
     });
-    var missLabels=needKeys.filter(function(k){ return perKeyShort[k]>0; }).map(shipJudgeKeyLabel_);
-    cb({ fail:false, passCnt:passCnt, totalSn:snList.length, missLabels:missLabels });
+
+    // ② S/N 없는 기록: 백엔드 judge='합격'이거나 needKeys 완료면 도번 단위 완료로 인정
+    //    (S/N 없는 제품은 개별 카운트 불가 → "검사 완료됨"으로 통과 처리)
+    var snlessDone=false, snlessShort={};
+    list.forEach(function(it){
+      var tails=Object.keys(insSnSet_(it.sn));
+      if(tails.length) return;   // S/N 있는 건 위에서 처리
+      if(it.judge==="합격" || recDone(it)){ snlessDone=true; }
+      else { needKeys.forEach(function(k){ if(it[k]!=="O") snlessShort[k]=true; }); }
+    });
+
+    // 최종 판정
+    var missLabels;
+    if(hasSn){
+      // S/N 관리 제품: 완전검사 S/N 개수로 판정
+      missLabels=needKeys.filter(function(k){ return perKeyShort[k]>0; }).map(shipJudgeKeyLabel_);
+      cb({ fail:false, mode:"sn", passCnt:passCnt, totalSn:Object.keys(bySn).length, missLabels:missLabels });
+    } else {
+      // S/N 없는 제품: 검사 완료 여부로 판정 (완료면 통과=수량만큼, 미완료면 0)
+      missLabels=Object.keys(snlessShort).map(shipJudgeKeyLabel_);
+      cb({ fail:false, mode:"nosn", snlessDone:snlessDone, passCnt:(snlessDone?9999:0), totalSn:0, missLabels:missLabels });
+    }
   };
   // 검사종합 캐시(3분) + 당일 검사일보
   var withLogs=function(data){
@@ -4429,14 +4460,18 @@ function renderShipJudge(){
         __shipJudgeRows[idx].gateFail=false;
         __shipJudgeRows[idx].judged=true;
         __shipJudgeRows[idx].passCnt=res.passCnt;
-        __shipJudgeRows[idx].totalSn=res.totalSn;
-        // 합격 판정 S/N이 납품수량보다 적으면 → 출하불가 (불합격 S/N의 누락검사 표시)
-        if(res.passCnt < row.qty){
-          var labels=(res.missLabels&&res.missLabels.length)?res.missLabels:[];
-          __shipJudgeRows[idx].missing = labels.length ? labels : ["합격 "+res.passCnt+"/"+row.qty];
-          __shipJudgeRows[idx].reasons.unshift("검사: 합격 "+res.passCnt+"/"+row.qty+"개"+(labels.length?(" · 누락 "+labels.join(", ")):""));
+        var labels=(res.missLabels&&res.missLabels.length)?res.missLabels:[];
+        if(res.mode==="nosn"){
+          // S/N 없는 제품: 검사 완료면 통과, 미완료면 누락 표시
+          if(res.snlessDone){ __shipJudgeRows[idx].missing=[]; }
+          else { __shipJudgeRows[idx].missing = labels.length?labels:["미검사"];
+                 __shipJudgeRows[idx].reasons.unshift("검사누락(S/N무): "+(labels.length?labels.join(", "):"미검사")); }
         } else {
-          __shipJudgeRows[idx].missing=[];
+          // S/N 관리 제품: 완전검사 S/N 개수 ≥ 납품수량
+          if(res.passCnt < row.qty){
+            __shipJudgeRows[idx].missing = labels.length?labels:["합격 "+res.passCnt+"/"+row.qty];
+            __shipJudgeRows[idx].reasons.unshift("검사: 합격 "+res.passCnt+"/"+row.qty+"개"+(labels.length?(" · 누락 "+labels.join(", ")):""));
+          } else { __shipJudgeRows[idx].missing=[]; }
         }
       }
       paintShipJudge_((document.getElementById("shipjudge-onlyNg")||{}).checked);
