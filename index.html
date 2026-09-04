@@ -1909,23 +1909,26 @@
           <input id="insplist-search" type="text" placeholder="ORDER NO. 또는 PROJECT NO. (예: 26-386 / JB0130311 / 26-386,26-124)" onkeydown="if(event.key==='Enter')renderInspList()" style="flex:1;min-width:180px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
           <button onclick="renderInspList()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🔍 검색</button>
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;cursor:pointer;user-select:none;"><input type="checkbox" id="insplist-onlyLack" onchange="renderInspList()" style="width:16px;height:16px;cursor:pointer;"> 미완료품만</label>
+          <button onclick="insplistStockUseOpen_()" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">📦 재고사용</button>
         </div>
         <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">ORDER NO.(예: 26-386)를 입력하면 세부(26-386-1, 2 …)가 펼쳐집니다 · 완료 = 재고 출고수량(관리번호 매칭) · 부족 = 수량 − 완료 · S/N은 재고관리에서 · 수량 0·PR&PO 미등록 건은 제외 · 비고는 인쇄 후 수기 체크용</div>
         <div id="insplist-wrap" style="overflow:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:12px;" id="insplist-table">
             <colgroup>
+              <col style="width:4%">
               <col style="width:9%">
-              <col style="width:13%">
-              <col style="width:11%">
-              <col style="width:25%">
-              <col style="width:4%">
-              <col style="width:4%">
-              <col style="width:4%">
-              <col style="width:15%">
+              <col style="width:12%">
               <col style="width:10%">
-              <col style="width:5%">
+              <col style="width:23%">
+              <col style="width:4%">
+              <col style="width:4%">
+              <col style="width:4%">
+              <col style="width:14%">
+              <col style="width:9%">
+              <col style="width:7%">
             </colgroup>
             <thead><tr>
+              <th style="padding:8px;border:1px solid #E1E8F0;"><input type="checkbox" id="insplist-checkAll" title="전체 선택" style="width:15px;height:15px;cursor:pointer;"></th>
               <th style="padding:8px;border:1px solid #E1E8F0;">ORDER NO.</th>
               <th style="padding:8px;border:1px solid #E1E8F0;">PROJECT NO.</th>
               <th style="padding:8px;border:1px solid #E1E8F0;">기존도번</th>
@@ -1939,6 +1942,30 @@
             </tr></thead>
             <tbody id="insplist-body"></tbody>
           </table>
+        </div>
+      </div>
+      <!-- 재고사용 입력 팝업 -->
+      <div id="insplist-suModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);align-items:center;justify-content:center;z-index:99998;">
+        <div style="background:#fff;border-radius:14px;max-width:760px;width:92%;max-height:82vh;overflow:auto;padding:22px;box-shadow:0 12px 40px rgba(0,0,0,.3);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <h3 style="margin:0;color:#5A3E7A;">📦 재고사용 — S/N 입력</h3>
+            <button onclick="insplistStockUseClose_()" style="background:#E2E8F0;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700;">✕ 취소</button>
+          </div>
+          <div style="color:#5A6B82;font-size:13px;margin-bottom:10px;">각 항목의 S/N을 직접 입력하세요. (쉼표로 여러 개) · 재고에 없는 S/N은 공유 시 오기입 알림이 뜹니다.</div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr>
+              <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">ORDER NO.</th>
+              <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">품명</th>
+              <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">수량</th>
+              <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">위치</th>
+              <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">S/N (직접 입력)</th>
+            </tr></thead>
+            <tbody id="insplist-suBody"></tbody>
+          </table>
+          <div style="text-align:right;margin-top:16px;">
+            <button onclick="insplistStockUseClose_()" style="background:#E2E8F0;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;margin-right:8px;">취소</button>
+            <button onclick="insplistStockUseShare_()" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-weight:700;cursor:pointer;">☁ 공유</button>
+          </div>
         </div>
       </div>
     </div>
@@ -3973,6 +4000,36 @@ function insplistShipAlloc_(shipRows, qtyOf){     // 출하검사 검사수를 �
   });
   return alloc;
 }
+// ===== 검수LIST 재고사용 헬퍼 =====
+var __inspUsedOrders = {};   // 서버에서 로드한 재고사용된 ORDER NO. 집합 (비고 "재고사용" 표시용)
+
+function insplistStockQty_(partNo){        // 품번 보유재고 (입고−출고 합산)
+  var p=String(partNo||"").trim(); if(!p) return 0;
+  if(typeof invStockMap!=="undefined" && invStockMap && (p in invStockMap)) return Number(invStockMap[p])||0;
+  var n=0, iv=(typeof invData!=="undefined"&&invData)?invData:[];
+  iv.forEach(function(r){ if(String(r.partNo||"").trim()===p) n+=(Number(r.inQty)||0)-(Number(r.outQty)||0); });
+  return n;
+}
+function insplistLastLoc_(partNo){         // 마지막 등록된 재고 위치 (invData 뒤에서부터 첫 위치)
+  var p=String(partNo||"").trim(); if(!p) return "";
+  var iv=(typeof invData!=="undefined"&&invData)?invData:[];
+  for(var i=iv.length-1;i>=0;i--){
+    if(String(iv[i].partNo||"").trim()===p){
+      var loc=(typeof invExtractLoc_==="function")?invExtractLoc_(iv[i].note):"";
+      if(loc) return loc;
+    }
+  }
+  return "";
+}
+function insplistSnExists_(partNo, sn){    // 입력한 S/N이 그 품번 재고에 존재하는지
+  var p=String(partNo||"").trim(), s=String(sn||"").trim(); if(!p||!s) return false;
+  var iv=(typeof invData!=="undefined"&&invData)?invData:[];
+  for(var i=0;i<iv.length;i++){
+    if(String(iv[i].partNo||"").trim()===p && String(iv[i].sn||"").trim()===s) return true;
+  }
+  return false;
+}
+
 function insplistBuildRows_(q, shipRows){
   q=String(q||"").trim(); if(!q) return [];
   var md=(typeof mainData!=="undefined"&&mainData)?mainData:[];
@@ -4011,8 +4068,15 @@ function insplistBuildRows_(q, shipRows){
     var shipDone=shipAlloc[orderNo]||0;
     var done=Math.min(qty, stockOut + shipDone);     // 완료는 수량이 상한(중복 방지)
     var lack=Math.max(0, qty-done);                  // 부족 = 수량 − 완료 (0 이상)
+    var partNo=String(m.partNo||"").trim();
+    var stockQty=insplistStockQty_(partNo);          // 보유재고
+    var lastLoc=insplistLastLoc_(partNo);            // 마지막 등록 위치
+    var used=(__inspUsedOrders && __inspUsedOrders[orderNo]===true);   // 재고사용 완료 여부
+    // 비고: ①재고사용됨 → "재고사용"  ②보유재고≥수량 → 마지막 위치  ③그 외 빈칸
+    var note = used ? "재고사용" : ((stockQty>=qty && qty>0) ? lastLoc : "");
     return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:sns.join(", "),
-             status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[String(m.partNo||"").trim()]||"") };
+             status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[partNo]||""),
+             partNo:partNo, stockQty:stockQty, lastLoc:lastLoc, used:used, note:note };
   }).filter(function(r){
     // "미완료품만" 체크 시 부족수량>0 인 것만
     var only=document.getElementById("insplist-onlyLack");
@@ -4021,15 +4085,21 @@ function insplistBuildRows_(q, shipRows){
 }
 function renderInspList(){
   var body=document.getElementById("insplist-body"); if(!body) return;
+  // 재고사용 목록 최초 1회 서버 로드 후 재렌더
+  if(!window.__inspUsedLoaded){ window.__inspUsedLoaded=true; insplistLoadUsedNotes_(function(){ renderInspList(); }); }
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
-  if(!q){ body.innerHTML='<tr><td colspan="10" style="text-align:center;color:#0B5CAB;padding:18px;font-weight:600;">위 검색창에 ORDER NO.(예: <b>26-386</b>)를 입력하면 세부 항목이 펼쳐집니다.</td></tr>'; return; }
+  if(!q){ body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#0B5CAB;padding:18px;font-weight:600;">위 검색창에 ORDER NO.(예: <b>26-386</b>)를 입력하면 세부 항목이 펼쳐집니다.</td></tr>'; return; }
   var td='padding:6px 6px;border:1px solid #E1E8F0;';  // 패딩 축소
   var paint=function(shipRows){
     var rows=insplistBuildRows_(q, shipRows);
-    if(!rows.length){ body.innerHTML='<tr><td colspan="10" style="text-align:center;color:#8A93A6;padding:18px;">"'+qcEsc(q)+'" 에 해당하는 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
+    if(!rows.length){ body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#8A93A6;padding:18px;">"'+qcEsc(q)+'" 에 해당하는 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
     body.innerHTML=rows.map(function(r){
       var lc=r.lack>0?"#C0392B":"#1E7A46";
+      var noteHtml="";
+      if(r.note==="재고사용"){ noteHtml='<span style="color:#5A3E7A;font-weight:700;">재고사용</span>'; }
+      else if(r.note){ noteHtml='<span style="color:#0B5CAB;font-weight:600;">📍'+qcEsc(r.note)+'</span>'; }
       return '<tr>'
+        +'<td style="'+td+'text-align:center;"><input type="checkbox" class="insplist-chk" data-order="'+qcEsc(r.orderNo)+'" data-part="'+qcEsc(r.partNo)+'" style="width:15px;height:15px;cursor:pointer;"></td>'
         +'<td style="'+td+'text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
         +'<td style="'+td+'text-align:center;">'+qcEsc(r.project)+'</td>'
         +'<td style="'+td+'text-align:center;">'+((typeof dwgLink==="function"&&r.oldDraw)?dwgLink(r.oldDraw):qcEsc(r.oldDraw))+'</td>'
@@ -4039,9 +4109,12 @@ function renderInspList(){
         +'<td style="'+td+'text-align:center;font-weight:800;color:'+lc+';">'+r.lack+'</td>'
         +'<td style="'+td+'font-size:11.5px;">'+qcEsc(r.sn)+'</td>'
         +'<td style="'+td+'text-align:center;font-size:12px;">'+qcEsc(r.due)+'</td>'
-        +'<td style="'+td+'"></td>'
+        +'<td style="'+td+'text-align:center;">'+noteHtml+'</td>'
         +'</tr>';
     }).join("");
+    // 전체선택 체크박스 초기화 + 개별 연동
+    var chkAll=document.getElementById("insplist-checkAll");
+    if(chkAll){ chkAll.checked=false; chkAll.onclick=function(){ document.querySelectorAll(".insplist-chk").forEach(function(c){ c.checked=chkAll.checked; }); }; }
   };
   // 화면 로드분으로 즉시 표시 → 서버 최신 출하검사 일보로 갱신
   var local=(typeof insState!=="undefined"&&insState.shipping&&Array.isArray(insState.shipping.rows))?insState.shipping.rows:[];
@@ -4056,6 +4129,132 @@ function renderInspList(){
   }
 }
 var __insplistShip=[];
+
+// ========== 검수LIST 재고사용 (팝업 → S/N 입력 → 공유 → 엑셀) ==========
+var __stockUseRows=[];   // 현재 팝업에 담긴 재고사용 대상
+
+function insplistStockUseOpen_(){
+  var checks=Array.prototype.slice.call(document.querySelectorAll(".insplist-chk:checked"));
+  if(!checks.length){ alert("재고사용할 항목을 먼저 체크하세요."); return; }
+  var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
+  var all=insplistBuildRows_(q, __insplistShip);
+  var byOrder={}; all.forEach(function(r){ byOrder[r.orderNo]=r; });
+  __stockUseRows=checks.map(function(c){
+    var o=c.getAttribute("data-order"); var r=byOrder[o]||{};
+    return { orderNo:o, project:r.project||"", name:r.name||"", qty:r.qty||0,
+             partNo:c.getAttribute("data-part")||r.partNo||"", loc:r.lastLoc||r.loc||"", sn:"" };
+  });
+  insplistStockUseRender_();
+  var modal=document.getElementById("insplist-suModal"); if(modal) modal.style.display="flex";
+}
+function insplistStockUseRender_(){
+  var box=document.getElementById("insplist-suBody"); if(!box) return;
+  box.innerHTML=__stockUseRows.map(function(r,i){
+    return '<tr>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;">'+qcEsc(r.name)+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;">'+r.qty+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;">'+qcEsc(r.loc)+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;"><input type="text" class="insplist-su-sn" data-idx="'+i+'" value="'+qcEsc(r.sn)+'" placeholder="S/N 입력 (쉼표로 여러 개)" style="width:100%;padding:5px;border:1px solid #D6DEE8;border-radius:6px;box-sizing:border-box;"></td>'
+      +'</tr>';
+  }).join("");
+}
+function insplistStockUseClose_(){ var m=document.getElementById("insplist-suModal"); if(m) m.style.display="none"; }
+
+// S/N 검증: 입력한 S/N이 그 품번 재고에 있는지. 없으면 오기입 목록 반환
+function insplistStockUseValidate_(){
+  var bad=[];
+  document.querySelectorAll(".insplist-su-sn").forEach(function(inp){
+    var idx=Number(inp.getAttribute("data-idx")); var r=__stockUseRows[idx]; if(!r) return;
+    r.sn=String(inp.value||"").trim();
+    if(!r.sn) return;
+    r.sn.split(/[,\/\s]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){
+      if(!insplistSnExists_(r.partNo, sn)) bad.push({orderNo:r.orderNo, sn:sn, partNo:r.partNo});
+    });
+  });
+  return bad;
+}
+
+// 공유: S/N 검증 → 서버 저장 + 전체 브로드캐스트 → 전체공유 팝업 → 비고 갱신
+function insplistStockUseShare_(){
+  var bad=insplistStockUseValidate_();
+  if(bad.length){
+    alert("⚠ 재고에 없는 S/N이 있습니다 (오기입 확인):\n\n"
+      + bad.map(function(b){ return "· "+b.orderNo+" → S/N "+b.sn+" (품번 "+b.partNo+")"; }).join("\n")
+      + "\n\n재고에 등록된 S/N만 입력하세요.");
+    return;
+  }
+  var rows=__stockUseRows.map(function(r){ return {orderNo:r.orderNo, project:r.project, name:r.name, qty:r.qty, sn:r.sn, loc:r.loc}; });
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
+  var by=(typeof __clientId!=="undefined")?__clientId:"";
+  if(url){
+    fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({mode:"writeStockUse", rows:rows, by:by})}).catch(function(){});
+    // 전체 브로드캐스트 (부적합 알림 방식 재사용)
+    try{
+      if(typeof __clientId!=="undefined"){
+        var a={ proc:"재고사용", draw:"", qty:rows.length, types:"__STOCKUSE__", by:__clientId };
+        fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
+          body:JSON.stringify({mode:"writeNcAlert", alerts:[a]})}).catch(function(){});
+      }
+    }catch(e){}
+  }
+  // 로컬 비고 즉시 반영 (서버 로드 전이라도)
+  rows.forEach(function(r){ __inspUsedOrders[r.orderNo]=true; });
+  insplistStockUseClose_();
+  insplistStockUseSharedPopup_(rows);       // 전체공유 팝업
+  renderInspList();                          // 비고란 "재고사용" 갱신
+}
+
+// 전체공유 팝업 (엑셀 다운로드 포함)
+function insplistStockUseSharedPopup_(rows){
+  var old=document.getElementById("insplist-sharedPop"); if(old) old.remove();
+  var pop=document.createElement("div"); pop.id="insplist-sharedPop";
+  pop.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:99999;";
+  var body=rows.map(function(r){
+    return '<tr><td style="padding:6px;border:1px solid #E1E8F0;text-align:center;">'+qcEsc(r.orderNo)+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;">'+qcEsc(r.name)+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;">'+r.qty+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;">'+qcEsc(r.sn)+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;">'+qcEsc(r.loc)+'</td></tr>';
+  }).join("");
+  pop.innerHTML='<div style="background:#fff;border-radius:14px;max-width:720px;width:92%;max-height:82vh;overflow:auto;padding:22px;box-shadow:0 12px 40px rgba(0,0,0,.3);">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
+    +'<h3 style="margin:0;color:#5A3E7A;">📦 재고사용 공유 완료 ('+rows.length+'건)</h3>'
+    +'<button onclick="document.getElementById(\'insplist-sharedPop\').remove()" style="background:#E2E8F0;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700;">✕ 닫기</button></div>'
+    +'<div style="color:#5A6B82;font-size:13px;margin-bottom:10px;">전체 사용자에게 공유되었습니다. 검수LIST 비고란이 "재고사용"으로 변경됩니다.</div>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:13px;">'
+    +'<thead><tr>'
+    +['ORDER NO.','품명','수량','S/N','위치'].map(function(h){return '<th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">'+h+'</th>';}).join("")
+    +'</tr></thead><tbody>'+body+'</tbody></table>'
+    +'<div style="text-align:right;margin-top:14px;">'
+    +'<button onclick="insplistStockUseExcel_()" style="background:#1E7A46;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button></div>'
+    +'</div>';
+  document.body.appendChild(pop);
+  window.__stockUseShared=rows;   // 엑셀에서 재사용
+}
+function insplistStockUseExcel_(){
+  var rows=window.__stockUseShared||[];
+  if(!rows.length){ alert("다운로드할 항목이 없습니다."); return; }
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
+  var aoa=[["ORDER NO.","PROJECT NO.","품명","수량","S/N","위치"]];
+  rows.forEach(function(r){ aoa.push([r.orderNo, r.project||"", r.name, r.qty, r.sn, r.loc]); });
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=[{wch:12},{wch:16},{wch:24},{wch:6},{wch:24},{wch:8}];
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "재고사용");
+  XLSX.writeFile(wb, "재고사용_"+new Date().toISOString().slice(0,10)+".xlsx");
+}
+
+// 서버에서 재고사용된 ORDER 목록 로드 (검수LIST 열 때 호출)
+function insplistLoadUsedNotes_(cb){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
+  if(!url){ cb&&cb(); return; }
+  fetch(url+(url.indexOf("?")>=0?"&":"?")+"mode=readInspNote")
+    .then(function(r){ return r.json(); })
+    .then(function(j){ if(j&&j.success&&j.orders){ __inspUsedOrders={}; j.orders.forEach(function(o){ __inspUsedOrders[o]=true; }); } cb&&cb(); })
+    .catch(function(){ cb&&cb(); });
+}
+
 function insplistPrint_(){
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
   if(!q){ alert("먼저 ORDER NO. 또는 PROJECT NO.를 검색하세요."); return; }
