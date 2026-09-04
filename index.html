@@ -979,7 +979,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.88</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.89</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -4355,12 +4355,19 @@ function renderShipJudge(){
   paintShipJudge_(onlyNg);
   // 누락검사 게이트 비동기 판정 (도번 단위)
   __shipJudgeRows.forEach(function(row, idx){
-    if(typeof insShipGate_!=="function"){ return; }
+    if(typeof insShipGate_!=="function"){ __shipJudgeRows[idx].gateFail=true; return; }
     insShipGate_(row.oldDraw, "", function(g){
-      var miss=(g&&g.missing)||[];
-      __shipJudgeRows[idx].missing=miss;
-      __shipJudgeRows[idx].judged=true;
-      if(miss.length) __shipJudgeRows[idx].reasons.unshift("검사누락: "+miss.join(", "));
+      if(!g || g.noMaster || g.missing===undefined){
+        // 필수검사 정의를 못 받음 → 판정 불가(데이터 확인 필요). "없음"으로 오인 금지
+        __shipJudgeRows[idx].gateFail=true;
+        __shipJudgeRows[idx].judged=true;
+      } else {
+        var miss=g.missing||[];
+        __shipJudgeRows[idx].missing=miss;
+        __shipJudgeRows[idx].gateFail=false;
+        __shipJudgeRows[idx].judged=true;
+        if(miss.length) __shipJudgeRows[idx].reasons.unshift("검사누락: "+miss.join(", "));
+      }
       paintShipJudge_((document.getElementById("shipjudge-onlyNg")||{}).checked);
     });
   });
@@ -4368,18 +4375,25 @@ function renderShipJudge(){
 function paintShipJudge_(onlyNg){
   var body=document.getElementById("shipjudge-body"); if(!body) return;
   var td='padding:6px 6px;border:1px solid #E1E8F0;text-align:center;';
-  var okCnt=0, ngCnt=0;
+  var okCnt=0, ngCnt=0, chkCnt=0;
   var shown=__shipJudgeRows.filter(function(r){
     var ng=(r.lack>0 || r.ncOpen>0 || r.missing.length>0);
-    if(ng) ngCnt++; else okCnt++;
+    var pending=(r.gateFail || !r.judged);   // 누락검사 판정 불가/미완료
+    if(ng) ngCnt++; else if(pending) chkCnt++; else okCnt++;
     return onlyNg ? ng : true;
   });
   body.innerHTML=shown.map(function(r){
     var ng=(r.lack>0 || r.ncOpen>0 || r.missing.length>0);
-    var verdict = ng
-      ? '<span style="display:inline-block;background:#FDECEC;color:#C0392B;font-weight:800;padding:3px 10px;border-radius:12px;">✗ 출하불가</span>'
-      : '<span style="display:inline-block;background:#E8F5EC;color:#1E7A46;font-weight:800;padding:3px 10px;border-radius:12px;">✓ 출하가능</span>';
-    var missTxt = r.missing.length ? '<span style="color:#C0392B;font-weight:700;">'+qcEsc(r.missing.join(", "))+'</span>' : (r.judged?'<span style="color:#1E7A46;">없음</span>':'<span style="color:#8A93A6;">확인중…</span>');
+    var pending=(r.gateFail || !r.judged);
+    var verdict;
+    if(ng){ verdict='<span style="display:inline-block;background:#FDECEC;color:#C0392B;font-weight:800;padding:3px 10px;border-radius:12px;">✗ 출하불가</span>'; }
+    else if(pending){ verdict='<span style="display:inline-block;background:#FFF6E5;color:#B0662A;font-weight:800;padding:3px 10px;border-radius:12px;">⚠ 확인필요</span>'; }
+    else { verdict='<span style="display:inline-block;background:#E8F5EC;color:#1E7A46;font-weight:800;padding:3px 10px;border-radius:12px;">✓ 출하가능</span>'; }
+    var missTxt;
+    if(r.gateFail){ missTxt='<span style="color:#B0662A;font-weight:700;">확인필요</span>'; }
+    else if(r.missing.length){ missTxt='<span style="color:#C0392B;font-weight:700;">'+qcEsc(r.missing.join(", "))+'</span>'; }
+    else if(r.judged){ missTxt='<span style="color:#1E7A46;">없음</span>'; }
+    else { missTxt='<span style="color:#8A93A6;">확인중…</span>'; }
     var ncTxt = r.ncOpen>0 ? '<span style="color:#C0392B;font-weight:700;">'+r.ncOpen+'건 미조치</span>' : (r.ncTotal>0?'<span style="color:#B0662A;">'+r.ncTotal+'건(조치완료)</span>':'<span style="color:#1E7A46;">없음</span>');
     var lackTxt = r.lack>0 ? '<span style="color:#C0392B;font-weight:800;">'+r.lack+'</span>' : '<span style="color:#1E7A46;">0</span>';
     return '<tr>'
@@ -4398,6 +4412,7 @@ function paintShipJudge_(onlyNg){
   if(sum) sum.innerHTML='<div style="display:flex;gap:10px;flex-wrap:wrap;">'
     +'<span style="background:#E8F5EC;color:#1E7A46;font-weight:800;padding:6px 14px;border-radius:8px;">✓ 출하가능 '+okCnt+'건</span>'
     +'<span style="background:#FDECEC;color:#C0392B;font-weight:800;padding:6px 14px;border-radius:8px;">✗ 출하불가 '+ngCnt+'건</span>'
+    +(chkCnt>0?'<span style="background:#FFF6E5;color:#B0662A;font-weight:800;padding:6px 14px;border-radius:8px;">⚠ 확인필요 '+chkCnt+'건</span>':'')
     +'</div>';
 }
 function shipJudgeExcel_(){
@@ -9323,7 +9338,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.88;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.89;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -18592,6 +18607,6 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.88 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.89 🔔</div>
 </body>
 </html>
