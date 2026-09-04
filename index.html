@@ -17009,24 +17009,25 @@ function stockUseNotifShow_(a){
   var wrap=document.getElementById("ncalert-wrap");
   if(!wrap){
     wrap=document.createElement("div"); wrap.id="ncalert-wrap";
-    wrap.style.cssText="position:fixed;right:16px;top:16px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:360px;";
+    wrap.style.cssText="position:fixed;right:16px;top:16px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:580px;";
     document.body.appendChild(wrap);
   }
+  wrap.style.maxWidth="580px";   // 재고분출 큰 카드 수용 (이미 존재해도 넓힘)
   // ORDER 목록 요약 (앞 3개 + …)
   var head=orders.slice(0,3).join(", ")+(orders.length>3?(" 외 "+(orders.length-3)+"건"):"");
   var card=document.createElement("div");
-  card.style.cssText="background:#fff;border:1px solid #A9D5B9;border-left:6px solid #1E7A46;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.18);padding:12px 14px;font-size:13px;color:#26324A;";
+  card.style.cssText="background:#fff;border:2px solid #A9D5B9;border-left:10px solid #1E7A46;border-radius:16px;box-shadow:0 12px 44px rgba(0,0,0,0.24);padding:22px 26px;font-size:19px;color:#26324A;min-width:440px;max-width:560px;";
   card.innerHTML=
-     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
-    +  '<b style="color:#1E7A46;font-size:14px;">📦 재고분출 '+insEsc(String(a.qty||orders.length))+'건</b>'
-    +  '<span style="color:#8A93A6;font-size:11px;">'+insEsc(when)+'</span>'
+     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+    +  '<b style="color:#1E7A46;font-size:22px;">📦 재고분출 '+insEsc(String(a.qty||orders.length))+'건</b>'
+    +  '<span style="color:#8A93A6;font-size:15px;">'+insEsc(when)+'</span>'
     +'</div>'
-    +'<div style="line-height:1.6;margin-bottom:2px;"><b>'+insEsc(head||"-")+'</b></div>'
-    +'<div style="color:#5A6478;font-size:12px;">리스트 참조 · LIST는 엑셀 다운로드</div>'
-    +(a.by?('<div style="color:#5A6478;font-size:12px;margin-top:2px;">등록자 : '+insEsc(a.by)+'</div>'):'')
-    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">'
-    +  '<button type="button" class="su-notif-excel" style="border:none;background:#1E7A46;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:700;">📥 엑셀 다운로드</button>'
-    +  '<button type="button" class="su-notif-close" style="border:none;background:#F0F4F8;color:#26324A;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;">닫기</button>'
+    +'<div style="line-height:1.6;margin-bottom:6px;font-size:20px;"><b>'+insEsc(head||"-")+'</b></div>'
+    +'<div style="color:#5A6478;font-size:16px;">리스트 참조 · LIST는 엑셀 다운로드</div>'
+    +(a.by?('<div style="color:#5A6478;font-size:15px;margin-top:4px;">등록자 : '+insEsc(a.by)+'</div>'):'')
+    +'<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px;">'
+    +  '<button type="button" class="su-notif-excel" style="border:none;background:#1E7A46;color:#fff;border-radius:10px;padding:11px 22px;cursor:pointer;font-size:17px;font-weight:700;">📥 엑셀 다운로드</button>'
+    +  '<button type="button" class="su-notif-close" style="border:none;background:#F0F4F8;color:#26324A;border-radius:10px;padding:11px 22px;cursor:pointer;font-size:17px;">닫기</button>'
     +'</div>';
   var kill=function(){ if(card.parentNode) card.parentNode.removeChild(card); };
   card.querySelector(".su-notif-close").addEventListener("click", kill);
@@ -17036,22 +17037,24 @@ function stockUseNotifShow_(a){
   wrap.appendChild(card);
   try{ if(typeof scanBeep==="function") scanBeep(); }catch(e){}
 }
-// 수신자 엑셀: 서버 재고사용내역에서 해당 ORDER만 뽑아 다운로드
+// 수신자 엑셀: 서버 재고사용내역에서 해당 ORDER만 뽑아 다운로드 (검수LIST 엑셀과 동일 디자인)
 function insplistStockUseExcelByOrders_(orders){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
   if(!url){ alert("서버 연결이 없어 엑셀을 만들 수 없습니다."); return; }
-  var want={}; (orders||[]).forEach(function(o){ want[String(o)]=true; });
-  fetch(url+(url.indexOf("?")>=0?"&":"?")+"mode=readStockUse")
+  var want={}; (orders||[]).forEach(function(o){ want[String(o).trim()]=true; });
+  fetch(url+(url.indexOf("?")>=0?"&":"?")+"mode=readStockUse&_t="+Date.now(),{cache:"no-store"})
     .then(function(r){ return r.json(); })
     .then(function(j){
       var all=(j&&j.rows)||[];
-      var rows=all.filter(function(r){ return want[String(r.orderNo)]; });
-      if(!rows.length){ rows=all.slice(-orders.length); }   // 매칭 실패 시 최근 것
+      var rows=all.filter(function(r){ return want[String(r.orderNo).trim()]; });
+      if(!rows.length && all.length){ rows=all.slice(-Math.max(1,(orders||[]).length)); }   // 매칭 실패 시 최근분
+      if(!rows.length){ alert("재고분출 내역을 찾지 못했습니다.\n(서버 저장이 아직 반영되지 않았을 수 있습니다)"); return; }
+      // 검수LIST 엑셀과 동일한 컬럼 구성
       var aoa=[["ORDER NO.","PROJECT NO.","품명","수량","S/N","위치","등록자","일시"]];
-      rows.forEach(function(r){ aoa.push([r.orderNo, r.project||"", r.name, r.qty, r.sn, r.loc, r.by||"", r.at||""]); });
+      rows.forEach(function(r){ aoa.push([ r.orderNo||"", r.project||"", r.name||"", Number(r.qty||0), r.sn||"", r.loc||"", r.by||"", r.at||"" ]); });
       var ws=XLSX.utils.aoa_to_sheet(aoa);
-      ws["!cols"]=[{wch:12},{wch:16},{wch:24},{wch:6},{wch:24},{wch:8},{wch:10},{wch:18}];
+      ws["!cols"]=[{wch:12},{wch:16},{wch:26},{wch:6},{wch:24},{wch:8},{wch:12},{wch:18}];
       var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "재고분출");
       XLSX.writeFile(wb, "재고분출_"+new Date().toISOString().slice(0,10)+".xlsx");
     })
