@@ -4321,41 +4321,37 @@ function insplistToggleDrawSort_(){
   if(icon) icon.textContent = next==="draw-asc" ? "▲" : (next==="draw-desc" ? "▼" : "⇅");
   renderInspList();
 }
-function shipJudgeKeyLabel_(k){
-  if(typeof QC_COLS==="undefined") return k;
-  for(var i=0;i<QC_COLS.length;i++){ if(QC_COLS[i].key===k) return QC_COLS[i].label; }
-  return k;
-}
-// 도번의 검사 데이터를 받아 "필수검사 모두 통과한 S/N 개수"를 판정
-// cb({ fail, passCnt, needKeys, perKeyShort })  — 외관·포장은 출하검사 자체 항목이라 제외
+// 도번의 "검사종합(전일까지) + 당일 검사일보(공유저장분)"을 합쳐 S/N별 완전검사 개수 판정
+// 출하검사 게이트(insShipGate_)와 동일한 합산 방식 — 집계 지연 없이 최신 상태로 판정
 function shipJudgeGateBySn_(draw, cb){
   var url=(typeof insGateApiUrl_==="function")?insGateApiUrl_():"";
   if(!url){ cb({fail:true}); return; }
   var d=(typeof insNormDraw_==="function")?insNormDraw_(draw):String(draw||"").trim();
-  var skip={ exterior:true, packing:true };
+  var skip={ exterior:true, packing:true };   // 외관·포장은 출하검사 자체 항목 → 제외
   var finish=function(data, logs){
     if(!data || !data.success || !data.master){ cb({fail:true}); return; }
     var master=data.master, list=data.list||[];
     // 이 도번의 필수(Y) 검사 항목 (외관·포장 제외)
     var needKeys=(typeof QC_COLS!=="undefined"?QC_COLS:[]).map(function(c){return c.key;})
       .filter(function(k){ return !skip[k] && master[k]==="Y"; });
-    if(!needKeys.length){ cb({fail:false, passCnt:9999, needKeys:[], perKeyShort:{}}); return; }
-    // S/N별 검사 완료맵 구성 (검사종합 list + 오늘 검사일보)
-    var bySn={};   // sn → {key:true}
+    if(!needKeys.length){ cb({fail:false, passCnt:9999, totalSn:0, missLabels:[]}); return; }
+    // ① 모든 S/N 수집 + 완료맵 (검사종합 list)
+    var bySn={};
     var ensure=function(sn){ if(!bySn[sn]) bySn[sn]={}; return bySn[sn]; };
     list.forEach(function(it){
       var tails=Object.keys(insSnSet_(it.sn));
-      QC_COLS.forEach(function(c){ if(it[c.key]==="O"){ tails.forEach(function(t){ ensure(t)[c.key]=true; }); } });
+      tails.forEach(function(t){ ensure(t); });   // S/N 등록
+      QC_COLS.forEach(function(c){ if(it[c.key]==="O"){ tails.forEach(function(t){ bySn[t][c.key]=true; }); } });
     });
-    // 오늘 검사일보 반영 (측정실 항목별 양품수 필드 다름 → key별)
+    // ② 당일 검사일보(공유저장분) 반영 — 게이트와 동일
     if(logs){
       var markDay=function(rows, kind, keys){
         (rows||[]).forEach(function(r){
+          if((typeof insNormDraw_==="function"?insNormDraw_(r.draw):String(r.draw||"").trim())!==d) return;
           var tails=Object.keys(insSnSet_(r.sn));
+          tails.forEach(function(t){ ensure(t); });   // 당일에만 있는 S/N도 등록
           keys.forEach(function(k){
-            tails.forEach(function(t){
-              if(insGateDoneToday_([r], draw, kind, t, k)) ensure(t)[k]=true;
-            });
+            tails.forEach(function(t){ if(insGateDoneToday_([r], draw, kind, t, k)) bySn[t][k]=true; });
           });
         });
       };
@@ -4363,27 +4359,34 @@ function shipJudgeGateBySn_(draw, cb){
       markDay(logs.measureS, "measureS", ["dimension","leak","flow","pressure","vacuum"]);
       markDay(logs.measureL, "measureL", ["dimension","leak","flow","pressure","vacuum"]);
     }
-    // 각 S/N이 needKeys를 모두 통과했는지 → 완전검사 개수
+    // ③ 각 S/N이 필수검사(needKeys)를 모두 받았는지 → 완전검사 개수 + 부족 항목
     var passCnt=0, perKeyShort={};
     needKeys.forEach(function(k){ perKeyShort[k]=0; });
-    Object.keys(bySn).forEach(function(sn){
+    var snList=Object.keys(bySn);
+    snList.forEach(function(sn){
       var ok=true;
       needKeys.forEach(function(k){ if(!bySn[sn][k]){ ok=false; perKeyShort[k]++; } });
       if(ok) passCnt++;
     });
-    cb({ fail:false, passCnt:passCnt, needKeys:needKeys, perKeyShort:perKeyShort });
+    var missLabels=needKeys.filter(function(k){ return perKeyShort[k]>0; }).map(shipJudgeKeyLabel_);
+    cb({ fail:false, passCnt:passCnt, totalSn:snList.length, missLabels:missLabels });
   };
-  // 검사종합 캐시(3분) + 오늘 검사일보
-  var ce=__gateQcCache[d];
+  // 검사종합 캐시(3분) + 당일 검사일보
   var withLogs=function(data){
     if(typeof insGateLoadLogs_==="function"){ insGateLoadLogs_(function(logs){ finish(data, logs); }); }
     else finish(data, null);
   };
+  var ce=__gateQcCache[d];
   if(ce && (Date.now()-ce.t)<180000){ withLogs(ce.data); return; }
   fetch(url+"?mode=qcSearch&partNo="+encodeURIComponent(d)+"&sn=",{cache:"no-store"})
     .then(function(r){return r.json();})
     .then(function(data){ __gateQcCache[d]={t:Date.now(), data:data}; withLogs(data); })
     .catch(function(){ cb({fail:true}); });
+}
+function shipJudgeKeyLabel_(k){
+  if(typeof QC_COLS==="undefined") return k;
+  for(var i=0;i<QC_COLS.length;i++){ if(QC_COLS[i].key===k) return QC_COLS[i].label; }
+  return k;
 }
 // ===== 🚦 QMS 출하판정: 누락검사·부적합·부족을 종합 =====
 var __shipJudgeRows=[];
@@ -4421,18 +4424,17 @@ function renderShipJudge(){
   __shipJudgeRows.forEach(function(row, idx){
     var drawKey=(typeof insNormDraw_==="function")?insNormDraw_(row.oldDraw):String(row.oldDraw||"").trim();
     shipJudgeGateBySn_(row.oldDraw, function(res){
-      // res = { fail:bool, passCnt:숫자, needKeys:[...], perKeyShort:{key:부족수} }
       if(!res || res.fail){ __shipJudgeRows[idx].gateFail=true; __shipJudgeRows[idx].judged=true; }
       else {
         __shipJudgeRows[idx].gateFail=false;
         __shipJudgeRows[idx].judged=true;
         __shipJudgeRows[idx].passCnt=res.passCnt;
-        // 완전검사 통과 S/N이 납품수량보다 적으면 → 누락(부족한 검사 항목 표시)
+        __shipJudgeRows[idx].totalSn=res.totalSn;
+        // 합격 판정 S/N이 납품수량보다 적으면 → 출하불가 (불합격 S/N의 누락검사 표시)
         if(res.passCnt < row.qty){
-          var shortKeys=Object.keys(res.perKeyShort||{}).filter(function(k){ return res.perKeyShort[k]>0; })
-            .map(function(k){ return shipJudgeKeyLabel_(k); });
-          __shipJudgeRows[idx].missing = shortKeys.length ? shortKeys : ["검사수량 부족("+res.passCnt+"/"+row.qty+")"];
-          __shipJudgeRows[idx].reasons.unshift("검사누락: 완전검사 "+res.passCnt+"/"+row.qty+"개"+(shortKeys.length?(" ("+shortKeys.join(", ")+")"):""));
+          var labels=(res.missLabels&&res.missLabels.length)?res.missLabels:[];
+          __shipJudgeRows[idx].missing = labels.length ? labels : ["합격 "+res.passCnt+"/"+row.qty];
+          __shipJudgeRows[idx].reasons.unshift("검사: 합격 "+res.passCnt+"/"+row.qty+"개"+(labels.length?(" · 누락 "+labels.join(", ")):""));
         } else {
           __shipJudgeRows[idx].missing=[];
         }
