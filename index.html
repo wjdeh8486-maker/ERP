@@ -7527,7 +7527,9 @@ function qmsMorningAlerts_(){
     });
     if(__inspList.length){
       var __body=__inspList.map(function(t){ return "• "+t; }).join("\n");
-      items.push({ icon:"📢", title:"명일 검수품 중점 검사 진행해 주세요 ("+__inspList.length+"건)", body:__body, count:"명일검수", color:"#C0392B", view:"sched" });
+      // 첫 검수품에서 PROJECT NO.(예: JB0130311) 추출 → 검수LIST 검색어
+      var __firstProj=""; var __pm=String(__inspList[0]||"").match(/([A-Za-z]{1,4}\d[\w\-]*)/); if(__pm) __firstProj=__pm[1];
+      items.push({ icon:"📢", title:"명일 검수품 중점 검사 진행해 주세요 ("+__inspList.length+"건)", body:__body, count:"명일검수", color:"#C0392B", view:"insplist", searchInsp:__firstProj });
     }
   } }catch(e){}
   try{ var un=(typeof insUnresolvedList_==="function")?insUnresolvedList_(!!(typeof insUnresolvedSrc!=="undefined"&&insUnresolvedSrc)):[]; if(un&&un.length) items.push({icon:"⚠️",title:"미조치 부적합",count:un.length,color:"#C0392B",view:"insrep"}); }catch(e){}
@@ -7541,7 +7543,13 @@ function qmsMorningAlerts_(){
 }
 function qmsGoto_(it){
   try{
-    if(it.view){ var nv=document.querySelector('.nav-item[data-view="'+it.view+'"]'); if(nv) nv.click(); return; }
+    if(it.view==="insplist" && it.searchInsp){
+      // 명일 검수품 → 검수LIST 이동 + PROJECT NO. 검색
+      var nv=document.querySelector('.nav-item[data-view="insplist"]'); if(nv) nv.click();
+      setTimeout(function(){ var inp=document.getElementById("insplist-search"); if(inp){ inp.value=it.searchInsp; } if(typeof renderInspList==="function") renderInspList(); }, 200);
+      return;
+    }
+    if(it.view){ var nv2=document.querySelector('.nav-item[data-view="'+it.view+'"]'); if(nv2) nv2.click(); return; }
     if(it.qtab){ var q=document.querySelector('.nav-item[data-view="quality"]'); if(q) q.click(); setTimeout(function(){ var tb=document.querySelector('[data-qtab="'+it.qtab+'"]'); if(tb) tb.click(); },220); }
   }catch(e){}
 }
