@@ -1878,7 +1878,7 @@
         </span>
         <span style="display:inline-flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:#5A6478;font-weight:700;">🔎 도번</span>
-          <input type="text" id="insrep-drawSearch" placeholder="도번 검색(전체 날짜)" autocomplete="off" style="width:150px;padding:7px 9px;border:1px solid #0B5CAB;border-radius:7px;font-size:12px;">
+          <input type="text" id="insrep-drawSearch" placeholder="도번 검색 후 Enter" autocomplete="off" style="width:150px;padding:7px 9px;border:1px solid #0B5CAB;border-radius:7px;font-size:12px;">
           <button type="button" id="insrep-drawClear" title="검색 지우기" style="background:#EEF3FA;border:1px solid #C9D3E0;border-radius:7px;padding:6px 8px;cursor:pointer;font-size:12px;">✕</button>
         </span>
         <span class="ins-dd">
@@ -15180,7 +15180,12 @@ function insInit(){
   bind("insrep-printBtn","click",insPrintDay);
   bind("insrep-masterExBtn","click",function(){ insExportMaster(true); });
   var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; insShowAllRows=false; if(insDayFilter!=="all" && insType!=="processin" && insMetaByType[insType]){ insMetaByType[insType].date=insDayFilter; insSyncMetaInputs(); } insRender(); insSaveLocal(); });
-  var __ds=document.getElementById("insrep-drawSearch"); if(__ds) __ds.addEventListener("input",function(){ insDrawSearch=this.value; insRender(); });
+  var __ds=document.getElementById("insrep-drawSearch"); if(__ds){
+    // 글자마다 렌더하면 누적 데이터에서 버벅임 → 엔터 또는 포커스 아웃(blur) 시에만 검색
+    var __doSearch=function(){ if(insDrawSearch!==__ds.value){ insDrawSearch=__ds.value; insRender(); } };
+    __ds.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); __doSearch(); } });
+    __ds.addEventListener("change",__doSearch);   // 포커스 벗어날 때
+  }
   var __dc=document.getElementById("insrep-drawClear"); if(__dc) __dc.addEventListener("click",function(){ insDrawSearch=""; var e=document.getElementById("insrep-drawSearch"); if(e) e.value=""; insRender(); });
   bind("insrep-cloudSaveBtn","click",insCloudSave);
   bind("insrep-saveFolderBtn","click",insPickSaveFolder);
