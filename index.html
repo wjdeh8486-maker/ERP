@@ -16753,9 +16753,27 @@ function insShipGateDebounced_(draw, sn, cb, reqKeys){
   __gateDebT=setTimeout(function(){ if(__gateDebLast!==key) return; insShipGate_(draw, sn, cb, reqKeys); }, 600);
 }
   
+// ===== 도번별 TAP/PIN 마스터 안내 (도면 마스터가 준비되면 작동) =====
+// 도면 검출로 만들어진 마스터: window.__tapPinMaster = { "도번(정규화)": {tap:true, pin:true} }
+// 나중에 구글시트에서 로드해서 이 객체에 채우면 아래 안내가 자동 작동
+var __tapPinMaster = null;
+function tapPinLookup_(draw){
+  if(!__tapPinMaster) return null;
+  var key=(typeof insNormDraw_==="function")?insNormDraw_(draw):String(draw||"").trim().toUpperCase();
+  return __tapPinMaster[key] || null;
+}
+// 검사유형에 맞는 TAP/PIN 확인 안내 (수입검사=TAP, 출하검사=PIN)
+function tapPinNotice_(draw){
+  var info=tapPinLookup_(draw); if(!info) return;   // 마스터 없으면 조용히 넘어감
+  var msg="";
+  if(insType==="incoming" && info.tap){ msg="⚠ 이 도번은 [TAP]이 있습니다 — 공정검사(TAP) 확인하세요!"; }
+  else if(insType==="shipping" && info.pin){ msg="⚠ 이 도번은 [PIN 압입]이 있습니다 — PIN 압입 확인하세요!"; }
+  if(msg && typeof insSetStatus==="function"){ insSetStatus(msg, "#B02A2A"); }
+}
 function insNcHistoryPopup_(draw, sn){
   var d=String(draw||"").trim(); if(!d) return;
   sn=String(sn||"").trim();
+  try{ tapPinNotice_(d); }catch(e){}   // TAP/PIN 마스터 안내 (도면 마스터 준비되면 작동)
   // 출하검사 게이트: 서버조회는 S/N이 있을 때만(도번만 입력한 단계에선 생략) → 서버 호출 절반
   if(insType==="shipping" && !sn){
     var __hd=insNcHistoryFor_(d);
