@@ -7516,6 +7516,20 @@ function qmsMorningAlerts_(){
   var items=[];
   try{ if(typeof schedEvents!=="undefined" && Array.isArray(schedEvents)){ var __td=(typeof noticeToday_==="function")?noticeToday_():""; var __col={"검수":"#2563eb","연차":"#166534","반차":"#854d0e"}; var __ic={"검수":"🔍","연차":"🌴","반차":"🌗"};
     schedEvents.filter(function(e){ return String(e.date||"").slice(0,10)===__td; }).forEach(function(e){ var c=(typeof schedCatOf==="function")?schedCatOf(e.text):{key:"기타"}; if(c.key==="검수"||c.key==="연차"||c.key==="반차"){ items.push({icon:(__ic[c.key]||"📅"), title:String(e.text||"").slice(0,40), count:c.key, color:(__col[c.key]||"#334155"), view:"sched"}); } }); } }catch(e){}
+  // 명일 검수 예정 → 금일 중점 검사 안내 (여러 검수품을 카드 1개에 모음)
+  try{ if(typeof schedEvents!=="undefined" && Array.isArray(schedEvents)){
+    var __tm=new Date(); __tm.setDate(__tm.getDate()+1);
+    var __tmStr=__tm.getFullYear()+"-"+("0"+(__tm.getMonth()+1)).slice(-2)+"-"+("0"+__tm.getDate()).slice(-2);
+    var __inspList=[];
+    schedEvents.filter(function(e){ return String(e.date||"").slice(0,10)===__tmStr; }).forEach(function(e){
+      var c=(typeof schedCatOf==="function")?schedCatOf(e.text):{key:"기타"};
+      if(c.key==="검수"){ __inspList.push(String(e.text||"").replace(/검수/g,"").trim().slice(0,40)); }
+    });
+    if(__inspList.length){
+      var __body=__inspList.map(function(t){ return "• "+t; }).join("\n");
+      items.push({ icon:"📢", title:"명일 검수품 중점 검사 진행해 주세요 ("+__inspList.length+"건)", body:__body, count:"명일검수", color:"#C0392B", view:"sched" });
+    }
+  } }catch(e){}
   try{ var un=(typeof insUnresolvedList_==="function")?insUnresolvedList_(!!(typeof insUnresolvedSrc!=="undefined"&&insUnresolvedSrc)):[]; if(un&&un.length) items.push({icon:"⚠️",title:"미조치 부적합",count:un.length,color:"#C0392B",view:"insrep"}); }catch(e){}
   try{ if(typeof __chgData!=="undefined"&&Array.isArray(__chgData)){
     var op=__chgData.filter(function(c){return !(c.doneDate&&String(c.doneDate).trim());}); if(op.length) items.push({icon:"🔄",title:"미완료 변경점",count:op.length,color:"#B45309",qtab:"chg"});
@@ -7568,7 +7582,7 @@ function qmsRenderMorning_(force, key){
     var items=qmsMorningAlerts_();
     if(!items.length){ if(!force) return; items=[{icon:"✅",title:"오늘 특이사항 없습니다",count:"",color:"#1E7A46"}]; }
     if(!force){ try{ localStorage.setItem("qmsMorningShown2", key); }catch(_){} }   // 실제로 띄운 날만 기록
-    var cards=items.map(function(it,i){ return '<button class="qms-mit" data-i="'+i+'" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid #E1E8F0;border-left:4px solid '+it.color+';border-radius:10px;padding:12px 14px;margin:6px 0;cursor:pointer;"><span style="font-size:22px;">'+it.icon+'</span><span style="flex:1;font-weight:700;color:#1F2A44;font-size:14px;">'+it.title+'</span><span style="font-size:20px;font-weight:800;color:'+it.color+';">'+it.count+'</span><span style="color:#8A93A6;font-size:18px;">›</span></button>'; }).join("");
+    var cards=items.map(function(it,i){ return '<button class="qms-mit" data-i="'+i+'" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid #E1E8F0;border-left:4px solid '+it.color+';border-radius:10px;padding:12px 14px;margin:6px 0;cursor:pointer;"><span style="font-size:22px;">'+it.icon+'</span><span style="flex:1;font-weight:700;color:#1F2A44;font-size:14px;">'+it.title+(it.body?('<div style="font-weight:600;color:#5A6478;font-size:12.5px;margin-top:4px;white-space:pre-line;line-height:1.6;">'+it.body+'</div>'):'')+'</span><span style="font-size:20px;font-weight:800;color:'+it.color+';">'+it.count+'</span><span style="color:#8A93A6;font-size:18px;">›</span></button>'; }).join("");
     var ov=document.createElement("div"); ov.id="qms-morning-ov";
     ov.style.cssText="position:fixed;inset:0;z-index:99985;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:16px;";
     ov.innerHTML='<div style="background:#F7F9FC;width:100%;max-width:440px;max-height:88vh;overflow:auto;border-radius:16px;box-shadow:0 16px 50px rgba(0,0,0,0.35);">'
