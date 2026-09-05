@@ -3271,6 +3271,8 @@ document.querySelectorAll(".nav-item").forEach(item=>{
       if(!window.__insrepInited){ window.__insrepInited = true; insInit(); }
       insRender();
       setTimeout(function(){ var __si=document.getElementById("insrep-scanInput"); if(__si){ try{ __si.focus(); }catch(e){} } }, 150);
+      // 검사일보 열 때: 4개 유형(수입·출하·측정소형·측정대형) 서버 전체와 대조해 중복 점검 팝업
+      if(typeof insDupScanAll_==="function") insDupScanAll_();
     }
     if(target==="management"){
       // 도번 조회 메뉴: 마지막으로 보던 탭으로 복원
@@ -4348,7 +4350,7 @@ function shipJudgeGateBySn_(draw, cb){
     // ① S/N 있는 기록: S/N별로 합쳐서 판정
     var bySn={};
     list.forEach(function(it){
-      var tails=Object.keys(insSnSet_(it.sn));
+      var tails=insSnFull_(it.sn);
       if(tails.length){
         hasSn=true;
         tails.forEach(function(t){
@@ -4362,7 +4364,7 @@ function shipJudgeGateBySn_(draw, cb){
       var markDay=function(rows, kind, keys){
         (rows||[]).forEach(function(r){
           if((typeof insNormDraw_==="function"?insNormDraw_(r.draw):String(r.draw||"").trim())!==d) return;
-          var tails=Object.keys(insSnSet_(r.sn));
+          var tails=insSnFull_(r.sn);
           if(!tails.length) return;
           hasSn=true;
           tails.forEach(function(t){ if(!bySn[t]) bySn[t]={};
@@ -4384,7 +4386,7 @@ function shipJudgeGateBySn_(draw, cb){
     //    (S/N 없는 제품은 개별 카운트 불가 → "검사 완료됨"으로 통과 처리)
     var snlessDone=false, snlessShort={};
     list.forEach(function(it){
-      var tails=Object.keys(insSnSet_(it.sn));
+      var tails=insSnFull_(it.sn);
       if(tails.length) return;   // S/N 있는 건 위에서 처리
       if(it.judge==="합격" || recDone(it)){ snlessDone=true; }
       else { needKeys.forEach(function(k){ if(it[k]!=="O") snlessShort[k]=true; }); }
@@ -15198,7 +15200,7 @@ function insInit(){
   // 유형 소메뉴(드롭다운)
   var __ts=document.getElementById("insrep-typeSel");
   if(__ts) __ts.addEventListener("change",function(){ insType=this.value; insShowAllRows=false; insSyncMetaInputs(); insRender(); insSaveLocal(); });
-  var __ic=document.getElementById("insrep-content"); if(__ic) __ic.addEventListener("change",function(e){ var t=e.target; if(!t||!t.getAttribute) return; var key=t.getAttribute("data-key"); if(key!=="draw"&&key!=="sn") return; var ri=t.getAttribute("data-ri"); var dEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="draw"]'); var sEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="sn"]'); var dv=dEl?String(dEl.value||"").trim():""; var sv=sEl?String(sEl.value||"").trim():""; if(dv) insNcHistoryPopup_(dv, sv); });
+  var __ic=document.getElementById("insrep-content"); if(__ic) __ic.addEventListener("change",function(e){ var t=e.target; if(!t||!t.getAttribute) return; var key=t.getAttribute("data-key"); if(key!=="draw"&&key!=="sn") return; var ri=t.getAttribute("data-ri"); var dEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="draw"]'); var sEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="sn"]'); var dv=dEl?String(dEl.value||"").trim():""; var sv=sEl?String(sEl.value||"").trim():""; if(dv){ clearTimeout(window.__insHistTimer); window.__insHistTimer=setTimeout(function(){ insNcHistoryPopup_(dv, sv); }, 600); } });
   var __gc=document.getElementById("insrep-content"); if(__gc) __gc.addEventListener("keydown", insGridKeydown_);
   document.querySelectorAll("#topbar-insrep .ins-dd-btn").forEach(function(btn){ btn.addEventListener("click", function(e){ e.stopPropagation(); var id=btn.getAttribute("data-menu"); var menu=document.getElementById(id); var open=menu&&menu.classList.contains("open"); document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); if(menu&&!open) menu.classList.add("open"); }); });
   document.addEventListener("click", function(e){ if(e.target && e.target.closest && e.target.closest("#topbar-insrep .ins-dd")) return; document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); });
@@ -15221,6 +15223,18 @@ function insRender(){
   insUpdateDayFilter();
   if(insType==="processin"){ insRenderProcessIn(el); return; }
   var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
+  // ── 도번+S/N 중복 검출: 같은 도번+같은 S/N이 2건 이상이면 경고 (검사종합 이동 전 사전 차단) ──
+  // ── 도번+S/N 중복 검출 (측정실은 검사항목 겹칠 때만) ──
+  var __dupRows=(typeof insDupListInRows_==="function")?insDupListInRows_(rows, insType):[];
+  var __dupSnSet={}; __dupRows.forEach(function(d){ __dupSnSet[insNormDraw_(d.draw)+"|"+d.sn]=1; });
+  var __rowIsDup=function(r){
+    var dw=(typeof insNormDraw_==="function")?insNormDraw_(r.draw):String(r.draw||"").trim();
+    if(!dw) return false;
+    var sns=(typeof insSnFull_==="function")?insSnFull_(r.sn):[];
+    for(var i=0;i<sns.length;i++){ if(__dupSnSet[dw+"|"+sns[i]]) return true; }
+    return false;
+  };
+  var __dupKeys=__dupRows.map(function(d){ return insNormDraw_(d.draw)+"|"+d.sn; });
     // 2행 헤더
   var head1="", head2="";
   cfg.groups.forEach(function(g){
@@ -15304,13 +15318,15 @@ function insRender(){
       tds+='<td style="border:1px solid #E6EBF2;padding:2px 4px;min-width:'+(c.w*6)+'px;">'+cell+'</td>';
     });
     tds+='<td style="border:1px solid #E6EBF2;text-align:center;white-space:nowrap;"><button type="button" class="insrep-edit" data-ri="'+ri+'" style="border:none;background:transparent;color:#0B5CAB;cursor:pointer;font-size:14px;margin-right:2px;">✏️</button><button type="button" class="insrep-del" data-ri="'+ri+'" style="border:none;background:transparent;color:#C0392B;cursor:pointer;font-size:14px;">✕</button></td>';
-    body+='<tr>'+tds+'</tr>';
+    var __dup=__rowIsDup(row);
+    body+='<tr'+(__dup?' style="background:#FFEDED;" title="⚠ 같은 도번+S/N이 다른 행에도 있습니다 — 검사종합 이동 전 중복을 확인하세요"':'')+'>'+tds+'</tr>';
   });  
   if(!body){ body='<tr><td colspan="'+(leaves.length+1)+'" style="padding:20px;text-align:center;color:#8A93A6;">해당 날짜에 행이 없습니다.</td></tr>'; }
   el.innerHTML=
     '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px;">'
     + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">'+insEsc(cfg.title)+'</div>'
     + '<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">도번을 입력/스캔하면 자동으로 채워지고, 각 칸은 직접 수정할 수 있습니다. 체크박스는 엑셀에서 ■/□ 로 나옵니다.</div>'
+    + (__dupKeys.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#C0392B;font-weight:700;font-size:13px;">⚠ 중복 입력 '+__dupKeys.length+'건 — 같은 도번+S/N이 여러 행에 있습니다. 검사종합 이동 전 <b>붉은 행</b>을 확인해 중복을 제거하세요.<div style="font-weight:400;font-size:12px;color:#8A1F1F;margin-top:4px;">중복 S/N: '+__dupKeys.map(function(k){ return insEsc(k.split("|")[1]); }).slice(0,20).join(", ")+(__dupKeys.length>20?" …":"")+'</div></div>'):'')
     + (__capped
         ? '<div style="background:#EAF3FF;border:1px solid #BBD6F5;border-radius:9px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:#1F4E79;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'
           + '<span>⚡ 총 <b>'+__visIdx.length.toLocaleString()+'</b>행 중 <b>최근 '+INS_RENDER_CAP+'행</b>만 표시 중입니다 (빠른 편집용). 날짜별 보기·도번 검색으로 좁히면 원하는 행이 바로 나옵니다.</span>'
@@ -16464,6 +16480,27 @@ function insGateLoadLogs_(cb){
   }).catch(function(){ cb(INS_GATE_LOGS.rows); });
 }
 // S/N 정규화: "10768-084"/"084"/"84" → 꼬리번호 "84" (마지막 '-' 뒤 숫자, 앞0 제거)
+// 완전 S/N 분해: 접두어(로트) 이어받기 + 범위(~). 예: "26185-4,3,8/26251-2" → [26185-4,26185-3,26185-8,26251-2]
+// 26185-1과 26251-1을 구분하기 위해 접두어까지 보존 (insSnSet_은 꼬리번호만 봐서 로트 구분 못 함)
+function insSnFull_(field){
+  var out=[], f=String(field==null?"":field), prefix="";
+  f.split(/[,\/\n]+/).forEach(function(tok){
+    tok=tok.trim(); if(!tok) return;
+    tok=tok.replace(/\([^)]*\)/g,"").trim();     // (찍힘) 등 괄호 메모 제거
+    tok=tok.replace(/[>《].*$/,"").trim();        // ">포장실" 등 꼬리 제거
+    if(!tok) return;
+    var rng=tok.match(/^(?:(\w+)-)?(\d+)\s*~\s*(?:\w+-)?(\d+)$/);   // 범위 26185-1~5
+    if(rng){ var pf=rng[1]||prefix; var a=Number(rng[2]), b=Number(rng[3]); if(pf) prefix=pf;
+      if(isFinite(a)&&isFinite(b)&&b>=a&&(b-a)<10000){ for(var i=a;i<=b;i++) out.push(prefix+"-"+i); return; } }
+    var full=tok.match(/^(\w+)-(\d+)$/);         // 완전형 26185-4
+    if(full){ prefix=full[1]; out.push(full[1]+"-"+full[2]); return; }
+    var only=tok.match(/^(\d+)$/);               // 순번만 3 → 앞 로트 이어받기
+    if(only && prefix){ out.push(prefix+"-"+only[1]); return; }
+    out.push(tok);
+  });
+  var seen={}, res=[]; out.forEach(function(s){ if(!seen[s]){ seen[s]=1; res.push(s); } });
+  return res;
+}
 function insSnTail_(s){ s=String(s==null?"":s).trim(); if(!s) return ""; var p=s.split("-"); var last=p[p.length-1].replace(/[^\d]/g,""); if(last==="") return ""; var n=Number(last); return isFinite(n)?String(n):""; }
 // S/N 필드(콤마/슬래시/범위 ~) → 꼬리번호 집합. 예: "10768-083~086" → {83,84,85,86}
 function insSnSet_(field){
@@ -17545,6 +17582,47 @@ function insSaveToast_(msg){
     setTimeout(function(){ d.style.opacity="0"; d.style.top="64px"; setTimeout(function(){ try{ d.remove(); }catch(e){} }, 300); }, 2600);
   }catch(e){}
 }
+// 공유저장 시: 지금 입력분(localRows)의 도번+S/N이 이미 저장된 클라우드분(cloudRows)에 있는지 검사
+// 반환: [{draw, sn, oldDate}] — 과거에 이미 검사된 중복 S/N 목록
+function insCloudDupCheck_(localRows, cloudRows){
+  var isMeasure=(insType==="measureS"||insType==="measureL");
+  // ① 과거(클라우드) 인덱스: 도번|S/N → {date, items}. 지금 입력분과 같은 _id는 제외(자기 자신)
+  var localIds={}; (localRows||[]).forEach(function(r){ if(r&&r._id) localIds[r._id]=1; });
+  var past={};
+  (cloudRows||[]).forEach(function(r){
+    if(!r) return;
+    if(r._id && localIds[r._id]) return;
+    if(r._id && insDeletedIds[r._id]) return;
+    var dw=insNormDraw_(r.draw); if(!dw) return;
+    var items=isMeasure?insMeasureItems_(r):null;
+    var sns=(typeof insSnFull_==="function")?insSnFull_(r.sn):[];
+    sns.forEach(function(sn){ var k=dw+"|"+sn; if(!past[k]) past[k]=[]; past[k].push({ date:String(r.insDate||"").trim()||"기존", items:items }); });
+  });
+  // ② 지금 입력분이 과거와 (측정실이면 항목 겹침) 중복이면 경고
+  var out=[], seen={};
+  (localRows||[]).forEach(function(r){
+    if(!r) return;
+    var dw=insNormDraw_(r.draw); if(!dw) return;
+    var curDate=String(r.insDate||"").trim()||"(당일)";
+    var curItems=isMeasure?insMeasureItems_(r):null;
+    var sns=(typeof insSnFull_==="function")?insSnFull_(r.sn):[];
+    sns.forEach(function(sn){
+      var k=dw+"|"+sn; if(!past[k] || seen[k]) return;
+      if(isMeasure){
+        // 검사항목 겹치는 과거 기록이 있을 때만 중복
+        var overlapDate="", overlapItems=[];
+        past[k].forEach(function(p){
+          var common=(curItems||[]).filter(function(x){ return (p.items||[]).indexOf(x)>=0; });
+          if(common.length){ overlapDate=p.date; common.forEach(function(c){ if(overlapItems.indexOf(c)<0) overlapItems.push(c); }); }
+        });
+        if(overlapItems.length){ seen[k]=1; out.push({ draw:r.draw, sn:sn, oldDate:overlapDate, newDate:curDate, items:overlapItems }); }
+      } else {
+        seen[k]=1; out.push({ draw:r.draw, sn:sn, oldDate:past[k][0].date, newDate:curDate });
+      }
+    });
+  });
+  return out;
+}
 function insCloudSave(){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
   var t=insType, label=insTypeLabel(t);
@@ -17556,6 +17634,18 @@ function insCloudSave(){
   fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(t),{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return null;})
   .then(function(res){
     var cloudRows=[]; try{ if(res && res.json){ var o=JSON.parse(res.json); if(o && Array.isArray(o.rows)) cloudRows=o.rows; if(o && o.deleted && o.deleted.forEach) o.deleted.forEach(function(id){ if(!insDeletedIds[id]) insDeletedIds[id]=Date.now(); }); } }catch(e){}
+    // ── 과거 중복 검사: 지금 입력분(localRows)의 도번+S/N이 이미 저장된 클라우드분에 있으면 경고 ──
+    var __dupWarn=insCloudDupCheck_(localRows, cloudRows);
+    if(__dupWarn.length && !window.__insDupConfirmed){
+      insSetStatus("⚠ 중복 감지 — 확인 필요","#B02A2A");
+      var msg="⚠ 과거에 이미 검사된 S/N이 있습니다 (중복 가능):\n\n"
+        + __dupWarn.slice(0,15).map(function(d){ return "· "+d.draw+" / S/N "+d.sn+"  (입력일: "+d.oldDate+" / "+d.newDate+")"+(d.items&&d.items.length?("  [겹친검사: "+d.items.join(", ")+"]"):""); }).join("\n")
+        + (__dupWarn.length>15?("\n… 외 "+(__dupWarn.length-15)+"건"):"")
+        + "\n\n같은 S/N이 두 날짜에 검사되어 있습니다. 어느 쪽이 맞는지 확인해 과거 데이터를 수정하세요.\n\n[확인]=중복 무시하고 저장 · [취소]=저장 중단하고 수정";
+      if(!confirm(msg)){ insSetStatus("저장 취소됨 — 중복 S/N을 확인하세요","#B02A2A"); return; }
+      window.__insDupConfirmed=true;   // 이번 저장은 확인됨 (연속 저장 시 재확인 방지)
+      setTimeout(function(){ window.__insDupConfirmed=false; }, 3000);
+    }
     var localIds={}, localDates={};
     localRows.forEach(function(r){ if(r&&r._id) localIds[r._id]=1; localDates[String((r&&r.insDate)||"").trim()]=1; });
     var keep=cloudRows.filter(function(r){
@@ -17632,6 +17722,119 @@ function insCloudAutoLoad(){
     });
   });
 }
+// 행 목록에서 도번+S/N 중복 건수 세기 (불러오기 후 알림용)
+function insCountDupInRows_(rows){
+  return ((typeof insDupListInRows_==="function")?insDupListInRows_(rows, insType):[]).length;
+}
+// 검사일보 열 때: 4개 유형 서버 전체를 불러와 도번+S/N 중복을 유형별로 점검 → 고정 팝업(닫기 전까지 유지)
+function insDupScanAll_(){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return;
+  if(window.__insDupScanning) return; window.__insDupScanning=true;
+  var types=[["incoming","수입검사"],["shipping","출하검사"],["measureS","측정실(소형)"],["measureL","측정실(대형)"]];
+  var results=[], done=0;
+  types.forEach(function(ty){
+    var key=ty[0], label=ty[1];
+    fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(key)+"&_v="+Date.now(),{cache:"no-store"})
+      .then(function(r){return r.json();})
+      .then(function(res){
+        var rows=[]; try{ if(res&&res.json){ var o=JSON.parse(res.json); if(o&&Array.isArray(o.rows)) rows=o.rows; } }catch(e){}
+        window.__insDupCache=window.__insDupCache||{};
+        window.__insDupCache[key]=rows;   // 입력 중 즉시 비교용 캐시
+        results.push({ key:key, label:label, dups:insDupListInRows_(rows, key) });
+      })
+      .catch(function(){ results.push({ key:key, label:label, dups:[] }); })
+      .then(function(){ done++; if(done===types.length){ window.__insDupScanning=false; insDupShowPopup_(results); } });
+  });
+}
+// 측정실 행이 실제 검사한 항목 집합 반환 (치수·LEAK·FLOW·진공·가압)
+function insMeasureItems_(r){
+  var items=[];
+  if((Number(r.insCnt)||0)>0) items.push("치수");
+  if(r.leak) items.push("LEAK");
+  if(r.flow) items.push("FLOW");
+  if(r.vac) items.push("진공");
+  if(String(r.press||"").trim()) items.push("가압");
+  return items;
+}
+// 행 목록에서 중복 상세 [{sn, draw, dates:[...]}]
+// 측정실(measureS/L)은 "같은 S/N + 검사항목 겹침"일 때만 중복 (날짜만 다르고 항목 다르면 정상 분할)
+function insDupListInRows_(rows, typeKey){
+  var isMeasure=(typeKey==="measureS"||typeKey==="measureL");
+  var map={};   // 도번|sn → {draw, sn, entries:[{date, items[]}]}
+  (rows||[]).forEach(function(r){
+    if(!r) return;
+    var dw=insNormDraw_(r.draw); if(!dw) return;
+    var dt=String(r.insDate||"").trim()||"(날짜없음)";
+    var items=isMeasure?insMeasureItems_(r):null;
+    var sns=(typeof insSnFull_==="function")?insSnFull_(r.sn):[];
+    sns.forEach(function(sn){
+      var k=dw+"|"+sn;
+      if(!map[k]) map[k]={ draw:String(r.draw||"").trim(), sn:sn, entries:[] };
+      map[k].entries.push({ date:dt, items:items });
+    });
+  });
+  var out=[];
+  Object.keys(map).forEach(function(k){
+    var m=map[k];
+    if(m.entries.length<2) return;   // 1건이면 중복 아님
+    if(isMeasure){
+      // 검사항목이 겹치는 쌍이 있는지 확인 (겹치면 중복)
+      var overlapItems={}, dupDates={}, hasOverlap=false;
+      for(var i=0;i<m.entries.length;i++){
+        for(var j=i+1;j<m.entries.length;j++){
+          var a=m.entries[i].items||[], b=m.entries[j].items||[];
+          var common=a.filter(function(x){ return b.indexOf(x)>=0; });
+          if(common.length){
+            hasOverlap=true;
+            common.forEach(function(c){ overlapItems[c]=1; });
+            dupDates[m.entries[i].date]=1; dupDates[m.entries[j].date]=1;
+          }
+        }
+      }
+      if(hasOverlap){ out.push({ draw:m.draw, sn:m.sn, dates:Object.keys(dupDates), items:Object.keys(overlapItems) }); }
+    } else {
+      // 수입·출하: 같은 도번+S/N이 2건 이상이면 중복
+      var dates={}; m.entries.forEach(function(e){ dates[e.date]=1; });
+      out.push({ draw:m.draw, sn:m.sn, dates:Object.keys(dates) });
+    }
+  });
+  return out;
+}
+// 유형별 중복을 정리한 고정 팝업 (닫기 전까지 유지)
+function insDupShowPopup_(results){
+  var total=results.reduce(function(a,r){ return a+r.dups.length; },0);
+  var old=document.getElementById("ins-dup-popup"); if(old) old.remove();
+  if(total===0) return;   // 중복 없으면 팝업 안 띄움
+  var pop=document.createElement("div"); pop.id="ins-dup-popup";
+  pop.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:2147483647;";
+  var sections=results.map(function(r){
+    if(!r.dups.length) return '<div style="margin-bottom:10px;"><b style="color:#1E7A46;">✔ '+insEsc(r.label)+'</b> <span style="color:#5A6478;font-size:12px;">중복 없음</span></div>';
+    var rows=r.dups.slice(0,30).map(function(d){
+      return '<tr><td style="padding:5px 8px;border:1px solid #E1E8F0;">'+insEsc(d.draw)+'</td>'
+        +'<td style="padding:5px 8px;border:1px solid #E1E8F0;font-weight:700;">'+insEsc(d.sn)+'</td>'
+        +'<td style="padding:5px 8px;border:1px solid #E1E8F0;color:#C0392B;">'+insEsc(d.dates.join(" / "))+'</td>'
+        +(d.items?'<td style="padding:5px 8px;border:1px solid #E1E8F0;color:#B0662A;font-weight:700;">'+insEsc(d.items.join(", "))+'</td>':'<td style="padding:5px 8px;border:1px solid #E1E8F0;color:#8A93A6;">-</td>')
+        +'</tr>';
+    }).join("");
+    return '<div style="margin-bottom:14px;">'
+      +'<b style="color:#C0392B;font-size:14px;">⚠ '+insEsc(r.label)+' — 중복 '+r.dups.length+'건</b>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px;">'
+      +'<thead><tr><th style="padding:5px 8px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">도번</th><th style="padding:5px 8px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">S/N</th><th style="padding:5px 8px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">중복 입력일</th><th style="padding:5px 8px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">겹친 검사</th></tr></thead>'
+      +'<tbody>'+rows+'</tbody></table>'
+      +(r.dups.length>30?'<div style="font-size:11.5px;color:#8A93A6;margin-top:3px;">… 외 '+(r.dups.length-30)+'건</div>':'')
+      +'</div>';
+  }).join("");
+  pop.innerHTML='<div style="background:#fff;border-radius:14px;max-width:820px;width:94%;max-height:85vh;overflow:auto;padding:24px;box-shadow:0 14px 46px rgba(0,0,0,.3);">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">'
+    +'<h2 style="margin:0;color:#C0392B;font-size:20px;">⚠ 검사일보 중복 점검 — 총 '+total+'건</h2>'
+    +'<button onclick="document.getElementById(\'ins-dup-popup\').remove()" style="background:#E2E8F0;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-weight:700;font-size:14px;">✕ 닫기</button></div>'
+    +'<div style="color:#5A6478;font-size:13px;margin-bottom:14px;">같은 도번+S/N이 여러 번 검사 입력되어 있습니다. 검사종합 이동 전에 각 유형에서 중복을 확인·수정하세요. <b>닫기 전까지 이 창은 유지됩니다.</b></div>'
+    +sections
+    +'<div style="text-align:right;margin-top:12px;"><button onclick="document.getElementById(\'ins-dup-popup\').remove()" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:9px 22px;cursor:pointer;font-weight:700;font-size:14px;">확인</button></div>'
+    +'</div>';
+  document.body.appendChild(pop);
+}
+// 검사일보 열 때: 4개 유형 서버 전체를 불러와 도번+S/N 중복을 유형별로 점검
 function insCloudLoad(){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
   var t=insType, label=insTypeLabel(t);
@@ -17647,7 +17850,11 @@ function insCloudLoad(){
          insState[t]={rows:insDedup_(insEnsureIds_(data.rows))};
          if(insMetaByType[t]){ var __prevIbd=insMetaByType[t].inspByDate||{}; insMetaByType[t]={inspector:data.inspector||"",date:data.date||"",inspByDate:__prevIbd}; }
          insSyncMetaInputs();
-         insRender(); insSaveLocal(); insSetStatus("☁ ["+label+"] 불러옴");
+         insRender(); insSaveLocal();
+         // 불러온 전체 저장분에서 도번+S/N 중복 검사 → 있으면 눈에 띄게 알림
+         var __dupN=insCountDupInRows_(insState[t].rows);
+         if(__dupN>0){ insSetStatus("☁ ["+label+"] 불러옴 — ⚠ 중복 S/N "+__dupN+"건 발견! 상단 붉은 배너 확인","#B02A2A"); }
+         else { insSetStatus("☁ ["+label+"] 불러옴"); }
          return;
        }
      }
