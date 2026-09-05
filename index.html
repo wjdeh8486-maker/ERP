@@ -17590,8 +17590,8 @@ function insSaveToast_(msg){
 // 공유저장 시: 지금 입력분(localRows)의 도번+S/N이 이미 저장된 클라우드분(cloudRows)에 있는지 검사
 // 반환: [{draw, sn, oldDate}] — 과거에 이미 검사된 중복 S/N 목록
 function insCloudDupCheck_(localRows, cloudRows){
-  var isMeasure=(insType==="measureS"||insType==="measureL");
-  // ① 과거(클라우드) 인덱스: 도번|S/N → {date, items}. 지금 입력분과 같은 _id는 제외(자기 자신)
+  var isSplit=(insType==="measureS"||insType==="measureL"||insType==="incoming");
+  // ① 과거(클라우드) 인덱스: 도번|S/N → [{date, items}]. 지금 입력분과 같은 _id는 제외(자기 자신)
   var localIds={}; (localRows||[]).forEach(function(r){ if(r&&r._id) localIds[r._id]=1; });
   var past={};
   (cloudRows||[]).forEach(function(r){
@@ -17599,22 +17599,21 @@ function insCloudDupCheck_(localRows, cloudRows){
     if(r._id && localIds[r._id]) return;
     if(r._id && insDeletedIds[r._id]) return;
     var dw=insNormDraw_(r.draw); if(!dw) return;
-    var items=isMeasure?insMeasureItems_(r):null;
+    var items=isSplit?insItemsForType_(insType, r):null;
     var sns=(typeof insSnFull_==="function")?insSnFull_(r.sn):[];
     sns.forEach(function(sn){ var k=dw+"|"+sn; if(!past[k]) past[k]=[]; past[k].push({ date:String(r.insDate||"").trim()||"기존", items:items }); });
   });
-  // ② 지금 입력분이 과거와 (측정실이면 항목 겹침) 중복이면 경고
+  // ② 지금 입력분이 과거와 (분할유형이면 항목 겹침) 중복이면 경고
   var out=[], seen={};
   (localRows||[]).forEach(function(r){
     if(!r) return;
     var dw=insNormDraw_(r.draw); if(!dw) return;
     var curDate=String(r.insDate||"").trim()||"(당일)";
-    var curItems=isMeasure?insMeasureItems_(r):null;
+    var curItems=isSplit?insItemsForType_(insType, r):null;
     var sns=(typeof insSnFull_==="function")?insSnFull_(r.sn):[];
     sns.forEach(function(sn){
       var k=dw+"|"+sn; if(!past[k] || seen[k]) return;
-      if(isMeasure){
-        // 검사항목 겹치는 과거 기록이 있을 때만 중복
+      if(isSplit){
         var overlapDate="", overlapItems=[];
         past[k].forEach(function(p){
           var common=(curItems||[]).filter(function(x){ return (p.items||[]).indexOf(x)>=0; });
@@ -17761,16 +17760,29 @@ function insMeasureItems_(r){
   if(String(r.press||"").trim()) items.push("가압");
   return items;
 }
+// 수입검사 행이 실제 검사한 항목 집합 (외관 vs 공정검사 TAP)
+function insIncomingItems_(r){
+  var items=[];
+  if((Number(r.insCnt)||0)>0 || r.led) items.push("외관");   // 외관검사(검사수 또는 LED)
+  if(r.tap || (Number(r.tapCnt)||0)>0) items.push("공정검사");  // 공정검사(TAP/체결)
+  return items;
+}
+// 유형별 검사항목 추출 (측정실·수입검사만 분할 인정)
+function insItemsForType_(typeKey, r){
+  if(typeKey==="measureS"||typeKey==="measureL") return insMeasureItems_(r);
+  if(typeKey==="incoming") return insIncomingItems_(r);
+  return null;   // 출하검사는 분할 없음
+}
 // 행 목록에서 중복 상세 [{sn, draw, dates:[...]}]
 // 측정실(measureS/L)은 "같은 S/N + 검사항목 겹침"일 때만 중복 (날짜만 다르고 항목 다르면 정상 분할)
 function insDupListInRows_(rows, typeKey){
-  var isMeasure=(typeKey==="measureS"||typeKey==="measureL");
+  var isSplit=(typeKey==="measureS"||typeKey==="measureL"||typeKey==="incoming");   // 분할검사 인정 유형
   var map={};   // 도번|sn → {draw, sn, entries:[{date, items[]}]}
   (rows||[]).forEach(function(r){
     if(!r) return;
     var dw=insNormDraw_(r.draw); if(!dw) return;
     var dt=String(r.insDate||"").trim()||"(날짜없음)";
-    var items=isMeasure?insMeasureItems_(r):null;
+    var items=isSplit?insItemsForType_(typeKey, r):null;
     var sns=(typeof insSnFull_==="function")?insSnFull_(r.sn):[];
     sns.forEach(function(sn){
       var k=dw+"|"+sn;
@@ -17782,7 +17794,7 @@ function insDupListInRows_(rows, typeKey){
   Object.keys(map).forEach(function(k){
     var m=map[k];
     if(m.entries.length<2) return;   // 1건이면 중복 아님
-    if(isMeasure){
+    if(isSplit){
       // 검사항목이 겹치는 쌍이 있는지 확인 (겹치면 중복)
       var overlapItems={}, dupDates={}, hasOverlap=false;
       for(var i=0;i<m.entries.length;i++){
@@ -17798,7 +17810,7 @@ function insDupListInRows_(rows, typeKey){
       }
       if(hasOverlap){ out.push({ draw:m.draw, sn:m.sn, dates:Object.keys(dupDates), items:Object.keys(overlapItems) }); }
     } else {
-      // 수입·출하: 같은 도번+S/N이 2건 이상이면 중복
+      // 출하검사: 같은 도번+S/N이 2건 이상이면 중복
       var dates={}; m.entries.forEach(function(e){ dates[e.date]=1; });
       out.push({ draw:m.draw, sn:m.sn, dates:Object.keys(dates) });
     }
