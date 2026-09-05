@@ -1818,6 +1818,8 @@
       #insrep-content .insrep-tablewrap thead tr:last-child th{ top:27px; }
     </style>
     <style>
+      #view-shipjudge #shipjudge-wrap{ max-height:calc(100vh - 240px); overflow:auto; -webkit-overflow-scrolling:touch; }
+      #view-shipjudge #shipjudge-table thead th{ position:sticky; top:0; z-index:10; }
       /* 검수LIST 반응형 (모바일/태블릿) + 헤더 고정 */
       #view-insplist #insplist-table thead th{ position:sticky; top:0; z-index:10; background:#1F2A44; color:#fff; font-weight:700; }
       #view-insplist #insplist-wrap{ -webkit-overflow-scrolling:touch; overflow-x:auto; }
@@ -4497,7 +4499,16 @@ function paintShipJudge_(onlyNg){
     else if(pending){ verdict='<span style="display:inline-block;background:#FFF6E5;color:#B0662A;font-weight:800;padding:3px 10px;border-radius:12px;">⚠ 확인필요</span>'; }
     else { verdict='<span style="display:inline-block;background:#E8F5EC;color:#1E7A46;font-weight:800;padding:3px 10px;border-radius:12px;">✓ 출하가능</span>'; }
     var missTxt;
+    var isSnProd=(r.snMode==="sn"||r.snMode==="targetsn");
     if(r.gateFail){ missTxt='<span style="color:#B0662A;font-weight:700;">확인필요</span>'; }
+    else if(isSnProd){
+      // S/N 제품: 입력칸 + 대조 결과
+      var snVal=r.__snInput||"";
+      var resultHtml="";
+      if(r.missing.length){ resultHtml='<div style="color:#C0392B;font-weight:700;font-size:11px;margin-top:3px;">'+qcEsc(r.missing.join(", "))+'</div>'; }
+      else if(r.__checked){ resultHtml='<div style="color:#1E7A46;font-weight:700;font-size:11px;margin-top:3px;">✓ 검사완료</div>'; }
+      missTxt='<div style="display:flex;flex-direction:column;gap:2px;"><input type="text" class="shipjudge-sn-inp" data-order="'+qcEsc(r.orderNo)+'" value="'+qcEsc(snVal)+'" placeholder="납품 S/N 입력" style="width:100%;padding:4px 6px;border:1px solid #C0392B;border-radius:5px;font-size:11px;box-sizing:border-box;">'+resultHtml+'</div>';
+    }
     else if(r.missing.length){ missTxt='<span style="color:#C0392B;font-weight:700;">'+qcEsc(r.missing.join(", "))+'</span>'; }
     else if(r.judged){ missTxt='<span style="color:#1E7A46;">없음</span>'; }
     else { missTxt='<span style="color:#8A93A6;">확인중…</span>'; }
@@ -4521,6 +4532,26 @@ function paintShipJudge_(onlyNg){
     +'<span style="background:#FDECEC;color:#C0392B;font-weight:800;padding:6px 14px;border-radius:8px;">✗ 출하불가 '+ngCnt+'건</span>'
     +(chkCnt>0?'<span style="background:#FFF6E5;color:#B0662A;font-weight:800;padding:6px 14px;border-radius:8px;">⚠ 확인필요 '+chkCnt+'건</span>':'')
     +'</div>';
+  // S/N 입력칸: 엔터 치면 그 도번만 재대조
+  body.querySelectorAll(".shipjudge-sn-inp").forEach(function(inp){
+    inp.addEventListener("keydown",function(e){
+      if(e.key!=="Enter") return; e.preventDefault();
+      var order=inp.getAttribute("data-order"); var sn=String(inp.value||"").trim();
+      var row=__shipJudgeRows.filter(function(r){ return r.orderNo===order; })[0]; if(!row) return;
+      row.__snInput=sn;
+      var targetSns=sn?((typeof insSnFull_==="function")?insSnFull_(sn):sn.split(/[,\s]+/).filter(Boolean)):null;
+      shipJudgeGateBySn_(row.oldDraw, function(res){
+        row.__checked=true;
+        if(!res||res.fail){ row.missing=["확인필요"]; }
+        else {
+          var miss=res.snPerMiss||{}; var mk=Object.keys(miss);
+          if(mk.length){ row.missing=mk.map(function(s){ return s+"("+miss[s].join("·")+")"; }); }
+          else row.missing=[];
+        }
+        paintShipJudge_((document.getElementById("shipjudge-onlyNg")||{}).checked);
+      }, targetSns);
+    });
+  });
 }
 function shipJudgeExcel_(){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
