@@ -15210,7 +15210,7 @@ function insInit(){
   // 유형 소메뉴(드롭다운)
   var __ts=document.getElementById("insrep-typeSel");
   if(__ts) __ts.addEventListener("change",function(){ insType=this.value; insShowAllRows=false; insSyncMetaInputs(); insRender(); insSaveLocal(); });
-  var __ic=document.getElementById("insrep-content"); if(__ic) __ic.addEventListener("change",function(e){ var t=e.target; if(!t||!t.getAttribute) return; var key=t.getAttribute("data-key"); if(key!=="draw"&&key!=="sn") return; var ri=t.getAttribute("data-ri"); var dEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="draw"]'); var sEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="sn"]'); var dv=dEl?String(dEl.value||"").trim():""; var sv=sEl?String(sEl.value||"").trim():""; if(dv){ clearTimeout(window.__insHistTimer); window.__insHistTimer=setTimeout(function(){ insNcHistoryPopup_(dv, sv); }, 600); } });
+  var __ic=document.getElementById("insrep-content"); if(__ic) __ic.addEventListener("change",function(e){ var t=e.target; if(!t||!t.getAttribute) return; var key=t.getAttribute("data-key"); if(key!=="draw"&&key!=="sn") return; window.__insDupDirty=Date.now(); var ri=t.getAttribute("data-ri"); var dEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="draw"]'); var sEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="sn"]'); var dv=dEl?String(dEl.value||"").trim():""; var sv=sEl?String(sEl.value||"").trim():""; if(dv){ clearTimeout(window.__insHistTimer); window.__insHistTimer=setTimeout(function(){ insNcHistoryPopup_(dv, sv); }, 600); } });
   var __gc=document.getElementById("insrep-content"); if(__gc) __gc.addEventListener("keydown", insGridKeydown_);
   document.querySelectorAll("#topbar-insrep .ins-dd-btn").forEach(function(btn){ btn.addEventListener("click", function(e){ e.stopPropagation(); var id=btn.getAttribute("data-menu"); var menu=document.getElementById(id); var open=menu&&menu.classList.contains("open"); document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); if(menu&&!open) menu.classList.add("open"); }); });
   document.addEventListener("click", function(e){ if(e.target && e.target.closest && e.target.closest("#topbar-insrep .ins-dd")) return; document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); });
@@ -15235,7 +15235,11 @@ function insRender(){
   var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
   // ── 도번+S/N 중복 검출: 같은 도번+같은 S/N이 2건 이상이면 경고 (검사종합 이동 전 사전 차단) ──
   // ── 도번+S/N 중복 검출 (측정실은 검사항목 겹칠 때만) ──
-  var __dupRows=(typeof insDupListInRows_==="function")?insDupListInRows_(rows, insType):[];
+  // 중복 계산은 무거우므로 캐시: 행 데이터 시그니처(행수+마지막수정)가 같으면 이전 결과 재사용
+  var __dupSig=insType+"|"+rows.length+"|"+(rows.length?JSON.stringify([rows[0]&&rows[0].draw,rows[0]&&rows[0].sn,rows[rows.length-1]&&rows[rows.length-1].draw,rows[rows.length-1]&&rows[rows.length-1].sn,window.__insDupDirty]):"");
+  var __dupRows;
+  if(window.__insDupCacheSig===__dupSig && window.__insDupCacheRows){ __dupRows=window.__insDupCacheRows; }
+  else { __dupRows=(typeof insDupListInRows_==="function")?insDupListInRows_(rows, insType):[]; window.__insDupCacheSig=__dupSig; window.__insDupCacheRows=__dupRows; }
   var __dupSnSet={}; __dupRows.forEach(function(d){ __dupSnSet[insNormDraw_(d.draw)+"|"+d.sn]=1; });
   var __rowIsDup=function(r){
     var dw=(typeof insNormDraw_==="function")?insNormDraw_(r.draw):String(r.draw||"").trim();
@@ -15393,6 +15397,8 @@ function insRender(){
       } else {
         r[key]=(inp.type==="checkbox")?inp.checked:inp.value;
       }
+      // 중복 판정에 영향 주는 필드(도번·S/N·검사항목) 변경 시 캐시 무효화
+      if(key==="draw"||key==="sn"||key==="leak"||key==="flow"||key==="vac"||key==="press"||key==="tap"||key==="tapCnt"||key==="insCnt"||key==="led"||key==="insDate"){ window.__insDupDirty=Date.now(); }
       // TAP 체크 시 공정검사수(tapCnt)를 검사수(insCnt)로 자동 기입 (수입검사)
       if(key==="tap" && inp.checked){
         var __ic=String(r.insCnt||"").trim();
