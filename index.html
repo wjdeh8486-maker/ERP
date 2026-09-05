@@ -3025,6 +3025,33 @@ function scanBeep(){
     o.type="square"; o.frequency.value=880; o.connect(g); g.connect(ac.destination); g.gain.value=0.05;
     o.start(); setTimeout(function(){ o.stop(); ac.close(); }, 90); }catch(e){}
 }
+// 알림 종류별 소리 — 여러 음을 순서대로 재생해 종류 구분
+function qmsAlertSound_(kind){
+  try{
+    var ac=new (window.AudioContext||window.webkitAudioContext)();
+    // kind별 음정 패턴 [주파수, ...]
+    var patterns={
+      nc:      [1046, 784, 1046],   // 부적합: 경고음 (높→낮→높)
+      insp:    [660, 880],          // 검수: 두 음 상승
+      stock:   [523, 659, 784],     // 분출: 도미솔 상승
+      notice:  [784, 784],          // 공지: 같은 음 두 번
+      save:    [880]                // 저장: 단음
+    };
+    var seq=patterns[kind]||[880];
+    var t=ac.currentTime;
+    seq.forEach(function(f, i){
+      var o=ac.createOscillator(), g=ac.createGain();
+      o.type="sine"; o.frequency.value=f;
+      o.connect(g); g.connect(ac.destination);
+      var st=t+i*0.13;
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.exponentialRampToValueAtTime(0.12, st+0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, st+0.12);
+      o.start(st); o.stop(st+0.13);
+    });
+    setTimeout(function(){ try{ ac.close(); }catch(e){} }, seq.length*140+100);
+  }catch(e){}
+}
 var __insToastTimer=null;
 function insScanToast(text){
   var el=document.getElementById("ins-scan-toast");
@@ -7594,6 +7621,7 @@ function noticeShowToday_(force){
       +'<button id="notice-close" style="display:block;margin:18px auto 0;background:#fff;color:#12395F;border:none;border-radius:12px;padding:14px 44px;font-weight:800;font-size:17px;cursor:pointer;">확인</button>'
       +'</div>';
     document.body.appendChild(ov);
+    try{ if(typeof qmsAlertSound_==="function") qmsAlertSound_("notice"); }catch(e){}
     var cb=document.getElementById("notice-close"); if(cb) cb.addEventListener("click",function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); });
   }catch(e){}
 }
@@ -17394,7 +17422,7 @@ function saveNotifShow_(a){
   var kill=function(){ if(card.parentNode) card.parentNode.removeChild(card); };
   card.querySelector("button").addEventListener("click", kill);
   wrap.appendChild(card);
-  try{ if(typeof scanBeep==="function") scanBeep(); }catch(e){}
+  try{ if(typeof qmsAlertSound_==="function") qmsAlertSound_("save"); else if(typeof scanBeep==="function") scanBeep(); }catch(e){}
   setTimeout(kill, 8000);
 }
 function ncAlertBroadcastType(t){
@@ -17473,7 +17501,7 @@ function stockUseNotifShow_(a){
     insplistStockUseExcelByOrders_(orders);   // 서버에서 해당 ORDER 내역 조회 후 엑셀
   });
   wrap.appendChild(card);
-  try{ if(typeof scanBeep==="function") scanBeep(); }catch(e){}
+  try{ if(typeof qmsAlertSound_==="function") qmsAlertSound_("stock"); else if(typeof scanBeep==="function") scanBeep(); }catch(e){}
 }
 // 수신자 엑셀: 서버 재고사용내역에서 해당 ORDER만 뽑아 다운로드 (검수LIST 엑셀과 동일 디자인)
 function insplistStockUseExcelByOrders_(orders){
@@ -17534,7 +17562,7 @@ function ncAlertShow(a){
   var dl=card.querySelector(".ncalert-dwg");
   if(dl && a.draw && typeof openDrawing==="function"){ dl.addEventListener("click", function(e){ e.preventDefault(); openDrawing(a.draw); }); }
   wrap.appendChild(card);
-  try{ if(typeof scanBeep==="function") scanBeep(); }catch(e){}
+  try{ if(typeof qmsAlertSound_==="function") qmsAlertSound_("nc"); else if(typeof scanBeep==="function") scanBeep(); }catch(e){}
   // 자동닫힘 없음 — [닫기]를 눌러야 닫힘
 }
 
