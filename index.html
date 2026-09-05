@@ -979,7 +979,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.90</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.92</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -4400,7 +4400,7 @@ function shipJudgeGateBySn_(draw, cb, targetSns){
     // wantSns(사용자 입력 S/N) 있으면 그 S/N만, 없으면 검사종합의 모든 S/N
     var bySn={};   // sn → {key:true}
     snRecs.forEach(function(it){
-      var t=String(it.sn).trim(); if(!bySn[t]) bySn[t]={};
+      var t=String(it.sn).trim().toUpperCase(); if(!bySn[t]) bySn[t]={};
       QC_COLS.forEach(function(c){ if(it[c.key] && it[c.key]!=="") bySn[t][c.key]=true; });
     });
     // 당일 검사일보 반영
@@ -9522,7 +9522,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.90;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.92;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -16575,6 +16575,8 @@ function insGateLoadLogs_(cb){
 // 26185-1과 26251-1을 구분하기 위해 접두어까지 보존 (insSnSet_은 꼬리번호만 봐서 로트 구분 못 함)
 function insSnFull_(field){
   var out=[], f=String(field==null?"":field).toUpperCase(), prefix="";
+  var COMPANY="10768";   // 회사고유번호 → 비교 시 제거(10768-243 = 243). 생산년도 접두어(26185 등)는 구분 유지
+  var norm=function(s){ var m=String(s).match(/^(\w+)-(\d+)$/); if(m && m[1]===COMPANY) return m[2]; return s; };
   f.split(/[,\/\n]+/).forEach(function(tok){
     tok=tok.trim(); if(!tok) return;
     tok=tok.replace(/\([^)]*\)/g,"").trim();     // (찍힘) 등 괄호 메모 제거
@@ -16584,11 +16586,12 @@ function insSnFull_(field){
     if(/^[A-Fa-f][1-4]$/.test(tok)) return;
     var rng=tok.match(/^(?:(\w+)-)?(\d+)\s*~\s*(?:\w+-)?(\d+)$/);   // 범위 26185-1~5
     if(rng){ var pf=rng[1]||prefix; var a=Number(rng[2]), b=Number(rng[3]); if(pf) prefix=pf;
-      if(isFinite(a)&&isFinite(b)&&b>=a&&(b-a)<10000){ for(var i=a;i<=b;i++) out.push(prefix+"-"+i); return; } }
-    var full=tok.match(/^(\w+)-(\d+)$/);         // 완전형 26185-4
-    if(full){ prefix=full[1]; out.push(full[1]+"-"+full[2]); return; }
-    var only=tok.match(/^(\d+)$/);               // 순번만 3 → 앞 로트 이어받기
-    if(only && prefix){ out.push(prefix+"-"+only[1]); return; }
+      if(isFinite(a)&&isFinite(b)&&b>=a&&(b-a)<10000){ for(var i=a;i<=b;i++) out.push(norm((pf?pf+"-":"")+i)); return; } }
+    var full=tok.match(/^(\w+)-(\d+)$/);         // 완전형 26185-4 / 10768-4
+    if(full){ prefix=full[1]; out.push(norm(tok)); return; }
+    var only=tok.match(/^(\d+)$/);               // 순번만 3 → 앞 로트 이어받기 (10768이면 순번만)
+    if(only && prefix){ out.push(norm(prefix+"-"+only[1])); return; }
+    if(only){ out.push(only[1]); return; }
     out.push(tok);
   });
   var seen={}, res=[]; out.forEach(function(s){ if(!seen[s]){ seen[s]=1; res.push(s); } });
@@ -19028,6 +19031,6 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.90 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.92 🔔</div>
 </body>
 </html>
