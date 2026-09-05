@@ -15466,7 +15466,10 @@ function insRender(){
         if(inp.checked){ if(idx<0) cur.push(opt); } else { if(idx>=0) cur.splice(idx,1); }
         r[key]=cur.join(",");
       } else {
-        r[key]=(inp.type==="checkbox")?inp.checked:inp.value;
+        var __v=(inp.type==="checkbox")?inp.checked:inp.value;
+        // 도번·S/N·출고No는 영어 대문자로 통일 (M/m 혼용 방지 → 매칭·중복·판정 정확)
+        if((key==="draw"||key==="sn"||key==="outNo") && typeof __v==="string"){ __v=__v.toUpperCase(); inp.value=__v; }
+        r[key]=__v;
       }
       // 중복 판정에 영향 주는 필드(도번·S/N·검사항목) 변경 시 캐시 무효화
       if(key==="draw"||key==="sn"||key==="leak"||key==="flow"||key==="vac"||key==="press"||key==="tap"||key==="tapCnt"||key==="insCnt"||key==="led"||key==="insDate"){ window.__insDupDirty=Date.now(); }
@@ -15575,6 +15578,7 @@ function insScanReceive(code){
   if(insType==="processin") return;
   var res=(typeof scanResolveDrawing==="function")?scanResolveDrawing(code):null;
   var draw=(res&&res.drawing)?res.drawing:code;
+  draw=String(draw||"").toUpperCase();   // 바코드 도번 대문자 통일
   var row=insBlankRow(); row.draw=draw;
   if(res&&res.row){ if("insCnt" in row) row.insCnt=res.row["수량"]||""; if("inQty" in row) row.inQty=res.row["수량"]||""; }
   insState[insType].rows.push(row);
@@ -16570,7 +16574,7 @@ function insGateLoadLogs_(cb){
 // 완전 S/N 분해: 접두어(로트) 이어받기 + 범위(~). 예: "26185-4,3,8/26251-2" → [26185-4,26185-3,26185-8,26251-2]
 // 26185-1과 26251-1을 구분하기 위해 접두어까지 보존 (insSnSet_은 꼬리번호만 봐서 로트 구분 못 함)
 function insSnFull_(field){
-  var out=[], f=String(field==null?"":field), prefix="";
+  var out=[], f=String(field==null?"":field).toUpperCase(), prefix="";
   f.split(/[,\/\n]+/).forEach(function(tok){
     tok=tok.trim(); if(!tok) return;
     tok=tok.replace(/\([^)]*\)/g,"").trim();     // (찍힘) 등 괄호 메모 제거
