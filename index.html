@@ -1982,7 +1982,6 @@
       <div style="font-size:12.5px;color:#7A8598;margin-bottom:12px;">ORDER NO. 또는 PROJECT NO.를 검색하면, 각 항목의 <b>검사 누락·부적합·부족</b>을 종합해 <b>출하 가능 여부</b>를 판정합니다.</div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <input id="shipjudge-search" type="text" placeholder="ORDER NO. 또는 PROJECT NO. (예: 26-386 / JB0130311)" onkeydown="if(event.key==='Enter')renderShipJudge()" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
-        <input id="shipjudge-sn" type="text" placeholder="납품 S/N (선택 · 예: 26214-1,2,3)" onkeydown="if(event.key==='Enter')renderShipJudge()" style="flex:1;min-width:160px;padding:8px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;" title="납품할 S/N을 넣으면 그 S/N이 검사됐는지 정확히 대조합니다. 비우면 수량 기준 판정.">
         <button onclick="renderShipJudge()" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:700;cursor:pointer;">🚦 판정</button>
         <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;cursor:pointer;user-select:none;"><input type="checkbox" id="shipjudge-onlyNg" onchange="renderShipJudge()" style="width:16px;height:16px;cursor:pointer;"> 출하불가만</label>
         <button onclick="shipJudgeExcel_()" style="background:#1E7A46;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📥 엑셀</button>
@@ -4335,91 +4334,60 @@ function shipJudgeGateBySn_(draw, cb, targetSns){
   var finish=function(data, logs){
     if(!data || !data.success || !data.master){ cb({fail:true}); return; }
     var master=data.master, list=data.list||[];
-    // 이 도번의 필수(Y) 검사 항목 (외관·포장 제외)
     var needKeys=(typeof QC_COLS!=="undefined"?QC_COLS:[]).map(function(c){return c.key;})
       .filter(function(k){ return !skip[k] && master[k]==="Y"; });
-    if(!needKeys.length){ cb({fail:false, passCnt:9999, totalSn:0, missLabels:[]}); return; }
+    if(!needKeys.length){ cb({fail:false, mode:"none", passCnt:9999, totalSn:0, missLabels:[]}); return; }
 
-    // 검사 완료 판정 헬퍼: 그 기록이 needKeys를 모두 받았는지
-    var recDone=function(rec){
-      for(var i=0;i<needKeys.length;i++){ if(rec[needKeys[i]]!=="O") return false; }
-      return true;
-    };
+    // 검사종합 기록을 S/N 유무로 분리 (GS가 S/N 없는 건 "NO_SN"으로 반환)
+    var snlessRecs=list.filter(function(r){ return r && (r.sn==="NO_SN" || !String(r.sn||"").trim()); });
+    var snRecs   =list.filter(function(r){ return r && r.sn && r.sn!=="NO_SN" && String(r.sn||"").trim(); });
 
-    var passCnt=0, perKeyShort={}, snSeen={}, hasSn=false;
-    needKeys.forEach(function(k){ perKeyShort[k]=0; });
+    // 이 도번이 S/N 관리 제품인지 판단: 실제 S/N 기록이 하나라도 있으면 S/N 제품
+    var isSnProduct = snRecs.length>0;
 
-    // ① S/N 있는 기록: S/N별로 합쳐서 판정
-    var bySn={};
-    list.forEach(function(it){
-      var tails=insSnFull_(it.sn);
-      if(tails.length){
-        hasSn=true;
-        tails.forEach(function(t){
-          if(!bySn[t]) bySn[t]={};
-          QC_COLS.forEach(function(c){ if(it[c.key]==="O") bySn[t][c.key]=true; });
-        });
-      }
+    if(!isSnProduct){
+      // ── S/N 없는 제품: 검사 완료(judge=합격) 여부만 ──
+      if(!snlessRecs.length){ cb({fail:false, mode:"nosn", snlessDone:false, hasRecord:false, missLabels:[]}); return; }
+      // NO_SN 기록 중 하나라도 합격이면 완료로 인정
+      var done=snlessRecs.some(function(r){ return r.judge==="합격"; });
+      var miss={};
+      if(!done){ snlessRecs.forEach(function(r){ needKeys.forEach(function(k){ if(!r[k]||r[k]==="") miss[k]=true; }); }); }
+      cb({ fail:false, mode:"nosn", snlessDone:done, hasRecord:true, missLabels:Object.keys(miss).map(shipJudgeKeyLabel_) });
+      return;
+    }
+
+    // ── S/N 관리 제품: S/N별로 합격 개수 ──
+    // wantSns(사용자 입력 S/N) 있으면 그 S/N만, 없으면 검사종합의 모든 S/N
+    var bySn={};   // sn → {key:true}
+    snRecs.forEach(function(it){
+      var t=String(it.sn).trim(); if(!bySn[t]) bySn[t]={};
+      QC_COLS.forEach(function(c){ if(it[c.key] && it[c.key]!=="") bySn[t][c.key]=true; });
     });
-    // 당일 검사일보 반영 (S/N 있는 것)
+    // 당일 검사일보 반영
     if(logs){
       var markDay=function(rows, kind, keys){
         (rows||[]).forEach(function(r){
           if((typeof insNormDraw_==="function"?insNormDraw_(r.draw):String(r.draw||"").trim())!==d) return;
-          var tails=insSnFull_(r.sn);
-          if(!tails.length) return;
-          hasSn=true;
+          var tails=insSnFull_(r.sn); if(!tails.length) return;
           tails.forEach(function(t){ if(!bySn[t]) bySn[t]={};
-            keys.forEach(function(k){ if(insGateDoneToday_([r], draw, kind, t, k)) bySn[t][k]=true; });
-          });
+            keys.forEach(function(k){ if(insGateDoneToday_([r], draw, kind, t, k)) bySn[t][k]=true; }); });
         });
       };
       markDay(logs.incoming, "incoming", ["exterior","bolt"]);
       markDay(logs.measureS, "measureS", ["dimension","leak","flow","pressure","vacuum"]);
       markDay(logs.measureL, "measureL", ["dimension","leak","flow","pressure","vacuum"]);
     }
-    // S/N별 완전검사 개수 (지정 S/N이 있으면 그 S/N만 대조)
-    var snPerMiss={};   // 지정 S/N 대조 시: S/N → 누락항목[]
-    if(wantSns){
-      hasSn=true;
-      wantSns.forEach(function(sn){
-        var cur=bySn[sn]||{};
-        var miss=needKeys.filter(function(k){ return !cur[k]; });
-        if(miss.length){ snPerMiss[sn]=miss.map(shipJudgeKeyLabel_); miss.forEach(function(k){ perKeyShort[k]++; }); }
-        else passCnt++;
-      });
-    } else {
-      Object.keys(bySn).forEach(function(sn){
-        var ok=true; needKeys.forEach(function(k){ if(!bySn[sn][k]){ ok=false; perKeyShort[k]++; } });
-        if(ok) passCnt++;
-      });
-    }
-
-    // ② S/N 없는 기록: 백엔드 judge='합격'이거나 needKeys 완료면 도번 단위 완료로 인정
-    //    (S/N 없는 제품은 개별 카운트 불가 → "검사 완료됨"으로 통과 처리)
-    var snlessDone=false, snlessShort={};
-    list.forEach(function(it){
-      var tails=insSnFull_(it.sn);
-      if(tails.length) return;   // S/N 있는 건 위에서 처리
-      if(it.judge==="합격" || recDone(it)){ snlessDone=true; }
-      else { needKeys.forEach(function(k){ if(it[k]!=="O") snlessShort[k]=true; }); }
+    var checkSns = wantSns ? wantSns : Object.keys(bySn);
+    var passCnt=0, snPerMiss={};
+    checkSns.forEach(function(sn){
+      var cur=bySn[sn]||{};
+      var miss=needKeys.filter(function(k){ return !cur[k]; });
+      if(miss.length){ snPerMiss[sn]=miss.map(shipJudgeKeyLabel_); }
+      else passCnt++;
     });
-
-    // 최종 판정
-    var missLabels;
-    if(wantSns){
-      // 지정 S/N 대조 모드: 각 S/N이 검사됐는지 + 누락 S/N 상세
-      missLabels=needKeys.filter(function(k){ return perKeyShort[k]>0; }).map(shipJudgeKeyLabel_);
-      cb({ fail:false, mode:"targetsn", passCnt:passCnt, totalSn:wantSns.length, missLabels:missLabels, snPerMiss:snPerMiss });
-    } else if(hasSn){
-      // S/N 관리 제품: 완전검사 S/N 개수로 판정
-      missLabels=needKeys.filter(function(k){ return perKeyShort[k]>0; }).map(shipJudgeKeyLabel_);
-      cb({ fail:false, mode:"sn", passCnt:passCnt, totalSn:Object.keys(bySn).length, missLabels:missLabels });
-    } else {
-      // S/N 없는 제품: 검사 완료 여부로 판정 (완료면 통과=수량만큼, 미완료면 0)
-      missLabels=Object.keys(snlessShort).map(shipJudgeKeyLabel_);
-      cb({ fail:false, mode:"nosn", snlessDone:snlessDone, passCnt:(snlessDone?9999:0), totalSn:0, missLabels:missLabels });
-    }
+    cb({ fail:false, mode:(wantSns?"targetsn":"sn"), passCnt:passCnt,
+         totalSn:checkSns.length, snPerMiss:snPerMiss,
+         missLabels:needKeys.filter(function(k){ return Object.keys(snPerMiss).some(function(sn){ return (snPerMiss[sn]||[]).indexOf(shipJudgeKeyLabel_(k))>=0; }); }).map(shipJudgeKeyLabel_) });
   };
   // 검사종합 캐시(3분) + 당일 검사일보
   var withLogs=function(data){
@@ -4458,8 +4426,8 @@ function renderShipJudge(){
   // 검수LIST 빌더 재사용 (완료/부족/도번/품명/S/N 등)
   var rows=(typeof insplistBuildRows_==="function")?insplistBuildRows_(q, (typeof __insplistShip!=="undefined"?__insplistShip:[])):[];
   // 납품 S/N 입력 시: 그 S/N만 대조 (도번별로 분배는 안 하고 전체 후보로 넘김)
-  var snInput=String((document.getElementById("shipjudge-sn")||{}).value||"").trim();
-  var targetSns=snInput?((typeof insSnFull_==="function")?insSnFull_(snInput):snInput.split(/[,\s]+/).filter(Boolean)):null;
+  var snInput="";   // 상단 공통 S/N 제거됨 (행별 S/N 입력칸은 추후) → 자동 판정
+  var targetSns=null;
   if(!rows.length){ body.innerHTML='<tr><td colspan="9" style="text-align:center;color:#8A93A6;padding:18px;">"'+qcEsc(q)+'" 에 해당하는 항목이 없습니다.</td></tr>'; document.getElementById("shipjudge-summary").innerHTML=""; return; }
   var onlyNg=(document.getElementById("shipjudge-onlyNg")||{}).checked;
   var td='padding:6px 6px;border:1px solid #E1E8F0;text-align:center;';
@@ -4482,24 +4450,28 @@ function renderShipJudge(){
         __shipJudgeRows[idx].gateFail=false;
         __shipJudgeRows[idx].judged=true;
         __shipJudgeRows[idx].passCnt=res.passCnt;
-        var labels=(res.missLabels&&res.missLabels.length)?res.missLabels:[];
-        if(res.mode==="targetsn"){
-          // 납품 S/N 대조: 입력한 S/N이 전부 검사됐는지
-          var need=(targetSns?targetSns.length:0);
-          var miss=res.snPerMiss||{};
-          var missSnList=Object.keys(miss);
-          if(missSnList.length){
-            __shipJudgeRows[idx].missing = missSnList.map(function(sn){ return sn+"("+miss[sn].join("·")+")"; });
-            __shipJudgeRows[idx].reasons.unshift("납품S/N 누락: "+missSnList.length+"/"+need+"개");
-          } else { __shipJudgeRows[idx].missing=[]; }
+        __shipJudgeRows[idx].snMode=res.mode;
+        if(res.mode==="none"){
+          // 필수검사 정의 없음 → 판정 불가
+          __shipJudgeRows[idx].gateFail=true;
         } else if(res.mode==="nosn"){
-          if(res.snlessDone){ __shipJudgeRows[idx].missing=[]; }
-          else { __shipJudgeRows[idx].missing = labels.length?labels:["미검사"];
-                 __shipJudgeRows[idx].reasons.unshift("검사누락(S/N무): "+(labels.length?labels.join(", "):"미검사")); }
+          // S/N 없는 제품: 검사 완료면 통과, 기록 없으면 확인필요, 미완료면 누락
+          if(!res.hasRecord){ __shipJudgeRows[idx].gateFail=true; }
+          else if(res.snlessDone){ __shipJudgeRows[idx].missing=[]; }
+          else { var l=(res.missLabels&&res.missLabels.length)?res.missLabels:["미검사"];
+                 __shipJudgeRows[idx].missing=l; __shipJudgeRows[idx].reasons.unshift("검사누락: "+l.join(", ")); }
+        } else if(res.mode==="targetsn"){
+          // 납품 S/N 대조
+          var miss=res.snPerMiss||{}; var mk=Object.keys(miss);
+          if(mk.length){ __shipJudgeRows[idx].missing=mk.map(function(sn){ return sn+"("+miss[sn].join("·")+")"; });
+                         __shipJudgeRows[idx].reasons.unshift("납품S/N 누락 "+mk.length+"/"+res.totalSn+"개"); }
+          else __shipJudgeRows[idx].missing=[];
         } else {
+          // S/N 제품(자동): 합격 S/N 개수 ≥ 수량
           if(res.passCnt < row.qty){
-            __shipJudgeRows[idx].missing = labels.length?labels:["합격 "+res.passCnt+"/"+row.qty];
-            __shipJudgeRows[idx].reasons.unshift("검사: 합격 "+res.passCnt+"/"+row.qty+"개"+(labels.length?(" · 누락 "+labels.join(", ")):""));
+            var miss2=res.snPerMiss||{}; var mk2=Object.keys(miss2);
+            __shipJudgeRows[idx].missing = mk2.length ? mk2.map(function(sn){ return sn+"("+miss2[sn].join("·")+")"; }) : ["합격 "+res.passCnt+"/"+row.qty];
+            __shipJudgeRows[idx].reasons.unshift("검사 합격 "+res.passCnt+"/"+row.qty+"개");
           } else { __shipJudgeRows[idx].missing=[]; }
         }
       }
@@ -15260,9 +15232,17 @@ function insRender(){
   insUpdateDayFilter();
   if(insType==="processin"){ insRenderProcessIn(el); return; }
   var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
-  // 중복 검출은 검사일보 열 때 팝업 + 공유저장 시 팝업 2곳에서만 (렌더 부담 제거)
-  var __rowIsDup=function(){ return false; };
-  var __dupKeys=[];
+  // 중복은 검사일보 열 때(insDupScanAll_) 1회만 계산 → 배너 캐시만 읽음 (렌더 시 재계산 안 함)
+  var __dupBanner=(window.__insDupBanner&&window.__insDupBanner[insType])||[];
+  var __dupSnSet={}; __dupBanner.forEach(function(d){ __dupSnSet[insNormDraw_(d.draw)+"|"+d.sn]=1; });
+  var __rowIsDup=function(r){
+    var dw=(typeof insNormDraw_==="function")?insNormDraw_(r.draw):String(r.draw||"").trim();
+    if(!dw) return false;
+    var sns=(typeof insSnFull_==="function")?insSnFull_(r.sn):[];
+    for(var i=0;i<sns.length;i++){ if(__dupSnSet[dw+"|"+sns[i]]) return true; }
+    return false;
+  };
+  var __dupKeys=__dupBanner.map(function(d){ return insNormDraw_(d.draw)+"|"+d.sn; });
     // 2행 헤더
   var head1="", head2="";
   cfg.groups.forEach(function(g){
@@ -15354,7 +15334,7 @@ function insRender(){
     '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px;">'
     + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">'+insEsc(cfg.title)+'</div>'
     + '<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">도번을 입력/스캔하면 자동으로 채워지고, 각 칸은 직접 수정할 수 있습니다. 체크박스는 엑셀에서 ■/□ 로 나옵니다.</div>'
-    + ''
+    + (__dupBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#C0392B;font-weight:700;font-size:13px;">⚠ 중복 입력 '+__dupBanner.length+'건 — 같은 도번+S/N이 여러 행에 있습니다. 검사종합 이동 전 <b>붉은 행</b>을 확인해 중복을 제거하세요.<div style="font-weight:400;font-size:12px;color:#8A1F1F;margin-top:4px;">'+__dupBanner.slice(0,15).map(function(d){ return insEsc(d.draw)+" / "+insEsc(d.sn); }).join(" · ")+(__dupBanner.length>15?" …":"")+'</div></div>'):'')
     + (__capped
         ? '<div style="background:#EAF3FF;border:1px solid #BBD6F5;border-radius:9px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:#1F4E79;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'
           + '<span>⚡ 총 <b>'+__visIdx.length.toLocaleString()+'</b>행 중 <b>최근 '+INS_RENDER_CAP+'행</b>만 표시 중입니다 (빠른 편집용). 날짜별 보기·도번 검색으로 좁히면 원하는 행이 바로 나옵니다.</span>'
@@ -17771,10 +17751,13 @@ function insDupScanAll_(){
         var rows=[]; try{ if(res&&res.json){ var o=JSON.parse(res.json); if(o&&Array.isArray(o.rows)) rows=o.rows; } }catch(e){}
         window.__insDupCache=window.__insDupCache||{};
         window.__insDupCache[key]=rows;   // 입력 중 즉시 비교용 캐시
-        results.push({ key:key, label:label, dups:insDupListInRows_(rows, key) });
+        var dups=insDupListInRows_(rows, key);
+        window.__insDupBanner=window.__insDupBanner||{};
+        window.__insDupBanner[key]=dups;   // 배너용: 유형별 중복 목록 (열 때 1회 계산)
+        results.push({ key:key, label:label, dups:dups });
       })
       .catch(function(){ results.push({ key:key, label:label, dups:[] }); })
-      .then(function(){ done++; if(done===types.length){ window.__insDupScanning=false; insDupShowPopup_(results); } });
+      .then(function(){ done++; if(done===types.length){ window.__insDupScanning=false; insDupShowPopup_(results); if(typeof insRender==="function") insRender(); } });
   });
 }
 // 측정실 행이 실제 검사한 항목 집합 반환 (치수·LEAK·FLOW·진공·가압)
