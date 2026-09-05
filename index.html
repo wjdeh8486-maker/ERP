@@ -4446,6 +4446,9 @@ function renderShipJudge(){
   var seen={};
   __shipJudgeRows.forEach(function(row, idx){
     var drawKey=(typeof insNormDraw_==="function")?insNormDraw_(row.oldDraw):String(row.oldDraw||"").trim();
+    // 검수LIST의 S/N(재고 매칭값)이 있으면 자동으로 대조에 사용
+    var autoSns=(row.sn&&String(row.sn).trim())?((typeof insSnFull_==="function")?insSnFull_(row.sn):String(row.sn).split(/[,\s]+/).filter(Boolean)):null;
+    if(autoSns&&autoSns.length){ row.__snInput=String(row.sn).trim(); }
     shipJudgeGateBySn_(row.oldDraw, function(res){
       if(!res || res.fail){ __shipJudgeRows[idx].gateFail=true; __shipJudgeRows[idx].judged=true; }
       else {
@@ -4478,7 +4481,7 @@ function renderShipJudge(){
         }
       }
       paintShipJudge_((document.getElementById("shipjudge-onlyNg")||{}).checked);
-    }, targetSns);
+    }, autoSns);
   });
 }
 function paintShipJudge_(onlyNg){
@@ -4500,7 +4503,11 @@ function paintShipJudge_(onlyNg){
     else { verdict='<span style="display:inline-block;background:#E8F5EC;color:#1E7A46;font-weight:800;padding:3px 10px;border-radius:12px;">✓ 출하가능</span>'; }
     var missTxt;
     var isSnProd=(r.snMode==="sn"||r.snMode==="targetsn");
-    if(r.gateFail){ missTxt='<span style="color:#B0662A;font-weight:700;">확인필요</span>'; }
+    if(r.lack>0 && !r.missing.length && !isSnProd){
+      // 부족(재고 미달)이 있으면 아직 완료 안 된 것 → "없음"으로 오인 금지
+      missTxt='<span style="color:#B0662A;font-weight:700;">제작·검사 미완료</span>';
+    }
+    else if(r.gateFail){ missTxt='<span style="color:#B0662A;font-weight:700;">확인필요</span>'; }
     else if(isSnProd){
       // S/N 제품: 입력칸 + 대조 결과
       var snVal=r.__snInput||"";
