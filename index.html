@@ -4084,18 +4084,24 @@ function insplistShipAlloc_(shipRows, qtyOf){     // 출하검사 검사수를 �
 // ===== 검수LIST 재고사용 헬퍼 =====
 var __inspUsedOrders = {};   // 서버에서 로드한 재고사용된 ORDER NO. 집합 (비고 "재고사용" 표시용)
 
-function insplistStockQty_(partNo){        // 품번 보유재고 (입고−출고 합산)
-  var p=String(partNo||"").trim(); if(!p) return 0;
-  if(typeof invStockMap!=="undefined" && invStockMap && (p in invStockMap)) return Number(invStockMap[p])||0;
+function insplistStockQty_(partNo, oldDraw){        // 품번 또는 도번으로 보유재고 (입고−출고). 재고관리와 동일하게 둘 다 조회
+  var keys=[String(partNo||"").trim(), String(oldDraw||"").trim()].filter(Boolean);
+  if(!keys.length) return 0;
+  if(typeof buildInvStockMap==="function") buildInvStockMap();
+  if(typeof invStockMap!=="undefined" && invStockMap){
+    for(var i=0;i<keys.length;i++){ if(keys[i] in invStockMap) return Number(invStockMap[keys[i]])||0; }
+  }
   var n=0, iv=(typeof invData!=="undefined"&&invData)?invData:[];
-  iv.forEach(function(r){ if(String(r.partNo||"").trim()===p) n+=(Number(r.inQty)||0)-(Number(r.outQty)||0); });
+  iv.forEach(function(r){ var pn=String(r.partNo||"").trim(); if(keys.indexOf(pn)>=0) n+=(Number(r.inQty)||0)-(Number(r.outQty)||0); });
   return n;
 }
-function insplistLastLoc_(partNo){         // 마지막 등록된 재고 위치 (invData 뒤에서부터 첫 위치)
-  var p=String(partNo||"").trim(); if(!p) return "";
+function insplistLastLoc_(partNo, oldDraw){         // 마지막 등록된 재고 위치 (품번 또는 도번 매칭, 뒤에서부터)
+  var keys=[String(partNo||"").trim(), String(oldDraw||"").trim()].filter(Boolean);
+  if(!keys.length) return "";
   var iv=(typeof invData!=="undefined"&&invData)?invData:[];
   for(var i=iv.length-1;i>=0;i--){
-    if(String(iv[i].partNo||"").trim()===p){
+    var pn=String(iv[i].partNo||"").trim();
+    if(keys.indexOf(pn)>=0){
       var loc=(typeof invExtractLoc_==="function")?invExtractLoc_(iv[i].note):"";
       if(loc) return loc;
     }
@@ -4156,8 +4162,8 @@ function insplistBuildRows_(q, shipRows){
     var done=Math.min(qty, stockOut + shipDone);     // 완료는 수량이 상한(중복 방지)
     var lack=Math.max(0, qty-done);                  // 부족 = 수량 − 완료 (0 이상)
     var partNo=String(m.partNo||"").trim();
-    var stockQty=insplistStockQty_(partNo);          // 보유재고
-    var lastLoc=insplistLastLoc_(partNo);            // 마지막 등록 위치
+    var stockQty=insplistStockQty_(partNo, m.oldDrawingNo);          // 보유재고 (품번+도번)
+    var lastLoc=insplistLastLoc_(partNo, m.oldDrawingNo);            // 마지막 등록 위치 (품번+도번)
     var used=(__inspUsedOrders && __inspUsedOrders[orderNo]===true);   // 재고사용 완료 여부
     // 비고: ①재고사용됨 → "재고사용"  ②보유재고>0 → "위치(보유수량)" · 위치없으면 "X(보유수량)"  ③그 외 빈칸
     var note="";
