@@ -15233,22 +15233,9 @@ function insRender(){
   insUpdateDayFilter();
   if(insType==="processin"){ insRenderProcessIn(el); return; }
   var cfg=insCfg(), leaves=insLeaves(cfg), rows=insState[insType].rows;
-  // ── 도번+S/N 중복 검출: 같은 도번+같은 S/N이 2건 이상이면 경고 (검사종합 이동 전 사전 차단) ──
-  // ── 도번+S/N 중복 검출 (측정실은 검사항목 겹칠 때만) ──
-  // 중복 계산은 무거우므로 캐시: 행 데이터 시그니처(행수+마지막수정)가 같으면 이전 결과 재사용
-  var __dupSig=insType+"|"+rows.length+"|"+(rows.length?JSON.stringify([rows[0]&&rows[0].draw,rows[0]&&rows[0].sn,rows[rows.length-1]&&rows[rows.length-1].draw,rows[rows.length-1]&&rows[rows.length-1].sn,window.__insDupDirty]):"");
-  var __dupRows;
-  if(window.__insDupCacheSig===__dupSig && window.__insDupCacheRows){ __dupRows=window.__insDupCacheRows; }
-  else { __dupRows=(typeof insDupListInRows_==="function")?insDupListInRows_(rows, insType):[]; window.__insDupCacheSig=__dupSig; window.__insDupCacheRows=__dupRows; }
-  var __dupSnSet={}; __dupRows.forEach(function(d){ __dupSnSet[insNormDraw_(d.draw)+"|"+d.sn]=1; });
-  var __rowIsDup=function(r){
-    var dw=(typeof insNormDraw_==="function")?insNormDraw_(r.draw):String(r.draw||"").trim();
-    if(!dw) return false;
-    var sns=(typeof insSnFull_==="function")?insSnFull_(r.sn):[];
-    for(var i=0;i<sns.length;i++){ if(__dupSnSet[dw+"|"+sns[i]]) return true; }
-    return false;
-  };
-  var __dupKeys=__dupRows.map(function(d){ return insNormDraw_(d.draw)+"|"+d.sn; });
+  // 중복 검출은 검사일보 열 때 팝업 + 공유저장 시 팝업 2곳에서만 (렌더 부담 제거)
+  var __rowIsDup=function(){ return false; };
+  var __dupKeys=[];
     // 2행 헤더
   var head1="", head2="";
   cfg.groups.forEach(function(g){
@@ -15340,7 +15327,7 @@ function insRender(){
     '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px;">'
     + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">'+insEsc(cfg.title)+'</div>'
     + '<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">도번을 입력/스캔하면 자동으로 채워지고, 각 칸은 직접 수정할 수 있습니다. 체크박스는 엑셀에서 ■/□ 로 나옵니다.</div>'
-    + (__dupKeys.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#C0392B;font-weight:700;font-size:13px;">⚠ 중복 입력 '+__dupKeys.length+'건 — 같은 도번+S/N이 여러 행에 있습니다. 검사종합 이동 전 <b>붉은 행</b>을 확인해 중복을 제거하세요.<div style="font-weight:400;font-size:12px;color:#8A1F1F;margin-top:4px;">중복 S/N: '+__dupKeys.map(function(k){ return insEsc(k.split("|")[1]); }).slice(0,20).join(", ")+(__dupKeys.length>20?" …":"")+'</div></div>'):'')
+    + ''
     + (__capped
         ? '<div style="background:#EAF3FF;border:1px solid #BBD6F5;border-radius:9px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:#1F4E79;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'
           + '<span>⚡ 총 <b>'+__visIdx.length.toLocaleString()+'</b>행 중 <b>최근 '+INS_RENDER_CAP+'행</b>만 표시 중입니다 (빠른 편집용). 날짜별 보기·도번 검색으로 좁히면 원하는 행이 바로 나옵니다.</span>'
@@ -16505,6 +16492,8 @@ function insSnFull_(field){
     tok=tok.replace(/\([^)]*\)/g,"").trim();     // (찍힘) 등 괄호 메모 제거
     tok=tok.replace(/[>《].*$/,"").trim();        // ">포장실" 등 꼬리 제거
     if(!tok) return;
+    // 재고 위치(A1~F4) 제외: 알파벳 A~F + 숫자 1~4, 하이픈 없는 짧은 코드는 S/N 아님
+    if(/^[A-Fa-f][1-4]$/.test(tok)) return;
     var rng=tok.match(/^(?:(\w+)-)?(\d+)\s*~\s*(?:\w+-)?(\d+)$/);   // 범위 26185-1~5
     if(rng){ var pf=rng[1]||prefix; var a=Number(rng[2]), b=Number(rng[3]); if(pf) prefix=pf;
       if(isFinite(a)&&isFinite(b)&&b>=a&&(b-a)<10000){ for(var i=a;i<=b;i++) out.push(prefix+"-"+i); return; } }
