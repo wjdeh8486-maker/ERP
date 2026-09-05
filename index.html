@@ -4159,8 +4159,10 @@ function insplistBuildRows_(q, shipRows){
     var stockQty=insplistStockQty_(partNo);          // 보유재고
     var lastLoc=insplistLastLoc_(partNo);            // 마지막 등록 위치
     var used=(__inspUsedOrders && __inspUsedOrders[orderNo]===true);   // 재고사용 완료 여부
-    // 비고: ①재고사용됨 → "재고사용"  ②보유재고≥수량 → 마지막 위치  ③그 외 빈칸
-    var note = used ? "재고사용" : ((stockQty>=qty && qty>0) ? lastLoc : "");
+    // 비고: ①재고사용됨 → "재고사용"  ②보유재고>0 → "위치(보유수량)" · 위치없으면 "X(보유수량)"  ③그 외 빈칸
+    var note="";
+    if(used){ note="재고사용"; }
+    else if(stockQty>0){ note=(lastLoc?lastLoc:"X")+"("+stockQty+")"; }
     return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:sns.join(", "),
              status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[partNo]||""),
              partNo:partNo, stockQty:stockQty, lastLoc:lastLoc, used:used, note:note };
@@ -4196,6 +4198,7 @@ function renderInspList(){
       var lc=r.lack>0?"#C0392B":"#1E7A46";
       var noteHtml="";
       if(r.note==="재고사용"){ noteHtml='<span style="color:#5A3E7A;font-weight:700;">재고사용</span>'; }
+      else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;font-weight:700;" title="위치 미지정 · 재고 보유중">'+qcEsc(r.note)+'</span>'; }
       else if(r.note){ noteHtml='<span style="color:#0B5CAB;font-weight:600;">📍'+qcEsc(r.note)+'</span>'; }
       return '<tr>'
         +'<td style="'+td+'text-align:center;"><input type="checkbox" class="insplist-chk" data-order="'+qcEsc(r.orderNo)+'" data-part="'+qcEsc(r.partNo)+'" style="width:15px;height:15px;cursor:pointer;"></td>'
