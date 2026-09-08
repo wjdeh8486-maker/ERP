@@ -1930,6 +1930,8 @@
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;cursor:pointer;user-select:none;"><input type="checkbox" id="insplist-onlyLack" onchange="renderInspList()" style="width:16px;height:16px;cursor:pointer;"> 미완료품만</label>
           <button onclick="insplistStockUseOpen_()" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">📦 재고사용</button>
           <button onclick="insplistStockUseCancel_()" style="background:#B0662A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;" title="재고사용된 항목을 다시 되돌립니다">↩ 재고사용 취소</button>
+          <button onclick="insplistPreShip_()" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🚚 선출고</button>
+<button onclick="insplistPreShipCancel_()" style="background:#7F8C8D;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">↩ 선출고 취소</button>
         </div>
         <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">ORDER NO.(예: 26-386)를 입력하면 세부(26-386-1, 2 …)가 펼쳐집니다 · 완료 = 재고 출고수량(관리번호 매칭) · 부족 = 수량 − 완료 · S/N은 재고관리에서 · 수량 0·PR&PO 미등록 건은 제외 · 비고는 인쇄 후 수기 체크용</div>
         <div id="insplist-wrap" style="overflow:auto;">
@@ -4083,6 +4085,7 @@ function insplistShipAlloc_(shipRows, qtyOf){     // 출하검사 검사수를 �
 }
 // ===== 검수LIST 재고사용 헬퍼 =====
 var __inspUsedOrders = {};   // 서버에서 로드한 재고사용된 ORDER NO. 집합 (비고 "재고사용" 표시용)
+  var __inspPreShipOrders = {};
 
 function insplistStockQty_(partNo, oldDraw){        // 품번 또는 도번으로 보유재고 (입고−출고). 재고관리와 동일하게 둘 다 조회
   var keys=[String(partNo||"").trim(), String(oldDraw||"").trim()].filter(Boolean);
@@ -4228,11 +4231,21 @@ sns = Array.from(new Set(sns));
     var partNo=String(m.partNo||"").trim();
     var stockQty=insplistStockQty_(partNo, m.oldDrawingNo);          // 보유재고 (품번+도번)
     var lastLoc=insplistLastLoc_(partNo, m.oldDrawingNo);            // 마지막 등록 위치 (품번+도번)
-    var used=(__inspUsedOrders && __inspUsedOrders[orderNo]===true);   // 재고사용 완료 여부
-    // 비고: ①재고사용됨 → "재고사용"  ②보유재고>0 → "위치(보유수량)" · 위치없으면 "X(보유수량)"  ③그 외 빈칸
-    var note="";
-    if(used){ note="재고사용"; }
-    else if(stockQty>0){ note=(lastLoc?lastLoc:"X")+"("+stockQty+")"; }
+   var used=(__inspUsedOrders && __inspUsedOrders[orderNo]===true);
+var preShip=(__inspPreShipOrders && __inspPreShipOrders[orderNo]===true);
+
+// 비고
+var note="";
+
+if(preShip){
+  note="선출고";
+}
+else if(used){
+  note="재고사용";
+}
+else if(stockQty>0){
+  note=(lastLoc?lastLoc:"X")+"("+stockQty+")";
+}
     return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:sns.join(", "),
              status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[partNo]||""),
              partNo:partNo, stockQty:stockQty, lastLoc:lastLoc, used:used, note:note };
@@ -4266,9 +4279,15 @@ function renderInspList(){
     var notice = tooMany ? '<tr><td colspan="11" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">⚠ 검색 결과가 너무 많아 앞 200건만 표시합니다. ORDER NO.를 더 구체적으로 입력하세요 (예: 26-386)</td></tr>' : '';
     body.innerHTML=notice+rows.map(function(r){
       var lc=r.lack>0?"#C0392B":"#1E7A46";
-      var noteHtml="";
-      if(r.note==="재고사용"){ noteHtml='<span style="color:#5A3E7A;font-weight:700;">재고사용</span>'; }
-      else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;font-weight:700;" title="위치 미지정 · 재고 보유중">'+qcEsc(r.note)+'</span>'; }
+     var noteHtml="";
+
+if(r.note==="선출고"){
+  noteHtml='<span style="color:#C0392B;font-weight:700;">선출고</span>';
+}
+else if(r.note==="재고사용"){
+  noteHtml='<span style="color:#5A3E7A;font-weight:700;">재고사용</span>';
+}
+else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;font-weight:700;" title="위치 미지정 · 재고 보유중">'+qcEsc(r.note)+'</span>'; }
       else if(r.note){ noteHtml='<span style="color:#0B5CAB;font-weight:600;">📍'+qcEsc(r.note)+'</span>'; }
       return '<tr>'
         +'<td style="'+td+'text-align:center;"><input type="checkbox" class="insplist-chk" data-order="'+qcEsc(r.orderNo)+'" data-part="'+qcEsc(r.partNo)+'" style="width:15px;height:15px;cursor:pointer;"></td>'
@@ -4336,6 +4355,50 @@ function insplistStockUseRender_(){
   }).join("");
 }
 function insplistStockUseClose_(){ var m=document.getElementById("insplist-suModal"); if(m) m.style.display="none"; }
+  function insplistPreShip_(){
+
+  var checks=document.querySelectorAll(".insplist-chk:checked");
+
+  if(!checks.length){
+    alert("선출고 처리할 항목을 체크하세요.");
+    return;
+  }
+
+  checks.forEach(function(c){
+
+    var orderNo=c.getAttribute("data-order");
+
+    if(orderNo){
+      __inspPreShipOrders[orderNo]=true;
+    }
+
+  });
+
+  renderInspList();
+}
+
+function insplistPreShipCancel_(){
+
+  var checks=document.querySelectorAll(".insplist-chk:checked");
+
+  if(!checks.length){
+    alert("선출고 취소할 항목을 체크하세요.");
+    return;
+  }
+
+  checks.forEach(function(c){
+
+    var orderNo=c.getAttribute("data-order");
+
+    if(orderNo){
+      delete __inspPreShipOrders[orderNo];
+    }
+
+  });
+
+  renderInspList();
+}
+
 
 // S/N 검증: 입력한 S/N이 그 품번 재고에 있는지. 없으면 오기입 목록 반환
 function insplistStockUseValidate_(){
@@ -4728,7 +4791,29 @@ function insplistStockUseCancel_(){
   renderInspList();
   alert("재고사용을 취소했습니다. ("+orders.length+"건)\n비고란이 원래대로 복구됩니다.");
 }
+function insplistPreShip_(){
 
+  var checks=[].slice.call(
+    document.querySelectorAll(".insplist-chk:checked")
+  );
+
+  if(!checks.length){
+    alert("선출고 처리할 항목을 체크하세요.");
+    return;
+  }
+
+  checks.forEach(function(c){
+
+    var orderNo=c.getAttribute("data-order");
+
+    if(orderNo){
+      __inspPreShipOrders[orderNo]=true;
+    }
+
+  });
+
+  renderInspList();
+}
 function insplistPrint_(){
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
   if(!q){ alert("먼저 ORDER NO. 또는 PROJECT NO.를 검색하세요."); return; }
