@@ -4355,7 +4355,7 @@ function insplistStockUseRender_(){
   }).join("");
 }
 function insplistStockUseClose_(){ var m=document.getElementById("insplist-suModal"); if(m) m.style.display="none"; }
-  function insplistPreShip_(){
+ function insplistPreShip_(){
 
   var checks=document.querySelectorAll(".insplist-chk:checked");
 
@@ -4364,18 +4364,42 @@ function insplistStockUseClose_(){ var m=document.getElementById("insplist-suMod
     return;
   }
 
+  var orders=[];
+
   checks.forEach(function(c){
 
     var orderNo=c.getAttribute("data-order");
 
     if(orderNo){
+      orders.push(orderNo);
       __inspPreShipOrders[orderNo]=true;
     }
 
   });
 
+  var url=(typeof docmasterApiUrl==="function")
+    ? docmasterApiUrl()
+    : "";
+
+  if(url){
+
+    fetch(url,{
+      method:"POST",
+      mode:"no-cors",
+      headers:{
+        "Content-Type":"text/plain;charset=utf-8"
+      },
+      body:JSON.stringify({
+        mode:"writePreShip",
+        orders:orders
+      })
+    }).catch(function(){});
+
+  }
+
   renderInspList();
 }
+
 
 function insplistPreShipCancel_(){
 
@@ -4386,15 +4410,38 @@ function insplistPreShipCancel_(){
     return;
   }
 
+  var orders=[];
+
   checks.forEach(function(c){
 
     var orderNo=c.getAttribute("data-order");
 
     if(orderNo){
+      orders.push(orderNo);
       delete __inspPreShipOrders[orderNo];
     }
 
   });
+
+  var url=(typeof docmasterApiUrl==="function")
+    ? docmasterApiUrl()
+    : "";
+
+  if(url){
+
+    fetch(url,{
+      method:"POST",
+      mode:"no-cors",
+      headers:{
+        "Content-Type":"text/plain;charset=utf-8"
+      },
+      body:JSON.stringify({
+        mode:"cancelPreShip",
+        orders:orders
+      })
+    }).catch(function(){});
+
+  }
 
   renderInspList();
 }
