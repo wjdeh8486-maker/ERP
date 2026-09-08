@@ -4150,14 +4150,31 @@ function insplistBuildRows_(q, shipRows){
     var name=m.partName||"";
     var project=m.vendor||"";                        // 실제 PROJECT NO. (예: JB0130311-BJM)
     // 완료 = 재고 출고수량(관리번호 매칭) + 출하검사 검사수(출고No 매칭). S/N도 재고 매칭
-    var stockOut=0, sns=[];
-    iv.forEach(function(r){
-      if(String(r.ctrlNo||"").trim()===orderNo){
-        stockOut += Number(r.outQty)||0;
-        if(r.sn) sns.push(String(r.sn).trim());
-      }
-    });
-// 출하검사일보의 S/N도 추가
+var stockOut=0;
+var sns=[];
+
+// 재고 S/N
+iv.forEach(function(r){
+  if(String(r.ctrlNo||"").trim()===orderNo){
+    stockOut += Number(r.outQty)||0;
+
+    if(r.sn){
+      String(r.sn)
+        .split(/[,\n\/]+/)
+        .map(function(x){ return x.trim(); })
+        .filter(Boolean)
+        .forEach(function(sn){
+
+          sn = sn.replace(/^10768-/,"");
+
+          if(sn) sns.push(sn);
+
+        });
+    }
+  }
+});
+
+// 출하검사일보 S/N
 (shipRows || []).forEach(function(r){
 
   var outNos = insplistExpandOutNo_(r.outNo);
@@ -4170,18 +4187,24 @@ function insplistBuildRows_(q, shipRows){
         .map(function(x){ return x.trim(); })
         .filter(Boolean)
         .forEach(function(sn){
-          sns.push(sn);
+
+          sn = sn.replace(/^10768-/,"");
+
+          if(sn) sns.push(sn);
+
         });
     }
 
   }
 
 });
+
+// 중복 제거
+sns = Array.from(new Set(sns));
     // 완료 = 재고 출고수량 + 출하검사 순차배분(앞 ORDER부터 수량만큼 채우고 남은 건 다음 ORDER로)
     var shipDone=shipAlloc[orderNo]||0;
     var done=Math.min(qty, stockOut + shipDone);     // 완료는 수량이 상한(중복 방지)
     var lack=Math.max(0, qty-done);                  // 부족 = 수량 − 완료 (0 이상)
-    sns = Array.from(new Set(sns));
     var partNo=String(m.partNo||"").trim();
     var stockQty=insplistStockQty_(partNo, m.oldDrawingNo);          // 보유재고 (품번+도번)
     var lastLoc=insplistLastLoc_(partNo, m.oldDrawingNo);            // 마지막 등록 위치 (품번+도번)
