@@ -15555,7 +15555,7 @@ function insRender(){
       var ri=+inp.getAttribute("data-ri"), key=inp.getAttribute("data-key");
       var r=insState[insType].rows[ri]; if(!r) return;
       var opt=inp.getAttribute("data-opt");
-      if(opt){
+    if(opt){
 
   var cur=String(r[key]||"").split(",").filter(Boolean);
   var idx=cur.indexOf(opt);
@@ -15565,8 +15565,60 @@ function insRender(){
   } else {
     if(idx>=0) cur.splice(idx,1);
   }
-r[key]=cur.join(",");
-  }else {
+
+  r[key]=cur.join(",");
+
+  // 검수 체크 시 출고NO 자동 입력
+  if(key==="seg" && opt==="검수"){
+
+    var outInp = el.querySelector(
+      'input[data-ri="'+ri+'"][data-key="outNo"]'
+    );
+
+    if(inp.checked){
+
+      var res2=(typeof scanResolveDrawing==="function")
+        ? scanResolveDrawing(r.scanCode)
+        : null;
+
+      if(res2 && res2.row){
+
+        var ctrlNo = String(res2.row["관리번호"]||"").trim();
+        var seq    = String(res2.row["순번"]||"").trim();
+
+        if(ctrlNo){
+
+          r.outNo = ctrlNo + (seq ? "-" + seq : "");
+
+          if(outInp){
+            outInp.value = r.outNo;
+          }
+        }
+      }
+
+    } else {
+
+      // 검수 해제 시 출고NO 삭제
+      r.outNo = "";
+
+      if(outInp){
+        outInp.value = "";
+      }
+    }
+  }
+
+}else{
+
+  var __v=(inp.type==="checkbox")?inp.checked:inp.value;
+
+  // 도번·S/N·출고No는 영어 대문자로 통일
+  if((key==="draw"||key==="sn"||key==="outNo") && typeof __v==="string"){
+    __v=__v.toUpperCase();
+    inp.value=__v;
+  }
+
+  r[key]=__v;
+}
         var __v=(inp.type==="checkbox")?inp.checked:inp.value;
         // 도번·S/N·출고No는 영어 대문자로 통일 (M/m 혼용 방지 → 매칭·중복·판정 정확)
         if((key==="draw"||key==="sn"||key==="outNo") && typeof __v==="string"){ __v=__v.toUpperCase(); inp.value=__v; }
