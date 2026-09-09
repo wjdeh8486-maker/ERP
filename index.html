@@ -1897,6 +1897,11 @@
           <input type="text" id="insrep-drawSearch" placeholder="도번 검색 후 Enter" autocomplete="off" style="width:150px;padding:7px 9px;border:1px solid #0B5CAB;border-radius:7px;font-size:12px;">
           <button type="button" id="insrep-drawClear" title="검색 지우기" style="background:#EEF3FA;border:1px solid #C9D3E0;border-radius:7px;padding:6px 8px;cursor:pointer;font-size:12px;">✕</button>
         </span>
+        <span style="display:inline-flex;align-items:center;gap:6px;">
+          <span style="font-size:12px;color:#5A6478;font-weight:700;">🔎 출고NO</span>
+          <input type="text" id="insrep-outSearch" placeholder="출고NO 검색 후 Enter (예: 26-379-9)" autocomplete="off" style="width:190px;padding:7px 9px;border:1px solid #B45309;border-radius:7px;font-size:12px;">
+          <button type="button" id="insrep-outClear" title="검색 지우기" style="background:#FFF3E6;border:1px solid #F0C48A;border-radius:7px;padding:6px 8px;cursor:pointer;font-size:12px;">✕</button>
+        </span>
         <span class="ins-dd">
           <button type="button" class="ins-dd-btn" data-menu="mMore" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">⚙ 더보기 ▾</button>
           <div class="ins-dd-menu" id="mMore" style="min-width:240px;">
@@ -7518,7 +7523,6 @@ function ctqOnUpload_(file){
 /* ==================== 📐 공정능력(Ppk) 분석 (측정 종합 시트 업로드 → 특성별 Ppk·문제 검출) ==================== */
 var PPK_GOOD=1.33, PPK_WARN=1.00;
 var __ppkData=null;          // { products:[ {sheet,name,chars:[...]} ] }
-var __ppkRecords=[];         // 등록된 PPK 결과 스냅샷 (제품별 등록 이력) — writeQTool "ppkRecords"로 공유
 var ppkProduct="__prob";     // "__prob"=문제 항목 전체, else 제품 sheet명
 
 function ppkParseSpec_(header){
@@ -7593,7 +7597,7 @@ function ppkListHtml_(p){
       tds.push("<td style=\"border:1px solid #E6EBF2;padding:5px;text-align:right;"+(oos?"color:#fff;background:#C0392B;font-weight:800;":"")+"\">"+(v==null?"":ppkFmt_(v))+"</td>"); });
     return "<tr>"+tds.join("")+"</tr>";
   }).join("");
-  return "<div style=\"margin-top:14px;\"><div style=\"font-weight:800;color:#1F2A44;margin-bottom:6px;\">📋 측정 데이터 ("+p.list.length+"건) <span style=\"font-size:11px;color:#8A93A6;font-weight:600;\">· 규격이탈은 빨강</span></div>"
+  return "<div style=\"margin-top:14px;\"><div style=\"font-weight:800;color:#1F2A44;margin-bottom:6px;\">📋 백데이터 LIST — 측정 원본 ("+p.list.length+"건) <span style=\"font-size:11px;color:#8A93A6;font-weight:600;\">· 규격이탈은 빨강</span></div>"
     +"<div style=\"overflow:auto;max-height:420px;\"><table style=\"border-collapse:collapse;width:100%;font-size:12px;\"><thead><tr>"
     +head.map(function(h){ return "<th style=\"position:sticky;top:0;border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:6px;white-space:nowrap;\">"+insEscQ_(h)+"</th>"; }).join("")
     +"</tr></thead><tbody>"+rows+"</tbody></table></div></div>";
@@ -7644,57 +7648,7 @@ function ppkRenderTable_(){
   host.innerHTML='<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:640px;"><thead><tr>'
     +head.map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
     +'</tr></thead><tbody>'+trs+'</tbody></table></div>';
-  if(ppkProduct!=="__prob" && __ppkData){ var pp=null; __ppkData.products.forEach(function(x){ if(x.sheet===ppkProduct) pp=x; }); if(pp) host.innerHTML+=ppkListHtml_(pp); }
-  if(ppkProduct!=="__prob"){ host.innerHTML+=ppkRecordsHtml_(ppkProduct); }   // 제품 선택 시 등록 LIST 표시
-}
-
-// 현재 선택된 제품의 PPK 결과를 등록 이력에 저장
-function ppkRegister_(){
-  if(!__ppkData){ alert("먼저 측정 종합 시트를 업로드하세요."); return; }
-  if(ppkProduct==="__prob"){ alert("등록할 제품을 [보기]에서 선택하세요.\n(\u26A0 문제 항목 전체는 등록할 수 없습니다)"); return; }
-  var p=null; __ppkData.products.forEach(function(x){ if(x.sheet===ppkProduct) p=x; });
-  if(!p){ alert("선택된 제품을 찾을 수 없습니다."); return; }
-  var d=new Date(), z=function(n){return String(n).padStart(2,"0");};
-  var ts=d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate())+" "+z(d.getHours())+":"+z(d.getMinutes());
-  var rec={ id:"P"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), date:ts, by:(typeof __clientId!=="undefined"?__clientId:""), sheet:p.sheet, name:p.name,
-    chars:(p.chars||[]).map(function(c){ return {name:c.name, disp:c.disp||"", n:c.n, mean:c.mean, sd:c.sd, ppk:c.ppk, grade:c.grade, oos:c.oos}; }) };
-  __ppkRecords.push(rec);
-  try{ if(typeof idbSet==="function") idbSet("ppkRecords", __ppkRecords); }catch(_){}
-  qShareSave_("ppkRecords", __ppkRecords, "ppk-range");
-  ppkRenderTable_();
-  alert("PPK 결과를 등록했습니다.\n"+p.name+" · "+ts);
-}
-
-// 등록 기록 삭제
-function ppkRecordDelete_(id){
-  if(!confirm("이 등록 기록을 삭제할까요?")) return;
-  __ppkRecords=__ppkRecords.filter(function(r){ return r.id!==id; });
-  try{ if(typeof idbSet==="function") idbSet("ppkRecords", __ppkRecords); }catch(_){}
-  qShareSave_("ppkRecords", __ppkRecords, "ppk-range");
-  ppkRenderTable_();
-}
-
-// 제품별 등록 LIST HTML
-function ppkRecordsHtml_(sheet){
-  var recs=(__ppkRecords||[]).filter(function(r){ return r.sheet===sheet; }).slice().sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
-  var head='<div style="margin-top:18px;display:flex;align-items:center;gap:8px;"><div style="font-weight:800;color:#1F2A44;font-size:14px;">\uD83D\uDCCB 등록 LIST</div><span style="font-size:12px;color:#8A93A6;">이 제품으로 등록된 기록 '+recs.length+'건</span></div>';
-  if(!recs.length){ return head+'<div style="padding:12px;color:#8A93A6;font-size:12.5px;">등록된 기록이 없습니다. 위 [\uD83D\uDCCC 결과 등록] 버튼으로 현재 결과를 등록하세요.</div>'; }
-  var f2=function(x){ return (x==null||isNaN(x))?"-":Number(x).toFixed(2); };
-  var trs=recs.map(function(r){
-    var sum={"양호":0,"주의":0,"부족":0,"이탈":0}; (r.chars||[]).forEach(function(c){ if(sum[c.grade]!=null) sum[c.grade]++; });
-    var chips=(r.chars||[]).map(function(c){ var col=(c.grade==="이탈"||c.grade==="부족")?"#C0392B":(c.grade==="주의"?"#B45309":"#1E7A46"); return '<span style="display:inline-block;background:#F4F7FB;border:1px solid #E1E8F0;border-radius:6px;padding:2px 7px;margin:2px;font-size:11.5px;white-space:nowrap;">'+insEscQ_(c.name)+' <b style="color:'+col+';">'+f2(c.ppk)+'</b></span>'; }).join("");
-    return '<tr>'
-      +'<td style="border:1px solid #E6EBF2;padding:6px;white-space:nowrap;text-align:center;">'+insEscQ_(r.date)+'</td>'
-      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;color:#5A6478;">'+insEscQ_(r.by||"-")+'</td>'
-      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+((r.chars||[]).length)+'</td>'
-      +'<td style="border:1px solid #E6EBF2;padding:6px;font-size:11.5px;color:#5A6478;white-space:nowrap;">양호 '+sum["양호"]+' · 주의 '+sum["주의"]+' · 부족 '+sum["부족"]+' · 이탈 '+sum["이탈"]+'</td>'
-      +'<td style="border:1px solid #E6EBF2;padding:6px;">'+chips+'</td>'
-      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;"><button type="button" onclick="ppkRecordDelete_(\''+r.id+'\')" title="삭제" style="border:none;background:transparent;color:#C0392B;cursor:pointer;font-size:14px;">\uD83D\uDDD1</button></td>'
-      +'</tr>';
-  }).join("");
-  return head+'<div style="overflow:auto;margin-top:6px;"><table style="border-collapse:collapse;width:100%;font-size:12px;min-width:640px;"><thead><tr>'
-    +["등록일시","등록자","특성","판정요약","특성별 Ppk",""].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
-    +'</tr></thead><tbody>'+trs+'</tbody></table></div>';
+  if(ppkProduct!=="__prob" && __ppkData){ var pp=null; __ppkData.products.forEach(function(x){ if(x.sheet===ppkProduct) pp=x; }); if(pp){ var __lh=ppkListHtml_(pp); host.innerHTML += __lh || '<div style="margin-top:16px;padding:12px;color:#8A93A6;font-size:12.5px;">\uD83D\uDCCB 백데이터(원본 측정값)가 이 데이터에 없습니다. 측정 종합 시트를 다시 업로드하면 백데이터 LIST가 표시됩니다.</div>'; } }
 }
 function insEscQ_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 function ppkSummary_(){
@@ -7728,7 +7682,6 @@ function renderPpkPanel(){
     +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">'
     +  '<span style="font-size:12px;color:#5A6478;font-weight:700;">보기</span>'
     +  '<select id="ppk-product" style="padding:6px 8px;border:1px solid #C9D3E0;border-radius:7px;min-width:200px;">'+prodOpts+'</select>'
-    +  '<button type="button" id="ppk-register" title="현재 선택된 제품의 PPK 결과를 등록 이력에 저장" style="background:#0B5CAB;color:#fff;border:none;border-radius:7px;padding:6px 14px;font-weight:700;cursor:pointer;">\uD83D\uDCCC 결과 등록</button>'
     +  '<span style="font-size:11px;color:#8A93A6;">Ppk ≥1.33 양호 · 1.0~1.33 주의 · &lt;1.0 부족 · 규격이탈=측정값이 규격을 벗어난 개수</span>'
     +'</div>'
     +'<div id="ppk-table"></div>'
@@ -7737,7 +7690,6 @@ function renderPpkPanel(){
   document.getElementById("ppk-upload").addEventListener("click",function(){ fi.click(); });
   fi.addEventListener("change",function(){ if(fi.files&&fi.files[0]) ppkOnUpload_(fi.files[0]); });
   var ps=document.getElementById("ppk-product"); if(ps) ps.addEventListener("change",function(){ ppkProduct=this.value; ppkRenderTable_(); });
-  var preg=document.getElementById("ppk-register"); if(preg) preg.addEventListener("click", ppkRegister_);
   ppkRenderTable_();
 }
 function ppkOnUpload_(file){
@@ -7748,7 +7700,7 @@ function ppkOnUpload_(file){
       var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array", cellDates:false});
       __ppkData=ppkParseWorkbook_(wb); ppkProduct="__prob"; try{ window.__qUserLoaded=window.__qUserLoaded||{}; window.__qUserLoaded.ppkData=true; }catch(_){}
       try{ if(typeof idbSet==="function") idbSet("ppkData", __ppkData); }catch(_){}
-      qShareSave_("ppkData", ppkShareLite_(__ppkData), "ppk-range");
+      qShareSave_("ppkData", __ppkData, "ppk-range");   // [수정] 원본 백데이터(list)까지 공유 저장 (chunk 분할)
       renderPpkPanel();
     }catch(err){ if(st) st.textContent="파일 읽기 실패"; alert("측정 시트를 읽지 못했습니다: "+(err&&err.message?err.message:err)); }
   };
@@ -7756,7 +7708,6 @@ function ppkOnUpload_(file){
   reader.readAsArrayBuffer(file);
 }
 (window.__afterEnter=window.__afterEnter||[]).push(function(){ qShareLoad_("ppkData", function(sv){ if(window.__qUserLoaded&&window.__qUserLoaded.ppkData) return; if(sv&&sv.products){ __ppkData=sv; try{ if(typeof idbSet==="function") idbSet("ppkData",sv); }catch(_){}; if(document.getElementById("qpanel-ppk")) renderPpkPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ppkData").then(function(v){ if(v&&v.products){ __ppkData=v; if(document.getElementById("qpanel-ppk")) renderPpkPanel(); } }).catch(function(){}); } }catch(_){} }); });
-(window.__afterEnter=window.__afterEnter||[]).push(function(){ qShareLoad_("ppkRecords", function(sv){ if(Array.isArray(sv)){ __ppkRecords=sv; if(document.getElementById("qpanel-ppk")) renderPpkPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ppkRecords").then(function(v){ if(Array.isArray(v)){ __ppkRecords=v; if(document.getElementById("qpanel-ppk")) renderPpkPanel(); } }).catch(function(){}); } }catch(_){} }); });
 /* ==================== 📁 NCR 대장 (추출 대장 업로드 → 조회·검색·유형분석) ==================== */
 var __ncrData=null;        // [{date,part,customer,content,vendor,register,file}]
 var ncrSearch="", ncrYear="all";
@@ -15822,6 +15773,7 @@ var insProcInMemo   = {};     // 도번 -> { m:측정실비고, c:크린룸비�
 var insMetaByType = { incoming:{inspector:"",date:"",inspByDate:{}}, shipping:{inspector:"",date:"",inspByDate:{}}, measureS:{inspector:"",date:"",inspByDate:{}}, measureL:{inspector:"",date:"",inspByDate:{}} };  // 검사자/검사일자 유형별 + 날짜별 검사자
 var insDayFilter = "all";  // 검사 일보 날짜 필터
 var insDrawSearch = "";     // 검사 일보 도번 검색(있으면 전체 날짜에서 도번 매칭만 표시)
+var insOutSearch = "";      // 검사 일보 출고NO 검색(있으면 해당 출고NO 포함 행만 표시)
 var insShowAllRows = false; // 대용량: 최근 N행만 표시(false) / 전체 표시(true) 토글
 var insDeletedIds = {};     // 삭제 흔적(tombstone)
 try{ var __insDel=localStorage.getItem("ntlInsrepDeleted"); if(__insDel) insDeletedIds=JSON.parse(__insDel)||{}; }catch(e){}
@@ -15929,6 +15881,12 @@ function insInit(){
     __ds.addEventListener("change",__doSearch);   // 포커스 벗어날 때
   }
   var __dc=document.getElementById("insrep-drawClear"); if(__dc) __dc.addEventListener("click",function(){ insDrawSearch=""; var e=document.getElementById("insrep-drawSearch"); if(e) e.value=""; insRender(); });
+  var __os=document.getElementById("insrep-outSearch"); if(__os){
+    var __doOut=function(){ if(insOutSearch!==__os.value){ insOutSearch=__os.value; insRender(); } };
+    __os.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); __doOut(); } });
+    __os.addEventListener("change",__doOut);
+  }
+  var __oc=document.getElementById("insrep-outClear"); if(__oc) __oc.addEventListener("click",function(){ insOutSearch=""; var e=document.getElementById("insrep-outSearch"); if(e) e.value=""; insRender(); });
   bind("insrep-cloudSaveBtn","click",insCloudSave);
   bind("insrep-saveFolderBtn","click",insPickSaveFolder);
   bind("insrep-validateBtn","click",insOpenValidate);
@@ -15986,18 +15944,33 @@ function insRender(){
     return false;
   };
   var __dupKeys=__dupBanner.map(function(d){ return insNormDraw_(d.draw)+"|"+d.sn; });
-  // [출하검사] 출고NO 중복/초과: 같은 출고NO 검사수 합 > 주문수량이면 알람 (MAIN 데이터 있을 때만)
-  var __outNoOver={}, __outNoOverList=[];
+  // [출하검사] 출고NO 중복/초과: 출고NO를 개별 주문으로 분해(콤마·슬래시) → 주문별 수량만큼 순차 배분 → 넘치면 중복
+  var __outNoOver={}, __outNoOverList=[], __rowOutOver={};
   if(insType==="shipping"){
     var __qtyMap={};
     try{ ((typeof mainData!=="undefined"&&mainData)||[]).forEach(function(m){ var o=String(m.orderNo||"").trim().toUpperCase(); if(o) __qtyMap[o]=Number(m.qty)||0; }); }catch(_){}
-    var __sumByOut={}, __cntByOut={};
-    rows.forEach(function(r){ var on=String(r.outNo||"").trim().toUpperCase(); if(!on) return; __sumByOut[on]=(__sumByOut[on]||0)+(Number(r.insCnt)||0); __cntByOut[on]=(__cntByOut[on]||0)+1; });
-    Object.keys(__sumByOut).forEach(function(on){
-      var q=__qtyMap[on];
-      if(q==null){ try{ var ex=(typeof insplistExpandOutNo_==="function")?insplistExpandOutNo_(on):[on]; for(var i=0;i<ex.length;i++){ var k=String(ex[i]).toUpperCase(); if(__qtyMap[k]!=null){ q=__qtyMap[k]; break; } } }catch(_){} }
-      if(q!=null && __sumByOut[on]>q){ __outNoOver[on]=true; __outNoOverList.push({outNo:on, sum:__sumByOut[on], qty:q, rows:__cntByOut[on]}); }
-    });
+    if(Object.keys(__qtyMap).length){
+      var __demand={};
+      rows.forEach(function(r, ri){
+        var cnt=Number(r.insCnt)||0; if(cnt<=0) return;
+        var orders=(typeof insplistExpandOutNo_==="function")?insplistExpandOutNo_(r.outNo):[String(r.outNo||"").trim()];
+        orders=orders.map(function(x){ return String(x||"").trim().toUpperCase(); }).filter(Boolean);
+        if(!orders.length) return;
+        var placed=0;
+        for(var i=0;i<orders.length && placed<cnt;i++){
+          var o=orders[i];
+          var cap=(__qtyMap[o]==null)?(cnt-placed):Math.max(0, __qtyMap[o]-(__demand[o]||0));   // 미등록 주문은 나머지 전부 흡수(오탐 방지)
+          var take=Math.min(cap, cnt-placed);
+          if(take>0){ __demand[o]=(__demand[o]||0)+take; placed+=take; }
+        }
+        if(placed<cnt){   // 남은 만큼은 초과(중복) — 이 행의 등록된 첫 주문에 얹어 표시
+          var tgt=null; for(var j=0;j<orders.length;j++){ if(__qtyMap[orders[j]]!=null){ tgt=orders[j]; break; } }
+          if(tgt){ __demand[tgt]=(__demand[tgt]||0)+(cnt-placed); __rowOutOver[ri]=true; }
+        }
+      });
+      Object.keys(__demand).forEach(function(o){ var q=__qtyMap[o]; if(q!=null && __demand[o]>q){ __outNoOver[o]=true; __outNoOverList.push({outNo:o, sum:__demand[o], qty:q}); } });
+      __outNoOverList.sort(function(a,b){ return (b.sum-b.qty)-(a.sum-a.qty); });
+    }
   }
     // 2행 헤더
   var head1="", head2="";
@@ -16016,9 +15989,12 @@ function insRender(){
   // ── 대용량 대응: 표시 행 상한 (데이터는 그대로, DOM만 최근 N행으로 제한해 속도 유지) ──
   var INS_RENDER_CAP = 400;
   var __dq0=(insDrawSearch||"").trim().toLowerCase();
+  var __oq0=(insOutSearch||"").trim().toUpperCase();
+  var __outMatch=function(row){ if(!__oq0) return true; try{ var ex=(typeof insplistExpandOutNo_==="function")?insplistExpandOutNo_(row.outNo).map(function(x){return String(x).toUpperCase();}):[]; if(ex.indexOf(__oq0)>=0) return true; }catch(_){} return String(row.outNo||"").toUpperCase().indexOf(__oq0)>=0; };
   var __visIdx=[];
   rows.forEach(function(row,ri){
-    if(__dq0){ if(String(row.draw||"").toLowerCase().indexOf(__dq0)<0) return; }
+    if(__oq0){ if(!__outMatch(row)) return; }
+    else if(__dq0){ if(String(row.draw||"").toLowerCase().indexOf(__dq0)<0) return; }
     else if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && String(row.actDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="" && String(row.insDate||"")<=insDayFilter)) return;
     __visIdx.push(ri);
   });
@@ -16037,7 +16013,8 @@ function insRender(){
     });
     row.goodCnt = Math.max(0, totalQty - defectQty);
     var __dq=(insDrawSearch||"").trim().toLowerCase();
-    if(__dq){ if(String(row.draw||"").toLowerCase().indexOf(__dq)<0) return; }   // 도번 검색: 전체 날짜에서 매칭만
+    if(__oq0){ if(!__outMatch(row)) return; }   // 출고NO 검색: 전체 날짜에서 매칭만
+    else if(__dq){ if(String(row.draw||"").toLowerCase().indexOf(__dq)<0) return; }   // 도번 검색: 전체 날짜에서 매칭만
     else if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && String(row.actDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="" && String(row.insDate||"")<=insDayFilter)) return;   // 다른 날짜여도 미조치 부적합은 계속 표시
     __dispNo++;
     if(__allowIdx && !__allowIdx.has(ri)) return;   // 상한 초과: 번호만 증가시키고 DOM은 생략
@@ -16083,7 +16060,7 @@ function insRender(){
     });
     tds+='<td style="border:1px solid #E6EBF2;text-align:center;white-space:nowrap;"><button type="button" class="insrep-edit" data-ri="'+ri+'" style="border:none;background:transparent;color:#0B5CAB;cursor:pointer;font-size:14px;margin-right:2px;">✏️</button><button type="button" class="insrep-del" data-ri="'+ri+'" style="border:none;background:transparent;color:#C0392B;cursor:pointer;font-size:14px;">✕</button></td>';
     var __dup=__rowIsDup(row);
-    var __over=(insType==="shipping" && __outNoOver[String(row.outNo||"").trim().toUpperCase()]);
+    var __over=(insType==="shipping" && __rowOutOver[ri]);
     var __trStyle=__over?' style="background:#FFE1C2;" title="⚠ 출고NO 중복/초과 — 같은 출고NO의 검사수 합이 주문수량을 초과했습니다"':(__dup?' style="background:#FFEDED;" title="⚠ 같은 도번+S/N이 다른 행에도 있습니다 — 검사종합 이동 전 중복을 확인하세요"':'');
     body+='<tr'+__trStyle+'>'+tds+'</tr>';
   });  
@@ -16093,7 +16070,7 @@ function insRender(){
     + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">'+insEsc(cfg.title)+'</div>'
     + '<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">도번을 입력/스캔하면 자동으로 채워지고, 각 칸은 직접 수정할 수 있습니다. 체크박스는 엑셀에서 ■/□ 로 나옵니다.</div>'
     + (__dupBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#C0392B;font-weight:700;font-size:13px;">⚠ 중복 입력 '+__dupBanner.length+'건 — 같은 도번+S/N이 여러 행에 있습니다. 검사종합 이동 전 확인해 중복을 제거하세요.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__dupBanner.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #E4B4B4;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.draw)+'</b> <span style="color:#8A93A6;">/</span> <b style="color:#C0392B;">'+insEsc(d.sn)+'</b></span>'; }).join("")+(__dupBanner.length>20?'<span style="color:#8A1F1F;font-size:12px;align-self:center;">… 외 '+(__dupBanner.length-20)+'건</span>':'')+'</div></div>'):'')
-    + (__outNoOverList.length?('<div style="background:#FFF3E6;border:1px solid #F0C48A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">\u26A0 출고NO 중복/초과 '+__outNoOverList.length+'건 — 같은 출고NO의 검사수 합이 주문수량을 넘었습니다. (MAIN 대시보드 수량 기준)<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__outNoOverList.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #F0C48A;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.outNo)+'</b> <span style="color:#8A93A6;">합</span> <b style="color:#B45309;">'+d.sum+'</b> &gt; 수량 '+d.qty+(d.rows>1?(' <span style="color:#8A93A6;">('+d.rows+'행)</span>'):'')+'</span>'; }).join("")+(__outNoOverList.length>20?'<span style="color:#8A5A00;font-size:12px;align-self:center;">… 외 '+(__outNoOverList.length-20)+'건</span>':'')+'</div></div>'):'')
+    + (__outNoOverList.length?('<div style="background:#FFF3E6;border:1px solid #F0C48A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">\u26A0 출고NO 중복/초과 '+__outNoOverList.length+'건 — 개별 출고NO(주문)의 배분 합계가 주문수량을 넘었습니다. (콤마·슬래시로 묶인 출고NO는 개별 주문으로 분해해 계산 · MAIN 수량 기준)<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__outNoOverList.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #F0C48A;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.outNo)+'</b> <span style="color:#8A93A6;">합</span> <b style="color:#B45309;">'+d.sum+'</b> &gt; 수량 '+d.qty+'</span>'; }).join("")+(__outNoOverList.length>20?'<span style="color:#8A5A00;font-size:12px;align-self:center;">… 외 '+(__outNoOverList.length-20)+'건</span>':'')+'</div></div>'):'')
     + (__capped
         ? '<div style="background:#EAF3FF;border:1px solid #BBD6F5;border-radius:9px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:#1F4E79;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'
           + '<span>⚡ 총 <b>'+__visIdx.length.toLocaleString()+'</b>행 중 <b>최근 '+INS_RENDER_CAP+'행</b>만 표시 중입니다 (빠른 편집용). 날짜별 보기·도번 검색으로 좁히면 원하는 행이 바로 나옵니다.</span>'
