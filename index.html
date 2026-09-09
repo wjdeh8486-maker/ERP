@@ -2020,12 +2020,13 @@
         <div id="dispatch-wrap" style="overflow:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:12px;" id="dispatch-table">
             <colgroup>
-              <col style="width:4%"><col style="width:9%"><col style="width:12%"><col style="width:10%"><col style="width:23%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:9%"><col style="width:14%"><col style="width:7%">
+              <col style="width:4%"><col style="width:9%"><col style="width:12%"><col style="width:8%"><col style="width:10%"><col style="width:19%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:9%"><col style="width:10%"><col style="width:7%">
             </colgroup>
             <thead><tr>
               <th style="padding:8px;border:1px solid #E1E8F0;"><input type="checkbox" id="dispatch-checkAll" title="전체 선택" style="width:15px;height:15px;cursor:pointer;"></th>
               <th style="padding:8px;border:1px solid #E1E8F0;">ORDER NO.</th>
               <th style="padding:8px;border:1px solid #E1E8F0;">PROJECT NO.</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">PO</th>
               <th style="padding:8px;border:1px solid #E1E8F0;cursor:pointer;user-select:none;" onclick="dispatchToggleDrawSort_()" title="클릭: 도번 오름차순/내림차순 정렬">기존도번 <span id="dispatch-drawSortIcon" style="font-size:11px;">⇅</span></th>
               <th style="padding:8px;border:1px solid #E1E8F0;">품명</th>
               <th style="padding:8px;border:1px solid #E1E8F0;">수량</th>
@@ -4511,7 +4512,7 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
     else if(stockQty>0){ note=(lastLoc?lastLoc:"X")+"("+stockQty+")"; }
     return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:sns.join(", "),
              status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[partNo]||""),
-             partNo:partNo, stockQty:stockQty, lastLoc:lastLoc, dispatched:dispatched, note:note };
+             partNo:partNo, stockQty:stockQty, lastLoc:lastLoc, dispatched:dispatched, po:(m.prpo!=null?String(m.prpo):""), note:note };
   }).filter(function(r){
     var only=document.getElementById("dispatch-onlyLack");
     return (only && only.checked) ? (r.lack>0) : true;
@@ -4556,7 +4557,7 @@ function renderDispatchList(){
   var q=String((document.getElementById("dispatch-search")||{}).value||"").trim();
   // 최종납기 기간(또는 검색어)을 지정하기 전에는 빈 화면 + 안내만 표시
   if(!startD && !endD && !q){
-    body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#0B5CAB;padding:18px;font-weight:600;">최종납기 <b>시작~종료</b> 날짜를 지정한 뒤 <b>🔍 조회</b>를 누르면 유진테크 납기 목록이 표시됩니다.</td></tr>';
+    body.innerHTML='<tr><td colspan="12" style="text-align:center;color:#0B5CAB;padding:18px;font-weight:600;">최종납기 <b>시작~종료</b> 날짜를 지정한 뒤 <b>🔍 조회</b>를 누르면 유진테크 납기 목록이 표시됩니다.</td></tr>';
     return;
   }
   // 납기분출 목록 서버 로드 (30초마다 갱신 → 새로고침/재조회 시에도 반영)
@@ -4568,9 +4569,9 @@ function renderDispatchList(){
   var td='padding:6px 6px;border:1px solid #E1E8F0;';
   var paint=function(shipRows){
     var rows=dispatchBuildRows_(startD, endD, q, shipRows);
-    if(!rows.length){ body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#8A93A6;padding:18px;">해당 조건(유진테크 · 최종납기 '+qcEsc(startD||"~")+" ~ "+qcEsc(endD||"~")+')에 표시할 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
+    if(!rows.length){ body.innerHTML='<tr><td colspan="12" style="text-align:center;color:#8A93A6;padding:18px;">해당 조건(유진테크 · 최종납기 '+qcEsc(startD||"~")+" ~ "+qcEsc(endD||"~")+')에 표시할 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
     var tooMany=(typeof window!=="undefined" && window.__dispatchTooMany);
-    var notice = tooMany ? '<tr><td colspan="11" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">⚠ 결과가 너무 많아 앞 300건만 표시합니다. 기간을 좁히세요.</td></tr>' : '';
+    var notice = tooMany ? '<tr><td colspan="12" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">⚠ 결과가 너무 많아 앞 300건만 표시합니다. 기간을 좁히세요.</td></tr>' : '';
     body.innerHTML=notice+rows.map(function(r){
       var lc=r.lack>0?"#C0392B":"#1E7A46";
       var noteHtml="";
@@ -4581,6 +4582,7 @@ function renderDispatchList(){
         +'<td style="'+td+'text-align:center;"><input type="checkbox" class="dispatch-chk" data-order="'+qcEsc(r.orderNo)+'" data-part="'+qcEsc(r.partNo)+'" style="width:15px;height:15px;cursor:pointer;"></td>'
         +'<td style="'+td+'text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
         +'<td style="'+td+'text-align:center;">'+qcEsc(r.project)+'</td>'
+        +'<td style="'+td+'text-align:center;font-size:11px;">'+qcEsc(r.po||"")+'</td>'
         +'<td style="'+td+'text-align:center;">'+((typeof dwgLink==="function"&&r.oldDraw)?dwgLink(r.oldDraw):qcEsc(r.oldDraw))+(r.oldDraw?(' <span class="dispatch-qchist" data-draw="'+qcEsc(r.oldDraw)+'" title="검사이력 조회" style="cursor:pointer;opacity:0.7;font-size:12px;">🔬</span>'):'')+'</td>'
         +'<td style="'+td+'text-align:center;">'+qcEsc(r.name)+'</td>'
         +'<td style="'+td+'text-align:center;">'+r.qty+'</td>'
@@ -4616,10 +4618,10 @@ function dispatchPrint_(){
   var rows=dispatchBuildRows_(startD, endD, q, __dispatchShip);
   if(!rows.length){ alert("인쇄할 항목이 없습니다."); return; }
   var onlyLack=(document.getElementById("dispatch-onlyLack")||{}).checked;
-  var head=["ORDER NO.","PROJECT NO.","기존도번","품명","수량","완료","부족","최종납기","S/N","비고"];
+  var head=["ORDER NO.","PROJECT NO.","PO","기존도번","품명","수량","완료","부족","최종납기","S/N","비고"];
   var bodyHtml=rows.map(function(r){
     var lc=r.lack>0?"#C0392B":"#1E7A46";
-    return '<tr><td>'+qcEsc(r.orderNo)+'</td><td>'+qcEsc(r.project)+'</td><td>'+qcEsc(r.oldDraw)+'</td><td>'+qcEsc(r.name)+'</td><td>'+r.qty+'</td><td>'+r.done+'</td><td style="color:'+lc+';font-weight:800;">'+r.lack+'</td><td>'+qcEsc(r.due)+'</td><td>'+qcEsc(r.sn)+'</td><td>'+qcEsc(r.note||"")+'</td></tr>';
+    return '<tr><td>'+qcEsc(r.orderNo)+'</td><td>'+qcEsc(r.project)+'</td><td>'+qcEsc(r.po||"")+'</td><td>'+qcEsc(r.oldDraw)+'</td><td>'+qcEsc(r.name)+'</td><td>'+r.qty+'</td><td>'+r.done+'</td><td style="color:'+lc+';font-weight:800;">'+r.lack+'</td><td>'+qcEsc(r.due)+'</td><td>'+qcEsc(r.sn)+'</td><td>'+qcEsc(r.note||"")+'</td></tr>';
   }).join("");
   var win=window.open("","_blank"); if(!win) return;
   win.document.write('<html><head><title>분출LIST</title><meta charset="utf-8">'
@@ -4630,7 +4632,7 @@ function dispatchPrint_(){
     +'tbody tr:nth-child(even) td{background:#F4F7FB;-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body>'
     +'<h3>분출LIST · 유진테크 · 최종납기 '+qcEsc(startD||"~")+" ~ "+qcEsc(endD||"~")+(onlyLack?" · 미완료품만":"")+' ('+new Date().toLocaleString("ko-KR")+')</h3>'
     +'<table><colgroup>'
-    +'<col style="width:9%"><col style="width:12%"><col style="width:11%"><col style="width:25%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:10%"><col style="width:15%"><col style="width:6%">'
+    +'<col style="width:9%"><col style="width:12%"><col style="width:8%"><col style="width:11%"><col style="width:17%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:10%"><col style="width:15%"><col style="width:6%">'
     +'</colgroup><thead><tr>'+head.map(function(h){return '<th>'+h+'</th>';}).join("")+'</tr></thead><tbody>'+bodyHtml+'</tbody></table>'
     +'</body></html>');
   win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
@@ -4643,10 +4645,10 @@ function dispatchExcel_(){
   var rows=dispatchBuildRows_(startD, endD, q, __dispatchShip);
   if(!rows.length){ alert("다운로드할 항목이 없습니다."); return; }
   var onlyLack=(document.getElementById("dispatch-onlyLack")||{}).checked;
-  var aoa=[["ORDER NO.","PROJECT NO.","기존도번","품명","수량","완료","부족","최종납기","S/N","비고"]];
-  rows.forEach(function(r){ aoa.push([r.orderNo, r.project, r.oldDraw, r.name, r.qty, r.done, r.lack, r.due, r.sn, r.note||""]); });
+  var aoa=[["ORDER NO.","PROJECT NO.","PO","기존도번","품명","수량","완료","부족","최종납기","S/N","비고"]];
+  rows.forEach(function(r){ aoa.push([r.orderNo, r.project, r.po||"", r.oldDraw, r.name, r.qty, r.done, r.lack, r.due, r.sn, r.note||""]); });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"]=[{wch:11},{wch:16},{wch:14},{wch:30},{wch:5},{wch:5},{wch:5},{wch:12},{wch:26},{wch:16}];
+  ws["!cols"]=[{wch:11},{wch:16},{wch:12},{wch:14},{wch:30},{wch:5},{wch:5},{wch:5},{wch:12},{wch:26},{wch:16}];
   ws["!margins"]={left:0.3,right:0.3,top:0.4,bottom:0.4,header:0.2,footer:0.2};
   ws["!pageSetup"]={orientation:"portrait", fitToWidth:1, fitToHeight:0, scale:100};
   ws["!sheetPr"]={pageSetUpPr:{fitToPage:true}};
@@ -16132,42 +16134,24 @@ function insRender(){
 
   r[key]=cur.join(",");
 
-  // 검수 체크 시 출고NO 자동 입력
-  if(key==="seg" && opt==="검수"){
-
-    var outInp = el.querySelector(
-      'input[data-ri="'+ri+'"][data-key="outNo"]'
-    );
-
+  // 검수/분출 체크 시 출고NO(관리번호) 입력
+  //  · 검수 = 바코드 스캔한 관리번호 그대로 (기존 동작)
+  //  · 분출 = 도번 기준 분출 LIST 후보에서 선택(여러 개면 모달)
+  if(key==="seg" && (opt==="검수" || opt==="분출")){
+    var outInp = el.querySelector('input[data-ri="'+ri+'"][data-key="outNo"]');
+    var __applyOut=function(no){ if(!no) return; r.outNo=no; if(outInp) outInp.value=no; try{ insSaveLocal(); }catch(_){} };
+    var __scanFill=function(){ var res2=(typeof scanResolveDrawing==="function")?scanResolveDrawing(r.scanCode):null; if(res2 && res2.row){ var ctrlNo=String(res2.row["관리번호"]||"").trim(); var seq=String(res2.row["순번"]||"").trim(); if(ctrlNo){ __applyOut(ctrlNo + (seq ? "-" + seq : "")); } } };
     if(inp.checked){
-
-      var res2=(typeof scanResolveDrawing==="function")
-        ? scanResolveDrawing(r.scanCode)
-        : null;
-
-      if(res2 && res2.row){
-
-        var ctrlNo = String(res2.row["관리번호"]||"").trim();
-        var seq    = String(res2.row["순번"]||"").trim();
-
-        if(ctrlNo){
-
-          r.outNo = ctrlNo + (seq ? "-" + seq : "");
-
-          if(outInp){
-            outInp.value = r.outNo;
-          }
-        }
+      if(opt==="검수"){
+        __scanFill();   // 검수: 스캔한 관리번호 그대로
+      } else {
+        var __cands=(typeof insCtrlNoCandidates_==="function")?insCtrlNoCandidates_(r.draw):[];   // 분출: 도번 기준 분출 LIST 후보
+        if(__cands.length===1){ __applyOut(__cands[0].orderNo); }
+        else if(__cands.length>1){ insPickCtrlNo_(__cands, r.draw, function(no){ __applyOut(no); }); }
+        else { __scanFill(); }   // 후보 없으면 스캔코드 폴백
       }
-
     } else {
-
-      // 검수 해제 시 출고NO 삭제
-      r.outNo = "";
-
-      if(outInp){
-        outInp.value = "";
-      }
+      r.outNo=""; if(outInp) outInp.value="";
     }
   }
 
@@ -17558,6 +17542,48 @@ function insNcRenderPopup_(d, hits, missing, missingDetail){
 /* ==================== 📄 NCR 출력 (미조치 부적합 → NCR 엑셀 발행) ==================== */
 var __partNameMap = null;   // { 정규화도번: 품명 } — IndexedDB에 저장돼 MAIN을 안 열어도 유지됨
 function insNormDraw_(x){ return String(x==null?"":x).trim().toUpperCase().replace(/\s+/g,""); }
+// 도번으로 관리번호(ORDER NO.) 후보 수집 — 분출 LIST에 실제 표시되는 그대로(날짜 범위 + 미완료품만 + 유진테크·PR&PO·납품완료 제외·달력 검수 제외)
+function insCtrlNoCandidates_(draw){
+  var d=insNormDraw_(draw); if(!d) return [];
+  var sEl=document.getElementById("dispatch-start"), eEl=document.getElementById("dispatch-end");
+  var startD=(sEl&&sEl.value)||"", endD=(eEl&&eEl.value)||"";   // 분출 LIST의 현재 최종납기 범위
+  var ship=(typeof __dispatchShip!=="undefined"&&__dispatchShip)?__dispatchShip:[];
+  var rows=(typeof dispatchBuildRows_==="function")?dispatchBuildRows_(startD, endD, "", ship):[];   // 미완료품만 체크는 내부에서 반영
+  var seen={}, out=[];
+  rows.forEach(function(r){
+    if(insNormDraw_(r.oldDraw)!==d) return;                       // 도번 일치
+    var no=String(r.orderNo||"").trim(); if(!no || seen[no]) return; seen[no]=true;
+    out.push({orderNo:no, name:r.name||"", qty:Number(r.qty)||0, due:r.due||"", project:r.project||"", customer:""});
+  });
+  return out;
+}
+// 관리번호 후보 선택 모달 (도번 기준)
+function insPickCtrlNo_(cands, draw, cb){
+  var old=document.getElementById("ins-ctrlPickModal"); if(old) old.remove();
+  var wrap=document.createElement("div"); wrap.id="ins-ctrlPickModal";
+  wrap.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100060;";
+  var rowsHtml=cands.map(function(c){
+    return '<div class="ins-ctrlPick-item" data-no="'+insEsc(c.orderNo)+'" style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid #E1E8F0;border-radius:9px;margin-bottom:7px;cursor:pointer;background:#fff;">'
+      +'<div style="font-weight:800;color:#0B5CAB;min-width:92px;">'+insEsc(c.orderNo)+'</div>'
+      +'<div style="flex:1;color:#1C2320;font-size:13px;">'+insEsc(c.name)+'</div>'
+      +'<div style="color:#5A6478;font-size:12px;white-space:nowrap;">수량 '+c.qty+' · 납기 '+insEsc(c.due||"-")+'</div>'
+      +'</div>';
+  }).join("");
+  wrap.innerHTML='<div style="background:#fff;border-radius:14px;max-width:560px;width:92%;max-height:80vh;overflow:auto;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.3);">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><h3 style="margin:0;color:#1F2A44;font-size:16px;">관리번호 선택 <span style="color:#8A93A6;font-size:13px;font-weight:600;">· 도번 '+insEsc(draw)+' · '+cands.length+'건</span></h3>'
+    +'<button type="button" id="ins-ctrlPick-cancel" style="background:#E2E8F0;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700;">✕ 취소</button></div>'
+    +'<div style="color:#5A6478;font-size:12.5px;margin-bottom:10px;">이 도번에 해당하는 관리번호가 여러 개입니다. 출고NO로 넣을 항목을 선택하세요.</div>'
+    +rowsHtml+'</div>';
+  document.body.appendChild(wrap);
+  var close=function(){ wrap.remove(); };
+  wrap.addEventListener("click",function(e){ if(e.target===wrap) close(); });
+  var cbtn=wrap.querySelector("#ins-ctrlPick-cancel"); if(cbtn) cbtn.addEventListener("click",close);
+  wrap.querySelectorAll(".ins-ctrlPick-item").forEach(function(it){
+    it.addEventListener("click",function(){ var no=it.getAttribute("data-no"); close(); cb&&cb(no); });
+    it.addEventListener("mouseenter",function(){ it.style.background="#EEF3FA"; });
+    it.addEventListener("mouseleave",function(){ it.style.background="#fff"; });
+  });
+}
 function insRefreshPartNameMap_(){
   var map = __partNameMap || {};
   var keys=["oldDrawingNo","oldDraw","기존도번","partNo","품번","품 번","draw","도번","도면번호","drawingNo"];
