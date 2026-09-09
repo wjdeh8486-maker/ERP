@@ -4267,7 +4267,7 @@ function renderInspList(){
   var nowT=Date.now();
   if(!window.__inspUsedAt || (nowT-window.__inspUsedAt)>30000){
     window.__inspUsedAt=nowT;
-    insplistLoadUsedNotes_(function(){ renderInspList(); });
+    insplistLoadUsedNotes_(function(){ insplistLoadPreShip_(function(){ renderInspList(); }); });
   }
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
   if(!q){ body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#0B5CAB;padding:18px;font-weight:600;">위 검색창에 ORDER NO.(예: <b>26-386</b>)를 입력하면 세부 항목이 펼쳐집니다.</td></tr>'; return; }
@@ -4397,6 +4397,7 @@ function insplistStockUseClose_(){ var m=document.getElementById("insplist-suMod
 
   }
 
+  window.__inspUsedAt=Date.now();   // [수정] 방금 처리한 선출고가 재조회로 지워지지 않도록
   renderInspList();
 }
 
@@ -4443,6 +4444,7 @@ function insplistPreShipCancel_(){
 
   }
 
+  window.__inspUsedAt=Date.now();   // [수정] 방금 처리한 선출고가 재조회로 지워지지 않도록
   renderInspList();
 }
 
@@ -4819,6 +4821,15 @@ function insplistLoadUsedNotes_(cb){
     .then(function(j){ if(j&&j.success&&j.orders){ __inspUsedOrders={}; j.orders.forEach(function(o){ __inspUsedOrders[o]=true; }); } cb&&cb(); })
     .catch(function(){ cb&&cb(); });
 }
+// 서버에서 선출고 처리된 ORDER 목록 로드 (검수LIST 열 때 호출) — 새로고침 후에도 "선출고" 비고 유지
+function insplistLoadPreShip_(cb){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
+  if(!url){ cb&&cb(); return; }
+  fetch(url+(url.indexOf("?")>=0?"&":"?")+"mode=readPreShip")
+    .then(function(r){ return r.json(); })
+    .then(function(j){ if(j&&j.success&&j.orders){ __inspPreShipOrders={}; j.orders.forEach(function(o){ __inspPreShipOrders[o]=true; }); } cb&&cb(); })
+    .catch(function(){ cb&&cb(); });
+}
 
 // 재고사용 취소(복구): 체크한 항목 중 재고사용된 것만 서버에서 삭제
 function insplistStockUseCancel_(){
@@ -4837,29 +4848,6 @@ function insplistStockUseCancel_(){
   orders.forEach(function(o){ delete __inspUsedOrders[o]; });
   renderInspList();
   alert("재고사용을 취소했습니다. ("+orders.length+"건)\n비고란이 원래대로 복구됩니다.");
-}
-function insplistPreShip_(){
-
-  var checks=[].slice.call(
-    document.querySelectorAll(".insplist-chk:checked")
-  );
-
-  if(!checks.length){
-    alert("선출고 처리할 항목을 체크하세요.");
-    return;
-  }
-
-  checks.forEach(function(c){
-
-    var orderNo=c.getAttribute("data-order");
-
-    if(orderNo){
-      __inspPreShipOrders[orderNo]=true;
-    }
-
-  });
-
-  renderInspList();
 }
 function insplistPrint_(){
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
@@ -9764,7 +9752,7 @@ window.__qualityInited = true;
       try{ if(typeof qShareLoad_==="function"){ qShareLoad_("noticeData", function(sv){ if(noticeApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("noticeData",sv); }catch(_){}}  else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(noticeApply_).catch(function(){}); }catch(_){}} try{ if(typeof qmsLoadSchedShared_==="function"){ qmsLoadSchedShared_(function(){ noticeShowToday_(); }, true); } else { noticeShowToday_(); } }catch(e){} }); } else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(function(v){ noticeApply_(v); noticeShowToday_(); }).catch(function(){}); }catch(_){} } }catch(e){}
       try{ if(typeof qShareLoad_==="function"){ qShareLoad_("waitOverride", function(sv){ if(sv&&typeof sv==="object"){ __waitOverride=sv; try{ if(typeof idbSet==="function") idbSet("waitOverride",sv); }catch(_){}} else { try{ if(typeof idbGet==="function") idbGet("waitOverride").then(function(v){ if(v&&typeof v==="object") __waitOverride=v; }).catch(function(){}); }catch(_){}} try{ if(document.getElementById("waitinsp-content")) renderWaitInspTab(); }catch(e){} }); } }catch(e){}
     }, 1000);
-    setTimeout(function(){ try{ if(typeof qmsMorningBindBadge_==="function") qmsMorningBindBadge_(); }catch(e){} try{ if(typeof qmsShowMorning_==="function") qmsShowMorning_(); }catch(e){} }, 1500);
+    setTimeout(function(){ try{ if(typeof qmsMorningBindBadge_==="function") qmsMorningBindBadge_(); }catch(e){} }, 1500);   // [수정] 접속 시 "오늘 챙길 것" 자동 팝업 제거 — 좌하단 🔔 배지로 수동 열람만 유지
   });
 
   // 앱 스크립트가 로드된 뒤 시작
