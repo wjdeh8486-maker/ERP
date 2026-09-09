@@ -2003,7 +2003,7 @@
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;">최종납기 <input type="date" id="dispatch-start" onchange="renderDispatchList()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;"></label>
           <span style="color:#7A8598;font-weight:700;">~</span>
           <input type="date" id="dispatch-end" onchange="renderDispatchList()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;">
-          <input id="dispatch-search" type="text" placeholder="(선택) ORDER/PROJECT NO. 추가검색" onkeydown="if(event.key==='Enter')renderDispatchList()" style="flex:1;min-width:140px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
+          <input id="dispatch-search" type="text" placeholder="(선택) ORDER/PROJECT/기존도번 추가검색" onkeydown="if(event.key==='Enter')renderDispatchList()" style="flex:1;min-width:140px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
           <button onclick="renderDispatchList()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🔍 조회</button>
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;cursor:pointer;user-select:none;"><input type="checkbox" id="dispatch-onlyLack" onchange="renderDispatchList()" style="width:16px;height:16px;cursor:pointer;"> 미완료품만</label>
           <button onclick="dispatchDispatchOpen_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">📦 납기분출</button>
@@ -4211,7 +4211,7 @@ function insplistBuildRows_(q, shipRows){
   });
   // 결과 과다 시 안전장치: 200건 초과면 잘라냄(재고 계산 폭주 방지)
   var __tooMany=false;
-  if(matched.length>200){ matched=matched.slice(0,200); __tooMany=true; }
+  if(matched.length>300){ matched=matched.slice(0,300); __tooMany=true; }
   if(typeof window!=="undefined") window.__insplistTooMany=__tooMany;
   // 출하검사 검사수를 순차 배분(앞 ORDER부터 수량만큼) — 전체 MAIN 수량 기준
   var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
@@ -4345,7 +4345,7 @@ function renderInspList(){
     var rows=insplistBuildRows_(q, shipRows);
     if(!rows.length){ body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#8A93A6;padding:18px;">"'+qcEsc(q)+'" 에 해당하는 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
     var tooMany=(typeof window!=="undefined" && window.__insplistTooMany);
-    var notice = tooMany ? '<tr><td colspan="11" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">⚠ 검색 결과가 너무 많아 앞 200건만 표시합니다. ORDER NO.를 더 구체적으로 입력하세요 (예: 26-386)</td></tr>' : '';
+    var notice = tooMany ? '<tr><td colspan="11" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">⚠ 검색 결과가 너무 많아 앞 300건만 표시합니다. ORDER NO.를 더 구체적으로 입력하세요 (예: 26-386)</td></tr>' : '';
     body.innerHTML=notice+rows.map(function(r){
       var lc=r.lack>0?"#C0392B":"#1E7A46";
      var noteHtml="";
@@ -4398,6 +4398,11 @@ var __insplistShip=[];
 var __dispatchOrders = {};   // 서버에서 로드한 '납기분출' 처리된 ORDER 집합 (비고 표시용)
 var __dispatchShip   = [];   // 분출 LIST용 출하검사 일보 캐시
 
+// PROJECT NO.를 기준키로 정규화 (예: "JB0130311-BJM" → "JB0130311"). REV/뒷꼬리 달라도 같은 프로젝트로 매칭
+function dispatchProjBase_(sv){
+  var m=String(sv||"").toUpperCase().match(/([A-Z]{1,4}\d+)/);
+  return m?m[1]:String(sv||"").trim().toUpperCase();
+}
 // 일정 달력에 "검수"로 등록된 PROJECT NO. 집합 (분출 LIST에서 제외용). 달력 검수일정 텍스트에서 PROJECT NO.를 추출한다.
 function dispatchInspProjSet_(){
   var set={};
@@ -4407,7 +4412,7 @@ function dispatchInspProjSet_(){
         var t=String(e.text||"");
         if(t.indexOf("검수")<0) return;
         var m=t.match(/([A-Za-z]{1,4}\d[\w\-]*)/);   // 예: "검수 JB0130311" → JB0130311
-        if(m) set[m[1].toUpperCase()]=true;
+        if(m) set[dispatchProjBase_(m[1])]=true;
       });
     }
   }catch(_){}
@@ -4427,21 +4432,22 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
   var matched=md.filter(function(r){
     if((Number(r.qty)||0)<=0) return false;
     if(String(r.customer||"").indexOf("유진테크")<0) return false;                 // 유진테크만
+    if(String(r.shipped||"")==="납품완료") return false;                            // 납품완료 제외
     var due=String(r.dueDate||"").trim();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(due)) return false;                              // 날짜형 최종납기만
     if(startD && due<startD) return false;
     if(endD && due>endD) return false;                                             // 최종납기 [시작~종료]
-    var pj=String(r.vendor||"").trim().toUpperCase();
-    if(pj){                                                                         // 일정 달력 검수 잡힌 PROJECT 제외
-      var head=(pj.match(/([A-Za-z]{1,4}\d[\w\-]*)/)||[])[1];
-      if(head && inspSet[head]) return false;
-      if(inspSet[pj]) return false;
-    }
-    if(queries.length){                                                             // 선택 검색어(있을 때만 추가 필터)
+    var pjBase=dispatchProjBase_(r.vendor);                                         // 일정 달력 검수 잡힌 PROJECT 제외(기준키 매칭)
+    if(pjBase && inspSet[pjBase]) return false;
+    if(queries.length){                                                             // 선택 검색: ORDER / PROJECT / 기존도번
       var o=String(r.orderNo||"").trim();
+      var pj=String(r.vendor||"").trim().toUpperCase();
+      var draw=String(r.oldDrawingNo||"").trim().toUpperCase();
       var okq=queries.some(function(sq){
+        var SQ=sq.toUpperCase();
         if(o===sq || o.indexOf(sq+"-")===0) return true;
-        if(sq.length>=3 && pj && pj.indexOf(sq.toUpperCase())>=0) return true;
+        if(sq.length>=3 && pj && pj.indexOf(SQ)>=0) return true;
+        if(sq.length>=3 && draw && draw.indexOf(SQ)>=0) return true;
         return false;
       });
       if(!okq) return false;
@@ -4450,7 +4456,7 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
   });
 
   var __tooMany=false;
-  if(matched.length>200){ matched=matched.slice(0,200); __tooMany=true; }
+  if(matched.length>300){ matched=matched.slice(0,300); __tooMany=true; }
   if(typeof window!=="undefined") window.__dispatchTooMany=__tooMany;
 
   var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
@@ -4541,7 +4547,7 @@ function renderDispatchList(){
     var rows=dispatchBuildRows_(startD, endD, q, shipRows);
     if(!rows.length){ body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#8A93A6;padding:18px;">해당 조건(유진테크 · 최종납기 '+qcEsc(startD||"~")+" ~ "+qcEsc(endD||"~")+')에 표시할 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
     var tooMany=(typeof window!=="undefined" && window.__dispatchTooMany);
-    var notice = tooMany ? '<tr><td colspan="11" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">⚠ 결과가 너무 많아 앞 200건만 표시합니다. 기간을 좁히세요.</td></tr>' : '';
+    var notice = tooMany ? '<tr><td colspan="11" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">⚠ 결과가 너무 많아 앞 300건만 표시합니다. 기간을 좁히세요.</td></tr>' : '';
     body.innerHTML=notice+rows.map(function(r){
       var lc=r.lack>0?"#C0392B":"#1E7A46";
       var noteHtml="";
