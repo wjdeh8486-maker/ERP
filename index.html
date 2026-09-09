@@ -979,7 +979,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.92</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V8.93</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -1056,6 +1056,7 @@
       <div class="nav-item nav-sub" data-view="upload"><span class="dot"></span>📤 데이터 업로드</div>
     </div></div>
     <div class="nav-item" data-view="insplist"><span class="dot"></span>📋 검수LIST</div>
+    <div class="nav-item" data-view="dispatchlist"><span class="dot"></span>📤 분출LIST</div>
     <div class="nav-item" data-view="shipjudge"><span class="dot"></span>🚦 QMS출하판정</div>
     <div class="nav-item" id="dataCheckNavBtn" title="데이터 이상 점검 (관리자용)"><span class="dot"></span>🔍 데이터 점검</div>
     <div class="nav-item" id="helpNavBtn" title="사용법 안내"><span class="dot"></span>❓ 사용법</div>
@@ -1987,6 +1988,71 @@
           <div style="text-align:right;margin-top:16px;">
             <button onclick="insplistStockUseClose_()" style="background:#E2E8F0;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;margin-right:8px;">취소</button>
             <button onclick="insplistStockUseShare_()" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-weight:700;cursor:pointer;">☁ 공유</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- ===================== 📤 분출 LIST VIEW (유진테크·최종납기·검수제외·납기분출) ===================== -->
+    <div class="view" id="view-dispatchlist">
+      <div style="background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+          <div style="font-size:18px;font-weight:800;color:#1F2A44;">📤 분출LIST</div>
+          <button onclick="renderDispatchList()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🔄 새로고침</button>
+          <button onclick="dispatchPrint_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🖨️ 인쇄</button>
+          <button onclick="dispatchExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">📊 엑셀 다운로드</button>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;">최종납기 <input type="date" id="dispatch-start" onchange="renderDispatchList()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;"></label>
+          <span style="color:#7A8598;font-weight:700;">~</span>
+          <input type="date" id="dispatch-end" onchange="renderDispatchList()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;">
+          <input id="dispatch-search" type="text" placeholder="(선택) ORDER/PROJECT NO. 추가검색" onkeydown="if(event.key==='Enter')renderDispatchList()" style="flex:1;min-width:140px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
+          <button onclick="renderDispatchList()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🔍 조회</button>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;cursor:pointer;user-select:none;"><input type="checkbox" id="dispatch-onlyLack" onchange="renderDispatchList()" style="width:16px;height:16px;cursor:pointer;"> 미완료품만</label>
+          <button onclick="dispatchDispatchOpen_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">📦 납기분출</button>
+          <button onclick="dispatchDispatchCancel_()" style="background:#B0662A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;" title="납기분출된 항목을 다시 되돌립니다">↩ 납기분출 취소</button>
+        </div>
+        <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">유진테크 · 최종납기 기간 내 · PR&amp;PO 등록건만 · 일정 달력에 '검수' 잡힌 PROJECT NO.는 제외 · 완료 = 재고 출고수량(관리번호 매칭) · 부족 = 수량 − 완료</div>
+        <div id="dispatch-wrap" style="overflow:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;" id="dispatch-table">
+            <colgroup>
+              <col style="width:4%"><col style="width:9%"><col style="width:12%"><col style="width:10%"><col style="width:23%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:14%"><col style="width:9%"><col style="width:7%">
+            </colgroup>
+            <thead><tr>
+              <th style="padding:8px;border:1px solid #E1E8F0;"><input type="checkbox" id="dispatch-checkAll" title="전체 선택" style="width:15px;height:15px;cursor:pointer;"></th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">ORDER NO.</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">PROJECT NO.</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;cursor:pointer;user-select:none;" onclick="dispatchToggleDrawSort_()" title="클릭: 도번 오름차순/내림차순 정렬">기존도번 <span id="dispatch-drawSortIcon" style="font-size:11px;">⇅</span></th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">품명</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">수량</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">완료수량</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">부족수량</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">S/N</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">최종납기</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;">비고</th>
+            </tr></thead>
+            <tbody id="dispatch-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <!-- 납기분출 입력 팝업 -->
+      <div id="dispatch-suModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);align-items:center;justify-content:center;z-index:99998;">
+        <div style="background:#fff;border-radius:14px;max-width:760px;width:92%;max-height:82vh;overflow:auto;padding:22px;box-shadow:0 12px 40px rgba(0,0,0,.3);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <h3 style="margin:0;color:#0B7A8A;">📦 납기분출 — S/N 입력</h3>
+            <button onclick="dispatchDispatchClose_()" style="background:#E2E8F0;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700;">✕ 취소</button>
+          </div>
+          <div style="color:#5A6B82;font-size:13px;margin-bottom:10px;">각 항목의 S/N을 입력하세요. (쉼표로 여러 개) · 공유하면 분출LIST 비고에 '납기분출'로 표시됩니다.</div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr>
+              <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">ORDER NO.</th>
+              <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">품명</th>
+              <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">수량</th>
+              <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">위치</th>
+              <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">S/N (직접 입력)</th>
+            </tr></thead>
+            <tbody id="dispatch-suBody"></tbody>
+          </table>
+          <div style="text-align:right;margin-top:16px;">
+            <button onclick="dispatchDispatchClose_()" style="background:#E2E8F0;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;margin-right:8px;">취소</button>
+            <button onclick="dispatchDispatchShare_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-weight:700;cursor:pointer;">☁ 공유</button>
           </div>
         </div>
       </div>
@@ -3278,6 +3344,9 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="insplist"){
       if(typeof renderInspList==="function") renderInspList();
     }
+    if(target==="dispatchlist"){
+      if(typeof renderDispatchList==="function") renderDispatchList();
+    }
     if(target==="quality"){
       if(typeof ncInit==="function" && !window.__ncInited){ window.__ncInited = true; ncInit(); }
       if(!window.__qualityInited){
@@ -4324,6 +4393,307 @@ else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;
   }
 }
 var __insplistShip=[];
+
+/* ========================= 📤 분출 LIST (유진테크 · 최종납기 범위 · 검수 제외 · 납기분출) ========================= */
+var __dispatchOrders = {};   // 서버에서 로드한 '납기분출' 처리된 ORDER 집합 (비고 표시용)
+var __dispatchShip   = [];   // 분출 LIST용 출하검사 일보 캐시
+
+// 일정 달력에 "검수"로 등록된 PROJECT NO. 집합 (분출 LIST에서 제외용). 달력 검수일정 텍스트에서 PROJECT NO.를 추출한다.
+function dispatchInspProjSet_(){
+  var set={};
+  try{
+    if(typeof schedEvents!=="undefined" && Array.isArray(schedEvents)){
+      schedEvents.forEach(function(e){
+        var t=String(e.text||"");
+        if(t.indexOf("검수")<0) return;
+        var m=t.match(/([A-Za-z]{1,4}\d[\w\-]*)/);   // 예: "검수 JB0130311" → JB0130311
+        if(m) set[m[1].toUpperCase()]=true;
+      });
+    }
+  }catch(_){}
+  return set;
+}
+
+// 분출 대상 행 생성: 유진테크 + 최종납기[시작~종료] + 수량>0 + (mainData는 이미 PR·PO 필터됨) + 검수 제외 (+선택 검색어)
+function dispatchBuildRows_(startD, endD, q, shipRows){
+  var md=(typeof mainData!=="undefined"&&mainData)?mainData:[];
+  var iv=(typeof invData!=="undefined"&&invData)?invData:[];
+  var locMap=(typeof invGetLocMap_==="function")?(invGetLocMap_()||{}):{};
+  startD=String(startD||"").trim(); endD=String(endD||"").trim();
+  q=String(q||"").trim();
+  var queries=q?(q.indexOf(",")>=0?q.split(",").map(function(x){return x.trim();}).filter(Boolean):[q]):[];
+  var inspSet=dispatchInspProjSet_();
+
+  var matched=md.filter(function(r){
+    if((Number(r.qty)||0)<=0) return false;
+    if(String(r.customer||"").indexOf("유진테크")<0) return false;                 // 유진테크만
+    var due=String(r.dueDate||"").trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(due)) return false;                              // 날짜형 최종납기만
+    if(startD && due<startD) return false;
+    if(endD && due>endD) return false;                                             // 최종납기 [시작~종료]
+    var pj=String(r.vendor||"").trim().toUpperCase();
+    if(pj){                                                                         // 일정 달력 검수 잡힌 PROJECT 제외
+      var head=(pj.match(/([A-Za-z]{1,4}\d[\w\-]*)/)||[])[1];
+      if(head && inspSet[head]) return false;
+      if(inspSet[pj]) return false;
+    }
+    if(queries.length){                                                             // 선택 검색어(있을 때만 추가 필터)
+      var o=String(r.orderNo||"").trim();
+      var okq=queries.some(function(sq){
+        if(o===sq || o.indexOf(sq+"-")===0) return true;
+        if(sq.length>=3 && pj && pj.indexOf(sq.toUpperCase())>=0) return true;
+        return false;
+      });
+      if(!okq) return false;
+    }
+    return true;
+  });
+
+  var __tooMany=false;
+  if(matched.length>200){ matched=matched.slice(0,200); __tooMany=true; }
+  if(typeof window!=="undefined") window.__dispatchTooMany=__tooMany;
+
+  var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
+  var shipAlloc=insplistShipAlloc_(shipRows, function(o){ return qtyMap[o]||0; });
+
+  return matched.map(function(m){
+    var orderNo=String(m.orderNo||"").trim();
+    var qty=Number(m.qty)||0;
+    var name=m.partName||"";
+    var project=m.vendor||"";
+    var stockOut=0, sns=[];
+    // 재고 S/N (관리번호=orderNo 매칭)
+    iv.forEach(function(r){
+      if(String(r.ctrlNo||"").trim()===orderNo){
+        stockOut += Number(r.outQty)||0;
+        if(r.sn){ String(r.sn).split(/[,\n\/]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){ sn=sn.replace(/^10768-/,""); var nums=sn.match(/\d+/g); if(nums) nums.forEach(function(n){ sns.push(n); }); }); }
+      }
+    });
+    // 출하검사일보 S/N
+    (shipRows||[]).forEach(function(r){
+      var outNos=insplistExpandOutNo_(r.outNo);
+      if(outNos.indexOf(orderNo)>=0 && r.sn){
+        String(r.sn).split(/[,\n\/]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){ sn=sn.replace(/^10768-/,""); var nums=sn.match(/\d+/g); if(nums) nums.forEach(function(n){ if(n==="10768") return; sns.push(n); }); });
+      }
+    });
+    sns=Array.from(new Set(sns));
+    var shipDone=shipAlloc[orderNo]||0;
+    var done=Math.min(qty, stockOut+shipDone);
+    var lack=Math.max(0, qty-done);
+    var partNo=String(m.partNo||"").trim();
+    var stockQty=insplistStockQty_(partNo, m.oldDrawingNo);
+    var lastLoc=insplistLastLoc_(partNo, m.oldDrawingNo);
+    var dispatched=(__dispatchOrders && __dispatchOrders[orderNo]===true);
+    var note="";
+    if(dispatched){ note="납기분출"; }
+    else if(stockQty>0){ note=(lastLoc?lastLoc:"X")+"("+stockQty+")"; }
+    return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:sns.join(", "),
+             status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[partNo]||""),
+             partNo:partNo, stockQty:stockQty, lastLoc:lastLoc, dispatched:dispatched, note:note };
+  }).filter(function(r){
+    var only=document.getElementById("dispatch-onlyLack");
+    return (only && only.checked) ? (r.lack>0) : true;
+  }).sort(function(a,b){
+    var mode=(typeof window!=="undefined" && window.__dispatchSort)||"due";
+    if(mode==="draw-asc")  return String(a.oldDraw||"").localeCompare(String(b.oldDraw||""), undefined, {numeric:true});
+    if(mode==="draw-desc") return String(b.oldDraw||"").localeCompare(String(a.oldDraw||""), undefined, {numeric:true});
+    if(mode==="order")     return String(a.orderNo).localeCompare(String(b.orderNo), undefined, {numeric:true});
+    return String(a.due||"").localeCompare(String(b.due||""));   // 기본: 최종납기 오름차순
+  });
+}
+
+// 서버에서 납기분출 처리된 ORDER 목록 로드 (분출 LIST 열 때/30초마다)
+function dispatchLoadDispatched_(cb){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
+  if(!url){ cb&&cb(); return; }
+  fetch(url+(url.indexOf("?")>=0?"&":"?")+"mode=readDispatch")
+    .then(function(r){ return r.json(); })
+    .then(function(j){ if(j&&j.success&&j.orders){ __dispatchOrders={}; j.orders.forEach(function(o){ __dispatchOrders[o]=true; }); } cb&&cb(); })
+    .catch(function(){ cb&&cb(); });
+}
+
+function dispatchToggleDrawSort_(){
+  var cur=(typeof window!=="undefined" && window.__dispatchSort)||"due";
+  var next=(cur==="draw-asc")?"draw-desc":"draw-asc";
+  window.__dispatchSort=next;
+  var ic=document.getElementById("dispatch-drawSortIcon"); if(ic) ic.textContent=(next==="draw-asc")?"▲":"▼";
+  renderDispatchList();
+}
+
+function renderDispatchList(){
+  var body=document.getElementById("dispatch-body"); if(!body) return;
+  var sEl=document.getElementById("dispatch-start"), eEl=document.getElementById("dispatch-end");
+  var startD=(sEl||{}).value||"", endD=(eEl||{}).value||"";
+  var q=String((document.getElementById("dispatch-search")||{}).value||"").trim();
+  // 최종납기 기간(또는 검색어)을 지정하기 전에는 빈 화면 + 안내만 표시
+  if(!startD && !endD && !q){
+    body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#0B5CAB;padding:18px;font-weight:600;">최종납기 <b>시작~종료</b> 날짜를 지정한 뒤 <b>🔍 조회</b>를 누르면 유진테크 납기 목록이 표시됩니다.</td></tr>';
+    return;
+  }
+  // 납기분출 목록 서버 로드 (30초마다 갱신 → 새로고침/재조회 시에도 반영)
+  var nowT=Date.now();
+  if(!window.__dispatchLoadedAt || (nowT-window.__dispatchLoadedAt)>30000){
+    window.__dispatchLoadedAt=nowT;
+    dispatchLoadDispatched_(function(){ renderDispatchList(); });
+  }
+  var td='padding:6px 6px;border:1px solid #E1E8F0;';
+  var paint=function(shipRows){
+    var rows=dispatchBuildRows_(startD, endD, q, shipRows);
+    if(!rows.length){ body.innerHTML='<tr><td colspan="11" style="text-align:center;color:#8A93A6;padding:18px;">해당 조건(유진테크 · 최종납기 '+qcEsc(startD||"~")+" ~ "+qcEsc(endD||"~")+')에 표시할 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
+    var tooMany=(typeof window!=="undefined" && window.__dispatchTooMany);
+    var notice = tooMany ? '<tr><td colspan="11" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">⚠ 결과가 너무 많아 앞 200건만 표시합니다. 기간을 좁히세요.</td></tr>' : '';
+    body.innerHTML=notice+rows.map(function(r){
+      var lc=r.lack>0?"#C0392B":"#1E7A46";
+      var noteHtml="";
+      if(r.note==="납기분출"){ noteHtml='<span style="color:#0B7A8A;font-weight:700;">납기분출</span>'; }
+      else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;font-weight:700;" title="위치 미지정 · 재고 보유중">'+qcEsc(r.note)+'</span>'; }
+      else if(r.note){ noteHtml='<span style="color:#0B5CAB;font-weight:600;">📍'+qcEsc(r.note)+'</span>'; }
+      return '<tr>'
+        +'<td style="'+td+'text-align:center;"><input type="checkbox" class="dispatch-chk" data-order="'+qcEsc(r.orderNo)+'" data-part="'+qcEsc(r.partNo)+'" style="width:15px;height:15px;cursor:pointer;"></td>'
+        +'<td style="'+td+'text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
+        +'<td style="'+td+'text-align:center;">'+qcEsc(r.project)+'</td>'
+        +'<td style="'+td+'text-align:center;">'+((typeof dwgLink==="function"&&r.oldDraw)?dwgLink(r.oldDraw):qcEsc(r.oldDraw))+(r.oldDraw?(' <span class="dispatch-qchist" data-draw="'+qcEsc(r.oldDraw)+'" title="검사이력 조회" style="cursor:pointer;opacity:0.7;font-size:12px;">🔬</span>'):'')+'</td>'
+        +'<td style="'+td+'text-align:center;">'+qcEsc(r.name)+'</td>'
+        +'<td style="'+td+'text-align:center;">'+r.qty+'</td>'
+        +'<td style="'+td+'text-align:center;">'+r.done+'</td>'
+        +'<td style="'+td+'text-align:center;font-weight:800;color:'+lc+';">'+r.lack+'</td>'
+        +'<td style="'+td+'text-align:center;font-size:11px;">'+qcEsc(r.sn)+'</td>'
+        +'<td style="'+td+'text-align:center;font-size:12px;">'+qcEsc(r.due)+'</td>'
+        +'<td style="'+td+'text-align:center;">'+noteHtml+'</td>'
+        +'</tr>';
+    }).join("");
+    var chkAll=document.getElementById("dispatch-checkAll");
+    if(chkAll){ chkAll.checked=false; chkAll.onclick=function(){ document.querySelectorAll(".dispatch-chk").forEach(function(c){ c.checked=chkAll.checked; }); }; }
+    body.querySelectorAll(".dispatch-qchist").forEach(function(ic){
+      ic.addEventListener("click", function(ev){ ev.stopPropagation(); if(typeof insplistGoQcHist_==="function") insplistGoQcHist_(ic.getAttribute("data-draw")); });
+    });
+  };
+  var local=(typeof insState!=="undefined"&&insState.shipping&&Array.isArray(insState.shipping.rows))?insState.shipping.rows:[];
+  paint(local);
+  if(typeof insGateLoadLogs_==="function"){
+    body.setAttribute("data-dq", startD+"|"+endD+"|"+q);
+    insGateLoadLogs_(function(logs){
+      if(body.getAttribute("data-dq")!==(startD+"|"+endD+"|"+q)) return;
+      __dispatchShip=(logs&&logs.shipping)||local;
+      paint(__dispatchShip);
+    });
+  }
+}
+
+// ===== 분출 LIST 인쇄 / 엑셀 (검수LIST와 동일 디자인, insplistStyleSheet_ 재사용) =====
+function dispatchPrint_(){
+  var startD=(document.getElementById("dispatch-start")||{}).value||"", endD=(document.getElementById("dispatch-end")||{}).value||"";
+  var q=String((document.getElementById("dispatch-search")||{}).value||"").trim();
+  var rows=dispatchBuildRows_(startD, endD, q, __dispatchShip);
+  if(!rows.length){ alert("인쇄할 항목이 없습니다."); return; }
+  var onlyLack=(document.getElementById("dispatch-onlyLack")||{}).checked;
+  var head=["ORDER NO.","PROJECT NO.","기존도번","품명","수량","완료","부족","S/N","최종납기","비고"];
+  var bodyHtml=rows.map(function(r){
+    var lc=r.lack>0?"#C0392B":"#1E7A46";
+    return '<tr><td>'+qcEsc(r.orderNo)+'</td><td>'+qcEsc(r.project)+'</td><td>'+qcEsc(r.oldDraw)+'</td><td>'+qcEsc(r.name)+'</td><td>'+r.qty+'</td><td>'+r.done+'</td><td style="color:'+lc+';font-weight:800;">'+r.lack+'</td><td>'+qcEsc(r.sn)+'</td><td>'+qcEsc(r.due)+'</td><td>'+qcEsc(r.note||"")+'</td></tr>';
+  }).join("");
+  var win=window.open("","_blank"); if(!win) return;
+  win.document.write('<html><head><title>분출LIST</title><meta charset="utf-8">'
+    +'<style>@page{size:A4 portrait;margin:7mm;} body{font-family:Malgun Gothic,sans-serif;} h3{margin:0 0 8px;font-size:15px;} '
+    +'table{width:100%;border-collapse:collapse;font-size:9.5px;table-layout:fixed;} '
+    +'th,td{border:1px solid #333;padding:4px 4px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} '
+    +'thead th{background:#1F2A44 !important;color:#fff !important;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact;} '
+    +'tbody tr:nth-child(even) td{background:#F4F7FB;-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body>'
+    +'<h3>분출LIST · 유진테크 · 최종납기 '+qcEsc(startD||"~")+" ~ "+qcEsc(endD||"~")+(onlyLack?" · 미완료품만":"")+' ('+new Date().toLocaleString("ko-KR")+')</h3>'
+    +'<table><colgroup>'
+    +'<col style="width:9%"><col style="width:12%"><col style="width:11%"><col style="width:25%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:15%"><col style="width:10%"><col style="width:6%">'
+    +'</colgroup><thead><tr>'+head.map(function(h){return '<th>'+h+'</th>';}).join("")+'</tr></thead><tbody>'+bodyHtml+'</tbody></table>'
+    +'</body></html>');
+  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
+}
+
+function dispatchExcel_(){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
+  var startD=(document.getElementById("dispatch-start")||{}).value||"", endD=(document.getElementById("dispatch-end")||{}).value||"";
+  var q=String((document.getElementById("dispatch-search")||{}).value||"").trim();
+  var rows=dispatchBuildRows_(startD, endD, q, __dispatchShip);
+  if(!rows.length){ alert("다운로드할 항목이 없습니다."); return; }
+  var onlyLack=(document.getElementById("dispatch-onlyLack")||{}).checked;
+  var aoa=[["ORDER NO.","PROJECT NO.","기존도번","품명","수량","완료","부족","S/N","최종납기","비고"]];
+  rows.forEach(function(r){ aoa.push([r.orderNo, r.project, r.oldDraw, r.name, r.qty, r.done, r.lack, r.sn, r.due, r.note||""]); });
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=[{wch:11},{wch:16},{wch:14},{wch:30},{wch:5},{wch:5},{wch:5},{wch:26},{wch:12},{wch:16}];
+  ws["!margins"]={left:0.3,right:0.3,top:0.4,bottom:0.4,header:0.2,footer:0.2};
+  ws["!pageSetup"]={orientation:"portrait", fitToWidth:1, fitToHeight:0, scale:100};
+  ws["!sheetPr"]={pageSetUpPr:{fitToPage:true}};
+  if(typeof insplistStyleSheet_==="function") insplistStyleSheet_(ws, aoa, rows, 6);
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "분출LIST");
+  XLSX.writeFile(wb, "분출LIST_유진테크_"+(startD||"")+"_"+(endD||"")+(onlyLack?"_미완료":"")+".xlsx");
+}
+
+// ===== 납기분출 (팝업 → S/N 입력 → 서버 저장(별도 시트) → 비고 '납기분출') =====
+var __dispatchUseRows=[];
+function dispatchDispatchOpen_(){
+  var checks=Array.prototype.slice.call(document.querySelectorAll(".dispatch-chk:checked"));
+  if(!checks.length){ alert("납기분출할 항목을 먼저 체크하세요."); return; }
+  var startD=(document.getElementById("dispatch-start")||{}).value||"", endD=(document.getElementById("dispatch-end")||{}).value||"";
+  var q=String((document.getElementById("dispatch-search")||{}).value||"").trim();
+  var all=dispatchBuildRows_(startD, endD, q, __dispatchShip);
+  var byOrder={}; all.forEach(function(r){ byOrder[r.orderNo]=r; });
+  __dispatchUseRows=checks.map(function(c){
+    var o=c.getAttribute("data-order"); var r=byOrder[o]||{};
+    return { orderNo:o, project:r.project||"", oldDraw:r.oldDraw||"", name:r.name||"", qty:r.qty||0,
+             partNo:c.getAttribute("data-part")||r.partNo||"", loc:r.lastLoc||r.loc||"", sn:"" };
+  });
+  dispatchDispatchRender_();
+  var modal=document.getElementById("dispatch-suModal"); if(modal) modal.style.display="flex";
+}
+function dispatchDispatchRender_(){
+  var box=document.getElementById("dispatch-suBody"); if(!box) return;
+  box.innerHTML=__dispatchUseRows.map(function(r,i){
+    return '<tr>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;">'+qcEsc(r.name)+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;"><input type="number" class="dispatch-su-qty" data-idx="'+i+'" value="'+(Number(r.qty)||0)+'" min="0" style="width:60px;padding:5px;border:1px solid #D6DEE8;border-radius:6px;box-sizing:border-box;text-align:center;"></td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;">'+qcEsc(r.loc)+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;"><input type="text" class="dispatch-su-sn" data-idx="'+i+'" value="'+qcEsc(r.sn)+'" placeholder="S/N 입력 (쉼표로 여러 개)" style="width:100%;padding:5px;border:1px solid #D6DEE8;border-radius:6px;box-sizing:border-box;"></td>'
+      +'</tr>';
+  }).join("");
+}
+function dispatchDispatchClose_(){ var m=document.getElementById("dispatch-suModal"); if(m) m.style.display="none"; }
+function dispatchDispatchShare_(){
+  document.querySelectorAll(".dispatch-su-sn").forEach(function(inp){ var i=Number(inp.getAttribute("data-idx")); if(__dispatchUseRows[i]) __dispatchUseRows[i].sn=inp.value; });
+  document.querySelectorAll(".dispatch-su-qty").forEach(function(inp){ var i=Number(inp.getAttribute("data-idx")); if(__dispatchUseRows[i]) __dispatchUseRows[i].qty=Number(inp.value)||0; });
+  var rows=__dispatchUseRows.map(function(r){ return {orderNo:r.orderNo, project:r.project, oldDraw:r.oldDraw||"", name:r.name, qty:r.qty, sn:r.sn, loc:r.loc}; });
+  var orders=rows.map(function(r){ return r.orderNo; });
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
+  var by=(typeof __clientId!=="undefined")?__clientId:"";
+  if(url){
+    fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({mode:"writeDispatch", rows:rows, orders:orders, by:by})}).catch(function(){});
+    try{
+      if(typeof __clientId!=="undefined"){
+        var a={ proc:"납기분출", draw:"", qty:rows.length, types:"__DISPATCH__", by:__clientId, extra:{ orders:orders } };
+        fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
+          body:JSON.stringify({mode:"writeNcAlert", alerts:[a]})}).catch(function(){});
+      }
+    }catch(e){}
+  }
+  orders.forEach(function(o){ __dispatchOrders[o]=true; });
+  window.__dispatchLoadedAt=Date.now();   // 방금 처리분이 재조회로 지워지지 않도록
+  dispatchDispatchClose_();
+  renderDispatchList();
+  alert("납기분출 "+rows.length+"건을 공유했습니다.");
+}
+function dispatchDispatchCancel_(){
+  var checks=Array.prototype.slice.call(document.querySelectorAll(".dispatch-chk:checked"));
+  if(!checks.length){ alert("취소할 항목을 먼저 체크하세요."); return; }
+  var orders=checks.map(function(c){ return c.getAttribute("data-order"); }).filter(function(o){ return __dispatchOrders[o]===true; });
+  if(!orders.length){ alert("체크한 항목 중 '납기분출' 상태인 것이 없습니다.\n(납기분출된 항목만 취소할 수 있습니다.)"); return; }
+  if(!confirm("다음 "+orders.length+"건의 납기분출을 취소할까요?\n\n"+orders.join(", "))) return;
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
+  if(url){ fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({mode:"cancelDispatch", orders:orders})}).catch(function(){}); }
+  orders.forEach(function(o){ delete __dispatchOrders[o]; });
+  window.__dispatchLoadedAt=Date.now();
+  renderDispatchList();
+  alert("납기분출을 취소했습니다. ("+orders.length+"건)");
+}
 
 // ========== 검수LIST 재고사용 (팝업 → S/N 입력 → 공유 → 엑셀) ==========
 var __stockUseRows=[];   // 현재 팝업에 담긴 재고사용 대상
@@ -9737,7 +10107,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.92;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=8.93;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -19329,6 +19699,6 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.92 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V8.93 🔔</div>
 </body>
 </html>
