@@ -15792,39 +15792,6 @@ function insRowSig_(r){ if(!r||typeof r!=="object") return String(r); var ks=Obj
 function insDedup_(rows){ if(!Array.isArray(rows)) return rows; var seen={}, out=[]; rows.forEach(function(r){ var sig=insRowSig_(r); if(seen[sig]) return; seen[sig]=1; out.push(r); }); return out; }
 function insBlankRow(){ var r={}; insLeaves().forEach(function(c){ r[c.key]=(c.kind==="check")?false:""; }); if("insDate" in r) r.insDate=insDefaultDate_(); try{ var __m=insMetaByType[insType]; if(__m){ var __d=r.insDate||""; r.inspector=(__m.inspByDate&&__m.inspByDate[__d])||__m.inspector||""; } }catch(e){} r._id=insRowId_(); return r; }
 
-// [출하검사] 검수/분출로 관리번호 입력 시, 검사수 > 주문수량이면 자동 행분할
-//   현재 행 = 주문수량(검수/분출 유지) · 새 행(초과분) = 재고 체크, 출고NO 빈칸
-function insMaybeSplitOverQty_(ri){
-  if(insType!=="shipping") return;
-  var rows=insState[insType] && insState[insType].rows; if(!rows) return;
-  var r=rows[ri]; if(!r) return;
-  var outNo=String(r.outNo||"").trim().toUpperCase(); if(!outNo) return;
-  var qty=null, md=(typeof mainData!=="undefined"&&mainData)?mainData:[];
-  for(var i=0;i<md.length;i++){ if(String(md[i].orderNo||"").trim().toUpperCase()===outNo){ qty=Number(md[i].qty)||0; break; } }
-  if(qty==null || qty<=0) return;
-  var cnt=Number(r.insCnt)||0;
-  if(cnt<=qty) return;                       // 초과 아님
-  var remain=cnt-qty;
-  // S/N 분할 (있으면 앞 qty개는 현재 행, 나머지는 새 행)
-  var snParts=String(r.sn||"").split(/\s*[,\/\n]\s*/).filter(Boolean), snB="";
-  if(snParts.length>qty){ snB=snParts.slice(qty).join(", "); r.sn=snParts.slice(0,qty).join(", "); }
-  // 현재 행 = 주문수량
-  r.insCnt=qty; if("goodCnt" in r) r.goodCnt=qty;
-  // 새 행(초과분) = 재고
-  var nr=insBlankRow();
-  if("draw" in nr) nr.draw=r.draw||"";
-  if("scanCode" in nr) nr.scanCode=r.scanCode||"";
-  if("insDate" in nr) nr.insDate=r.insDate||nr.insDate;
-  if("insCnt" in nr) nr.insCnt=remain;
-  if("goodCnt" in nr) nr.goodCnt=remain;
-  if("sn" in nr) nr.sn=snB;
-  if("seg" in nr) nr.seg="재고";
-  if("outNo" in nr) nr.outNo="";
-  rows.splice(ri+1, 0, nr);
-  insRender(); insSaveLocal();
-  try{ if(typeof insToast_==="function") insToast_("검사수 "+cnt+" > 주문수량 "+qty+" → 초과 "+remain+"개를 재고 행으로 분할했습니다."); }catch(_){}
-}
-
 function insToday_(){ var d=new Date(),p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
 function insSyncMetaInputs(){
   var meta=insMetaByType[insType];
@@ -16172,7 +16139,7 @@ function insRender(){
   //  · 분출 = 도번 기준 분출 LIST 후보에서 선택(여러 개면 모달)
   if(key==="seg" && (opt==="검수" || opt==="분출")){
     var outInp = el.querySelector('input[data-ri="'+ri+'"][data-key="outNo"]');
-    var __applyOut=function(no){ if(!no) return; r.outNo=no; if(outInp) outInp.value=no; try{ insSaveLocal(); }catch(_){} setTimeout(function(){ try{ insMaybeSplitOverQty_(ri); }catch(_){} }, 0); };
+    var __applyOut=function(no){ if(!no) return; r.outNo=no; if(outInp) outInp.value=no; try{ insSaveLocal(); }catch(_){} };
     var __scanFill=function(){ var res2=(typeof scanResolveDrawing==="function")?scanResolveDrawing(r.scanCode):null; if(res2 && res2.row){ var ctrlNo=String(res2.row["관리번호"]||"").trim(); var seq=String(res2.row["순번"]||"").trim(); if(ctrlNo){ __applyOut(ctrlNo + (seq ? "-" + seq : "")); } } };
     if(inp.checked){
       if(opt==="검수"){
@@ -16181,7 +16148,7 @@ function insRender(){
         var __cands=(typeof insCtrlNoCandidates_==="function")?insCtrlNoCandidates_(r.draw):[];   // 분출: 도번 기준 분출 LIST 후보
         if(__cands.length===1){ __applyOut(__cands[0].orderNo); }
         else if(__cands.length>1){ insPickCtrlNo_(__cands, r.draw, function(no){ __applyOut(no); }); }
-        // 후보 없으면 빈칸(채우지 않음)
+        else { __scanFill(); }   // 후보 없으면 스캔코드 폴백
       }
     } else {
       r.outNo=""; if(outInp) outInp.value="";
