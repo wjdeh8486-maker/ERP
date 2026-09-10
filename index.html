@@ -3572,6 +3572,7 @@ let __dataArrived = { main:false, inv:false };
 let invServerLoaded = false;
 // 각 데이터가 서버에서 실제 로드됐는지 추적 (스플래시가 타임아웃으로 넘어가도, 아직 오는 중이면 배너로 알림)
 let __loadState = { main:false, inv:false, quality:false, wait:false };
+let __loadFailed = { main:false, inv:false, quality:false, wait:false };   // 성공 신호 없이 단계가 끝난(실패/타임아웃) 데이터
 function setLoadDone(key){
   __loadState[key] = true;
   updateLoadingBanner();
@@ -3584,13 +3585,21 @@ function updateLoadingBanner(){
   const splash = document.getElementById("gs-splash");
   const splashVisible = splash && splash.style.display !== "none" && !splash.classList.contains("hide");
   const labels = { main:"MAIN·생산", inv:"입출고·재고", quality:"품질·부적합", wait:"검사대기" };
-  const pending = Object.keys(__loadState).filter(k=>!__loadState[k]).map(k=>labels[k]);
-  if(pending.length === 0 || splashVisible){
+  // 성공: __loadState=true → 사라짐. 아직 안 옴: pending. 실패/타임아웃: __loadFailed → "로딩 실패" 표시(무한 "불러오는 중" 방지)
+  const pending = Object.keys(__loadState).filter(k=>!__loadState[k] && !__loadFailed[k]).map(k=>labels[k]);
+  const failed  = Object.keys(__loadFailed).filter(k=>__loadFailed[k] && !__loadState[k]).map(k=>labels[k]);
+  if(splashVisible || (pending.length===0 && failed.length===0)){
     banner.style.display = "none";
-  } else {
-    textEl.textContent = pending.join(" · ") + " 불러오는 중…";
-    banner.style.display = "flex";
+    return;
   }
+  if(pending.length){
+    textEl.textContent = pending.join(" · ") + " 불러오는 중…";
+    banner.style.background = "#0B5CAB";
+  } else {
+    textEl.textContent = "⚠ " + failed.join(" · ") + " 데이터 로딩 실패 · 새로고침(F5) 필요 — 현재 값이 최신이 아닐 수 있습니다";
+    banner.style.background = "#B45309";
+  }
+  banner.style.display = "flex";
 }
 function markDataArrived(which){
   __dataArrived[which] = true;
@@ -6009,7 +6018,7 @@ async function fetchMainData(yearsParam){
 
   // MAIN 시트 요청에 .then을 붙여, 도착하는 즉시 mainData를 반영하고 지연건수 등을 교정한다.
   // (순차로 기다리지 않고 병렬로 받으므로 전체 로딩은 가장 느린 하나만큼만 걸린다)
-  const mainFetch = fetchJSON_(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery, 45000)
+  const mainFetch = fetchJSON_(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery, 25000)
     .then(function(mainRes){
       try{
         if(mainRes && mainRes.success && Array.isArray(mainRes.rows)){
@@ -10072,35 +10081,30 @@ window.__qualityInited = true;
         if(r !== "timeout") ok++;
         done++;
         setStep(st.key, "done");
-        try{ if(typeof setLoadDone==="function") setLoadDone(st.key); }catch(_){ }   // [수정] 성공/실패/타임아웃 무관하게 배너 완료 처리(상단 "불러오는 중" 무한대기 방지)
+        try{ if(!__loadState[st.key]){ __loadFailed[st.key]=true; } if(typeof updateLoadingBanner==="function") updateLoadingBanner(); }catch(_){ }   // [수정] 단계 종료 시 성공신호 없으면 실패로 표시(무한 "불러오는 중" 방지)
         markRealPct(done/steps.length*100);   // 실제 완료 단계 수에 맞춰 진행률 갱신
         // 지금까지 몇 개 받았는지 실시간 표시 (현실적인 진행 상황)
         if(done < steps.length) statusEl.textContent = "데이터 동기화 중… (" + done + "/" + steps.length + ")";
       });
     };
-    // 공유 캐시가 있으면 화면 먼저 구성(있으면 빠름). 단, 진입은 실제 로딩이 끝난 뒤.
-    // [속도] 로컬 MAIN 캐시를 먼저 빠르게 확인 → 있으면 화면 구성 후 즉시 진입 허용(최신은 백그라운드)
-    var __cacheReady=false;
+    // 스플래시 동안 캐시로 화면을 먼저 구성(표시용). 진입은 최신 로딩(최대 30초)이 끝난 뒤 → 진입 시 데이터 준비 완료(상단 배너 불필요).
     try{
       if(typeof idbGet==="function"){
         var __cm=await Promise.race([ Promise.resolve(idbGet("cache_mainData")).catch(function(){return null;}), new Promise(function(rs){ setTimeout(function(){ rs(null); }, 2500); }) ]);
-        if(__cm && __cm.length){ mainData=mainFilterPRPO(__cm); if(typeof markMainStatusDirty==="function") markMainStatusDirty(); if(typeof mainInitialRender==="function") mainInitialRender(mainData); __cacheReady=true; }
+        if(__cm && __cm.length){ mainData=mainFilterPRPO(__cm); if(typeof markMainStatusDirty==="function") markMainStatusDirty(); if(typeof mainInitialRender==="function") mainInitialRender(mainData); }
       }
     }catch(_){ }
-    // 최신 데이터는 백그라운드로 받고(도착 시 각 fetch가 화면 자동 교정), 모두 끝나면 finish()로 최종 재계산
-    var __allSteps=Promise.all(steps.map(runStep)).then(function(){ try{ window.alert=realAlert; }catch(_){ } finish(ok); });
-    var __enableEntry=function(msg){ try{ if(enterBtn && enterBtn.disabled){ enterBtn.textContent="시작하기"; enterBtn.classList.add("ready"); enterBtn.disabled=false; } if(msg && statusEl) statusEl.textContent=msg; if(typeof setPct==="function") setPct(100); }catch(_){ } };
-    if(__cacheReady){
-      try{ window.alert=realAlert; }catch(_){ }
-      __enableEntry("저장된 데이터로 시작 가능 · 최신 동기화 중…");
-      try{ if(typeof sharedCacheBoot==="function") sharedCacheBoot(); }catch(_){ }   // 공유 캐시도 백그라운드
-    } else {
-      // 로컬 캐시 없으면 공유 캐시 먼저(빠른 화면), 그것도 없으면 최신(또는 30초)까지 대기
-      try{ if(typeof sharedCacheBoot==="function"){ statusEl.textContent="공유 데이터 여는 중…"; await Promise.race([ Promise.resolve(sharedCacheBoot()).catch(function(){}), new Promise(function(rs){ setTimeout(rs, 8000); }) ]); } }catch(_){ }
-      if(typeof mainData!=="undefined" && mainData && mainData.length){ try{ window.alert=realAlert; }catch(_){ } __enableEntry("공유 데이터로 시작 가능 · 최신 동기화 중…"); }
-      else { await Promise.race([ __allSteps, new Promise(function(rs){ setTimeout(rs, 30000); }) ]); try{ window.alert=realAlert; }catch(_){ } __enableEntry(null); }
-    }
-    // 준비되면 자동 진입 — 시작하기 버튼 안 눌러도 됨
+    // 공유 캐시가 있으면 화면 먼저 구성(로컬 캐시 없는 태블릿 등 대비)
+    try{ if(typeof sharedCacheBoot==="function"){ statusEl.textContent="공유 데이터 여는 중…"; await Promise.race([ Promise.resolve(sharedCacheBoot()).catch(function(){}), new Promise(function(rs){ setTimeout(rs, 8000); }) ]); } }catch(_){ }
+    // 최신 데이터 로딩 완료까지 스플래시에서 대기(최대 30초). fetch 타임아웃 덕에 멈추지 않고 30초 내 종료.
+    statusEl.textContent="데이터 동기화 중…";
+    await Promise.race([
+      Promise.all(steps.map(runStep)),
+      new Promise(function(rs){ setTimeout(rs, 30000); })
+    ]);
+    window.alert = realAlert;   // 원복
+    finish(ok);
+    // 준비되면(또는 30초 경과 시) 자동 진입
     setTimeout(function(){ try{ if(enterBtn && !enterBtn.disabled) enterBtn.click(); }catch(_){ } }, 300);
   }
 
