@@ -1057,6 +1057,7 @@
     </div></div>
     <div class="nav-item" data-view="insplist"><span class="dot"></span>📋 검수LIST</div>
     <div class="nav-item" data-view="dispatchlist"><span class="dot"></span>📤 분출LIST</div>
+    <div class="nav-item" data-view="measurehist"><span class="dot"></span>📐 측정이력</div>
     <div class="nav-item" data-view="shipjudge"><span class="dot"></span>🚦 QMS출하판정</div>
     <div class="nav-item" id="dataCheckNavBtn" title="데이터 이상 점검 (관리자용)"><span class="dot"></span>🔍 데이터 점검</div>
     <div class="nav-item" id="helpNavBtn" title="사용법 안내"><span class="dot"></span>❓ 사용법</div>
@@ -2062,6 +2063,53 @@
             <button onclick="dispatchDispatchClose_()" style="background:#E2E8F0;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;margin-right:8px;">취소</button>
             <button onclick="dispatchDispatchShare_()" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-weight:700;cursor:pointer;">☁ 공유</button>
           </div>
+        </div>
+      </div>
+    </div>
+    <!-- ===================== 📐 측정이력(측정 DATE LIST) VIEW ===================== -->
+    <div class="view" id="view-measurehist">
+      <div style="background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+          <div style="font-size:18px;font-weight:800;color:#1F2A44;">📐 측정이력 (측정 DATE LIST)</div>
+          <span id="mh-status" style="font-size:12px;color:#7A8598;"></span>
+        </div>
+        <div style="font-size:12px;color:#7A8598;margin-bottom:12px;line-height:1.7;">측정보고서 폴더를 선택하면 하위 폴더까지 전부 읽어 <b>파일명·폴더에서 측정 DATE를 추출</b>합니다. 도번·S/N으로 검색해 측정 이력을 찾고, <b>📋 경로 복사</b> 후 파일 탐색기 주소창에 붙여넣어 엽니다. (브라우저 보안상 사내 파일 직접 열기는 차단되어 경로 복사 방식을 씁니다.)</div>
+
+        <div style="display:flex;flex-direction:column;gap:8px;background:#F7FAFF;border:1px solid #E1E8F0;border-radius:10px;padding:12px;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="min-width:64px;font-weight:700;color:#33415C;font-size:13px;">유진테크</span>
+            <input id="mh-base-yj" type="text" value="\\Ntl\5.품질팀\품질문서\측정보고서\유진테크" style="flex:1;min-width:280px;padding:7px 10px;border:1px solid #D6DEE8;border-radius:8px;font-size:12px;">
+            <input id="mh-folder-yj" type="file" webkitdirectory directory multiple style="display:none;">
+            <button type="button" onclick="document.getElementById('mh-folder-yj').click()" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;white-space:nowrap;">📁 폴더 선택·스캔</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="min-width:64px;font-weight:700;color:#33415C;font-size:13px;">유진어스</span>
+            <input id="mh-base-ye" type="text" value="\\Ntl\5.품질팀\품질문서\측정보고서\유진어스" style="flex:1;min-width:280px;padding:7px 10px;border:1px solid #D6DEE8;border-radius:8px;font-size:12px;">
+            <input id="mh-folder-ye" type="file" webkitdirectory directory multiple style="display:none;">
+            <button type="button" onclick="document.getElementById('mh-folder-ye').click()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;white-space:nowrap;">📁 폴더 선택·스캔</button>
+          </div>
+          <div style="font-size:11.5px;color:#8A93A6;">※ 폴더 선택 시 브라우저가 "이 폴더의 모든 파일을 업로드하시겠습니까?"라고 물으면 <b>업로드</b>를 누르세요. 실제 업로드가 아니라 <b>파일명 목록만</b> 읽습니다(내용 전송 없음).</div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+          <input id="mh-search" type="text" placeholder="🔍 도번 / S/N 검색 (여러 개는 공백·쉼표로 · 모두 포함)" onkeydown="if(event.key==='Enter')renderMeasureHist()" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
+          <button type="button" onclick="renderMeasureHist()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:700;cursor:pointer;">🔍 조회</button>
+          <button type="button" onclick="mhClearAll_()" style="background:#EEF3FA;color:#33415C;border:1px solid #C9D3E0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="인덱스 전체 삭제">🗑 전체 지우기</button>
+        </div>
+
+        <div id="mh-wrap" style="overflow:auto;max-height:calc(100vh - 360px);">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;" id="mh-table">
+            <colgroup><col style="width:11%"><col style="width:16%"><col style="width:12%"><col style="width:8%"><col style="width:31%"><col style="width:22%"></colgroup>
+            <thead><tr>
+              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">측정 DATE</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">도번(추정)</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">S/N(추정)</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">고객</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">파일명</th>
+              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">경로</th>
+            </tr></thead>
+            <tbody id="mh-body"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -3355,6 +3403,10 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="dispatchlist"){
       if(typeof renderDispatchList==="function") renderDispatchList();
     }
+    if(target==="measurehist"){
+      if(typeof mhBind_==="function") mhBind_();
+      if(typeof renderMeasureHist==="function") renderMeasureHist();
+    }
     if(target==="quality"){
       if(typeof ncInit==="function" && !window.__ncInited){ window.__ncInited = true; ncInit(); }
       if(!window.__qualityInited){
@@ -3581,25 +3633,16 @@ function updateLoadingBanner(){
   const banner = document.getElementById("loading-banner");
   const textEl = document.getElementById("loading-banner-text");
   if(!banner || !textEl) return;
-  // 스플래시(진입 로딩)가 아직 떠 있으면 배너를 띄우지 않는다(중복 방지).
   const splash = document.getElementById("gs-splash");
   const splashVisible = splash && splash.style.display !== "none" && !splash.classList.contains("hide");
   const labels = { main:"MAIN·생산", inv:"입출고·재고", quality:"품질·부적합", wait:"검사대기" };
-  // 성공: __loadState=true → 사라짐. 아직 안 옴: pending. 실패/타임아웃: __loadFailed → "로딩 실패" 표시(무한 "불러오는 중" 방지)
-  const pending = Object.keys(__loadState).filter(k=>!__loadState[k] && !__loadFailed[k]).map(k=>labels[k]);
-  const failed  = Object.keys(__loadFailed).filter(k=>__loadFailed[k] && !__loadState[k]).map(k=>labels[k]);
-  if(splashVisible || (pending.length===0 && failed.length===0)){
+  const pending = Object.keys(__loadState).filter(k=>!__loadState[k]).map(k=>labels[k]);
+  if(pending.length === 0 || splashVisible){
     banner.style.display = "none";
-    return;
-  }
-  if(pending.length){
-    textEl.textContent = pending.join(" · ") + " 불러오는 중…";
-    banner.style.background = "#0B5CAB";
   } else {
-    textEl.textContent = "⚠ " + failed.join(" · ") + " 데이터 로딩 실패 · 새로고침(F5) 필요 — 현재 값이 최신이 아닐 수 있습니다";
-    banner.style.background = "#B45309";
+    textEl.textContent = pending.join(" · ") + " 불러오는 중…";
+    banner.style.display = "flex";
   }
-  banner.style.display = "flex";
 }
 function markDataArrived(which){
   __dataArrived[which] = true;
@@ -4410,6 +4453,133 @@ else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;
   }
 }
 var __insplistShip=[];
+
+
+/* ========================= 📐 측정이력 (측정 DATE LIST) — 폴더 스캔 → 도번/S/N 검색 → 측정 DATE ========================= */
+var __measureIndex = [];          // [{p:전체경로, rel:상대경로, n:파일명, d:측정DATE, dr:도번추정, sn:S/N추정, c:고객}]
+var __mhLastScan = "";
+
+// 파일 하나(상대경로)에서 측정 DATE·도번·S/N 추출
+function mhParseFile_(rel, base, cust){
+  var relClean = String(rel||"").replace(/^[\/\\]+/,"");
+  var segs = relClean.split(/[\/\\]+/).filter(Boolean);
+  var name = segs.length ? segs[segs.length-1] : relClean;
+  var stem = name.replace(/\.[^.]+$/,"");
+  // 측정 DATE: 모든 폴더/파일명 세그먼트에서 날짜 패턴 탐색(가장 뒤/구체적인 것 채택)
+  var date="";
+  segs.forEach(function(seg){
+    var m8=seg.match(/(20\d{2})[.\-_ ]?(\d{2})[.\-_ ]?(\d{2})/);
+    if(m8){ var mm=+m8[2], dd=+m8[3]; if(mm>=1&&mm<=12&&dd>=1&&dd<=31){ date=m8[1]+"-"+m8[2]+"-"+m8[3]; return; } }
+    var m6=seg.match(/(?:^|[^\d])(\d{2})[.\-_](\d{2})[.\-_](\d{2})(?:[^\d]|$)/);
+    if(m6){ var mm2=+m6[2], dd2=+m6[3]; if(mm2>=1&&mm2<=12&&dd2>=1&&dd2<=31){ date="20"+m6[1]+"-"+m6[2]+"-"+m6[3]; } }
+  });
+  // 도번 추정: 긴 숫자(6자리+) 또는 영문+숫자 코드 (파일명 우선, 없으면 상위 폴더)
+  var draw="";
+  var dm = stem.match(/(\d{6,})/) || stem.match(/([A-Za-z]{1,4}\d{2,}[\w\-]*)/);
+  if(!dm){ for(var j=segs.length-2;j>=0;j--){ var d2=segs[j].match(/(\d{6,})/); if(d2){ dm=d2; break; } } }
+  if(dm) draw=dm[1];
+  // S/N 추정: SN / S/N 뒤 토큰
+  var sn="";
+  var sm = stem.match(/S\/?N[ _\-#]*([0-9A-Za-z][0-9A-Za-z,\-]*)/i);
+  if(sm) sn=sm[1];
+  var path = base ? (String(base).replace(/[\/\\]+$/,"") + "\\" + relClean.replace(/\//g,"\\")) : relClean.replace(/\//g,"\\");
+  return { p:path, rel:relClean, n:name, d:date, dr:draw, sn:sn, c:cust||"" };
+}
+
+// 폴더 input(webkitdirectory) → 인덱스 구성
+function mhScanFolder_(inputEl, base, cust){
+  var files = inputEl && inputEl.files ? Array.prototype.slice.call(inputEl.files) : [];
+  if(!files.length){ return; }
+  base = String(base||"").trim();
+  // 같은 base(고객)로 이미 넣은 항목은 교체 (재스캔 시 중복 방지)
+  __measureIndex = __measureIndex.filter(function(r){ return r.c !== cust; });
+  var added=0;
+  files.forEach(function(f){
+    var rel = f.webkitRelativePath || f.name;
+    // 폴더 선택 시 최상위 폴더명이 rel 맨 앞에 들어오므로 그대로 두되 base와 합쳐 경로 구성
+    var rec = mhParseFile_(rel, base, cust);
+    __measureIndex.push(rec); added++;
+  });
+  __mhLastScan = new Date().toLocaleString("ko-KR");
+  try{ inputEl.value=""; }catch(_){}
+  mhSave_();
+  renderMeasureHist();
+  try{ alert(cust+" 폴더에서 파일 "+added+"건을 읽었습니다. (누적 "+__measureIndex.length+"건)"); }catch(_){}
+}
+
+// 저장/로드 (로컬 idb + 팀 공유)
+function mhSave_(){
+  try{ if(typeof idbSet==="function") idbSet("measureIndex", {list:__measureIndex, at:__mhLastScan}); }catch(_){}
+  try{ if(typeof qShareSave_==="function") qShareSave_("measureIndex", {list:__measureIndex, at:__mhLastScan}, "mh-status"); }catch(_){}
+}
+function mhApply_(sv){
+  if(sv && Array.isArray(sv.list)){ __measureIndex=sv.list; __mhLastScan=sv.at||__mhLastScan; return true; }
+  if(Array.isArray(sv)){ __measureIndex=sv; return true; }
+  return false;
+}
+function mhClearAll_(){
+  if(!confirm("측정이력 인덱스를 전부 지울까요? (파일은 삭제되지 않습니다)")) return;
+  __measureIndex=[]; __mhLastScan="";
+  mhSave_(); renderMeasureHist();
+}
+
+// 검색 필터 (여러 term은 모두 포함 AND)
+function mhFilter_(q){
+  q=String(q||"").trim();
+  var terms = q ? q.split(/[\s,]+/).map(function(x){return x.trim().toUpperCase();}).filter(Boolean) : [];
+  var list=__measureIndex;
+  if(terms.length){
+    list=list.filter(function(r){
+      var hay=((r.rel||"")+" "+(r.p||"")+" "+(r.dr||"")+" "+(r.sn||"")).toUpperCase();
+      return terms.every(function(t){ return hay.indexOf(t)>=0; });
+    });
+  }
+  return list.slice().sort(function(a,b){
+    var c=String(b.d||"").localeCompare(String(a.d||"")); if(c!==0) return c;
+    return String(a.n||"").localeCompare(String(b.n||""));
+  });
+}
+
+function renderMeasureHist(){
+  var body=document.getElementById("mh-body"); if(!body) return;
+  var st=document.getElementById("mh-status");
+  if(st){ st.textContent = __measureIndex.length ? ("인덱스 "+__measureIndex.length.toLocaleString()+"건"+(__mhLastScan?(" · 최근 스캔 "+__mhLastScan):"")) : "폴더를 선택해 스캔하세요."; }
+  var q=String((document.getElementById("mh-search")||{}).value||"").trim();
+  var rows=mhFilter_(q);
+  var td='padding:6px 8px;border:1px solid #E6EBF2;';
+  if(!__measureIndex.length){ body.innerHTML='<tr><td colspan="6" style="text-align:center;color:#8A93A6;padding:22px;">아직 인덱스가 없습니다. 위에서 측정보고서 폴더를 선택해 스캔하세요.</td></tr>'; return; }
+  if(!rows.length){ body.innerHTML='<tr><td colspan="6" style="text-align:center;color:#8A93A6;padding:22px;">\u2018'+mhEsc_(q)+'\u2019 검색 결과가 없습니다.</td></tr>'; return; }
+  var cap=1000, shown=rows.slice(0,cap);
+  body.innerHTML=shown.map(function(r){
+    return '<tr>'
+      +'<td style="'+td+'text-align:center;font-weight:700;color:'+(r.d?"#0B5CAB":"#B0662A")+';">'+mhEsc_(r.d||"미상")+'</td>'
+      +'<td style="'+td+'text-align:center;">'+mhEsc_(r.dr||"")+'</td>'
+      +'<td style="'+td+'text-align:center;">'+mhEsc_(r.sn||"")+'</td>'
+      +'<td style="'+td+'text-align:center;font-size:11px;color:#5A6478;">'+mhEsc_(r.c||"")+'</td>'
+      +'<td style="'+td+'font-size:11.5px;word-break:break-all;">'+mhEsc_(r.n||"")+'</td>'
+      +'<td style="'+td+'text-align:center;"><button type="button" class="mh-copybtn" data-path="'+mhEsc_(r.p||"")+'" style="font-size:11px;padding:4px 8px;border:1px solid #C9D3E0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;white-space:nowrap;">📋 경로 복사</button></td>'
+      +'</tr>';
+  }).join("") + (rows.length>cap?('<tr><td colspan="6" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:8px;">결과가 많아 앞 '+cap+'건만 표시합니다 · 검색어로 좁히세요 (전체 '+rows.length.toLocaleString()+'건)</td></tr>'):'');
+  body.querySelectorAll(".mh-copybtn").forEach(function(b){
+    b.addEventListener("click", function(){ var p=b.getAttribute("data-path"); if(typeof docmasterCopy==="function") docmasterCopy(p, b); else { try{ navigator.clipboard.writeText(p); b.textContent="✅ 복사됨"; setTimeout(function(){ b.textContent="📋 경로 복사"; },1400);}catch(_){} } });
+  });
+}
+
+function mhEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// 폴더 input change 바인딩 (뷰 최초 진입 시)
+function mhBind_(){
+  if(window.__mhBound) return; window.__mhBound=true;
+  var yj=document.getElementById("mh-folder-yj");
+  if(yj) yj.addEventListener("change", function(){ mhScanFolder_(yj, (document.getElementById("mh-base-yj")||{}).value||"", "유진테크"); });
+  var ye=document.getElementById("mh-folder-ye");
+  if(ye) ye.addEventListener("change", function(){ mhScanFolder_(ye, (document.getElementById("mh-base-ye")||{}).value||"", "유진어스"); });
+}
+
+// 팀 공유/로컬 인덱스 로드 (접속 후 1회)
+(window.__afterEnter=window.__afterEnter||[]).push(function(){
+  try{ if(typeof qShareLoad_==="function"){ qShareLoad_("measureIndex", function(sv){ if(mhApply_(sv)){ if(document.getElementById("mh-body")) renderMeasureHist(); return; } try{ if(typeof idbGet==="function"){ idbGet("measureIndex").then(function(v){ if(mhApply_(v)){ if(document.getElementById("mh-body")) renderMeasureHist(); } }).catch(function(){}); } }catch(_){} }); } }catch(_){}
+});
 
 /* ========================= 📤 분출 LIST (유진테크 · 최종납기 범위 · 검수 제외 · 납기분출) ========================= */
 var __dispatchOrders = {};   // 서버에서 로드한 '납기분출' 처리된 ORDER 집합 (비고 표시용)
@@ -5821,7 +5991,7 @@ let cleanWaitMap = {};
 let visionWaitMap = {};
 // [속도/안정] 시작 데이터 fetch용 타임아웃 래퍼 — 서버 지연 시 무한 대기 방지 (기본 30초, 초과 시 AbortController로 요청 취소)
 function fetchJSON_(u, ms){
-  ms = ms || 30000;
+  ms = ms || 180000;   // [수정] 대용량 데이터(재고·생산공정현황 등)가 잘리지 않도록 넉넉히 (진짜 멈춤만 차단)
   var ctrl=(typeof AbortController!=="undefined")?new AbortController():null;
   var timedOut=false;
   var t=setTimeout(function(){ timedOut=true; try{ if(ctrl) ctrl.abort(); }catch(_){} }, ms);
@@ -6018,7 +6188,7 @@ async function fetchMainData(yearsParam){
 
   // MAIN 시트 요청에 .then을 붙여, 도착하는 즉시 mainData를 반영하고 지연건수 등을 교정한다.
   // (순차로 기다리지 않고 병렬로 받으므로 전체 로딩은 가장 느린 하나만큼만 걸린다)
-  const mainFetch = fetchJSON_(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery, 25000)
+  const mainFetch = fetchJSON_(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery, 180000)
     .then(function(mainRes){
       try{
         if(mainRes && mainRes.success && Array.isArray(mainRes.rows)){
@@ -10075,13 +10245,12 @@ window.__qualityInited = true;
     // 지연건수 등은 MAIN이 오는 즉시 정확해지고, 전체 대기는 가장 느린 하나만큼만 걸린다.
     const runStep = function(st){
       const t0 = Date.now();
-      return withTimeout(st.run(), 30000).then(function(r){
+      return withTimeout(st.run(), 180000).then(function(r){
         // 진단: 각 데이터가 몇 초 걸렸는지 콘솔에 표시 (F12로 확인)
         console.log("[로딩] " + st.label + ": " + ((Date.now()-t0)/1000).toFixed(1) + "초" + (r==="timeout" ? " (타임아웃!)" : ""));
         if(r !== "timeout") ok++;
         done++;
         setStep(st.key, "done");
-        try{ if(!__loadState[st.key]){ __loadFailed[st.key]=true; } if(typeof updateLoadingBanner==="function") updateLoadingBanner(); }catch(_){ }   // [수정] 단계 종료 시 성공신호 없으면 실패로 표시(무한 "불러오는 중" 방지)
         markRealPct(done/steps.length*100);   // 실제 완료 단계 수에 맞춰 진행률 갱신
         // 지금까지 몇 개 받았는지 실시간 표시 (현실적인 진행 상황)
         if(done < steps.length) statusEl.textContent = "데이터 동기화 중… (" + done + "/" + steps.length + ")";
