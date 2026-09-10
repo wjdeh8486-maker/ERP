@@ -3572,7 +3572,6 @@ let __dataArrived = { main:false, inv:false };
 let invServerLoaded = false;
 // 각 데이터가 서버에서 실제 로드됐는지 추적 (스플래시가 타임아웃으로 넘어가도, 아직 오는 중이면 배너로 알림)
 let __loadState = { main:false, inv:false, quality:false, wait:false };
-let __loadFailed = { main:false, inv:false, quality:false, wait:false };   // 성공 신호 없이 단계가 끝난(실패/타임아웃) 데이터
 function setLoadDone(key){
   __loadState[key] = true;
   updateLoadingBanner();
@@ -3585,21 +3584,13 @@ function updateLoadingBanner(){
   const splash = document.getElementById("gs-splash");
   const splashVisible = splash && splash.style.display !== "none" && !splash.classList.contains("hide");
   const labels = { main:"MAIN·생산", inv:"입출고·재고", quality:"품질·부적합", wait:"검사대기" };
-  // 성공: __loadState=true → 사라짐. 아직 안 옴: pending. 실패/타임아웃: __loadFailed → "로딩 실패" 표시(무한 "불러오는 중" 방지)
-  const pending = Object.keys(__loadState).filter(k=>!__loadState[k] && !__loadFailed[k]).map(k=>labels[k]);
-  const failed  = Object.keys(__loadFailed).filter(k=>__loadFailed[k] && !__loadState[k]).map(k=>labels[k]);
-  if(splashVisible || (pending.length===0 && failed.length===0)){
+  const pending = Object.keys(__loadState).filter(k=>!__loadState[k]).map(k=>labels[k]);
+  if(pending.length === 0 || splashVisible){
     banner.style.display = "none";
-    return;
-  }
-  if(pending.length){
-    textEl.textContent = pending.join(" · ") + " 불러오는 중…";
-    banner.style.background = "#0B5CAB";
   } else {
-    textEl.textContent = "⚠ " + failed.join(" · ") + " 데이터 로딩 실패 · 새로고침(F5) 필요 — 현재 값이 최신이 아닐 수 있습니다";
-    banner.style.background = "#B45309";
+    textEl.textContent = pending.join(" · ") + " 불러오는 중…";
+    banner.style.display = "flex";
   }
-  banner.style.display = "flex";
 }
 function markDataArrived(which){
   __dataArrived[which] = true;
@@ -5819,19 +5810,9 @@ const CURRENT_YEAR = new Date().getFullYear();
 let measureWaitMap = {};
 let cleanWaitMap = {};
 let visionWaitMap = {};
-// [속도/안정] 시작 데이터 fetch용 타임아웃 래퍼 — 서버 지연 시 무한 대기 방지 (기본 30초, 초과 시 AbortController로 요청 취소)
-function fetchJSON_(u, ms){
-  ms = ms || 30000;
-  var ctrl=(typeof AbortController!=="undefined")?new AbortController():null;
-  var timedOut=false;
-  var t=setTimeout(function(){ timedOut=true; try{ if(ctrl) ctrl.abort(); }catch(_){} }, ms);
-  var opt=ctrl?{signal:ctrl.signal, cache:"no-store"}:{cache:"no-store"};
-  return fetch(u, opt).then(function(r){ return r.json(); })
-    .then(function(j){ clearTimeout(t); return j; })
-    .catch(function(){ clearTimeout(t); return {success:false, __timeout:timedOut}; });
-}
 function fetchWaitMap(url, datasetName, keyField, valueField, targetMap){
-  return fetchJSON_(url + "?dataset=" + encodeURIComponent(datasetName))
+  return fetch(url + "?dataset=" + encodeURIComponent(datasetName))
+    .then(r=>r.json())
     .then(res=>{
       if(!res.success) return;
       const map = {};
@@ -6018,7 +5999,8 @@ async function fetchMainData(yearsParam){
 
   // MAIN 시트 요청에 .then을 붙여, 도착하는 즉시 mainData를 반영하고 지연건수 등을 교정한다.
   // (순차로 기다리지 않고 병렬로 받으므로 전체 로딩은 가장 느린 하나만큼만 걸린다)
-  const mainFetch = fetchJSON_(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery, 25000)
+  const mainFetch = fetch(url + "?dataset=" + encodeURIComponent("MAIN") + yearsQuery)
+    .then(r=>r.json())
     .then(function(mainRes){
       try{
         if(mainRes && mainRes.success && Array.isArray(mainRes.rows)){
@@ -6041,10 +6023,10 @@ async function fetchMainData(yearsParam){
 
   return Promise.all([
     mainFetch,   // 위에서 즉시 반영까지 처리됨
-    fetchJSON_(url + "?dataset=" + encodeURIComponent("생산공정현황")),
-    fetchJSON_(url + "?dataset=" + encodeURIComponent("수입검사(외관)")),
-    fetchJSON_(url + "?dataset=" + encodeURIComponent("공정검사(사내외관)")),
-    fetchJSON_(url + "?dataset=" + encodeURIComponent("출하검사")),
+    fetch(url + "?dataset=" + encodeURIComponent("생산공정현황")).then(r=>r.json()).catch(()=>({success:false})),
+    fetch(url + "?dataset=" + encodeURIComponent("수입검사(외관)")).then(r=>r.json()).catch(()=>({success:false})),
+    fetch(url + "?dataset=" + encodeURIComponent("공정검사(사내외관)")).then(r=>r.json()).catch(()=>({success:false})),
+    fetch(url + "?dataset=" + encodeURIComponent("출하검사")).then(r=>r.json()).catch(()=>({success:false})),
     fetchWaitMap(url, "측정실검사대기", "품 번", "측정실대기", measureWaitMap),
     fetchWaitMap(url, "크린룸검사대기", "품 번", "검사대기", cleanWaitMap),
     fetchWaitMap(url, "비젼검사대기", "구 분", "검사대기", visionWaitMap)
@@ -6648,7 +6630,8 @@ function fetchInvData(){
   const statusEl = document.getElementById("inv-apiStatus");
   if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return Promise.resolve(); }
   statusEl.textContent = "불러오는 중...";
-  return fetchJSON_(url + "?dataset=" + encodeURIComponent("입출고"))
+  return fetch(url + "?dataset=" + encodeURIComponent("입출고"))
+    .then(r=>r.json())
     .then(res=>{
       if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
       invApiUrl = url;
@@ -6785,10 +6768,10 @@ function fetchQualityData(){
   if(!url){ alert("Apps Script 웹 앱 URL을 입력해 주세요."); return Promise.resolve(); }
   statusEl.textContent = "불러오는 중...";
   return Promise.all(QUALITY_SHEETS.map(s=>
-    fetchJSON_(url + "?dataset=" + encodeURIComponent(s.key))
+    fetch(url + "?dataset=" + encodeURIComponent(s.key)).then(r=>r.json())
   ).concat([
     // 고객부적합관리대장 (시트가 아직 없으면 조용히 건너뜀)
-    fetchJSON_(url + "?dataset=" + encodeURIComponent(CUSTOMER_NC_KEY)).then(function(v){ return (v&&v.success)?v:null; })
+    fetch(url + "?dataset=" + encodeURIComponent(CUSTOMER_NC_KEY)).then(r=>r.json()).catch(()=>null)
   ])).then(results=>{
     const warnings = [];
     QUALITY_SHEETS.forEach((s, i)=>{
@@ -10081,30 +10064,21 @@ window.__qualityInited = true;
         if(r !== "timeout") ok++;
         done++;
         setStep(st.key, "done");
-        try{ if(!__loadState[st.key]){ __loadFailed[st.key]=true; } if(typeof updateLoadingBanner==="function") updateLoadingBanner(); }catch(_){ }   // [수정] 단계 종료 시 성공신호 없으면 실패로 표시(무한 "불러오는 중" 방지)
         markRealPct(done/steps.length*100);   // 실제 완료 단계 수에 맞춰 진행률 갱신
         // 지금까지 몇 개 받았는지 실시간 표시 (현실적인 진행 상황)
         if(done < steps.length) statusEl.textContent = "데이터 동기화 중… (" + done + "/" + steps.length + ")";
       });
     };
-    // 스플래시 동안 캐시로 화면을 먼저 구성(표시용). 진입은 최신 로딩(최대 30초)이 끝난 뒤 → 진입 시 데이터 준비 완료(상단 배너 불필요).
-    try{
-      if(typeof idbGet==="function"){
-        var __cm=await Promise.race([ Promise.resolve(idbGet("cache_mainData")).catch(function(){return null;}), new Promise(function(rs){ setTimeout(function(){ rs(null); }, 2500); }) ]);
-        if(__cm && __cm.length){ mainData=mainFilterPRPO(__cm); if(typeof markMainStatusDirty==="function") markMainStatusDirty(); if(typeof mainInitialRender==="function") mainInitialRender(mainData); }
-      }
-    }catch(_){ }
-    // 공유 캐시가 있으면 화면 먼저 구성(로컬 캐시 없는 태블릿 등 대비)
-    try{ if(typeof sharedCacheBoot==="function"){ statusEl.textContent="공유 데이터 여는 중…"; await Promise.race([ Promise.resolve(sharedCacheBoot()).catch(function(){}), new Promise(function(rs){ setTimeout(rs, 8000); }) ]); } }catch(_){ }
-    // 최신 데이터 로딩 완료까지 스플래시에서 대기(최대 30초). fetch 타임아웃 덕에 멈추지 않고 30초 내 종료.
-    statusEl.textContent="데이터 동기화 중…";
+    // 공유 캐시가 있으면 화면 먼저 구성(있으면 빠름). 단, 진입은 실제 로딩이 끝난 뒤.
+    try{ if(typeof sharedCacheBoot === "function"){ statusEl.textContent = "공유 데이터 여는 중…"; await sharedCacheBoot(); } }catch(_){ }
+    // 실제 로딩 완료까지(최대 30초) 스플래시에서 대기 → 진입 후 모든 메뉴 바로 사용 가능
     await Promise.race([
       Promise.all(steps.map(runStep)),
       new Promise(function(rs){ setTimeout(rs, 30000); })
     ]);
     window.alert = realAlert;   // 원복
     finish(ok);
-    // 준비되면(또는 30초 경과 시) 자동 진입
+    // 준비되면(또는 30초 경과 시) 자동 진입 — 시작하기 버튼 안 눌러도 됨
     setTimeout(function(){ try{ if(enterBtn && !enterBtn.disabled) enterBtn.click(); }catch(_){ } }, 300);
   }
 
@@ -10155,7 +10129,6 @@ window.__qualityInited = true;
 
   enterBtn.addEventListener("click", function(){
     if(enterBtn.disabled) return;
-    if(window.__entered) return; window.__entered=true;   // [속도] 진입 로직 중복 실행 방지
     splash.classList.add("hide");
     setTimeout(()=>{ splash.style.display = "none"; }, 450);
     // 스플래시를 닫고 들어간 뒤, 아직 안 온 데이터가 있으면 상단 배너로 알린다.
@@ -12318,12 +12291,12 @@ function fetchWaitInspData(force){
   if(!url){ alert("품질분석 화면의 Apps Script 웹 앱 URL을 먼저 입력해 주세요."); return; }
   if(statusEl) statusEl.textContent = "불러오는 중...";
   return Promise.all([
-    fetchJSON_(url + "?dataset=" + encodeURIComponent("측정실검사대기") + _ns).then(function(v){ return (v&&v.success)?v:null; }),
-    fetchJSON_(url + "?dataset=" + encodeURIComponent("크린룸검사대기") + _ns).then(function(v){ return (v&&v.success)?v:null; }),
-    fetchJSON_(url + "?dataset=" + encodeURIComponent("비젼검사대기") + _ns).then(function(v){ return (v&&v.success)?v:null; }),
-    fetchJSON_(url + "?dataset=" + encodeURIComponent("생산공정현황") + _ns).then(function(v){ return (v&&v.success)?v:null; }),
-    fetchJSON_(url + "?dataset=" + encodeURIComponent("수입검사(외관)") + _ns).then(function(v){ return (v&&v.success)?v:null; }),
-    fetchJSON_(url + "?dataset=" + encodeURIComponent("공정검사(사내외관)") + _ns).then(function(v){ return (v&&v.success)?v:null; })
+    fetch(url + "?dataset=" + encodeURIComponent("측정실검사대기") + _ns).then(r=>r.json()).catch(()=>null),
+    fetch(url + "?dataset=" + encodeURIComponent("크린룸검사대기") + _ns).then(r=>r.json()).catch(()=>null),
+    fetch(url + "?dataset=" + encodeURIComponent("비젼검사대기") + _ns).then(r=>r.json()).catch(()=>null),
+    fetch(url + "?dataset=" + encodeURIComponent("생산공정현황") + _ns).then(r=>r.json()).catch(()=>null),
+    fetch(url + "?dataset=" + encodeURIComponent("수입검사(외관)") + _ns).then(r=>r.json()).catch(()=>null),
+    fetch(url + "?dataset=" + encodeURIComponent("공정검사(사내외관)") + _ns).then(r=>r.json()).catch(()=>null)
   ]).then(([measureRes, cleanRes, visionRes, processRes, incomingRes, inhouseRes])=>{
     const warnings = [];
     // 수입검사대기용 원본 데이터도 최신으로 갱신 (MAIN 대시보드와 공유)
