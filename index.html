@@ -2092,7 +2092,8 @@
         </div>
 
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-          <input id="mh-search" type="text" placeholder="🔍 도번 / S/N 검색 (도번+S/N 함께 입력하면 그 도번의 그 S/N만 · 없으면 측정 미완료)" onkeydown="if(event.key==='Enter')renderMeasureHist()" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
+          <input id="mh-search-draw" type="text" placeholder="🔍 도번" onkeydown="if(event.key==='Enter')renderMeasureHist()" style="flex:1;min-width:150px;padding:8px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
+          <input id="mh-search-sn" type="text" placeholder="🔍 S/N" onkeydown="if(event.key==='Enter')renderMeasureHist()" style="flex:1;min-width:150px;padding:8px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
           <button type="button" onclick="renderMeasureHist()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:700;cursor:pointer;">🔍 조회</button>
           <button type="button" onclick="mhClearAll_()" style="background:#EEF3FA;color:#33415C;border:1px solid #C9D3E0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="인덱스 전체 삭제">🗑 전체 지우기</button>
         </div>
@@ -4541,14 +4542,18 @@ function mhClearAll_(){
 }
 
 // 검색: 여러 term은 모두 포함(AND) — 도번과 S/N을 함께 넣으면 그 도번의 그 S/N만 나옴
-function mhFilter_(q){
-  q=String(q||"").trim();
-  var terms = q ? q.split(/[\s,]+/).map(function(x){return x.trim().toUpperCase();}).filter(Boolean) : [];
+function mhFilter_(drawQ, snQ){
+  var toTerms=function(x){ x=String(x||"").trim(); return x ? x.split(/[\s,]+/).map(function(y){return y.trim().toUpperCase();}).filter(Boolean) : []; };
+  var dTerms=toTerms(drawQ), sTerms=toTerms(snQ);
   var list=__measureIndex;
-  if(terms.length){
+  if(dTerms.length || sTerms.length){
     list=list.filter(function(r){
-      var hay=((r.rel||"")+" "+(r.dr||"")+" "+(r.sn||"")).toUpperCase();
-      return terms.every(function(t){ return hay.indexOf(t)>=0; });
+      var rel=String(r.rel||"").toUpperCase();
+      var dHay=String(r.dr||"").toUpperCase()+" "+rel;   // 도번: 추정 도번 + 전체 경로
+      var sHay=String(r.sn||"").toUpperCase()+" "+rel;   // S/N: 추정 S/N + 전체 경로
+      var okD=dTerms.every(function(t){ return dHay.indexOf(t)>=0; });
+      var okS=sTerms.every(function(t){ return sHay.indexOf(t)>=0; });
+      return okD && okS;
     });
   }
   return list.slice().sort(function(a,b){
@@ -4561,11 +4566,12 @@ function renderMeasureHist(){
   var body=document.getElementById("mh-body"); if(!body) return;
   var st=document.getElementById("mh-status");
   if(st){ st.textContent = __measureIndex.length ? ("인덱스 "+__measureIndex.length.toLocaleString()+"건"+(__mhLastScan?(" · 최근 스캔 "+__mhLastScan):"")) : "폴더를 선택해 스캔하세요."; }
-  var q=String((document.getElementById("mh-search")||{}).value||"").trim();
-  var rows=mhFilter_(q);
+  var dq=String((document.getElementById("mh-search-draw")||{}).value||"").trim();
+  var sq=String((document.getElementById("mh-search-sn")||{}).value||"").trim();
+  var rows=mhFilter_(dq, sq);
   var td='padding:7px 8px;border:1px solid #E6EBF2;';
   if(!__measureIndex.length){ body.innerHTML='<tr><td colspan="3" style="text-align:center;color:#8A93A6;padding:22px;">아직 인덱스가 없습니다. 위에서 측정보고서 폴더를 선택해 스캔하세요.</td></tr>'; return; }
-  if(!rows.length){ body.innerHTML='<tr><td colspan="3" style="text-align:center;color:#B0662A;padding:22px;font-weight:700;">\u2018'+mhEsc_(q)+'\u2019 측정 이력이 없습니다 · 측정 미완료</td></tr>'; return; }
+  if(!rows.length){ var __qq=[dq,sq].filter(Boolean).join(" / "); body.innerHTML='<tr><td colspan="3" style="text-align:center;color:#B0662A;padding:22px;font-weight:700;">'+(__qq?("\u2018"+mhEsc_(__qq)+"\u2019 측정 이력이 없습니다 · 측정 미완료"):"조건에 맞는 항목이 없습니다")+'</td></tr>'; return; }
   var cap=2000, shown=rows.slice(0,cap);
   body.innerHTML=shown.map(function(r){
     return '<tr class="mh-row" data-path="'+mhEsc_(r.p||"")+'" title="클릭하면 경로가 복사됩니다 (파일 탐색기 주소창에 붙여넣기)" style="cursor:pointer;">'
