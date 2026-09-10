@@ -2092,21 +2092,18 @@
         </div>
 
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-          <input id="mh-search" type="text" placeholder="🔍 도번 / S/N 검색 (여러 개는 공백·쉼표로 · 모두 포함)" onkeydown="if(event.key==='Enter')renderMeasureHist()" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
+          <input id="mh-search" type="text" placeholder="🔍 도번 / S/N 검색 (도번+S/N 함께 입력하면 그 도번의 그 S/N만 · 없으면 측정 미완료)" onkeydown="if(event.key==='Enter')renderMeasureHist()" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
           <button type="button" onclick="renderMeasureHist()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:700;cursor:pointer;">🔍 조회</button>
           <button type="button" onclick="mhClearAll_()" style="background:#EEF3FA;color:#33415C;border:1px solid #C9D3E0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="인덱스 전체 삭제">🗑 전체 지우기</button>
         </div>
 
         <div id="mh-wrap" style="overflow:auto;max-height:calc(100vh - 360px);">
-          <table style="width:100%;border-collapse:collapse;font-size:12px;" id="mh-table">
-            <colgroup><col style="width:11%"><col style="width:16%"><col style="width:12%"><col style="width:8%"><col style="width:31%"><col style="width:22%"></colgroup>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;" id="mh-table">
+            <colgroup><col style="width:34%"><col style="width:40%"><col style="width:26%"></colgroup>
             <thead><tr>
-              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">측정 DATE</th>
-              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">도번(추정)</th>
-              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">S/N(추정)</th>
-              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">고객</th>
-              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">파일명</th>
-              <th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">경로</th>
+              <th style="padding:9px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">도번</th>
+              <th style="padding:9px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">S/N</th>
+              <th style="padding:9px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">측정일</th>
             </tr></thead>
             <tbody id="mh-body"></tbody>
           </table>
@@ -4455,17 +4452,19 @@ else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;
 var __insplistShip=[];
 
 
-/* ========================= 📐 측정이력 (측정 DATE LIST) — 폴더 스캔 → 도번/S/N 검색 → 측정 DATE ========================= */
-var __measureIndex = [];          // [{p:전체경로, rel:상대경로, n:파일명, d:측정DATE, dr:도번추정, sn:S/N추정, c:고객}]
+/* ========================= 📐 측정이력 (측정 DATE LIST) — 폴더 스캔 → 도번·S/N 검색 → 측정일 ========================= */
+var __measureIndex = [];          // [{p:전체경로, rel:상대경로, n:파일명, d:측정일, dr:도번, sn:S/N, c:고객}]
 var __mhLastScan = "";
 
-// 파일 하나(상대경로)에서 측정 DATE·도번·S/N 추출
+// 파일 하나(상대경로)에서 측정일·도번·S/N 추출 (고객별 규칙)
 function mhParseFile_(rel, base, cust){
   var relClean = String(rel||"").replace(/^[\/\\]+/,"");
   var segs = relClean.split(/[\/\\]+/).filter(Boolean);
   var name = segs.length ? segs[segs.length-1] : relClean;
   var stem = name.replace(/\.[^.]+$/,"");
-  // 측정 DATE: 모든 폴더/파일명 세그먼트에서 날짜 패턴 탐색(가장 뒤/구체적인 것 채택)
+  var hay = relClean;   // 폴더 + 파일명 전체 (도번이 폴더 기준일 때도, 파일명 기준일 때도 잡기 위함)
+
+  // 측정일: 모든 폴더/파일명 세그먼트에서 날짜 탐색
   var date="";
   segs.forEach(function(seg){
     var m8=seg.match(/(20\d{2})[.\-_ ]?(\d{2})[.\-_ ]?(\d{2})/);
@@ -4473,15 +4472,25 @@ function mhParseFile_(rel, base, cust){
     var m6=seg.match(/(?:^|[^\d])(\d{2})[.\-_](\d{2})[.\-_](\d{2})(?:[^\d]|$)/);
     if(m6){ var mm2=+m6[2], dd2=+m6[3]; if(mm2>=1&&mm2<=12&&dd2>=1&&dd2<=31){ date="20"+m6[1]+"-"+m6[2]+"-"+m6[3]; } }
   });
-  // 도번 추정: 긴 숫자(6자리+) 또는 영문+숫자 코드 (파일명 우선, 없으면 상위 폴더)
+
+  // 도번: M200-005-050 / M501-101-06A 형태(영문+숫자에 하이픈 묶음) 우선 · 파일명→폴더 순으로 탐색
   var draw="";
-  var dm = stem.match(/(\d{6,})/) || stem.match(/([A-Za-z]{1,4}\d{2,}[\w\-]*)/);
-  if(!dm){ for(var j=segs.length-2;j>=0;j--){ var d2=segs[j].match(/(\d{6,})/); if(d2){ dm=d2; break; } } }
+  var DRAW=/([A-Za-z]{1,3}\d{2,}(?:-\w+)+|[A-Za-z]\d{3,}[A-Za-z]?)/;
+  var dm = stem.match(DRAW);
+  if(!dm){ for(var j=segs.length-2;j>=0;j--){ var d2=segs[j].match(DRAW); if(d2){ dm=d2; break; } } }
   if(dm) draw=dm[1];
-  // S/N 추정: SN / S/N 뒤 토큰
-  var sn="";
-  var sm = stem.match(/S\/?N[ _\-#]*([0-9A-Za-z][0-9A-Za-z,\-]*)/i);
-  if(sm) sn=sm[1];
+
+  // S/N: 고객별 규칙
+  //  · 유진테크: 10768-뒷번호 (반복적인 10768- S/N)
+  //  · 유진어스: 263701-1 처럼 숫자-숫자 전체가 S/N
+  var snSet={};
+  function addSn(arr){ if(arr) arr.forEach(function(x){ snSet[x]=1; }); }
+  if(cust==="유진테크"){ addSn(hay.match(/10768-\d+/g)); }
+  else if(cust==="유진어스"){ addSn(hay.match(/\b\d{4,7}-\d{1,4}\b/g)); }
+  else { addSn(hay.match(/10768-\d+/g)); addSn(hay.match(/\b\d{4,7}-\d{1,4}\b/g)); }
+  if(draw){ delete snSet[draw]; }   // 도번으로 잡힌 토큰은 S/N에서 제외
+  var sn = Object.keys(snSet).join(", ");
+
   var path = base ? (String(base).replace(/[\/\\]+$/,"") + "\\" + relClean.replace(/\//g,"\\")) : relClean.replace(/\//g,"\\");
   return { p:path, rel:relClean, n:name, d:date, dr:draw, sn:sn, c:cust||"" };
 }
@@ -4491,14 +4500,11 @@ function mhScanFolder_(inputEl, base, cust){
   var files = inputEl && inputEl.files ? Array.prototype.slice.call(inputEl.files) : [];
   if(!files.length){ return; }
   base = String(base||"").trim();
-  // 같은 base(고객)로 이미 넣은 항목은 교체 (재스캔 시 중복 방지)
-  __measureIndex = __measureIndex.filter(function(r){ return r.c !== cust; });
+  __measureIndex = __measureIndex.filter(function(r){ return r.c !== cust; });   // 같은 고객 재스캔 시 교체
   var added=0;
   files.forEach(function(f){
     var rel = f.webkitRelativePath || f.name;
-    // 폴더 선택 시 최상위 폴더명이 rel 맨 앞에 들어오므로 그대로 두되 base와 합쳐 경로 구성
-    var rec = mhParseFile_(rel, base, cust);
-    __measureIndex.push(rec); added++;
+    __measureIndex.push(mhParseFile_(rel, base, cust)); added++;
   });
   __mhLastScan = new Date().toLocaleString("ko-KR");
   try{ inputEl.value=""; }catch(_){}
@@ -4507,15 +4513,26 @@ function mhScanFolder_(inputEl, base, cust){
   try{ alert(cust+" 폴더에서 파일 "+added+"건을 읽었습니다. (누적 "+__measureIndex.length+"건)"); }catch(_){}
 }
 
-// 저장/로드 (로컬 idb + 팀 공유)
+// 저장(로컬 idb 우선 + 팀 공유)
 function mhSave_(){
-  try{ if(typeof idbSet==="function") idbSet("measureIndex", {list:__measureIndex, at:__mhLastScan}); }catch(_){}
-  try{ if(typeof qShareSave_==="function") qShareSave_("measureIndex", {list:__measureIndex, at:__mhLastScan}, "mh-status"); }catch(_){}
+  var payload={list:__measureIndex, at:__mhLastScan};
+  try{ if(typeof idbSet==="function") idbSet("measureIndex", payload); }catch(_){}
+  try{ if(typeof qShareSave_==="function") qShareSave_("measureIndex", payload, "mh-status"); }catch(_){}
 }
 function mhApply_(sv){
-  if(sv && Array.isArray(sv.list)){ __measureIndex=sv.list; __mhLastScan=sv.at||__mhLastScan; return true; }
-  if(Array.isArray(sv)){ __measureIndex=sv; return true; }
+  if(sv && Array.isArray(sv.list)){ __measureIndex=sv.list; __mhLastScan=sv.at||__mhLastScan; return __measureIndex.length>0; }
+  if(Array.isArray(sv)){ __measureIndex=sv; return __measureIndex.length>0; }
   return false;
+}
+// 로드: idb 먼저(빠르고 확실) → 없으면 팀 공유. 1회만.
+function mhEnsureLoaded_(force){
+  if(window.__mhLoaded && !force) return; window.__mhLoaded=true;
+  var tryShared=function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("measureIndex", function(sv){ if(mhApply_(sv)) renderMeasureHist(); }); } }catch(_){} };
+  try{
+    if(typeof idbGet==="function"){
+      idbGet("measureIndex").then(function(v){ if(mhApply_(v)){ renderMeasureHist(); } else { tryShared(); } }).catch(tryShared);
+    } else { tryShared(); }
+  }catch(_){ tryShared(); }
 }
 function mhClearAll_(){
   if(!confirm("측정이력 인덱스를 전부 지울까요? (파일은 삭제되지 않습니다)")) return;
@@ -4523,20 +4540,20 @@ function mhClearAll_(){
   mhSave_(); renderMeasureHist();
 }
 
-// 검색 필터 (여러 term은 모두 포함 AND)
+// 검색: 여러 term은 모두 포함(AND) — 도번과 S/N을 함께 넣으면 그 도번의 그 S/N만 나옴
 function mhFilter_(q){
   q=String(q||"").trim();
   var terms = q ? q.split(/[\s,]+/).map(function(x){return x.trim().toUpperCase();}).filter(Boolean) : [];
   var list=__measureIndex;
   if(terms.length){
     list=list.filter(function(r){
-      var hay=((r.rel||"")+" "+(r.p||"")+" "+(r.dr||"")+" "+(r.sn||"")).toUpperCase();
+      var hay=((r.rel||"")+" "+(r.dr||"")+" "+(r.sn||"")).toUpperCase();
       return terms.every(function(t){ return hay.indexOf(t)>=0; });
     });
   }
   return list.slice().sort(function(a,b){
     var c=String(b.d||"").localeCompare(String(a.d||"")); if(c!==0) return c;
-    return String(a.n||"").localeCompare(String(b.n||""));
+    return String(a.dr||"").localeCompare(String(b.dr||""));
   });
 }
 
@@ -4546,29 +4563,31 @@ function renderMeasureHist(){
   if(st){ st.textContent = __measureIndex.length ? ("인덱스 "+__measureIndex.length.toLocaleString()+"건"+(__mhLastScan?(" · 최근 스캔 "+__mhLastScan):"")) : "폴더를 선택해 스캔하세요."; }
   var q=String((document.getElementById("mh-search")||{}).value||"").trim();
   var rows=mhFilter_(q);
-  var td='padding:6px 8px;border:1px solid #E6EBF2;';
-  if(!__measureIndex.length){ body.innerHTML='<tr><td colspan="6" style="text-align:center;color:#8A93A6;padding:22px;">아직 인덱스가 없습니다. 위에서 측정보고서 폴더를 선택해 스캔하세요.</td></tr>'; return; }
-  if(!rows.length){ body.innerHTML='<tr><td colspan="6" style="text-align:center;color:#8A93A6;padding:22px;">\u2018'+mhEsc_(q)+'\u2019 검색 결과가 없습니다.</td></tr>'; return; }
-  var cap=1000, shown=rows.slice(0,cap);
+  var td='padding:7px 8px;border:1px solid #E6EBF2;';
+  if(!__measureIndex.length){ body.innerHTML='<tr><td colspan="3" style="text-align:center;color:#8A93A6;padding:22px;">아직 인덱스가 없습니다. 위에서 측정보고서 폴더를 선택해 스캔하세요.</td></tr>'; return; }
+  if(!rows.length){ body.innerHTML='<tr><td colspan="3" style="text-align:center;color:#B0662A;padding:22px;font-weight:700;">\u2018'+mhEsc_(q)+'\u2019 측정 이력이 없습니다 · 측정 미완료</td></tr>'; return; }
+  var cap=2000, shown=rows.slice(0,cap);
   body.innerHTML=shown.map(function(r){
-    return '<tr>'
+    return '<tr class="mh-row" data-path="'+mhEsc_(r.p||"")+'" title="클릭하면 경로가 복사됩니다 (파일 탐색기 주소창에 붙여넣기)" style="cursor:pointer;">'
+      +'<td style="'+td+'text-align:center;font-weight:700;">'+mhEsc_(r.dr||"-")+'</td>'
+      +'<td style="'+td+'text-align:center;">'+mhEsc_(r.sn||"-")+'</td>'
       +'<td style="'+td+'text-align:center;font-weight:700;color:'+(r.d?"#0B5CAB":"#B0662A")+';">'+mhEsc_(r.d||"미상")+'</td>'
-      +'<td style="'+td+'text-align:center;">'+mhEsc_(r.dr||"")+'</td>'
-      +'<td style="'+td+'text-align:center;">'+mhEsc_(r.sn||"")+'</td>'
-      +'<td style="'+td+'text-align:center;font-size:11px;color:#5A6478;">'+mhEsc_(r.c||"")+'</td>'
-      +'<td style="'+td+'font-size:11.5px;word-break:break-all;">'+mhEsc_(r.n||"")+'</td>'
-      +'<td style="'+td+'text-align:center;"><button type="button" class="mh-copybtn" data-path="'+mhEsc_(r.p||"")+'" style="font-size:11px;padding:4px 8px;border:1px solid #C9D3E0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;white-space:nowrap;">📋 경로 복사</button></td>'
       +'</tr>';
-  }).join("") + (rows.length>cap?('<tr><td colspan="6" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:8px;">결과가 많아 앞 '+cap+'건만 표시합니다 · 검색어로 좁히세요 (전체 '+rows.length.toLocaleString()+'건)</td></tr>'):'');
-  body.querySelectorAll(".mh-copybtn").forEach(function(b){
-    b.addEventListener("click", function(){ var p=b.getAttribute("data-path"); if(typeof docmasterCopy==="function") docmasterCopy(p, b); else { try{ navigator.clipboard.writeText(p); b.textContent="✅ 복사됨"; setTimeout(function(){ b.textContent="📋 경로 복사"; },1400);}catch(_){} } });
+  }).join("") + (rows.length>cap?('<tr><td colspan="3" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:8px;">결과가 많아 앞 '+cap+'건만 표시합니다 · 검색어로 좁히세요 (전체 '+rows.length.toLocaleString()+'건)</td></tr>'):'');
+  body.querySelectorAll(".mh-row").forEach(function(tr){
+    tr.addEventListener("click", function(){
+      var p=tr.getAttribute("data-path");
+      try{ navigator.clipboard.writeText(p); }catch(_){ try{ var ta=document.createElement("textarea"); ta.value=p; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); }catch(e){} }
+      var old=tr.style.background; tr.style.background="#D9F2E3"; setTimeout(function(){ tr.style.background=old; }, 600);
+    });
   });
 }
 
 function mhEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
-// 폴더 input change 바인딩 (뷰 최초 진입 시)
+// 폴더 input change 바인딩 + 최초 로드 (뷰 진입 시)
 function mhBind_(){
+  mhEnsureLoaded_();
   if(window.__mhBound) return; window.__mhBound=true;
   var yj=document.getElementById("mh-folder-yj");
   if(yj) yj.addEventListener("change", function(){ mhScanFolder_(yj, (document.getElementById("mh-base-yj")||{}).value||"", "유진테크"); });
@@ -4576,10 +4595,8 @@ function mhBind_(){
   if(ye) ye.addEventListener("change", function(){ mhScanFolder_(ye, (document.getElementById("mh-base-ye")||{}).value||"", "유진어스"); });
 }
 
-// 팀 공유/로컬 인덱스 로드 (접속 후 1회)
-(window.__afterEnter=window.__afterEnter||[]).push(function(){
-  try{ if(typeof qShareLoad_==="function"){ qShareLoad_("measureIndex", function(sv){ if(mhApply_(sv)){ if(document.getElementById("mh-body")) renderMeasureHist(); return; } try{ if(typeof idbGet==="function"){ idbGet("measureIndex").then(function(v){ if(mhApply_(v)){ if(document.getElementById("mh-body")) renderMeasureHist(); } }).catch(function(){}); } }catch(_){} }); } }catch(_){}
-});
+// 접속 후 1회 로드
+(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ mhEnsureLoaded_(); }catch(_){} });
 
 /* ========================= 📤 분출 LIST (유진테크 · 최종납기 범위 · 검수 제외 · 납기분출) ========================= */
 var __dispatchOrders = {};   // 서버에서 로드한 '납기분출' 처리된 ORDER 집합 (비고 표시용)
