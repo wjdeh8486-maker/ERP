@@ -1058,6 +1058,7 @@
     <div class="nav-item" data-view="insplist"><span class="dot"></span>📋 검수LIST</div>
     <div class="nav-item" data-view="dispatchlist"><span class="dot"></span>📤 분출LIST</div>
     <div class="nav-item" data-view="measurehist"><span class="dot"></span>📐 측정이력</div>
+    <div class="nav-item" data-view="mnshort"><span class="dot"></span>📊 월별납기부족</div>
     <div class="nav-item" data-view="shipjudge"><span class="dot"></span>🚦 QMS출하판정</div>
     <div class="nav-item" id="dataCheckNavBtn" title="데이터 이상 점검 (관리자용)"><span class="dot"></span>🔍 데이터 점검</div>
     <div class="nav-item" id="helpNavBtn" title="사용법 안내"><span class="dot"></span>❓ 사용법</div>
@@ -2091,6 +2092,27 @@
               <th style="padding:9px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">측정일</th>
             </tr></thead>
             <tbody id="mh-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <!-- ===================== 📊 월별 납기부족 분석 VIEW ===================== -->
+    <div class="view" id="view-mnshort">
+      <div style="background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+          <div style="font-size:18px;font-weight:800;color:#1F2A44;">📊 월별 납기부족 분석</div>
+          <button type="button" onclick="renderMonthlyShortage()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🔄 새로고침</button>
+          <input id="mn-search" type="text" placeholder="🔍 도번/품명 검색" onkeydown="if(event.key==='Enter')renderMonthlyShortage()" style="min-width:170px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;">
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;cursor:pointer;user-select:none;"><input type="checkbox" id="mn-onlyShort" checked onchange="renderMonthlyShortage()" style="width:16px;height:16px;cursor:pointer;"> 부족만</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;">연도 <select id="mn-year" onchange="renderMonthlyShortage()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;"></select></label>
+          <button type="button" onclick="mnExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">📊 엑셀</button>
+          <span id="mn-status" style="font-size:12px;color:#7A8598;"></span>
+        </div>
+        <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">보유수(📤 공정재고 업로드) 대비 <b>앞으로 나갈 물량(미납품, 최종납기 월별)</b>을 비교합니다. 가용(=보유+납품완료)을 납기 빠른 순으로 소진해 <b>처음 부족해지는 시점(최초부족일정)</b>을 계산합니다.</div>
+        <div id="mn-wrap" style="overflow:auto;max-height:calc(100vh - 300px);">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1100px;" id="mn-table">
+            <thead><tr id="mn-head"></tr></thead>
+            <tbody id="mn-body"></tbody>
           </table>
         </div>
       </div>
@@ -3417,6 +3439,10 @@ document.querySelectorAll(".nav-item").forEach(item=>{
       if(typeof mhEnsureLoaded_==="function") mhEnsureLoaded_();
       if(typeof renderMeasureHist==="function") renderMeasureHist();
     }
+    if(target==="mnshort"){
+      if(typeof stockEnsureLoaded_==="function") stockEnsureLoaded_();
+      if(typeof renderMonthlyShortage==="function") renderMonthlyShortage();
+    }
     if(target==="upload"){
       if(typeof mhBind_==="function") mhBind_();   // 옮겨온 측정이력 폴더 스캔 바인딩
       if(typeof stockBind_==="function") stockBind_();   // 공정재고 업로드 바인딩
@@ -4468,6 +4494,114 @@ else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;
 }
 var __insplistShip=[];
 
+
+
+/* ========================= 📊 월별 납기부족 분석 ========================= */
+function mnFmtShort_(due){ var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(due||"")); return m ? ((+m[2])+"월 "+(+m[3])+"일") : (due||""); }
+
+// 도번별 집계: 보유수 vs 미납품(최종납기 월별) → 부족수·최초부족일정
+function mnBuildRows_(){
+  var md=(typeof mainData!=="undefined"&&mainData)?mainData:[];
+  var __mnYear=String((document.getElementById("mn-year")||{}).value||"");   // 선택 연도("" 또는 2026/2027/all)
+  var byDraw={};
+  md.forEach(function(m){
+    var draw=String(m.oldDrawingNo||"").trim(); if(!draw) return;
+    if((Number(m.qty)||0)<=0) return;
+    var g=byDraw[draw]||(byDraw[draw]={draw:draw, name:m.partName||"", cust:m.customer||"", done:0, orders:[]});
+    if(!g.name && m.partName) g.name=m.partName;
+    var qty=Number(m.qty)||0;
+    if(String(m.shipped||"").indexOf("완료")>=0){ g.done+=qty; }
+    else { g.orders.push({ due:String(m.dueDate||"").trim(), qty:qty }); }   // 미납품 = 앞으로 나갈 물량
+  });
+  var rows=[];
+  Object.keys(byDraw).forEach(function(draw){
+    var g=byDraw[draw];
+    var stock=(typeof stockGet_==="function")?stockGet_(draw):null;
+    var have=(stock==null?0:stock);
+    var months=[0,0,0,0,0,0,0,0,0,0,0,0], demand=0, yOrders=[];
+    g.orders.forEach(function(o){
+      var mo=/^(\d{4})-(\d{2})-(\d{2})$/.exec(o.due); if(!mo) return;
+      if(__mnYear && __mnYear!=="all" && mo[1]!==__mnYear) return;   // 선택 연도만
+      demand+=o.qty; var mi=+mo[2]-1; if(mi>=0&&mi<12) months[mi]+=o.qty; yOrders.push(o);
+    });
+    if(demand===0 && stock==null) return;
+    var avail = have + g.done;   // 가용 = 보유 + 납품완료
+    var sorted=yOrders.slice().sort(function(a,b){ return a.due.localeCompare(b.due); });
+    var run=avail, firstShort=null, shortQty=0;
+    for(var i=0;i<sorted.length;i++){ run-=sorted[i].qty; if(run<0 && !firstShort){ firstShort=sorted[i].due; shortQty=-run; } }
+    rows.push({ draw:draw, name:g.name, cust:g.cust, have:have, hasStock:(stock!=null), demand:demand, done:g.done, avail:avail, lack:(avail-demand), firstShort:firstShort, shortQty:shortQty, months:months });
+  });
+  rows.sort(function(a,b){
+    var af=a.firstShort?0:1, bf=b.firstShort?0:1; if(af!==bf) return af-bf;
+    if(a.firstShort&&b.firstShort){ var c=a.firstShort.localeCompare(b.firstShort); if(c) return c; }
+    return a.lack-b.lack;
+  });
+  return rows;
+}
+
+function mnRows_(){
+  var q=String((document.getElementById("mn-search")||{}).value||"").trim().toUpperCase();
+  var onlyShort=(document.getElementById("mn-onlyShort")||{}).checked;
+  var rows=mnBuildRows_();
+  if(q) rows=rows.filter(function(r){ return String(r.draw).toUpperCase().indexOf(q)>=0 || String(r.name).toUpperCase().indexOf(q)>=0; });
+  if(onlyShort) rows=rows.filter(function(r){ return r.firstShort || r.lack<0; });
+  return rows;
+}
+
+function renderMonthlyShortage(){
+  var body=document.getElementById("mn-body"); if(!body) return;
+  var head=document.getElementById("mn-head");
+  var mnames=["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+  if(head && !head.getAttribute("data-init")){
+    head.setAttribute("data-init","1");
+    var th=function(t,w){ return '<th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;'+(w||"")+'">'+t+'</th>'; };
+    head.innerHTML = th("도번")+th("품명")+th("보유수")+th("납기예정")+th("납품완료")+th("부족수")+th("최초부족일정")+mnames.map(function(m){return th(m);}).join("");
+  }
+  var st=document.getElementById("mn-status");
+  var nStock=(typeof __stockData!=="undefined"&&__stockData.map)?Object.keys(__stockData.map).length:0;
+  if(st) st.textContent = nStock ? ("공정재고 "+nStock+"개 도번 반영"+(__stockData.at?(" · "+__stockData.at):"")) : "⚠ 공정재고 미업로드 — 보유수 0으로 계산됨 (📤 데이터 업로드에서 공정재고LIST 올리세요)";
+  // 연도 드롭다운 채우기 (미납품 최종납기 연도 + 전체) — 최초 1회
+  var ysel=document.getElementById("mn-year");
+  if(ysel && !ysel.getAttribute("data-init")){
+    ysel.setAttribute("data-init","1");
+    var yset={}; ((typeof mainData!=="undefined"&&mainData)||[]).forEach(function(m){ if(String(m.shipped||"").indexOf("완료")>=0) return; var mo=/^(\d{4})-/.exec(String(m.dueDate||"")); if(mo) yset[mo[1]]=1; });
+    var years=Object.keys(yset).sort();
+    var cur=String(new Date().getFullYear());
+    var opts=years.map(function(y){ return '<option value="'+y+'">'+y+"년"+(y===cur?" (올해)":(y===String(+cur+1)?" (내년)":""))+'</option>'; }).join("")+'<option value="all">전체(연도합산)</option>';
+    ysel.innerHTML=opts;
+    ysel.value = (yset[cur]?cur:(years[0]||"all"));   // 기본: 올해
+  }
+  var rows=mnRows_();
+  var td='padding:6px 6px;border:1px solid #E6EBF2;';
+  if(!rows.length){ body.innerHTML='<tr><td colspan="19" style="text-align:center;color:#8A93A6;padding:20px;">표시할 항목이 없습니다.'+(nStock?'':' (공정재고를 먼저 업로드하세요)')+'</td></tr>'; return; }
+  var cap=1000, shown=rows.slice(0,cap);
+  body.innerHTML=shown.map(function(r){
+    var lackC=r.lack<0?"#C0392B":"#1E7A46";
+    var fs=r.firstShort ? (mnFmtShort_(r.firstShort)+" "+r.shortQty+"개 부족") : "-";
+    var monthsHtml=r.months.map(function(v){ return '<td style="'+td+'text-align:center;'+(v>0?'font-weight:700;color:#1F2A44;':'color:#C9D3E0;')+'">'+(v||"")+'</td>'; }).join("");
+    return '<tr>'
+      +'<td style="'+td+'text-align:center;font-weight:800;">'+mhEsc_(r.draw)+'</td>'
+      +'<td style="'+td+'font-size:11.5px;">'+mhEsc_(r.name)+'</td>'
+      +'<td style="'+td+'text-align:center;font-weight:700;color:'+(r.hasStock?"#0B5CAB":"#B0662A")+';" title="'+(r.hasStock?"":"공정재고에 이 도번이 없음")+'">'+r.have+(r.hasStock?"":" ?")+'</td>'
+      +'<td style="'+td+'text-align:center;">'+r.demand+'</td>'
+      +'<td style="'+td+'text-align:center;color:#5A6478;">'+r.done+'</td>'
+      +'<td style="'+td+'text-align:center;font-weight:800;color:'+lackC+';">'+r.lack+'</td>'
+      +'<td style="'+td+'text-align:center;font-weight:700;color:'+(r.firstShort?"#C0392B":"#1E7A46")+';white-space:nowrap;">'+mhEsc_(fs)+'</td>'
+      +monthsHtml
+      +'</tr>';
+  }).join("") + (rows.length>cap?('<tr><td colspan="19" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:8px;">앞 '+cap+'건만 표시 (전체 '+rows.length+'건)</td></tr>'):'');
+}
+
+function mnExcel_(){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
+  var rows=mnRows_(); if(!rows.length){ alert("내보낼 항목이 없습니다."); return; }
+  var mnames=["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+  var aoa=[["도번","품명","보유수","납기예정","납품완료","부족수","최초부족일정"].concat(mnames)];
+  rows.forEach(function(r){ aoa.push([r.draw, r.name, r.have, r.demand, r.done, r.lack, (r.firstShort?(mnFmtShort_(r.firstShort)+" "+r.shortQty+"개 부족"):"")].concat(r.months)); });
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "월별납기부족");
+  XLSX.writeFile(wb, "월별납기부족_"+new Date().toISOString().slice(0,10)+".xlsx");
+}
 
 /* ========================= 📦 공정재고 (도번 → 보유수) ========================= */
 var __stockData = { map:{}, at:"" };
