@@ -4568,8 +4568,7 @@ function mhParseFile_(rel, base, cust, mtime){
   else if(cust==="유진어스"){ addSn(name.match(/\b\d{5}-\d+\b/g)); }
   else { addSn(name.match(/10768-\d+/g)); addSn(name.match(/\b\d{5}-\d+\b/g)); }
   var sn = Object.keys(snSet).join(", ");
-  var path = base ? (String(base).replace(/[\/\\]+$/,"") + "\\" + relClean.replace(/\//g,"\\")) : relClean.replace(/\//g,"\\");
-  return { p:path, rel:relClean, n:name, d:date, dr:draw, sn:sn, c:cust||"" };
+  return { d:date, dr:draw, sn:sn };   // [경량화] 도번·S/N·측정일만 (경로 제외 — 대용량 공유저장 안정화)
 }
 
 // 폴더 input(webkitdirectory) → 인덱스 구성
@@ -4583,6 +4582,8 @@ function mhScanFolder_(inputEl, base, cust){
     var rel = f.webkitRelativePath || f.name;
     __measureIndex.push(mhParseFile_(rel, base, cust, f.lastModified)); added++;
   });
+  // [경량화] 중복 제거 (도번+S/N+측정일 동일)
+  var __seen={}, __dd=[]; __measureIndex.forEach(function(r){ var k=(r.dr||"")+"|"+(r.sn||"")+"|"+(r.d||""); if(__seen[k]) return; __seen[k]=1; __dd.push(r); }); __measureIndex=__dd;
   __mhLastScan = new Date().toLocaleString("ko-KR");
   try{ inputEl.value=""; }catch(_){}
   mhSave_();
@@ -4606,20 +4607,14 @@ async function mhShareSaveReliable_(data){
   if(payload.length<=CH){ await post(section,payload); setSt("☁ 공유 저장 완료","#1E7A46"); return; }
   var n=Math.ceil(payload.length/CH);
   var chunkLen=function(i){ return (i<n-1)?CH:(payload.length-(n-1)*CH); };
-  await post(section, "");   // 저장 중엔 마커를 비워 다른 기기가 불완전 데이터를 읽지 않게
-  setSt("☁ 공유 저장 시작 (총 "+n+"칸)…","#5A6478");
-  for(var i=0;i<n;i++){ await post(section+"#"+i, payload.slice(i*CH,(i+1)*CH)); if(i%5===0) setSt("☁ 공유 저장 중… "+(i+1)+"/"+n,"#5A6478"); await sleep(120); }
-  for(var pass=0;pass<3;pass++){
-    var missing=[];
-    for(var j=0;j<n;j++){ var L=await getLen(section+"#"+j); if(L!==chunkLen(j)) missing.push(j); }
-    if(!missing.length) break;
-    setSt("☁ 누락 "+missing.length+"칸 재전송… ("+(pass+1)+"차)","#B0662A");
-    for(var k=0;k<missing.length;k++){ var mi=missing[k]; await post(section+"#"+mi, payload.slice(mi*CH,(mi+1)*CH)); await sleep(180); }
-    await sleep(400);
-  }
-  var still=0;
-  for(var q=0;q<n;q++){ var L2=await getLen(section+"#"+q); if(L2!==chunkLen(q)) still++; }
-  if(still){ setSt("⚠ 공유 저장 실패 — "+still+"칸 누락. 다시 스캔/저장하세요 (이 PC에선 보입니다).","#B02A2A"); return; }
+  await post(section, "");   // 저장 중 마커 비움(다른 기기가 불완전 데이터 안 읽게)
+  setSt("☁ 공유 저장 (총 "+n+"칸)…","#5A6478");
+  for(var i=0;i<n;i++){ await post(section+"#"+i, payload.slice(i*CH,(i+1)*CH)); if(i%3===0) setSt("☁ 저장 중… "+(i+1)+"/"+n,"#5A6478"); await sleep(90); }
+  // 검증 1회 (10개씩 병렬) → 누락만 재전송
+  await sleep(500); setSt("☁ 검증 중…","#5A6478");
+  var missing=[];
+  for(var b=0;b<n;b+=10){ var batch=[]; for(var j=b;j<Math.min(b+10,n);j++){ (function(idx){ batch.push(getLen(section+"#"+idx).then(function(L){ if(L!==chunkLen(idx)) missing.push(idx); })); })(j); } await Promise.all(batch); }
+  if(missing.length){ setSt("☁ 누락 "+missing.length+"칸 재전송…","#B0662A"); for(var k=0;k<missing.length;k++){ await post(section+"#"+missing[k], payload.slice(missing[k]*CH,(missing[k]+1)*CH)); await sleep(120); } await sleep(500); }
   await post(section, JSON.stringify({__chunks:n, len:payload.length}));
   setSt("☁ 공유 저장 완료 ("+n+"칸) · 다른 기기에서도 조회됩니다","#1E7A46");
 }
@@ -4656,9 +4651,8 @@ function mhFilter_(drawQ, snQ){
   var list=__measureIndex;
   if(dTerms.length || sTerms.length){
     list=list.filter(function(r){
-      var rel=String(r.rel||"").toUpperCase();
-      var dHay=String(r.dr||"").toUpperCase()+" "+rel;   // 도번: 추정 도번 + 전체 경로
-      var sHay=String(r.sn||"").toUpperCase()+" "+rel;   // S/N: 추정 S/N + 전체 경로
+      var dHay=String(r.dr||"").toUpperCase();
+      var sHay=String(r.sn||"").toUpperCase();
       var okD=dTerms.every(function(t){ return dHay.indexOf(t)>=0; });
       var okS=sTerms.every(function(t){ return sHay.indexOf(t)>=0; });
       return okD && okS;
@@ -4682,19 +4676,12 @@ function renderMeasureHist(){
   if(!rows.length){ var __qq=[dq,sq].filter(Boolean).join(" / "); body.innerHTML='<tr><td colspan="3" style="text-align:center;color:#B0662A;padding:22px;font-weight:700;">'+(__qq?("\u2018"+mhEsc_(__qq)+"\u2019 측정 이력이 없습니다 · 측정 미완료"):"조건에 맞는 항목이 없습니다")+'</td></tr>'; return; }
   var cap=2000, shown=rows.slice(0,cap);
   body.innerHTML=shown.map(function(r){
-    return '<tr class="mh-row" data-path="'+mhEsc_(r.p||"")+'" title="클릭하면 경로가 복사됩니다 (파일 탐색기 주소창에 붙여넣기)" style="cursor:pointer;">'
+    return '<tr>'
       +'<td style="'+td+'text-align:center;font-weight:700;">'+mhEsc_(r.dr||"-")+'</td>'
       +'<td style="'+td+'text-align:center;">'+mhEsc_(r.sn||"-")+'</td>'
       +'<td style="'+td+'text-align:center;font-weight:700;color:'+(r.d?"#0B5CAB":"#B0662A")+';">'+mhEsc_(r.d||"미상")+'</td>'
       +'</tr>';
   }).join("") + (rows.length>cap?('<tr><td colspan="3" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:8px;">결과가 많아 앞 '+cap+'건만 표시합니다 · 검색어로 좁히세요 (전체 '+rows.length.toLocaleString()+'건)</td></tr>'):'');
-  body.querySelectorAll(".mh-row").forEach(function(tr){
-    tr.addEventListener("click", function(){
-      var p=tr.getAttribute("data-path");
-      try{ navigator.clipboard.writeText(p); }catch(_){ try{ var ta=document.createElement("textarea"); ta.value=p; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); }catch(e){} }
-      var old=tr.style.background; tr.style.background="#D9F2E3"; setTimeout(function(){ tr.style.background=old; }, 600);
-    });
-  });
 }
 
 function mhEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
