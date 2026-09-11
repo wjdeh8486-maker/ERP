@@ -2286,6 +2286,15 @@
     </div>
     <div class="view" id="view-upload">
       <div style="background:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 2px 10px rgba(0,0,0,0.06);margin-bottom:16px;">
+        <div style="font-size:16px;font-weight:800;color:#1F2A44;margin-bottom:4px;">📦 공정재고 업로드</div>
+        <div style="font-size:12px;color:#7A8598;margin-bottom:12px;">공정재고LIST.xlsx를 올리면 <b>도면번호·보유수</b>만 읽어 공유 저장소에 올립니다(입/출고는 사용 안 함). 월별 납기부족 분석의 보유수로 쓰입니다. 모바일에서도 파일 업로드는 됩니다. <span id="stock-status" style="color:#0B5CAB;font-weight:700;"></span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#F7FAFF;border:1px solid #E1E8F0;border-radius:10px;padding:12px;">
+          <input id="stock-file" type="file" accept=".xlsx,.xls,.xlsm" style="display:none;">
+          <button type="button" onclick="document.getElementById('stock-file').click()" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">📦 공정재고LIST 엑셀 선택</button>
+          <span style="font-size:11.5px;color:#8A93A6;">※ 시트에서 "도면번호"·"보유수" 열을 자동으로 찾아 읽습니다.</span>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 2px 10px rgba(0,0,0,0.06);margin-bottom:16px;">
         <div style="font-size:16px;font-weight:800;color:#1F2A44;margin-bottom:4px;">📐 측정이력 폴더 스캔</div>
         <div style="font-size:12px;color:#7A8598;margin-bottom:12px;">측정보고서 폴더를 선택하면 하위 폴더까지 읽어 <b>도번(폴더명)·S/N·측정일(저장일)</b>을 뽑아 공유 저장소에 올립니다. 스캔·업로드는 PC에서만 되고(모바일 브라우저는 폴더 선택 미지원), 올린 결과는 <b>측정이력 화면·모바일에서 자동으로 조회</b>됩니다.</div>
         <div style="display:flex;flex-direction:column;gap:8px;background:#F7FAFF;border:1px solid #E1E8F0;border-radius:10px;padding:12px;margin-bottom:14px;">
@@ -3410,6 +3419,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     }
     if(target==="upload"){
       if(typeof mhBind_==="function") mhBind_();   // 옮겨온 측정이력 폴더 스캔 바인딩
+      if(typeof stockBind_==="function") stockBind_();   // 공정재고 업로드 바인딩
     }
     if(target==="quality"){
       if(typeof ncInit==="function" && !window.__ncInited){ window.__ncInited = true; ncInit(); }
@@ -4458,6 +4468,81 @@ else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;
 }
 var __insplistShip=[];
 
+
+/* ========================= 📦 공정재고 (도번 → 보유수) ========================= */
+var __stockData = { map:{}, at:"" };
+
+function stockHandleFile_(file){
+  if(!file) return;
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요."); return; }
+  var st=document.getElementById("stock-status"); var setSt=function(m,c){ if(st){ st.textContent=m; if(c) st.style.color=c; } };
+  setSt("엑셀 읽는 중…","#5A6478");
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result), {type:"array"});
+      var map={}, cnt=0;
+      wb.SheetNames.forEach(function(sn){
+        var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:""});
+        var hr=-1, ci=-1, qi=-1;
+        for(var r=0;r<Math.min(aoa.length,20);r++){
+          var row=(aoa[r]||[]).map(function(x){ return String(x==null?"":x).replace(/\s/g,""); });
+          var _ci=-1,_qi=-1;
+          for(var c=0;c<row.length;c++){
+            if(_ci<0 && (row[c].indexOf("도면")>=0 || row[c].indexOf("도번")>=0)) _ci=c;
+            if(_qi<0 && row[c].indexOf("보유")>=0) _qi=c;
+          }
+          if(_ci>=0 && _qi>=0){ hr=r; ci=_ci; qi=_qi; break; }
+        }
+        if(hr<0) return;
+        for(var r2=hr+1;r2<aoa.length;r2++){
+          var dv=(aoa[r2]||[])[ci]; var dr=String(dv==null?"":dv).trim();
+          if(!dr) continue;
+          var qraw=String(((aoa[r2]||[])[qi]==null)?"":(aoa[r2]||[])[qi]).replace(/[^\d.\-]/g,"");
+          var qv=Number(qraw); if(isNaN(qv)) qv=0;
+          map[dr.toUpperCase()]=qv; cnt++;
+        }
+      });
+      if(!cnt){ setSt("⚠ '도면번호'·'보유수' 열을 못 찾았습니다. 시트 형식을 확인하세요.","#B02A2A"); return; }
+      __stockData={ map:map, at:new Date().toLocaleString("ko-KR") };
+      stockSave_();
+      setSt("✅ 공정재고 "+cnt+"개 도번 저장 · "+__stockData.at,"#1E7A46");
+      try{ alert("공정재고 "+cnt+"개 도번을 읽어 저장했습니다."); }catch(_){}
+    }catch(err){ setSt("⚠ 엑셀 읽기 실패: "+(err&&err.message?err.message:err),"#B02A2A"); }
+  };
+  reader.onerror=function(){ setSt("⚠ 파일 읽기 실패","#B02A2A"); };
+  reader.readAsArrayBuffer(file);
+  try{ var fe=document.getElementById("stock-file"); if(fe) fe.value=""; }catch(_){}
+}
+
+function stockSave_(){
+  try{ if(typeof idbSet==="function") idbSet("stockIndex", __stockData); }catch(_){}
+  try{ if(typeof qShareSave_==="function") qShareSave_("stockIndex", __stockData, "stock-status"); }catch(_){}
+}
+function stockApply_(sv){ if(sv && sv.map && typeof sv.map==="object"){ __stockData=sv; return Object.keys(sv.map).length>0; } return false; }
+function stockEnsureLoaded_(){
+  if(window.__stockLoaded) return; window.__stockLoaded=true;
+  var tryShared=function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("stockIndex", function(sv){ if(stockApply_(sv)) stockRenderStatus_(); }); } }catch(_){} };
+  try{ if(typeof idbGet==="function"){ idbGet("stockIndex").then(function(v){ if(stockApply_(v)){ stockRenderStatus_(); } else { tryShared(); } }).catch(tryShared); } else { tryShared(); } }catch(_){ tryShared(); }
+}
+function stockRenderStatus_(){
+  var st=document.getElementById("stock-status"); if(!st) return;
+  var n=(__stockData&&__stockData.map)?Object.keys(__stockData.map).length:0;
+  if(n) st.textContent="현재 "+n+"개 도번"+(__stockData.at?(" · "+__stockData.at):"");
+}
+// 도번으로 보유수 조회 (분석에서 사용)
+function stockGet_(draw){
+  if(!__stockData||!__stockData.map) return null;
+  var k=String(draw==null?"":draw).trim().toUpperCase();
+  return (k in __stockData.map)?Number(__stockData.map[k])||0:null;
+}
+function stockBind_(){
+  stockEnsureLoaded_();
+  if(window.__stockBound) return; window.__stockBound=true;
+  var f=document.getElementById("stock-file");
+  if(f) f.addEventListener("change", function(){ stockHandleFile_(f.files&&f.files[0]); });
+}
+(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ stockEnsureLoaded_(); }catch(_){} });
 
 /* ========================= 📐 측정이력 (측정 DATE LIST) — 폴더 스캔 → 도번·S/N 검색 → 측정일 ========================= */
 var __measureIndex = [];          // [{p:전체경로, rel:상대경로, n:파일명, d:측정일, dr:도번, sn:S/N, c:고객}]
@@ -18677,6 +18762,7 @@ function insSaveLocalNow(){
   }catch(e){}
   var __p; try{ __p=JSON.stringify(__snap); }catch(e){ return; }
   var __tm=new Date().toLocaleTimeString("ko-KR");
+  window.__insEditedAt=Date.now();   // [수정] 최근 편집 시각 — 저장 직후 클라우드 자동로드가 덮어쓰지 않게
   try{ localStorage.setItem(INSREP_LS_KEY, __p); insSetStatus("\u270F \uC800\uC7A5 \uC548 \uB428 \u2014 \u2601 \uACF5\uC720\uC800\uC7A5\uC744 \uB20C\uB7EC\uC8FC\uC138\uC694"); return; }catch(e){}
   // 저장공간 부족 → 재생성 가능한 캐시를 비우고 재시도(검사일보 데이터 우선 보존)
   try{ Object.keys(localStorage).forEach(function(k){ if(k.indexOf("cache_")===0) localStorage.removeItem(k); }); }catch(_){}
@@ -18849,7 +18935,11 @@ function insCloudAutoLoad(){
       var localRows=(insState[t]&&insState[t].rows)||[];
       if(data && data.deleted && data.deleted.forEach){ var __dch=false; data.deleted.forEach(function(id){ if(!insDeletedIds[id]){ insDeletedIds[id]=Date.now(); __dch=true; } }); if(__dch) insPersistDeleted_(); }
       var cloudById={}; cloudRows.forEach(function(r){ if(r&&r._id) cloudById[r._id]=r; });
-      var mergedRows=localRows.map(function(lr){ return (lr&&lr._id&&cloudById[lr._id]) ? cloudById[lr._id] : lr; }).filter(function(r){ return !(r&&r._id&&insDeletedIds[r._id]); });
+      // [수정] 방금(30초 내) 편집·저장했으면 로컬을 클라우드본으로 덮어쓰지 않음(커밋 전 옛 데이터로 되돌아가는 것 방지)
+      var __recentEdit=(Date.now()-(window.__insEditedAt||0))<30000;
+      var mergedRows = __recentEdit
+        ? localRows.filter(function(r){ return !(r&&r._id&&insDeletedIds[r._id]); })
+        : localRows.map(function(lr){ return (lr&&lr._id&&cloudById[lr._id]) ? cloudById[lr._id] : lr; }).filter(function(r){ return !(r&&r._id&&insDeletedIds[r._id]); });
       var haveIds={}, haveSigs={};
       mergedRows.forEach(function(r){ if(r&&r._id) haveIds[r._id]=1; haveSigs[insRowSig_(r)]=1; });
       var keep=cloudRows.filter(function(r){ if(r&&r._id&&insDeletedIds[r._id]) return false; if(r&&r._id&&haveIds[r._id]) return false; if(haveSigs[insRowSig_(r)]) return false; return true; });
