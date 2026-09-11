@@ -4506,10 +4506,42 @@ function mhScanFolder_(inputEl, base, cust){
 }
 
 // 저장(로컬 idb 우선 + 팀 공유)
+// 대용량(수만 건) 공유저장 — 순차 전송 + 누락 조각 검증·재전송 + 마지막에 마커 기록
+//  (병렬 fire-and-forget는 Apps Script 잠금/제한으로 일부 조각이 누락돼 다른 기기에서 재조립 실패함)
+async function mhShareSaveReliable_(data){
+  var url=(typeof qShareUrl_==="function")?qShareUrl_():"";
+  var st=document.getElementById("mh-status");
+  var setSt=function(m,c){ if(st){ st.textContent=m; if(c) st.style.color=c; } };
+  if(!url){ setSt("⚠ 백엔드 URL 없음","#B02A2A"); return; }
+  var payload=""; try{ payload=JSON.stringify(data); }catch(e){ return; }
+  var CH=45000, section="measureIndex";
+  var post=function(key,val){ return fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"writeQTool",key:key,json:val})}).catch(function(){}); };
+  var getLen=function(key){ return fetch(url+"?mode=qToolMaster&key="+encodeURIComponent(key)+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ return (res&&res.success&&res.json)?String(res.json).length:0; }).catch(function(){ return 0; }); };
+  var sleep=function(ms){ return new Promise(function(r){ setTimeout(r,ms); }); };
+  if(payload.length<=CH){ await post(section,payload); setSt("☁ 공유 저장 완료","#1E7A46"); return; }
+  var n=Math.ceil(payload.length/CH);
+  var chunkLen=function(i){ return (i<n-1)?CH:(payload.length-(n-1)*CH); };
+  await post(section, "");   // 저장 중엔 마커를 비워 다른 기기가 불완전 데이터를 읽지 않게
+  setSt("☁ 공유 저장 시작 (총 "+n+"칸)…","#5A6478");
+  for(var i=0;i<n;i++){ await post(section+"#"+i, payload.slice(i*CH,(i+1)*CH)); if(i%5===0) setSt("☁ 공유 저장 중… "+(i+1)+"/"+n,"#5A6478"); await sleep(120); }
+  for(var pass=0;pass<3;pass++){
+    var missing=[];
+    for(var j=0;j<n;j++){ var L=await getLen(section+"#"+j); if(L!==chunkLen(j)) missing.push(j); }
+    if(!missing.length) break;
+    setSt("☁ 누락 "+missing.length+"칸 재전송… ("+(pass+1)+"차)","#B0662A");
+    for(var k=0;k<missing.length;k++){ var mi=missing[k]; await post(section+"#"+mi, payload.slice(mi*CH,(mi+1)*CH)); await sleep(180); }
+    await sleep(400);
+  }
+  var still=0;
+  for(var q=0;q<n;q++){ var L2=await getLen(section+"#"+q); if(L2!==chunkLen(q)) still++; }
+  if(still){ setSt("⚠ 공유 저장 실패 — "+still+"칸 누락. 다시 스캔/저장하세요 (이 PC에선 보입니다).","#B02A2A"); return; }
+  await post(section, JSON.stringify({__chunks:n, len:payload.length}));
+  setSt("☁ 공유 저장 완료 ("+n+"칸) · 다른 기기에서도 조회됩니다","#1E7A46");
+}
 function mhSave_(){
   var payload={list:__measureIndex, at:__mhLastScan};
   try{ if(typeof idbSet==="function") idbSet("measureIndex", payload); }catch(_){}
-  try{ if(typeof qShareSave_==="function") qShareSave_("measureIndex", payload, "mh-status"); }catch(_){}
+  try{ mhShareSaveReliable_(payload); }catch(_){}   // 순차+검증 업로드
 }
 function mhApply_(sv){
   if(sv && Array.isArray(sv.list)){ __measureIndex=sv.list; __mhLastScan=sv.at||__mhLastScan; return __measureIndex.length>0; }
