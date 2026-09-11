@@ -4763,14 +4763,23 @@ function mhApply_(sv){
   return false;
 }
 // 로드: idb 먼저(빠르고 확실) → 없으면 팀 공유. 1회만.
+// 구글시트 탭(dataset="측정이력")에서 읽기 — 대용량도 청크 없이 한 번에 (자동 스크립트가 replaceSheet로 채움)
+function mhLoadFromSheet_(cb){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ cb&&cb(false); return; }
+  fetch(url+"?dataset="+encodeURIComponent("측정이력")+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){
+    if(res&&res.success&&Array.isArray(res.rows)&&res.rows.length){
+      __measureIndex=res.rows.map(function(o){ return { dr:String(o["도번"]||o["도면번호"]||o["도면"]||"").trim(), sn:String(o["S/N"]||o["SN"]||o["s/n"]||"").trim(), d:String(o["측정일"]||o["측정DATE"]||"").trim(), c:String(o["고객"]||o["고객사"]||"").trim() }; }).filter(function(r){ return r.dr||r.sn; });
+      __mhLastScan=(res.rows.length)+"건 (시트)"; cb&&cb(__measureIndex.length>0); return;
+    }
+    cb&&cb(false);
+  }).catch(function(){ cb&&cb(false); });
+}
 function mhEnsureLoaded_(force){
   if(window.__mhLoaded && !force) return; window.__mhLoaded=true;
   var tryShared=function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("measureIndex", function(sv){ if(mhApply_(sv)) renderMeasureHist(); }); } }catch(_){} };
-  try{
-    if(typeof idbGet==="function"){
-      idbGet("measureIndex").then(function(v){ if(mhApply_(v)){ renderMeasureHist(); } else { tryShared(); } }).catch(tryShared);
-    } else { tryShared(); }
-  }catch(_){ tryShared(); }
+  var tryIdb=function(){ try{ if(typeof idbGet==="function"){ idbGet("measureIndex").then(function(v){ if(mhApply_(v)){ renderMeasureHist(); } else { tryShared(); } }).catch(tryShared); } else { tryShared(); } }catch(_){ tryShared(); } };
+  // 1순위: 구글시트 탭(모든 기기에서 안정적) → 없으면 idb → 공유청크
+  mhLoadFromSheet_(function(ok){ if(ok){ renderMeasureHist(); } else { tryIdb(); } });
 }
 function mhClearAll_(){
   if(!confirm("측정이력 인덱스를 전부 지울까요? (파일은 삭제되지 않습니다)")) return;
