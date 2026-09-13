@@ -18029,7 +18029,7 @@ function tapPinNotice_(draw){
   var msg="";
   if(insType==="incoming" && info.tap){ msg="⚠ 이 도번은 [TAP]이 있습니다 — 공정검사(TAP) 확인하세요!"; }
   else if(insType==="shipping" && info.pin){ msg="⚠ 이 도번은 [PIN 압입]이 있습니다 — PIN 압입 확인하세요!"; }
-  if(msg){ try{ if(typeof insSetStatus==="function") insSetStatus(msg, "#B02A2A"); }catch(_){} try{ if(typeof insTapAlertPopup_==="function") insTapAlertPopup_(msg); }catch(_){} }   // [수정] 도번 입력/스캔 순간 TAP·PIN 대상이면 팝업
+  if(msg && typeof insSetStatus==="function"){ insSetStatus(msg, "#B02A2A"); }   // [수정] 입력 방해 방지: 팝업 없이 상태문구만 (팝업은 미체크 이탈 시에만)
 }
 // ── 행을 넘어갈 때: TAP/PIN 대상인데 체크 안 하고 이동하면 경고(알림) ──
 //   tr(떠나는 행)에서 도번칸과 tap/pin 체크칸을 읽어 판정.
@@ -18040,12 +18040,26 @@ function insTapAlertPopup_(msg){
   d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100080;display:flex;align-items:center;justify-content:center;";
   d.innerHTML='<div style="background:#fff;border:3px solid #C0392B;border-radius:14px;max-width:460px;width:88%;padding:24px 22px;box-shadow:0 14px 44px rgba(0,0,0,.35);text-align:center;">'
     +'<div style="font-size:42px;line-height:1;margin-bottom:8px;">\u26A0\uFE0F</div>'
-    +'<div style="font-size:16px;font-weight:800;color:#C0392B;line-height:1.55;margin-bottom:18px;">'+String(msg||"").replace(/</g,"&lt;")+'</div>'
+    +'<div style="font-size:16px;font-weight:800;color:#C0392B;line-height:1.55;margin-bottom:18px;">'+String(msg||"").replace(/</g,"&lt;").replace(/\n/g,"<br>")+'</div>'
     +'<button type="button" onclick="var p=document.getElementById(\'ins-tap-popup\'); if(p) p.remove();" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:11px 30px;font-weight:800;font-size:15px;cursor:pointer;">확인</button>'
     +'</div>';
   document.body.appendChild(d);
   d.addEventListener("click", function(e){ if(e.target===d) d.remove(); });
   try{ if(navigator.vibrate) navigator.vibrate([120,60,120]); }catch(_){}
+}
+// [추가] 전체 행에서 TAP/PIN 대상인데 미체크인 도번 수집 (저장 시 검사)
+function insCheckTapPinUnchecked_(){
+  if(insType!=="incoming" && insType!=="shipping") return [];
+  var rows=(insState[insType]&&insState[insType].rows)||[];
+  var out=[];
+  rows.forEach(function(r){
+    var d=String(r.draw||"").trim(); if(!d) return;
+    if((Number(r.insCnt)||0)<=0 && !String(r.sn||"").trim()) return;   // 빈 행 제외
+    var info=(typeof tapPinLookup_==="function")?tapPinLookup_(d):null; if(!info) return;
+    if(insType==="incoming" && info.tap && !r.tap){ out.push(d); }
+    else if(insType==="shipping" && info.pin && !r.pin){ out.push(d); }
+  });
+  return out.filter(function(x,i){ return out.indexOf(x)===i; });
 }
 function insRowUncheckedAlert_(tr){
   try{
@@ -19086,6 +19100,13 @@ function insCloudSave(){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
   var t=insType, label=insTypeLabel(t);
   if(t==="processin"){ insProcInCloudSave(); return; }
+  try{
+    var __unchk=(typeof insCheckTapPinUnchecked_==="function")?insCheckTapPinUnchecked_():[];
+    if(__unchk && __unchk.length){
+      var __lbl=(t==="shipping")?"PIN 압입":"TAP(공정검사)";
+      insTapAlertPopup_("\u26A0 "+__lbl+" 미체크 "+__unchk.length+"건 — 확인하세요!\n"+__unchk.slice(0,20).join(", ")+(__unchk.length>20?(" 외 "+(__unchk.length-20)+"건"):""));
+    }
+  }catch(_){}
   insSaveLocal(); insSetStatus("☁ ["+label+"] 저장 중… (누적 병합)");
   ncAlertBroadcastType(t);
   var localRows=(insState[t]&&insState[t].rows)?insState[t].rows:[];
