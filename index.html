@@ -4511,9 +4511,14 @@ function mnFmtShort_(due){ var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(due||""
 function mnBuildRows_(){
   var md=(typeof mainData!=="undefined"&&mainData)?mainData:[];
   var __mnYear=String((document.getElementById("mn-year")||{}).value||"");   // 선택 연도("" 또는 2026/2027/all)
+  // [속도] 재고품목만이면, 공정재고에 있는 도번만 집계(전체 수천 도번 대신 재고 도번만)
+  var __onlyStock=(document.getElementById("mn-onlyStock")||{}).checked;
+  var __stockN=(typeof __stockData!=="undefined"&&__stockData.map)?Object.keys(__stockData.map).length:0;
+  var __skipNonStock=(__onlyStock && __stockN && (typeof stockGet_==="function"));
   var byDraw={};
   md.forEach(function(m){
     var draw=String(m.oldDrawingNo||"").trim(); if(!draw) return;
+    if(__skipNonStock && stockGet_(draw)==null) return;   // 공정재고에 없는 도번은 집계 안 함
     if((Number(m.qty)||0)<=0) return;
     var g=byDraw[draw]||(byDraw[draw]={draw:draw, name:m.partName||"", cust:m.customer||"", done:0, orders:[], doneOrders:[]});
     if(!g.name && m.partName) g.name=m.partName;
