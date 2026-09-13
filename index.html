@@ -10631,6 +10631,13 @@ window.__qualityInited = true;
   // 앱 스크립트가 로드된 뒤 시작
   if(document.readyState === "complete") runAll();
   else window.addEventListener("load", runAll);
+  // 도면TAP/PIN 마스터 미리 로드(검사일보 알람용) — 실패해도 조용히 넘어감
+  try{
+    if(typeof tapPinMasterLoad_==="function"){
+      if(document.readyState==="complete") setTimeout(function(){ tapPinMasterLoad_(); }, 1200);
+      else window.addEventListener("load", function(){ setTimeout(function(){ tapPinMasterLoad_(); }, 1200); });
+    }
+  }catch(e){}
 })();
 
 initQualityView();
@@ -16329,7 +16336,7 @@ function insGridKeydown_(e){
     try{ if(f.select && f.type!=="checkbox" && f.tagName!=="SELECT" && f.type!=="date") f.select(); }catch(_){}
     return true;
   };
-  var moveRow=function(delta){ var ntr=trs[rowIdx+delta]; if(!ntr) return false; return focusInTd(ntr.children[colIdx]); };
+  var moveRow=function(delta){ var ntr=trs[rowIdx+delta]; if(!ntr) return false; if(delta>0){ try{ insRowUncheckedAlert_(tr); }catch(_){} } return focusInTd(ntr.children[colIdx]); };
   var moveCol=function(delta){
     var i=colIdx+delta;
     while(i>=0 && i<tds.length){
@@ -16348,6 +16355,7 @@ function insGridKeydown_(e){
     if(t.getAttribute("data-key")==="draw"){ var __dv=String(t.value||"").trim(); var __ri=t.getAttribute("data-ri"); var __sEl=document.querySelector('#insrep-content [data-ri="'+__ri+'"][data-key="sn"]'); var __sv=__sEl?String(__sEl.value||"").trim():""; if(__dv && typeof insNcHistoryPopup_==="function") insNcHistoryPopup_(__dv, __sv); }
     e.preventDefault();
     if(!moveRow(1)){
+      try{ insRowUncheckedAlert_(tr); }catch(_){}
       if(insType!=="processin" && insState[insType]){
         var nr=insBlankRow(); if(insDayFilter!=="all") nr.insDate=insDayFilter;
         insState[insType].rows.push(nr); insRender(); insSaveLocal();
@@ -17972,19 +17980,87 @@ function insShipGateDebounced_(draw, sn, cb, reqKeys){
 // ===== 도번별 TAP/PIN 마스터 안내 (도면 마스터가 준비되면 작동) =====
 // 도면 검출로 만들어진 마스터: window.__tapPinMaster = { "도번(정규화)": {tap:true, pin:true} }
 // 나중에 구글시트에서 로드해서 이 객체에 채우면 아래 안내가 자동 작동
-var __tapPinMaster = null;
+var __tapPinMaster = null;      // [{k:정규화파일명, tap:bool, pin:bool}, ...]
+var __tapPinExact  = null;      // {정규화파일명: {tap,pin}}  (정확일치 빠른 조회)
+// 구글시트 '도면TAPPIN' 탭을 읽어 마스터 구축 (앱 로드시 1회)
+function tapPinMasterLoad_(cb){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
+  if(!url){ if(cb)cb(false); return; }
+  fetch(url+"?mode=dwgTap&_t="+Date.now(), {cache:"no-store"})
+    .then(function(r){return r.json();})
+    .then(function(res){
+      if(!res||!res.success||!res.rows){ if(cb)cb(false); return; }
+      var norm=function(x){ return String(x==null?"":x).trim().toUpperCase().replace(/\s+/g,""); };
+      var arr=[], ex={};
+      res.rows.forEach(function(row){
+        var k=norm(row.dono); if(!k) return;
+        var tp=(String(row.tap).toUpperCase()==="Y"), pp=(String(row.pin).toUpperCase()==="Y");
+        arr.push({k:k, tap:tp, pin:pp});
+        var e=ex[k]||{tap:false,pin:false}; e.tap=e.tap||tp; e.pin=e.pin||pp; ex[k]=e;
+      });
+      __tapPinMaster=arr; __tapPinExact=ex;
+      if(cb)cb(true);
+    })
+    .catch(function(){ if(cb)cb(false); });
+}
+// 도번 조회: 입력도번이 시트 파일명 안에 '숫자경계'를 갖고 포함되면 매칭
+//  · 접두((재송부)) / 접미(_Rev,_dwg1,(REV),설명텍스트) 붙어 있어도 잡고
+//  · 120094449 가 120094 같은 다른 도번에 잘못 걸리는 것은 막는다.
 function tapPinLookup_(draw){
   if(!__tapPinMaster) return null;
-  var key=(typeof insNormDraw_==="function")?insNormDraw_(draw):String(draw||"").trim().toUpperCase();
-  return __tapPinMaster[key] || null;
+  var q=(typeof insNormDraw_==="function")?insNormDraw_(draw):String(draw||"").trim().toUpperCase().replace(/\s+/g,"");
+  if(!q) return null;
+  if(__tapPinExact && __tapPinExact[q]) return __tapPinExact[q];   // 1) 정확일치
+  var res=null;
+  for(var i=0;i<__tapPinMaster.length;i++){
+    var k=__tapPinMaster[i].k, from=0, j;
+    while((j=k.indexOf(q, from))>=0){
+      var before=(j>0)?k.charAt(j-1):"";
+      var after =(j+q.length<k.length)?k.charAt(j+q.length):"";
+      var okB=(before===""||!/[0-9A-Z]/.test(before));
+      var okA=(after==="" ||!/[0-9]/.test(after));
+      if(okB && okA){ if(!res)res={tap:false,pin:false}; res.tap=res.tap||__tapPinMaster[i].tap; res.pin=res.pin||__tapPinMaster[i].pin; break; }
+      from=j+1;
+    }
+  }
+  return res;
 }
 // 검사유형에 맞는 TAP/PIN 확인 안내 (수입검사=TAP, 출하검사=PIN)
 function tapPinNotice_(draw){
+  if(!__tapPinMaster && typeof tapPinMasterLoad_==="function" && !window.__tapPinLoading){
+    window.__tapPinLoading=true; tapPinMasterLoad_(function(){ window.__tapPinLoading=false; try{ tapPinNotice_(draw); }catch(e){} });
+  }
   var info=tapPinLookup_(draw); if(!info) return;   // 마스터 없으면 조용히 넘어감
   var msg="";
   if(insType==="incoming" && info.tap){ msg="⚠ 이 도번은 [TAP]이 있습니다 — 공정검사(TAP) 확인하세요!"; }
   else if(insType==="shipping" && info.pin){ msg="⚠ 이 도번은 [PIN 압입]이 있습니다 — PIN 압입 확인하세요!"; }
   if(msg && typeof insSetStatus==="function"){ insSetStatus(msg, "#B02A2A"); }
+}
+// ── 행을 넘어갈 때: TAP/PIN 대상인데 체크 안 하고 이동하면 경고(알림) ──
+//   tr(떠나는 행)에서 도번칸과 tap/pin 체크칸을 읽어 판정.
+function insRowUncheckedAlert_(tr){
+  try{
+    if(!tr || !tr.querySelector) return;
+    if(insType!=="incoming" && insType!=="shipping") return;   // 수입=TAP, 출하=PIN 에서만
+    var dEl=tr.querySelector('[data-key="draw"]');
+    var d=dEl?String(dEl.value||"").trim():""; if(!d) return;
+    var info=(typeof tapPinLookup_==="function")?tapPinLookup_(d):null; if(!info) return;
+    if(insType==="incoming" && info.tap){
+      var tapEl=tr.querySelector('[data-key="tap"]');
+      if(tapEl && !tapEl.checked){
+        var m="⚠ ["+d+"] TAP 대상인데 TAP 체크 없이 넘어갑니다 — 공정검사(TAP) 확인하세요!";
+        if(typeof insSetStatus==="function") insSetStatus(m, "#B02A2A");
+        try{ if(navigator.vibrate) navigator.vibrate(120); }catch(_){}
+      }
+    } else if(insType==="shipping" && info.pin){
+      var pinEl=tr.querySelector('[data-key="pin"]');
+      if(pinEl && !pinEl.checked){
+        var m2="⚠ ["+d+"] PIN 압입 대상인데 PIN 체크 없이 넘어갑니다 — PIN 압입 확인하세요!";
+        if(typeof insSetStatus==="function") insSetStatus(m2, "#B02A2A");
+        try{ if(navigator.vibrate) navigator.vibrate(120); }catch(_){}
+      }
+    }
+  }catch(e){}
 }
 function insNcHistoryPopup_(draw, sn){
   var d=String(draw||"").trim(); if(!d) return;
