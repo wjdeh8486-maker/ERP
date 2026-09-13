@@ -2107,7 +2107,6 @@
           <input id="mn-search" type="text" placeholder="🔍 도번/품명 검색" onkeydown="if(event.key==='Enter')renderMonthlyShortage()" style="min-width:170px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;">
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;cursor:pointer;user-select:none;"><input type="checkbox" id="mn-onlyShort" checked onchange="renderMonthlyShortage()" style="width:16px;height:16px;cursor:pointer;"> 부족만</label>
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;cursor:pointer;user-select:none;"><input type="checkbox" id="mn-onlyStock" checked onchange="renderMonthlyShortage()" style="width:16px;height:16px;cursor:pointer;"> 재고품목만</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;">연도 <select id="mn-year" onchange="renderMonthlyShortage()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;"></select></label>
           <button type="button" onclick="mnExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">📊 엑셀</button>
           <span id="mn-status" style="font-size:12px;color:#7A8598;"></span>
         </div>
@@ -4527,21 +4526,20 @@ function mnBuildRows_(){
     var g=byDraw[draw];
     var stock=(typeof stockGet_==="function")?stockGet_(draw):null;
     var have=(stock==null?0:stock);
-    // 월별(1~12월) = 선택 연도 물량 / 납기합계·부족·최초부족 = 전 연도 미납품 전체
-    var months=[0,0,0,0,0,0,0,0,0,0,0,0], demandY=0, demandAll=0, allOrders=[];
+    // 월별(1~12월) = 올해 미납품 / 내년(이후) = 통합 1칸 / 납기합계·부족·최초부족 = 전 연도 미납품 전체
+    var __curY = new Date().getFullYear();
+    var months=[0,0,0,0,0,0,0,0,0,0,0,0], nextYr=0, demandAll=0;
     g.orders.forEach(function(o){
       var mo=/^(\d{4})-(\d{2})-(\d{2})$/.exec(o.due); if(!mo) return;
-      demandAll+=o.qty; allOrders.push(o);
-      if(!__mnYear || __mnYear==="all" || mo[1]===__mnYear){ demandY+=o.qty; var mi=+mo[2]-1; if(mi>=0&&mi<12) months[mi]+=o.qty; }
+      demandAll+=o.qty;
+      if(+mo[1] > __curY){ nextYr+=o.qty; }                          // 내년 이후 = 통합
+      else { var mi=+mo[2]-1; if(mi>=0&&mi<12) months[mi]+=o.qty; }   // 올해(이하) = 월별
     });
-    var monthsDone=[0,0,0,0,0,0,0,0,0,0,0,0];
-    g.doneOrders.forEach(function(o){ var mo=/^(\d{4})-(\d{2})-(\d{2})$/.exec(o.due); if(!mo) return; if(!__mnYear || __mnYear==="all" || mo[1]===__mnYear){ var mi=+mo[2]-1; if(mi>=0&&mi<12) monthsDone[mi]+=o.qty; } });
     if(demandAll===0 && stock==null) return;
-    var avail = have + g.done;
-    var sorted=allOrders.slice().sort(function(a,b){ return a.due.localeCompare(b.due); });   // 전체를 납기 빠른 순으로
-    var run=have, firstShort=null, shortQty=0;   // 보유수만으로 소진
+    var sorted=g.orders.filter(function(o){ return /^\d{4}-\d{2}-\d{2}$/.test(o.due); }).sort(function(a,b){ return a.due.localeCompare(b.due); });
+    var run=have, firstShort=null, shortQty=0;   // 보유수만으로 소진(전체 미납품)
     for(var i=0;i<sorted.length;i++){ run-=sorted[i].qty; if(run<0 && !firstShort){ firstShort=sorted[i].due; shortQty=-run; } }
-    rows.push({ draw:draw, name:g.name, cust:g.cust, have:have, hasStock:(stock!=null), demand:demandAll, demandY:demandY, done:g.done, avail:avail, lack:(have-demandAll), firstShort:firstShort, shortQty:shortQty, months:months, monthsDone:monthsDone });
+    rows.push({ draw:draw, name:g.name, cust:g.cust, have:have, hasStock:(stock!=null), demand:demandAll, lack:(have-demandAll), firstShort:firstShort, shortQty:shortQty, months:months, nextYr:nextYr });
   });
   rows.sort(function(a,b){
     var af=a.firstShort?0:1, bf=b.firstShort?0:1; if(af!==bf) return af-bf;
@@ -4569,39 +4567,29 @@ function renderMonthlyShortage(){
   if(head && !head.getAttribute("data-init")){
     head.setAttribute("data-init","1");
     var th=function(t,w){ return '<th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;'+(w||"")+'">'+t+'</th>'; };
-    head.innerHTML = th("도번")+th("품명")+th("보유수")+th("납기합계")+th("납품완료")+th("부족수")+th("최초부족일정")+mnames.map(function(m){return th(m);}).join("");
+    var __nextL=(new Date().getFullYear()+1)+"년";
+    head.innerHTML = th("도번")+th("품명")+th("보유수")+th("납기합계")+th("부족수")+th("최초부족일정")+mnames.map(function(m){return th(m);}).join("")+th(__nextL);
   }
   var st=document.getElementById("mn-status");
   var nStock=(typeof __stockData!=="undefined"&&__stockData.map)?Object.keys(__stockData.map).length:0;
   if(st) st.textContent = nStock ? ("공정재고 "+nStock+"개 도번 반영"+(__stockData.at?(" · "+__stockData.at):"")) : "⚠ 공정재고 미업로드 — 보유수 0으로 계산됨 (📤 데이터 업로드에서 공정재고LIST 올리세요)";
-  // 연도 드롭다운 채우기 (미납품 최종납기 연도 + 전체) — 최초 1회
-  var ysel=document.getElementById("mn-year");
-  if(ysel && !ysel.getAttribute("data-init")){
-    ysel.setAttribute("data-init","1");
-    var yset={}; ((typeof mainData!=="undefined"&&mainData)||[]).forEach(function(m){ if(String(m.shipped||"").indexOf("완료")>=0) return; var mo=/^(\d{4})-/.exec(String(m.dueDate||"")); if(mo) yset[mo[1]]=1; });
-    var years=Object.keys(yset).sort();
-    var cur=String(new Date().getFullYear());
-    var opts=years.map(function(y){ return '<option value="'+y+'">'+y+"년"+(y===cur?" (올해)":(y===String(+cur+1)?" (내년)":""))+'</option>'; }).join("")+'<option value="all">전체(연도합산)</option>';
-    ysel.innerHTML=opts;
-    ysel.value = (yset[cur]?cur:(years[0]||"all"));   // 기본: 올해
-  }
   var rows=mnRows_();
   var td='padding:6px 6px;border:1px solid #E6EBF2;';
-  if(!rows.length){ body.innerHTML='<tr><td colspan="19" style="text-align:center;color:#8A93A6;padding:20px;">표시할 항목이 없습니다.'+(nStock?'':' (공정재고를 먼저 업로드하세요)')+'</td></tr>'; return; }
+  if(!rows.length){ var __oS=(document.getElementById("mn-onlyStock")||{}).checked; body.innerHTML='<tr><td colspan="19" style="text-align:center;color:#8A93A6;padding:20px;">'+(!nStock?"공정재고를 먼저 업로드하세요 (📤 데이터 업로드).":(__oS?"공정재고 "+nStock+"개 도번이 있으나 MAIN 주문과 매칭되는 도번이 없습니다. 도번 형식을 확인하거나 [재고품목만]을 해제해 보세요.":"표시할 항목이 없습니다."))+'</td></tr>'; return; }
   var cap=1000, shown=rows.slice(0,cap);
   body.innerHTML=shown.map(function(r){
     var lackC=r.lack<0?"#C0392B":"#1E7A46";
     var fs=r.firstShort ? (mnFmtShort_(r.firstShort)+" "+r.shortQty+"개 부족") : "-";
-    var monthsHtml=r.months.map(function(v,idx){ var vd=(r.monthsDone&&r.monthsDone[idx])||0; if(!v && !vd) return '<td style="'+td+'text-align:center;color:#C9D3E0;"></td>'; return '<td style="'+td+'text-align:center;white-space:nowrap;font-weight:700;"><span style="color:#C0392B;">'+(v||0)+'</span><span style="color:#B7C0CE;font-weight:400;"> / </span><span style="color:#1E7A46;">'+(vd||0)+'</span></td>'; }).join("");
+    var monthsHtml=r.months.map(function(v){ return '<td style="'+td+'text-align:center;'+(v>0?'font-weight:700;color:#1F2A44;':'color:#C9D3E0;')+'">'+(v||"")+'</td>'; }).join("");
     return '<tr>'
       +'<td style="'+td+'text-align:center;font-weight:800;">'+mhEsc_(r.draw)+'</td>'
       +'<td style="'+td+'font-size:11.5px;">'+mhEsc_(r.name)+'</td>'
       +'<td style="'+td+'text-align:center;font-weight:700;color:'+(r.hasStock?"#0B5CAB":"#B0662A")+';" title="'+(r.hasStock?"":"공정재고에 이 도번이 없음")+'">'+r.have+(r.hasStock?"":" ?")+'</td>'
       +'<td style="'+td+'text-align:center;">'+r.demand+'</td>'
-      +'<td style="'+td+'text-align:center;color:#5A6478;">'+r.done+'</td>'
       +'<td style="'+td+'text-align:center;font-weight:800;color:'+lackC+';">'+r.lack+'</td>'
       +'<td style="'+td+'text-align:center;font-weight:700;color:'+(r.firstShort?"#C0392B":"#1E7A46")+';white-space:nowrap;">'+mhEsc_(fs)+'</td>'
       +monthsHtml
+      +'<td style="'+td+'text-align:center;font-weight:800;color:#0B5CAB;">'+(r.nextYr||"")+'</td>'
       +'</tr>';
   }).join("") + (rows.length>cap?('<tr><td colspan="19" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:8px;">앞 '+cap+'건만 표시 (전체 '+rows.length+'건)</td></tr>'):'');
 }
@@ -4610,8 +4598,8 @@ function mnExcel_(){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
   var rows=mnRows_(); if(!rows.length){ alert("내보낼 항목이 없습니다."); return; }
   var mnames=["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
-  var aoa=[["도번","품명","보유수","납기합계","납품완료","부족수","최초부족일정"].concat(mnames)];
-  rows.forEach(function(r){ var mm=r.months.map(function(v,i){ var vd=(r.monthsDone&&r.monthsDone[i])||0; return (v||vd)?((v||0)+"/"+(vd||0)):""; }); aoa.push([r.draw, r.name, r.have, r.demand, r.done, r.lack, (r.firstShort?(mnFmtShort_(r.firstShort)+" "+r.shortQty+"개 부족"):"")].concat(mm)); });
+  var __nx=(new Date().getFullYear()+1)+"년"; var aoa=[["도번","품명","보유수","납기합계","부족수","최초부족일정"].concat(mnames).concat([__nx])];
+  rows.forEach(function(r){ var mm=r.months.map(function(v){ return v||""; }); aoa.push([r.draw, r.name, r.have, r.demand, r.lack, (r.firstShort?(mnFmtShort_(r.firstShort)+" "+r.shortQty+"개 부족"):"")].concat(mm).concat([r.nextYr||""])); });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "월별납기부족");
   XLSX.writeFile(wb, "월별납기부족_"+new Date().toISOString().slice(0,10)+".xlsx");
@@ -4690,7 +4678,7 @@ function stockBind_(){
   var f=document.getElementById("stock-file");
   if(f) f.addEventListener("change", function(){ stockHandleFile_(f.files&&f.files[0]); });
 }
-(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ stockEnsureLoaded_(); }catch(_){} });
+// [속도] 공정재고는 접속 시 자동로드하지 않고, 데이터 업로드/월별납기부족 화면을 열 때만 로드
 
 /* ========================= 📐 측정이력 (측정 DATE LIST) — 폴더 스캔 → 도번·S/N 검색 → 측정일 ========================= */
 var __measureIndex = [];          // [{p:전체경로, rel:상대경로, n:파일명, d:측정일, dr:도번, sn:S/N, c:고객}]
@@ -4854,7 +4842,7 @@ function mhBind_(){   // 폴더 input 바인딩 (📤 데이터 업로드 뷰 �
 }
 
 // 접속 후 1회 로드
-(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ mhEnsureLoaded_(); }catch(_){} });
+// [속도] 측정이력(27k행)은 접속 시 자동로드하지 않고, 📐 측정이력 화면을 열 때만 로드(불필요한 대용량 fetch 제거)
 
 /* ========================= 📤 분출 LIST (유진테크 · 최종납기 범위 · 검수 제외 · 납기분출) ========================= */
 var __dispatchOrders = {};   // 서버에서 로드한 '납기분출' 처리된 ORDER 집합 (비고 표시용)
