@@ -4520,7 +4520,7 @@ function mnBuildRows_(){
     var draw=String(m.oldDrawingNo||"").trim(); if(!draw) return;
     if(__skipNonStock && stockGet_(draw)==null) return;   // 공정재고에 없는 도번은 집계 안 함
     if((Number(m.qty)||0)<=0) return;
-    var g=byDraw[draw]||(byDraw[draw]={draw:draw, name:m.partName||"", cust:m.customer||"", done:0, orders:[], doneOrders:[]});
+    var g=byDraw[draw]||(byDraw[draw]={draw:draw, name:m.partName||"", partNo:m.partNo||"", cust:m.customer||"", done:0, orders:[], doneOrders:[]});
     if(!g.name && m.partName) g.name=m.partName;
     var qty=Number(m.qty)||0;
     if(String(m.shipped||"").indexOf("완료")>=0){ g.done+=qty; g.doneOrders.push({ due:String(m.dueDate||"").trim(), qty:qty }); }
@@ -4531,6 +4531,7 @@ function mnBuildRows_(){
     var g=byDraw[draw];
     var stock=(typeof stockGet_==="function")?stockGet_(draw):null;
     var have=(stock==null?0:stock);
+    var finished=(typeof insplistStockQty_==="function")?(Number(insplistStockQty_(g.partNo, draw))||0):0;   // 완제품(입출고 보유재고)
     // 월별(1~12월) = 올해 미납품 / 내년(이후) = 통합 1칸 / 납기합계·부족·최초부족 = 전 연도 미납품 전체
     var __curY = new Date().getFullYear();
     var months=[0,0,0,0,0,0,0,0,0,0,0,0], nextYr=0, demandAll=0;
@@ -4544,7 +4545,7 @@ function mnBuildRows_(){
     var sorted=g.orders.filter(function(o){ return /^\d{4}-\d{2}-\d{2}$/.test(o.due); }).sort(function(a,b){ return a.due.localeCompare(b.due); });
     var run=have, firstShort=null, shortQty=0;   // 보유수만으로 소진(전체 미납품)
     for(var i=0;i<sorted.length;i++){ run-=sorted[i].qty; if(run<0 && !firstShort){ firstShort=sorted[i].due; shortQty=-run; } }
-    rows.push({ draw:draw, name:g.name, cust:g.cust, have:have, hasStock:(stock!=null), demand:demandAll, lack:(have-demandAll), firstShort:firstShort, shortQty:shortQty, months:months, nextYr:nextYr });
+    rows.push({ draw:draw, name:g.name, cust:g.cust, have:have, hasStock:(stock!=null), demand:demandAll, lack:(have-demandAll), firstShort:firstShort, shortQty:shortQty, months:months, nextYr:nextYr, finished:finished });
   });
   rows.sort(function(a,b){
     var af=a.firstShort?0:1, bf=b.firstShort?0:1; if(af!==bf) return af-bf;
@@ -4573,14 +4574,14 @@ function renderMonthlyShortage(){
     head.setAttribute("data-init","1");
     var th=function(t,w){ return '<th style="padding:8px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;'+(w||"")+'">'+t+'</th>'; };
     var __nextL=(new Date().getFullYear()+1)+"년";
-    head.innerHTML = th("도번")+th("품명")+th("보유수")+th("납기합계")+th("부족수")+th("최초부족일정")+mnames.map(function(m){return th(m);}).join("")+th(__nextL);
+    head.innerHTML = th("도번")+th("품명")+th("공정재고")+th("납기합계")+th("부족수")+th("완제품")+th("최초부족일정")+mnames.map(function(m){return th(m);}).join("")+th(__nextL);
   }
   var st=document.getElementById("mn-status");
   var nStock=(typeof __stockData!=="undefined"&&__stockData.map)?Object.keys(__stockData.map).length:0;
   if(st) st.textContent = nStock ? ("공정재고 "+nStock+"개 도번 반영"+(__stockData.at?(" · "+__stockData.at):"")) : "⚠ 공정재고 미업로드 — 보유수 0으로 계산됨 (📤 데이터 업로드에서 공정재고LIST 올리세요)";
   var rows=mnRows_();
   var td='padding:6px 6px;border:1px solid #E6EBF2;';
-  if(!rows.length){ var __oS=(document.getElementById("mn-onlyStock")||{}).checked; body.innerHTML='<tr><td colspan="19" style="text-align:center;color:#8A93A6;padding:20px;">'+(!nStock?"공정재고를 먼저 업로드하세요 (📤 데이터 업로드).":(__oS?"공정재고 "+nStock+"개 도번이 있으나 MAIN 주문과 매칭되는 도번이 없습니다. 도번 형식을 확인하거나 [재고품목만]을 해제해 보세요.":"표시할 항목이 없습니다."))+'</td></tr>'; return; }
+  if(!rows.length){ var __oS=(document.getElementById("mn-onlyStock")||{}).checked; body.innerHTML='<tr><td colspan="20" style="text-align:center;color:#8A93A6;padding:20px;">'+(!nStock?"공정재고를 먼저 업로드하세요 (📤 데이터 업로드).":(__oS?"공정재고 "+nStock+"개 도번이 있으나 MAIN 주문과 매칭되는 도번이 없습니다. 도번 형식을 확인하거나 [재고품목만]을 해제해 보세요.":"표시할 항목이 없습니다."))+'</td></tr>'; return; }
   var cap=1000, shown=rows.slice(0,cap);
   body.innerHTML=shown.map(function(r){
     var lackC=r.lack<0?"#C0392B":"#1E7A46";
@@ -4592,19 +4593,20 @@ function renderMonthlyShortage(){
       +'<td style="'+td+'text-align:center;font-weight:700;color:'+(r.hasStock?"#0B5CAB":"#B0662A")+';" title="'+(r.hasStock?"":"공정재고에 이 도번이 없음")+'">'+r.have+(r.hasStock?"":" ?")+'</td>'
       +'<td style="'+td+'text-align:center;">'+r.demand+'</td>'
       +'<td style="'+td+'text-align:center;font-weight:800;color:'+lackC+';">'+r.lack+'</td>'
+      +'<td style="'+td+'text-align:center;font-weight:700;color:#0B7A8A;">'+(r.finished||0)+'</td>'
       +'<td style="'+td+'text-align:center;font-weight:700;color:'+(r.firstShort?"#C0392B":"#1E7A46")+';white-space:nowrap;">'+mhEsc_(fs)+'</td>'
       +monthsHtml
       +'<td style="'+td+'text-align:center;font-weight:800;color:#0B5CAB;">'+(r.nextYr||"")+'</td>'
       +'</tr>';
-  }).join("") + (rows.length>cap?('<tr><td colspan="19" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:8px;">앞 '+cap+'건만 표시 (전체 '+rows.length+'건)</td></tr>'):'');
+  }).join("") + (rows.length>cap?('<tr><td colspan="20" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:8px;">앞 '+cap+'건만 표시 (전체 '+rows.length+'건)</td></tr>'):'');
 }
 
 function mnExcel_(){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
   var rows=mnRows_(); if(!rows.length){ alert("내보낼 항목이 없습니다."); return; }
   var mnames=["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
-  var __nx=(new Date().getFullYear()+1)+"년"; var aoa=[["도번","품명","보유수","납기합계","부족수","최초부족일정"].concat(mnames).concat([__nx])];
-  rows.forEach(function(r){ var mm=r.months.map(function(v){ return v||""; }); aoa.push([r.draw, r.name, r.have, r.demand, r.lack, (r.firstShort?(mnFmtShort_(r.firstShort)+" "+r.shortQty+"개 부족"):"")].concat(mm).concat([r.nextYr||""])); });
+  var __nx=(new Date().getFullYear()+1)+"년"; var aoa=[["도번","품명","공정재고","납기합계","부족수","완제품","최초부족일정"].concat(mnames).concat([__nx])];
+  rows.forEach(function(r){ var mm=r.months.map(function(v){ return v||""; }); aoa.push([r.draw, r.name, r.have, r.demand, r.lack, (r.finished||0), (r.firstShort?(mnFmtShort_(r.firstShort)+" "+r.shortQty+"개 부족"):"")].concat(mm).concat([r.nextYr||""])); });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "월별납기부족");
   XLSX.writeFile(wb, "월별납기부족_"+new Date().toISOString().slice(0,10)+".xlsx");
