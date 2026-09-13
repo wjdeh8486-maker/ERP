@@ -18031,6 +18031,20 @@ function tapPinNotice_(draw){
 }
 // ── 행을 넘어갈 때: TAP/PIN 대상인데 체크 안 하고 이동하면 경고(알림) ──
 //   tr(떠나는 행)에서 도번칸과 tap/pin 체크칸을 읽어 판정.
+// [추가] TAP/PIN 미체크 경고 팝업 (가운데 큰 알림)
+function insTapAlertPopup_(msg){
+  try{ var old=document.getElementById("ins-tap-popup"); if(old) old.remove(); }catch(_){}
+  var d=document.createElement("div"); d.id="ins-tap-popup";
+  d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100080;display:flex;align-items:center;justify-content:center;";
+  d.innerHTML='<div style="background:#fff;border:3px solid #C0392B;border-radius:14px;max-width:460px;width:88%;padding:24px 22px;box-shadow:0 14px 44px rgba(0,0,0,.35);text-align:center;">'
+    +'<div style="font-size:42px;line-height:1;margin-bottom:8px;">\u26A0\uFE0F</div>'
+    +'<div style="font-size:16px;font-weight:800;color:#C0392B;line-height:1.55;margin-bottom:18px;">'+String(msg||"").replace(/</g,"&lt;")+'</div>'
+    +'<button type="button" onclick="var p=document.getElementById(\'ins-tap-popup\'); if(p) p.remove();" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:11px 30px;font-weight:800;font-size:15px;cursor:pointer;">확인</button>'
+    +'</div>';
+  document.body.appendChild(d);
+  d.addEventListener("click", function(e){ if(e.target===d) d.remove(); });
+  try{ if(navigator.vibrate) navigator.vibrate([120,60,120]); }catch(_){}
+}
 function insRowUncheckedAlert_(tr){
   try{
     if(!tr || !tr.querySelector) return;
@@ -18041,16 +18055,16 @@ function insRowUncheckedAlert_(tr){
     if(insType==="incoming" && info.tap){
       var tapEl=tr.querySelector('[data-key="tap"]');
       if(tapEl && !tapEl.checked){
-        var m="⚠ ["+d+"] TAP 대상인데 TAP 체크 없이 넘어갑니다 — 공정검사(TAP) 확인하세요!";
-        if(typeof insSetStatus==="function") insSetStatus(m, "#B02A2A");
-        try{ if(navigator.vibrate) navigator.vibrate(120); }catch(_){}
+        var m="["+d+"] TAP 대상인데 TAP(공정검사) 체크 없이 넘어갑니다 — 공정검사(TAP)를 확인하세요!";
+        try{ if(typeof insSetStatus==="function") insSetStatus("⚠ "+m, "#B02A2A"); }catch(_){}
+        insTapAlertPopup_(m);
       }
     } else if(insType==="shipping" && info.pin){
       var pinEl=tr.querySelector('[data-key="pin"]');
       if(pinEl && !pinEl.checked){
-        var m2="⚠ ["+d+"] PIN 압입 대상인데 PIN 체크 없이 넘어갑니다 — PIN 압입 확인하세요!";
-        if(typeof insSetStatus==="function") insSetStatus(m2, "#B02A2A");
-        try{ if(navigator.vibrate) navigator.vibrate(120); }catch(_){}
+        var m2="["+d+"] PIN 압입 대상인데 PIN 체크 없이 넘어갑니다 — PIN 압입을 확인하세요!";
+        try{ if(typeof insSetStatus==="function") insSetStatus("⚠ "+m2, "#B02A2A"); }catch(_){}
+        insTapAlertPopup_(m2);
       }
     }
   }catch(e){}
