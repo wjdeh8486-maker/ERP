@@ -4711,7 +4711,13 @@ function mhParseFile_(rel, base, cust, mtime){
   else if(cust==="유진어스"){ addSn(name.match(/\b\d{5}-\d+\b/g)); }
   else { addSn(name.match(/10768-\d+/g)); addSn(name.match(/\b\d{5}-\d+\b/g)); }
   var sn = Object.keys(snSet).join(", ");
-  return { d:date, dr:draw, sn:sn };   // [경량화] 도번·S/N·측정일만 (경로 제외 — 대용량 공유저장 안정화)
+  if(!sn){   // 규칙 미매칭: 파일명에서 도번(폴더명) 접두를 뗀 나머지를 S/N으로 (예: "69943-00 26-575-4-1" → "26-575-4-1")
+    var stem = name.replace(/\.[^.]+$/,"").trim();
+    var drn = String(draw||"").trim();
+    if(drn && stem.toUpperCase().indexOf(drn.toUpperCase())===0){ var rest=stem.slice(drn.length).replace(/^[\s_.\-]+/,"").trim(); sn = rest || stem; }
+    else { sn = stem; }
+  }
+  return { d:date, dr:draw, sn:sn };   // [경량화] 도번·S/N·측정일만
 }
 
 // 폴더 input(webkitdirectory) → 인덱스 구성
