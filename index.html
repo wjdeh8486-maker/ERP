@@ -1058,7 +1058,7 @@
     <div class="nav-item" data-view="insplist"><span class="dot"></span>📋 검수LIST</div>
     <div class="nav-item" data-view="dispatchlist"><span class="dot"></span>📤 분출LIST</div>
     <div class="nav-item" data-view="measurehist"><span class="dot"></span>📐 측정이력</div>
-    <div class="nav-item" data-view="mnshort"><span class="dot"></span>📊 월별납기부족</div>
+    <div class="nav-item" data-view="mnshort"><span class="dot"></span>📊 반제품 현황</div>
     <div class="nav-item" data-view="shipjudge"><span class="dot"></span>🚦 QMS출하판정</div>
     <div class="nav-item" id="dataCheckNavBtn" title="데이터 이상 점검 (관리자용)"><span class="dot"></span>🔍 데이터 점검</div>
     <div class="nav-item" id="helpNavBtn" title="사용법 안내"><span class="dot"></span>❓ 사용법</div>
@@ -2102,7 +2102,7 @@
     <div class="view" id="view-mnshort">
       <div style="background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 2px 10px rgba(0,0,0,0.06);">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-          <div style="font-size:18px;font-weight:800;color:#1F2A44;">📊 월별 납기부족 분석</div>
+          <div style="font-size:18px;font-weight:800;color:#1F2A44;">📊 반제품 현황</div>
           <button type="button" onclick="renderMonthlyShortage()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🔄 새로고침</button>
           <input id="mn-search" type="text" placeholder="🔍 도번/품명 검색" onkeydown="if(event.key==='Enter')renderMonthlyShortage()" style="min-width:170px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;">
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;cursor:pointer;user-select:none;"><input type="checkbox" id="mn-onlyShort" checked onchange="renderMonthlyShortage()" style="width:16px;height:16px;cursor:pointer;"> 부족만</label>
@@ -18051,13 +18051,20 @@ function insTapAlertPopup_(msg){
 function insCheckTapPinUnchecked_(){
   if(insType!=="incoming" && insType!=="shipping") return [];
   var rows=(insState[insType]&&insState[insType].rows)||[];
+  var isTap=(insType==="incoming");
+  var norm=function(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x||"").trim().toUpperCase(); };
+  // 같은 도번이 어느 한 행에서라도 TAP/PIN 체크됐으면 그 도번은 완료로 간주(2줄 분할 대응)
+  var doneDraw={};
+  rows.forEach(function(r){ var d=String(r.draw||"").trim(); if(!d) return; if(isTap?r.tap:r.pin){ doneDraw[norm(d)]=1; } });
   var out=[];
   rows.forEach(function(r){
     var d=String(r.draw||"").trim(); if(!d) return;
     if((Number(r.insCnt)||0)<=0 && !String(r.sn||"").trim()) return;   // 빈 행 제외
     var info=(typeof tapPinLookup_==="function")?tapPinLookup_(d):null; if(!info) return;
-    if(insType==="incoming" && info.tap && !r.tap){ out.push(d); }
-    else if(insType==="shipping" && info.pin && !r.pin){ out.push(d); }
+    var need=isTap?info.tap:info.pin; if(!need) return;
+    if(isTap?r.tap:r.pin) return;               // 이 행 자체가 체크됨
+    if(doneDraw[norm(d)]) return;               // 같은 도번을 다른 행에서 체크함 → 통과
+    out.push(d);
   });
   return out.filter(function(x,i){ return out.indexOf(x)===i; });
 }
