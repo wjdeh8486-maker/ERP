@@ -5307,25 +5307,50 @@ function insplistPreShipCancel_(){
 
 // S/N 검증: 입력한 S/N이 그 품번 재고에 있는지. 없으면 오기입 목록 반환
 function insplistStockUseValidate_(){
+
   var bad=[];
-  // 수정된 수량 반영
+
   document.querySelectorAll(".insplist-su-qty").forEach(function(inp){
-    var idx=Number(inp.getAttribute("data-idx")); var r=__stockUseRows[idx]; if(!r) return;
-    var q=Number(inp.value); r.qty=(isFinite(q)&&q>=0)?q:(Number(r.qty)||0);
+
+    var idx=Number(inp.getAttribute("data-idx"));
+    var r=__stockUseRows[idx];
+    if(!r) return;
+
+    var q=Number(inp.value);
+    r.qty=(isFinite(q)&&q>=0)?q:(Number(r.qty)||0);
+
   });
+
   document.querySelectorAll(".insplist-su-sn").forEach(function(inp){
-    var idx=Number(inp.getAttribute("data-idx")); var r=__stockUseRows[idx]; if(!r) return;
+
+    var idx=Number(inp.getAttribute("data-idx"));
+    var r=__stockUseRows[idx];
+    if(!r) return;
+
     r.sn=String(inp.value||"").trim();
+
     if(!r.sn) return;
-    r.sn.split(/[,\/\s]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){
-      if(!insplistSnExists_(r.oldDraw, sn)) {
-  bad.push({
-    orderNo:r.orderNo,
-    sn:sn,
-    oldDraw:r.oldDraw
+
+    r.sn
+      .split(/[,\/\s]+/)
+      .map(function(x){ return x.trim(); })
+      .filter(Boolean)
+      .forEach(function(sn){
+
+        if(!insplistSnExists_(r.oldDraw, sn)){
+          bad.push({
+            orderNo:r.orderNo,
+            sn:sn,
+            oldDraw:r.oldDraw
+          });
+        }
+
+      });
+
   });
-}
+
   return bad;
+
 }
 
 // 공유: S/N 검증 → 서버 저장 + 전체 브로드캐스트 → 전체공유 팝업 → 비고 갱신
