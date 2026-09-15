@@ -4272,7 +4272,19 @@ function insplistStockQty_(partNo, oldDraw){        // 품번 또는 도번으�
     for(var i=0;i<keys.length;i++){ if(keys[i] in invStockMap) return Number(invStockMap[keys[i]])||0; }
   }
   var n=0, iv=(typeof invData!=="undefined"&&invData)?invData:[];
-  iv.forEach(function(r){ var pn=String(r.partNo||"").trim(); if(keys.indexOf(pn)>=0) n+=(Number(r.inQty)||0)-(Number(r.outQty)||0); });
+  iv.forEach(function(r){
+
+  var draw = String(
+    r.oldDrawingNo ||
+    r.oldDraw ||
+    r["기존도번"] ||
+    r.partNo ||
+    ""
+  ).trim();
+
+  if(keys.indexOf(draw)>=0)
+    n+=(Number(r.inQty)||0)-(Number(r.outQty)||0);
+});
   return n;
 }
 function insplistLastLoc_(partNo, oldDraw){         // 마지막 등록된 재고 위치 (품번 또는 도번 매칭, 뒤에서부터)
@@ -4288,11 +4300,25 @@ function insplistLastLoc_(partNo, oldDraw){         // 마지막 등록된 재�
   }
   return "";
 }
-function insplistSnExists_(partNo, sn){    // 입력한 S/N이 그 품번 재고에 존재하는지
-  var p=String(partNo||"").trim(), s=String(sn||"").trim(); if(!p||!s) return false;
+function insplistSnExists_(oldDraw, sn){
+  var d=String(oldDraw||"").trim();
+  var s=String(sn||"").trim();
+  if(!d||!s) return false;
+
   var iv=(typeof invData!=="undefined"&&invData)?invData:[];
   for(var i=0;i<iv.length;i++){
-    if(String(iv[i].partNo||"").trim()===p && String(iv[i].sn||"").trim()===s) return true;
+
+    var draw = String(
+      iv[i].oldDraw ||
+      iv[i]["기존도번"] ||
+      iv[i].drawing ||
+      ""
+    ).trim();
+
+    if(draw===d &&
+       String(iv[i].sn||"").trim()===s){
+      return true;
+    }
   }
   return false;
 }
@@ -5317,9 +5343,16 @@ function insplistStockUseValidate_(){
     var idx=Number(inp.getAttribute("data-idx")); var r=__stockUseRows[idx]; if(!r) return;
     r.sn=String(inp.value||"").trim();
     if(!r.sn) return;
-    r.sn.split(/[,\/\s]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){
-      if(!insplistSnExists_(r.partNo, sn)) bad.push({orderNo:r.orderNo, sn:sn, partNo:r.partNo});
-    });
+ r.sn.split(/[,\/\s]+/)
+  .map(function(x){return x.trim();})
+  .filter(Boolean)
+  .forEach(function(sn){
+    if(!insplistSnExists_(r.oldDraw, sn))
+      bad.push({
+        orderNo:r.orderNo,
+        sn:sn,
+        oldDraw:r.oldDraw
+      });
   });
   return bad;
 }
@@ -5329,7 +5362,11 @@ function insplistStockUseShare_(){
   var bad=insplistStockUseValidate_();
   if(bad.length){
     alert("⚠ 재고에 없는 S/N이 있습니다 (오기입 확인):\n\n"
-      + bad.map(function(b){ return "· "+b.orderNo+" → S/N "+b.sn+" (품번 "+b.partNo+")"; }).join("\n")
+   + bad.map(function(b){
+    return "· "+b.orderNo+
+           " → S/N "+b.sn+
+           " (도번 "+b.oldDraw+")";
+}).join("\n")  
       + "\n\n재고에 등록된 S/N만 입력하세요.");
     return;
   }
