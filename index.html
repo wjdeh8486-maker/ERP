@@ -4261,68 +4261,107 @@ function insplistShipAlloc_(shipRows, qtyOf){     // 출하검사 검사수를 �
   return alloc;
 }
 // ===== 검수LIST 재고사용 헬퍼 =====
-var __inspUsedOrders = {};   // 서버에서 로드한 재고사용된 ORDER NO. 집합 (비고 "재고사용" 표시용)
-  var __inspPreShipOrders = {};
+var __inspUsedOrders = {};
+var __inspPreShipOrders = {};
 
-function insplistStockQty_(partNo, oldDraw){        // 품번 또는 도번으로 보유재고 (입고−출고). 재고관리와 동일하게 둘 다 조회
-  var keys=[String(partNo||"").trim(), String(oldDraw||"").trim()].filter(Boolean);
+function insplistStockQty_(partNo, oldDraw){   // 도번 우선
+  var keys=[
+    String(oldDraw||"").trim(),
+    String(partNo||"").trim()
+  ].filter(Boolean);
+
   if(!keys.length) return 0;
+
   if(typeof buildInvStockMap==="function") buildInvStockMap();
-  if(typeof invStockMap!=="undefined" && invStockMap){
-    for(var i=0;i<keys.length;i++){ if(keys[i] in invStockMap) return Number(invStockMap[keys[i]])||0; }
-  }
-  var n=0, iv=(typeof invData!=="undefined"&&invData)?invData:[];
+
+  var n=0;
+  var iv=(typeof invData!=="undefined"&&invData)?invData:[];
+
   iv.forEach(function(r){
 
-  var draw = String(
-    r.oldDrawingNo ||
-    r.oldDraw ||
-    r["기존도번"] ||
-    r.partNo ||
-    ""
-  ).trim();
-
-  if(keys.indexOf(draw)>=0)
-    n+=(Number(r.inQty)||0)-(Number(r.outQty)||0);
-});
-  return n;
-}
-function insplistLastLoc_(partNo, oldDraw){         // 마지막 등록된 재고 위치 (품번 또는 도번 매칭, 뒤에서부터)
-  var keys=[String(partNo||"").trim(), String(oldDraw||"").trim()].filter(Boolean);
-  if(!keys.length) return "";
-  var iv=(typeof invData!=="undefined"&&invData)?invData:[];
-  for(var i=iv.length-1;i>=0;i--){
-    var pn=String(iv[i].partNo||"").trim();
-    if(keys.indexOf(pn)>=0){
-      var loc=(typeof invExtractLoc_==="function")?invExtractLoc_(iv[i].note):"";
-      if(loc) return loc;
-    }
-  }
-  return "";
-}
-function insplistSnExists_(oldDraw, sn){
-  var d=String(oldDraw||"").trim();
-  var s=String(sn||"").trim();
-  if(!d||!s) return false;
-
-  var iv=(typeof invData!=="undefined"&&invData)?invData:[];
-  for(var i=0;i<iv.length;i++){
-
-    var draw = String(
-      iv[i].oldDraw ||
-      iv[i]["기존도번"] ||
-      iv[i].drawing ||
+    var draw=String(
+      r.oldDrawingNo ||
+      r.oldDraw ||
+      r["기존도번"] ||
+      r.drawing ||
+      r.partNo ||
       ""
     ).trim();
 
-    if(draw===d &&
-       String(iv[i].sn||"").trim()===s){
+    if(keys.indexOf(draw)>=0){
+      n+=(Number(r.inQty)||0)-(Number(r.outQty)||0);
+    }
+  });
+
+  return n;
+}
+
+function insplistLastLoc_(partNo, oldDraw){    // 도번 우선 위치검색
+
+  var keys=[
+    String(oldDraw||"").trim(),
+    String(partNo||"").trim()
+  ].filter(Boolean);
+
+  if(!keys.length) return "";
+
+  var iv=(typeof invData!=="undefined"&&invData)?invData:[];
+
+  for(var i=iv.length-1;i>=0;i--){
+
+    var draw=String(
+      iv[i].oldDrawingNo ||
+      iv[i].oldDraw ||
+      iv[i]["기존도번"] ||
+      iv[i].drawing ||
+      iv[i].partNo ||
+      ""
+    ).trim();
+
+    if(keys.indexOf(draw)>=0){
+
+      var loc=
+        (typeof invExtractLoc_==="function")
+        ? invExtractLoc_(iv[i].note)
+        : "";
+
+      if(loc) return loc;
+    }
+  }
+
+  return "";
+}
+
+function insplistSnExists_(oldDraw, sn){
+
+  var d=String(oldDraw||"").trim();
+  var s=String(sn||"").trim();
+
+  if(!d || !s) return false;
+
+  var iv=(typeof invData!=="undefined"&&invData)?invData:[];
+
+  for(var i=0;i<iv.length;i++){
+
+    var draw=String(
+      iv[i].oldDrawingNo ||
+      iv[i].oldDraw ||
+      iv[i]["기존도번"] ||
+      iv[i].drawing ||
+      iv[i].partNo ||
+      ""
+    ).trim();
+
+    if(
+      draw===d &&
+      String(iv[i].sn||"").trim()===s
+    ){
       return true;
     }
   }
+
   return false;
 }
-
 function insplistBuildRows_(q, shipRows){
   q=String(q||"").trim(); if(!q) return [];
   var md=(typeof mainData!=="undefined"&&mainData)?mainData:[];
