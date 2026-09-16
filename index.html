@@ -18113,6 +18113,54 @@ function insTypeColumns_(type){
 }
 var INS_SHEET_TAB = { incoming:"검사_수입", shipping:"검사_출하", measureS:"검사_측정소", measureL:"검사_측정대" };
 var INS_SHEET_FILE = "1XtlaNPgdhF-fyDAmdoQD2IcKJsO9Vvud2QjPZxCd3W0";   // 검사이력 전용 시트(검사종합과 분리 — 엑셀 업로드 무관)
+// [2단계·검증용] 4탭 시트 → 검사일보 행으로 역매핑 읽기 (라이브 로드는 아직 안 바꿈)
+function insTypeColsFull_(type){
+  var cfg=INS_CFG[type]; if(!cfg) return [];
+  var cols=[];
+  cfg.groups.forEach(function(g){
+    if(g.subs){ g.subs.forEach(function(sub){ if(sub.kind!=="no") cols.push({key:sub.key, label:sub.label||sub.key, kind:sub.kind}); }); }
+    else if(g.leaf){ if(g.leaf.kind!=="no") cols.push({key:g.leaf.key, label:g.label||g.leaf.key, kind:g.leaf.kind}); }
+  });
+  return cols;
+}
+// 시트 행(라벨 키) → 앱 행(내부 키). 체크박스 ■→true. 필터: 최근 30일 OR 부적합 미처리(조치완료일 빈 것)
+function insReadTypeFromSheet_(type, cb){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ cb&&cb(null); return; }
+  var tab=INS_SHEET_TAB[type]; if(!tab){ cb&&cb(null); return; }
+  fetch(url+"?dataset="+encodeURIComponent(tab)+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){
+    if(!res||!res.success||!Array.isArray(res.rows)){ cb&&cb(null); return; }
+    var cols=insTypeColsFull_(type);
+    var rows=res.rows.map(function(o){
+      var r={};
+      cols.forEach(function(c){
+        var v=o[c.label];
+        if(c.kind==="check"){ r[c.key]=(String(v==null?"":v).trim()==="\u25A0" || v===true); }
+        else { r[c.key]=(v==null?"":v); }
+      });
+      r._id=String(o["_id"]||"").trim() || insRowId_();
+      return r;
+    });
+    var today=new Date().toISOString().slice(0,10);
+    var filtered=rows.filter(function(r){
+      if(r._id && insDeletedIds[r._id]) return false;
+      var dd=insDaysBetween_(r.insDate, today);
+      var recent=(dd!=="" && dd>=0 && dd<=30);
+      var unresolved=(insRowDefect_(type,r) && String(r.actDate||"").trim()==="");
+      return recent || unresolved;
+    });
+    cb&&cb({ all:rows, filtered:filtered });
+  }).catch(function(){ cb&&cb(null); });
+}
+// 콘솔 검증: insVerifySheetRead_("incoming") 등
+window.insVerifySheetRead_=function(type){
+  type=type||insType;
+  insReadTypeFromSheet_(type, function(res){
+    if(!res){ console.log("[검증] 시트 읽기 실패/빈값:", type); return; }
+    console.log("[검증]", type, "· 시트 전체", res.all.length, "행 · 필터(30일+미처리)", res.filtered.length, "행");
+    console.log("  샘플(앱 전체 rows 중 일부):", (insState[type]&&insState[type].rows||[]).slice(0,3));
+    console.log("  샘플(시트에서 읽은 것 일부):", res.filtered.slice(0,3));
+  });
+};
 async function insWriteTypeToSheet_(type){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return;
   var tab=INS_SHEET_TAB[type]; if(!tab) return;
