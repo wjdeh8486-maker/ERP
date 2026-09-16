@@ -18101,6 +18101,37 @@ function insTapAlertPopup_(msg){
   d.addEventListener("click", function(e){ if(e.target===d) d.remove(); });
   try{ if(navigator.vibrate) navigator.vibrate([120,60,120]); }catch(_){}
 }
+// [추가·1단계] 검사일보를 구글시트 4탭(수입/출하/측정소/측정대)에 행 단위로 기록 — 구글시트에서 열람·수정 가능하게
+function insTypeColumns_(type){
+  var cfg=INS_CFG[type]; if(!cfg) return [];
+  var cols=[];
+  cfg.groups.forEach(function(g){
+    if(g.subs){ g.subs.forEach(function(sub){ if(sub.kind!=="no") cols.push({key:sub.key, label:sub.label||sub.key}); }); }
+    else if(g.leaf){ if(g.leaf.kind!=="no") cols.push({key:g.leaf.key, label:g.label||g.leaf.key}); }
+  });
+  return cols;
+}
+var INS_SHEET_TAB = { incoming:"검사_수입", shipping:"검사_출하", measureS:"검사_측정소", measureL:"검사_측정대" };
+var INS_SHEET_FILE = "1KmEjFFONvVzJ8wokOhfayIlNCP-qvTSi8Qc7cFpAnx0";   // 검사종합 파일
+async function insWriteTypeToSheet_(type){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return;
+  var tab=INS_SHEET_TAB[type]; if(!tab) return;
+  var cols=insTypeColumns_(type); if(!cols.length) return;
+  var rows=(insState[type]&&insState[type].rows)||[];
+  var header=cols.map(function(c){ return c.label; }).concat(["작성자","수정시각","_id"]);
+  var aoa=[header];
+  var who=""; try{ who=(insMetaByType[type]&&insMetaByType[type].inspector)||""; }catch(_){}
+  var now=new Date().toLocaleString("ko-KR");
+  rows.forEach(function(r){ if(!r) return; if(r._id && insDeletedIds[r._id]) return;
+    var line=cols.map(function(c){ var v=r[c.key]; if(v===true) return "\u25A0"; if(v===false||v==null) return ""; return v; });
+    line.push(who); line.push(now); line.push(r._id||"");
+    aoa.push(line);
+  });
+  var numCols=header.length, CH=500, total=aoa.length, chunks=Math.ceil(total/CH);
+  var post=function(body){ return fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)}).catch(function(){}); };
+  var sleep=function(ms){ return new Promise(function(r){ setTimeout(r,ms); }); };
+  for(var i=0;i<chunks;i++){ var part=aoa.slice(i*CH,(i+1)*CH); await post({action:"replaceSheet", fileId:INS_SHEET_FILE, sheetName:tab, rows:part, startRow:i*CH+1, numCols:numCols, clearFirst:(i===0), createIfMissing:(i===0)}); await sleep(120); }
+}
 // [추가] 전체 행에서 TAP/PIN 대상인데 미체크인 도번 수집 (저장 시 검사)
 function insCheckTapPinUnchecked_(){
   if(insType!=="incoming" && insType!=="shipping") return [];
@@ -19168,6 +19199,7 @@ function insCloudSave(){
       insTapAlertPopup_("\u26A0 "+__lbl+" 미체크 "+__unchk.length+"건 — 확인하세요!\n"+__unchk.slice(0,20).join(", ")+(__unchk.length>20?(" 외 "+(__unchk.length-20)+"건"):""));
     }
   }catch(_){}
+  try{ if(typeof insWriteTypeToSheet_==="function") insWriteTypeToSheet_(t); }catch(_){}   // [1단계] 구글시트 4탭에 행 단위 기록(열람·수정용)
   insSaveLocal(); insSetStatus("☁ ["+label+"] 저장 중… (누적 병합)");
   ncAlertBroadcastType(t);
   var localRows=(insState[t]&&insState[t].rows)?insState[t].rows:[];
