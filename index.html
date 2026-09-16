@@ -979,7 +979,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V9.15</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V9.16</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -3873,7 +3873,10 @@ function mainRenderTable(data){
   empty.style.display = data.length===0 ? "block" : "none";
   // 행마다 appendChild 하면 매번 리플로우가 발생해 모바일에서 느려지므로,
   // 문자열로 한 번에 모아서 innerHTML을 딱 한 번만 설정합니다.
-  const rowsHtml = data.map(r=>{
+  const __mainCap = (window.__mainRenderCap||300);
+  const __mainOver = data.length > __mainCap;
+  const __mainRows = __mainOver ? data.slice(0, __mainCap) : data;   // [최적화] 상위 N행만 렌더(행마다 계산이 무거워 모바일 버벅임 방지)
+  const rowsHtml = __mainRows.map(r=>{
     const _status = computeProductStatus(r);
     const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
     const rowClass = r.shipped==="납품완료" ? "row-shipped" : (_status==="출고" ? "row-shipout" : "");
@@ -3901,7 +3904,7 @@ function mainRenderTable(data){
       <td style="color:var(--text);font-style:normal;font-weight:400;">${computeStockPreShip(r)}</td>
     </tr>`;
   }).join("");
-  tbody.innerHTML = rowsHtml;
+  tbody.innerHTML = rowsHtml + (__mainOver ? ('<tr><td colspan="40" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">앞 '+__mainCap+'행만 표시 · 전체 '+data.length+'행 — 검색/필터로 좁혀서 보세요</td></tr>') : '');
   try{
     var __need=0, __cnt=0;
     data.forEach(function(r){ if(r.shipped!=="납품완료" && computeProductStatus(r)!=="출고"){ __need+=Number(r.qty)||0; __cnt++; } });
@@ -10681,7 +10684,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=9.15;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=9.16;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -10693,10 +10696,10 @@ window.__qualityInited = true;
     }catch(e){}
     setTimeout(function(){ try{ (window.__afterEnter||[]).forEach(function(fn,i){ setTimeout(fn, i*150); }); window.__afterEnter=[]; }catch(e){} }, 300);
     setTimeout(function(){ try{ if(typeof noticeBindBtn_==="function") noticeBindBtn_(); }catch(e){}
-      try{ if(typeof qShareLoad_==="function"){ qShareLoad_("noticeData", function(sv){ if(noticeApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("noticeData",sv); }catch(_){}}  else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(noticeApply_).catch(function(){}); }catch(_){}} try{ if(typeof qmsLoadSchedShared_==="function"){ qmsLoadSchedShared_(function(){ noticeShowToday_(); }, true); } else { noticeShowToday_(); } }catch(e){} }); } else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(function(v){ noticeApply_(v); noticeShowToday_(); }).catch(function(){}); }catch(_){} } }catch(e){}
+      try{ if(typeof qShareLoad_==="function"){ qShareLoad_("noticeData", function(sv){ if(noticeApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("noticeData",sv); }catch(_){}}  else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(noticeApply_).catch(function(){}); }catch(_){}} try{ if(typeof qmsLoadSchedShared_==="function"){ qmsLoadSchedShared_(function(){ qmsShowMorning_(); }, true); } else { qmsShowMorning_(); } }catch(e){} }); } else { try{ if(typeof idbGet==="function") idbGet("noticeData").then(function(v){ noticeApply_(v); qmsShowMorning_(); }).catch(function(){}); }catch(_){} } }catch(e){}
       try{ if(typeof qShareLoad_==="function"){ qShareLoad_("waitOverride", function(sv){ if(sv&&typeof sv==="object"){ __waitOverride=sv; try{ if(typeof idbSet==="function") idbSet("waitOverride",sv); }catch(_){}} else { try{ if(typeof idbGet==="function") idbGet("waitOverride").then(function(v){ if(v&&typeof v==="object") __waitOverride=v; }).catch(function(){}); }catch(_){}} try{ if(document.getElementById("waitinsp-content")) renderWaitInspTab(); }catch(e){} }); } }catch(e){}
     }, 1000);
-    setTimeout(function(){ try{ if(typeof qmsMorningBindBadge_==="function") qmsMorningBindBadge_(); }catch(e){} }, 1500);   // [수정] 접속 시 "오늘 챙길 것" 자동 팝업 제거 — 좌하단 🔔 배지로 수동 열람만 유지
+    setTimeout(function(){ try{ if(typeof qmsMorningBindBadge_==="function") qmsMorningBindBadge_(); }catch(e){} }, 1500);   // [수정] 접속 시 "오늘 챙길 것"(오늘 할일) 자동 팝업 · 좌하단 🔔 배지로도 재열람 · 공지 자동팝업은 제거
   });
 
   // 앱 스크립트가 로드된 뒤 시작
@@ -18217,26 +18220,22 @@ async function insWriteTypeToSheet_(type){
   var tab=INS_SHEET_TAB[type]; if(!tab) return;
   var cols=insTypeColumns_(type); if(!cols.length) return;
   var cur=(insState[type]&&insState[type].rows)||[];
-  // [병합] 시트 기존 전체 행을 읽어 현재 행만 upsert·삭제 반영 → 부분(30일+미처리) 로드로 저장해도 과거 행 보존
-  var existing = await new Promise(function(resolve){ try{ insReadTypeFromSheet_(type, function(res){ resolve(res && res.all ? res.all : []); }); }catch(_){ resolve([]); } });
-  var byId={}; existing.forEach(function(r){ if(r && r._id) byId[r._id]=r; });
-  cur.forEach(function(r){ if(!r) return; var id=r._id||insRowId_(); r._id=id; if(insDeletedIds[id]){ delete byId[id]; return; } byId[id]=r; });
-  Object.keys(insDeletedIds).forEach(function(id){ delete byId[id]; });
-  var merged=Object.keys(byId).map(function(k){ return byId[k]; });
   var header=cols.map(function(c){ return c.label; }).concat(["작성자","수정시각","_id"]);
-  var aoa=[header];
   var who=""; try{ who=(insMetaByType[type]&&insMetaByType[type].inspector)||""; }catch(_){}
   var now=new Date().toLocaleString("ko-KR");
-  merged.forEach(function(r){ if(!r) return;
+  var rows=[], deleteIds=[];
+  cur.forEach(function(r){ if(!r) return; var id=r._id||insRowId_(); r._id=id;
+    if(insDeletedIds[id]){ deleteIds.push(id); return; }
     var line=cols.map(function(c){ var v=r[c.key]; if(v===true) return "\u25A0"; if(v===false||v==null) return ""; if((c.kind==="text"||c.kind==="draw"||c.kind==="checks"||c.kind==="seg") && v!==""){ return "'"+v; } return v; });
-    line.push(r.__who||who); line.push(now); line.push(r._id||"");
-    aoa.push(line);
+    line.push(r.__who||who); line.push(now); line.push(id);
+    rows.push(line);
   });
-  var numCols=header.length, CH=500, total=aoa.length, chunks=Math.ceil(total/CH);
+  try{ Object.keys(insDeletedIds).forEach(function(id){ if(deleteIds.indexOf(id)<0) deleteIds.push(id); }); }catch(_){}
+  // [행 단위] 현재 행 + 삭제목록만 GS로 → 서버가 시트 전체와 병합(브라우저가 통째로 안 받아 데이터 쌓여도 빠름)
   var post=function(body){ return fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)}).catch(function(){}); };
-  var sleep=function(ms){ return new Promise(function(r){ setTimeout(r,ms); }); };
-  for(var i=0;i<chunks;i++){ var part=aoa.slice(i*CH,(i+1)*CH); await post({action:"replaceSheet", fileId:INS_SHEET_FILE, sheetName:tab, rows:part, startRow:i*CH+1, numCols:numCols, clearFirst:(i===0), createIfMissing:(i===0)}); await sleep(120); }
+  await post({ action:"upsertRows", fileId:INS_SHEET_FILE, sheetName:tab, header:header, rows:rows, deleteIds:deleteIds, createIfMissing:true });
 }
+
 // [추가] 전체 행에서 TAP/PIN 대상인데 미체크인 도번 수집 (저장 시 검사)
 function insCheckTapPinUnchecked_(){
   if(insType!=="incoming" && insType!=="shipping") return [];
@@ -20615,6 +20614,6 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.15 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.16 🔔</div>
 </body>
 </html>
