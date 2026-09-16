@@ -2085,6 +2085,7 @@
           <input id="mh-search-draw" type="text" placeholder="🔍 도번" onkeydown="if(event.key==='Enter')renderMeasureHist()" style="flex:1;min-width:150px;padding:8px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
           <input id="mh-search-sn" type="text" placeholder="🔍 S/N" onkeydown="if(event.key==='Enter')renderMeasureHist()" style="flex:1;min-width:150px;padding:8px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
           <button type="button" onclick="renderMeasureHist()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:700;cursor:pointer;">🔍 조회</button>
+          <button type="button" onclick="mhEnsureLoaded_(true)" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="시트에서 최신 측정이력을 다시 받아옵니다(자동 스크립트가 새로 올렸을 때)">🔄 시트 새로고침</button>
           <button type="button" onclick="mhClearAll_()" style="background:#EEF3FA;color:#33415C;border:1px solid #C9D3E0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;" title="인덱스 전체 삭제">🗑 전체 지우기</button>
         </div>
 
@@ -4807,17 +4808,34 @@ function mhLoadFromSheet_(cb){
   fetch(url+"?dataset="+encodeURIComponent("측정이력")+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){
     if(res&&res.success&&Array.isArray(res.rows)&&res.rows.length){
       __measureIndex=res.rows.map(function(o){ return { dr:String(o["도번"]||o["도면번호"]||o["도면"]||"").trim(), sn:String(o["S/N"]||o["SN"]||o["s/n"]||"").trim(), q:(Number(o["수량"]||1)||1), d:String(o["측정일"]||o["측정DATE"]||"").trim(), c:String(o["고객"]||o["고객사"]||"").trim() }; }).filter(function(r){ return r.dr||r.sn; });
-      __mhLastScan=(res.rows.length)+"건 (시트)"; cb&&cb(__measureIndex.length>0); return;
+      __mhLastScan=(res.rows.length)+"건 (시트)";
+      try{ if(typeof idbSet==="function") idbSet("measureIndex", {list:__measureIndex, at:__mhLastScan, fetchedAt:Date.now()}); }catch(_){}   // idb 캐시(다음엔 즉시)
+      cb&&cb(__measureIndex.length>0); return;
     }
     cb&&cb(false);
   }).catch(function(){ cb&&cb(false); });
 }
 function mhEnsureLoaded_(force){
   if(window.__mhLoaded && !force) return; window.__mhLoaded=true;
-  var tryShared=function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("measureIndex", function(sv){ if(mhApply_(sv)) renderMeasureHist(); }); } }catch(_){} };
-  var tryIdb=function(){ try{ if(typeof idbGet==="function"){ idbGet("measureIndex").then(function(v){ if(mhApply_(v)){ renderMeasureHist(); } else { tryShared(); } }).catch(tryShared); } else { tryShared(); } }catch(_){ tryShared(); } };
-  // 1순위: 구글시트 탭(모든 기기에서 안정적) → 없으면 idb → 공유청크
-  mhLoadFromSheet_(function(ok){ if(ok){ renderMeasureHist(); } else { tryIdb(); } });
+  var REFRESH_MS = 3*60*60*1000;   // idb가 3시간 넘게 오래됐으면 시트에서 갱신(측정이력은 하루 1회 업로드)
+  var fetchFresh=function(){
+    if(typeof mhSetStatus_==="function") mhSetStatus_("시트에서 갱신 중…");
+    mhLoadFromSheet_(function(ok){
+      if(ok){ renderMeasureHist(); }
+      else { try{ if(typeof qShareLoad_==="function"){ qShareLoad_("measureIndex", function(sv){ if(mhApply_(sv)) renderMeasureHist(); }); } }catch(_){} }
+    });
+  };
+  if(force){ fetchFresh(); return; }   // 강제 새로고침
+  try{
+    if(typeof idbGet==="function"){
+      idbGet("measureIndex").then(function(v){
+        var hasIdb=mhApply_(v);
+        if(hasIdb){ renderMeasureHist(); }                 // idb 즉시 표시(빠름)
+        var fetchedAt=(v && v.fetchedAt) || 0;
+        if(!hasIdb || (Date.now()-fetchedAt)>REFRESH_MS){ fetchFresh(); }   // 비었거나 오래됐을 때만 시트에서 받기
+      }).catch(fetchFresh);
+    } else { fetchFresh(); }
+  }catch(_){ fetchFresh(); }
 }
 function mhClearAll_(){
   if(!confirm("측정이력 인덱스를 전부 지울까요? (파일은 삭제되지 않습니다)")) return;
