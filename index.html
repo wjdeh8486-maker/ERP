@@ -18138,7 +18138,7 @@ function insReadTypeFromSheet_(type, cb){
       cols.forEach(function(c){
         var v=o[c.label];
         if(c.kind==="check"){ r[c.key]=(String(v==null?"":v).trim()==="\u25A0" || v===true); }
-        else { r[c.key]=(v==null?"":v); }
+        else { var vv=(v==null?"":v); if(typeof vv==="string" && vv.charAt(0)==="'") vv=vv.slice(1); r[c.key]=vv; }
       });
       r._id=String(o["_id"]||"").trim() || insRowId_();
       return r;
@@ -18188,7 +18188,7 @@ async function insWriteTypeToSheet_(type){
   var who=""; try{ who=(insMetaByType[type]&&insMetaByType[type].inspector)||""; }catch(_){}
   var now=new Date().toLocaleString("ko-KR");
   rows.forEach(function(r){ if(!r) return; if(r._id && insDeletedIds[r._id]) return;
-    var line=cols.map(function(c){ var v=r[c.key]; if(v===true) return "\u25A0"; if(v===false||v==null) return ""; return v; });
+    var line=cols.map(function(c){ var v=r[c.key]; if(v===true) return "\u25A0"; if(v===false||v==null) return ""; if((c.kind==="text"||c.kind==="draw"||c.kind==="checks"||c.kind==="seg") && v!==""){ return "'"+v; } return v; });   // 텍스트 칸은 문자열 강제(콤마·앞자리0 보존)
     line.push(who); line.push(now); line.push(r._id||"");
     aoa.push(line);
   });
@@ -20578,4 +20578,3 @@ function reqClearAll(){
 <div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.15 🔔</div>
 </body>
 </html>
-  
