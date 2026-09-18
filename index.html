@@ -1045,6 +1045,7 @@
       <div class="nav-item nav-sub" data-view="qchist"><span class="dot"></span>🧪 검사이력조회</div>
       <div class="nav-item nav-sub" data-view="qcprio"><span class="dot"></span>📋 검사 요청서</div>
     </div></div>
+    <div class="nav-item" data-view="itemhist"><span class="dot"></span>📇 품목이력</div>
     <div class="nav-dd"><div class="nav-item" data-view="quality" data-navgroup="quality"><span class="dot"></span>📈 품질분석<span class="nav-caret" data-caret="quality">▾</span></div>
     <div class="nav-group" id="navgroup-quality">
       <div class="nav-item nav-sub" data-view="nc"><span class="dot"></span>⚠ 고객부적합관리</div>
@@ -2124,6 +2125,17 @@
           </table>
         </div>
       </div>
+    </div>
+    <!-- ===================== 📇 품목이력 VIEW ===================== -->
+    <div class="view" id="view-itemhist">
+      <div style="background:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 2px 10px rgba(0,0,0,0.06);margin-bottom:14px;">
+        <div style="font-size:18px;font-weight:800;color:#1F2A44;margin-bottom:4px;">📇 품목이력 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 도번 하나로 주문·검사·부적합(등급)·변경점·측정·재고를 한눈에</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">
+          <input id="ih-draw" type="text" placeholder="🔍 도번 입력 (예: M200-005-51C)" onkeydown="if(event.key==='Enter')renderItemHist()" style="flex:1;min-width:220px;padding:9px 14px;border:1px solid #D6DEE8;border-radius:8px;font-size:14px;">
+          <button type="button" onclick="renderItemHist()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-weight:700;cursor:pointer;">🔍 조회</button>
+        </div>
+      </div>
+      <div id="ih-body"><div style="text-align:center;color:#8A93A6;padding:36px;">도번을 입력하고 🔍 조회를 누르세요.</div></div>
     </div>
     <!-- ===================== QMS 출하판정 VIEW ===================== -->
     <div class="view" id="view-shipjudge">
@@ -3447,6 +3459,9 @@ document.querySelectorAll(".nav-item").forEach(item=>{
       if(typeof mhEnsureLoaded_==="function") mhEnsureLoaded_();
       if(typeof renderMeasureHist==="function") runBusy(renderMeasureHist);
     }
+    if(target==="itemhist"){
+      if(typeof renderItemHist==="function") renderItemHist();
+    }
     if(target==="mnshort"){
       if(typeof stockEnsureLoaded_==="function") stockEnsureLoaded_();
       if(typeof renderMonthlyShortage==="function") runBusy(renderMonthlyShortage);
@@ -4514,6 +4529,104 @@ var __insplistShip=[];
 
 
 /* ========================= 📊 월별 납기부족 분석 ========================= */
+/* ========================= 📇 품목이력 카드 (도번별 연결관리) ========================= */
+function ihNorm_(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); }
+function ihEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function itemHistGather_(draw){
+  var D=String(draw||"").trim(), nd=ihNorm_(D), Du=D.toUpperCase();
+  var orders=((typeof mainData!=="undefined"&&mainData)||[]).filter(function(m){ return ihNorm_(m.oldDrawingNo)===nd; });
+  var name="", cust="";
+  orders.forEach(function(m){ if(!name&&m.partName) name=m.partName; if(!cust&&m.customer) cust=m.customer; });
+  var defects=[];
+  try{ if(typeof insClosedList_==="function") insClosedList_(true).forEach(function(c){ if(ihNorm_(c.draw)===nd) defects.push({date:c.insDate, status:"종결", sn:c.sn, types:c.types, qty:c.qty, act:c.act, actDate:c.actDate, src:c.label}); }); }catch(_){}
+  try{ if(typeof insUnresolvedList_==="function") insUnresolvedList_(true).forEach(function(u){ if(ihNorm_(u.draw)===nd) defects.push({date:u.insDate, status:"미조치", sn:u.sn, types:u.types, qty:u.qty, act:"", actDate:"", src:u.label}); }); }catch(_){}
+  try{ ((typeof ncData!=="undefined"&&ncData)||[]).forEach(function(r){ if(typeof trashIsDeleted==="function"&&trashIsDeleted(r)) return; if(ihNorm_(r.part)===nd) defects.push({date:r.date, status:"고객", sn:"", types:(typeof ncClassifyCTQ_==="function"?ncClassifyCTQ_(r.content):""), qty:r.qty, act:r.content, actDate:"", src:"고객부적합"}); }); }catch(_){}
+  defects.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
+  var changes=((typeof __chgData!=="undefined"&&__chgData)||[]).filter(function(c){ return c && (ihNorm_(c.part)===nd || String(c.part||"").toUpperCase().indexOf(Du)>=0); });
+  var meas=((typeof __measureIndex!=="undefined"&&__measureIndex)||[]).filter(function(r){ return ihNorm_(r.dr)===nd; });
+  meas.sort(function(a,b){ return String(b.d).localeCompare(String(a.d)); });
+  var stock=(typeof insplistStockQty_==="function")?insplistStockQty_("", D):null;
+  return { draw:D, name:name, cust:cust, orders:orders, defects:defects, changes:changes, meas:meas, stock:stock };
+}
+
+function renderItemHist(){
+  var inp=document.getElementById("ih-draw"); var draw=inp?String(inp.value||"").trim():"";
+  var body=document.getElementById("ih-body"); if(!body) return;
+  if(!draw){ body.innerHTML='<div style="text-align:center;color:#8A93A6;padding:36px;">도번을 입력하고 🔍 조회를 누르세요. 그 품목의 주문·검사·부적합(등급)·변경점·측정·재고 이력이 한눈에 모입니다.</div>'; return; }
+  var g=itemHistGather_(draw), E=ihEsc_;
+  var td='padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;';
+  var sec=function(icon,title,cnt,inner){ return '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px 16px;margin-bottom:12px;"><div style="font-weight:800;color:#1F2A44;margin-bottom:8px;font-size:14px;">'+icon+' '+title+' <span style="color:#8A93A6;font-size:12px;font-weight:600;">('+cnt+')</span></div>'+inner+'</div>'; };
+  var none=function(t){ return '<div style="color:#B9C2D6;font-size:12px;padding:6px;">'+t+'</div>'; };
+
+  // 헤더
+  var stockTxt = (g.stock==null?"-":g.stock);
+  var head='<div style="background:linear-gradient(135deg,#1F2A44,#33415C);color:#fff;border-radius:14px;padding:16px 20px;margin-bottom:14px;">'
+    +'<div style="font-size:22px;font-weight:800;">'+E(g.draw)+'</div>'
+    +'<div style="font-size:13px;opacity:.9;margin-top:2px;">'+E(g.name||"(품명 미상)")+(g.cust?(" · "+E(g.cust)):"")+'</div>'
+    +'<div style="display:flex;gap:16px;margin-top:10px;font-size:12px;flex-wrap:wrap;">'
+    +'<span>📦 주문 <b>'+g.orders.length+'</b>건</span>'
+    +'<span>⚠ 부적합 <b style="color:#FFB3AB;">'+g.defects.length+'</b>건</span>'
+    +'<span>🔄 변경점 <b>'+g.changes.length+'</b>건</span>'
+    +'<span>📐 측정 <b>'+g.meas.length+'</b>건</span>'
+    +'<span>📥 현재고 <b>'+stockTxt+'</b></span>'
+    +'</div></div>';
+
+  // 주문/납기
+  var ordInner = g.orders.length ? ('<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:520px;"><thead><tr>'
+    +['ORDER NO.','수량','최종납기','상태','납품'].map(function(h){return '<th style="'+td+'background:#F0F4F8;">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+    +g.orders.slice(0,50).map(function(m){ return '<tr>'
+      +'<td style="'+td+'">'+E(m.orderNo)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(m.qty)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(m.dueDate)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(m.status)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(m.shipped||"")+'</td></tr>'; }).join("")
+    +'</tbody></table></div>'+(g.orders.length>50?'<div style="font-size:11px;color:#B0662A;">앞 50건만 표시</div>':'')) : none("주문 이력 없음");
+
+  // 부적합·조치 (등급)
+  var defInner = g.defects.length ? ('<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:620px;"><thead><tr>'
+    +['발생일','구분','유형','등급','수량','조치','조치완료일'].map(function(h){return '<th style="'+td+'background:#FBEDEC;color:#8A1F1F;">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+    +g.defects.slice(0,100).map(function(d){ var stc=d.status==="종결"?"#1E7A46":(d.status==="미조치"?"#C0392B":"#0B5CAB");
+      return '<tr>'
+      +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(d.date)+'</td>'
+      +'<td style="'+td+'text-align:center;color:'+stc+';font-weight:700;">'+E(d.status)+'</td>'
+      +'<td style="'+td+'">'+E(d.types)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+((typeof ncGradeBadge_==="function")?ncGradeBadge_(d.types):"")+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(d.qty)+'</td>'
+      +'<td style="'+td+'font-size:11.5px;">'+E(d.act||"")+'</td>'
+      +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(d.actDate||"-")+'</td></tr>'; }).join("")
+    +'</tbody></table></div>') : none("부적합 이력 없음 👍");
+
+  // 변경점
+  var chgInner = g.changes.length ? ('<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:560px;"><thead><tr>'
+    +['발생일','유형','구분/Rev','등급','변경 전→후','초도품','완료일'].map(function(h){return '<th style="'+td+'background:#EAF3F5;">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+    +g.changes.map(function(c){ var isRev=(c.type==="고객REV"); var gr=(typeof chgGradeOf_==="function")?chgGradeOf_(c.cat||"", isRev):"";
+      return '<tr>'
+      +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(c.date)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(c.type)+'</td>'
+      +'<td style="'+td+'">'+E(isRev?("Rev "+(c.oldRev||"")+"→"+(c.newRev||"")):(c.cat||""))+'</td>'
+      +'<td style="'+td+'text-align:center;">'+((typeof chgGradeBadge_==="function"&&gr)?chgGradeBadge_(gr):E(gr))+'</td>'
+      +'<td style="'+td+'font-size:11.5px;">'+E((c.before||"")+" → "+(c.after||""))+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(c.firstArticle||"")+'</td>'
+      +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(c.doneDate||"")+'</td></tr>'; }).join("")
+    +'</tbody></table></div>') : none("변경점 없음");
+
+  // 측정이력
+  var measInner = g.meas.length ? ('<div style="overflow:auto;max-height:240px;"><table style="border-collapse:collapse;width:100%;min-width:420px;"><thead><tr>'
+    +['S/N','수량','측정일'].map(function(h){return '<th style="'+td+'background:#F0F4F8;position:sticky;top:0;">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+    +g.meas.slice(0,200).map(function(r){ return '<tr>'
+      +'<td style="'+td+'text-align:center;">'+E(r.sn)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(Number(r.q)||1)+'</td>'
+      +'<td style="'+td+'text-align:center;color:#0B5CAB;">'+E(r.d)+'</td></tr>'; }).join("")
+    +'</tbody></table></div>'+(g.meas.length>200?'<div style="font-size:11px;color:#B0662A;">앞 200건만 표시 (전체 '+g.meas.length+'건)</div>':'')) : none("측정 이력 없음");
+
+  body.innerHTML = head
+    + sec("📦","주문 / 납기", g.orders.length, ordInner)
+    + sec("⚠","부적합 · 조치 (등급)", g.defects.length, defInner)
+    + sec("🔄","변경점", g.changes.length, chgInner)
+    + sec("📐","측정이력", g.meas.length, measInner);
+}
+
 function mnFmtShort_(due){ var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(due||"")); return m ? ((+m[2])+"월 "+(+m[3])+"일") : (due||""); }
 
 // 도번별 집계: 보유수 vs 미납품(최종납기 월별) → 부족수·최초부족일정
