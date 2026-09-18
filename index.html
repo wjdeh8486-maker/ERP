@@ -7271,7 +7271,7 @@ const QUALITY_CATEGORIES = {
 };
 const QUALITY_YEARS = [2023,2024,2025,2026];
 let qualityRawData = {};
-let qualityTargets = { process:10000, incoming:20000, shipping:20000, customer:3000 };
+let qualityTargets = { process:10000, incoming:10000, shipping:10000, customer:3000 };
 let qualityYear = 2026;
 let qualityMonth = 12;
 function parseQualityDate(v){
@@ -7800,6 +7800,16 @@ var NC_CTQ_RULES = [
   ["버/모따기", ["버","버발생","거스러미","모따기","면취","burr"]],
   ["수량/포장/혼입", ["수량","포장","오배송","라벨","혼입","오품","수량부족","오출하"]]
 ];
+// CTQ 등급: 크리티컬=A / 조립불가=B / 사용가능=C
+var NC_CTQ_GRADE = {
+  "누설/기능":"A", "가압/진공/압력":"A", "파손/크랙":"A", "용접":"A", "헬리코일":"A", "TAP/나사":"A", "누락/미가공":"A",
+  "치수/공차":"B", "형상/변형":"B", "버/모따기":"B",
+  "기스/스크래치":"C", "찍힘/눌림":"C", "이물/오염":"C", "도금/표면처리":"C", "수량/포장/혼입":"C"
+};
+function ncCTQGrade_(cat){ return NC_CTQ_GRADE[cat] || "C"; }
+function ncCTQGradeCell_(cat){ var g=ncCTQGrade_(cat); var c=g==="A"?"#C0392B":(g==="B"?"#B0662A":"#5A6478"); var bg=g==="A"?"#FDECEC":(g==="B"?"#FFF3E6":"#EEF1F6"); return '<span style="background:'+bg+';color:'+c+';border-radius:6px;padding:2px 10px;font-weight:800;">'+g+'</span>'; }
+function ncGradeOfTypes_(types){ return (typeof ncClassifyCTQ_==="function")?ncCTQGrade_(ncClassifyCTQ_(types)):""; }   // 부적합 유형 문자열 → 등급
+function ncGradeBadge_(types){ var g=ncGradeOfTypes_(types); if(!g) return ""; var c=g==="A"?"#C0392B":(g==="B"?"#B0662A":"#5A6478"); var bg=g==="A"?"#FDECEC":(g==="B"?"#FFF3E6":"#EEF1F6"); return '<span style="background:'+bg+';color:'+c+';border-radius:6px;padding:1px 8px;font-weight:800;font-size:11px;">'+g+'</span>'; }
 function ncClassifyCTQ_(content){
   var s=String(content==null?"":content).toLowerCase();
   if(!s.trim()) return "미기재";
@@ -7819,6 +7829,7 @@ function ncCTQSection_(rowsAll, year, upto){
   rows.forEach(function(r){ var cat=ncClassifyCTQ_(r.content); var o=map[cat]||(map[cat]={cnt:0,qty:0}); o.cnt++; o.qty+=Number(r.qty)||0; });
   var list=Object.keys(map).map(function(k){ return {cat:k, cnt:map[k].cnt, qty:map[k].qty}; }).sort(function(a,b){ return b.cnt-a.cnt; });
   var totCnt=list.reduce(function(a,d){ return a+d.cnt; },0);
+  var __gc={A:0,B:0,C:0}; list.forEach(function(d){ __gc[ncCTQGrade_(d.cat)]++; });
   var unclass=(map["기타(미분류)"]?map["기타(미분류)"].cnt:0)+(map["미기재"]?map["미기재"].cnt:0);
   var cum=0, max=list[0].cnt||1;
   var esc=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
@@ -7832,6 +7843,7 @@ function ncCTQSection_(rowsAll, year, upto){
     return '<tr>'
       +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;color:#8A93A6;">'+(i+1)+'</td>'
       +'<td style="border:1px solid #E6EBF2;padding:6px;font-weight:700;white-space:nowrap;">'+esc(d.cat)+'</td>'
+      +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+ncCTQGradeCell_(d.cat)+'</td>'
       +'<td style="border:1px solid #E6EBF2;padding:6px;"><div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;min-width:70px;background:#F0F4F8;border-radius:5px;height:14px;overflow:hidden;"><div style="width:'+barW+'%;height:100%;background:'+color+';"></div></div><span style="font-size:12px;white-space:nowrap;">'+f1(share)+'%</span></div></td>'
       +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;font-weight:800;color:#C0392B;">'+d.cnt+'</td>'
       +'<td style="border:1px solid #E6EBF2;padding:6px;text-align:center;">'+d.qty+'</td>'
@@ -7843,8 +7855,13 @@ function ncCTQSection_(rowsAll, year, upto){
   return '<div class="table-wrap" style="margin-top:16px;padding:14px;">'
     +'<div style="font-weight:800;font-size:15px;color:#1F2A44;margin-bottom:4px;">🎯 CTQ 분석 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 고객부적합 유형 자동분류 · '+esc(yr)+'년 · 총 '+totCnt+'건</span></div>'
     +'<div style="font-size:12px;color:#5A6478;margin-bottom:8px;">부적합 내용을 키워드로 자동 분류했습니다. 누적 80%까지를 <b style="color:#8A1F1F;">핵심(Vital Few)</b>으로 표시 — 이 유형부터 개선하면 효과가 큽니다.</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;font-weight:800;">'
+    +'<span style="background:#FDECEC;color:#C0392B;border:1px solid #E7C9C9;border-radius:8px;padding:4px 12px;">A 크리티컬 '+__gc.A+'건</span>'
+    +'<span style="background:#FFF3E6;color:#B0662A;border:1px solid #EBD3B8;border-radius:8px;padding:4px 12px;">B 조립불가 '+__gc.B+'건</span>'
+    +'<span style="background:#EEF1F6;color:#5A6478;border:1px solid #D6DEE8;border-radius:8px;padding:4px 12px;">C 사용가능 '+__gc.C+'건</span>'
+    +'</div>'
     +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:13px;min-width:560px;"><thead><tr>'
-    +['순위','CTQ 유형','비중','건수','수량','누적%','등급'].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
+    +['순위','CTQ 유형','등급','비중','건수','수량','누적%','핵심'].map(function(h){ return '<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
     +'</tr></thead><tbody>'+trs+'</tbody></table></div>'+warn+'</div>';
 }
 /* 품질 데이터 공유 저장/읽기 (CTQ·Ppk·NCR을 백엔드에 공유 → 모두가 봄) */
@@ -8514,13 +8531,21 @@ function chgApplyFilter_(){ var tb=document.getElementById("chg-table"); if(!tb)
 function chgInput_(k,v,ph,w){ return '<input data-k="'+k+'" value="'+chgEsc_(v||"")+'" placeholder="'+(ph||"")+'" style="width:'+(w||"100%")+';box-sizing:border-box;padding:5px 6px;border:1px solid #D6DEE8;border-radius:6px;font-size:12px;">'; }
 function chgSel_(k,v,opts){ return '<select data-k="'+k+'" style="width:100%;box-sizing:border-box;padding:5px 6px;border:1px solid #D6DEE8;border-radius:6px;font-size:12px;">'+opts.map(function(o){ return '<option'+(String(v)===String(o)?" selected":"")+'>'+chgEsc_(o)+'</option>'; }).join("")+'</select>'; }
 
+// [부표1] 변경점 세부내용 → 등급(A/B/C) 매핑
+var CHG_DETAIL_GRADE=[["중요공정 작업자 변경","B"],["미숙련 작업자","C"],["숙련 작업자","C"],["작업 근무형태 변경","C"],["설비 변경(신규/개조)","A"],["Lay-Out 변경","B"],["금형/치공구 변경","C"],["유휴설비/주요부품 교체","B"],["검사방법 변경","B"],["측정방법 변경","B"],["측정장비 변경","B"],["QC공정도/작업방법 변경","B"],["표면처리(후처리) 변경","A"],["제조/시험방법 변경","A"],["재질 변경","A"],["Maker(공급업체) 변경","A"],["제품 변경(단종/설계)","A"],["포장 변경","B"],["생산지 변경(이전/신설)","A"],["생산업체 일원화/신규","B"],["상호명 변경","B"],["기타","B"]];
+var CHG_GRADE_OF={}; CHG_DETAIL_GRADE.forEach(function(x){ CHG_GRADE_OF[x[0]]=x[1]; });
+CHG_GRADE_OF["사람"]="C"; CHG_GRADE_OF["설비"]="B"; CHG_GRADE_OF["재료"]="A"; CHG_GRADE_OF["방법"]="B";   // 구버전 4M 호환
+function chgGradeOf_(cat, isRev){ if(isRev) return "A"; return CHG_GRADE_OF[cat] || "B"; }
+function chgGradeBadge_(g){ var c=g==="A"?"#C0392B":(g==="B"?"#B0662A":"#5A6478"); var bg=g==="A"?"#FDECEC":(g==="B"?"#FFF3E6":"#EEF1F6"); return '<span style="background:'+bg+';color:'+c+';border-radius:6px;padding:2px 10px;font-weight:800;">'+g+'</span>'; }
+function chgOnCatChange_(sel){ try{ var tr=sel.closest("tr"); if(!tr) return; var gc=tr.querySelector("[data-gradecell]"); if(gc) gc.innerHTML=chgGradeBadge_(chgGradeOf_(sel.value,false)); }catch(e){} }
+function chgCatOpts_(){ return CHG_DETAIL_GRADE.map(function(x){return x[0];}).concat(["사람","설비","재료","방법"]); }
 function chgRowHtml_(c){
   c=c||{type:"내부4M"};
   var isRev=(c.type==="고객REV");
   // 유형에 따라 셀 내용이 달라짐
   var catCell = isRev
     ? '<span style="font-size:11px;color:#8A93A6;">Rev '+chgInput_("oldRev",c.oldRev,"구",'46px')+' → '+chgInput_("newRev",c.newRev,"신",'46px')+'</span>'
-    : chgSel_("cat",c.cat||"방법",["사람","설비","재료","방법"]);
+    : '<select data-k="cat" onchange="chgOnCatChange_(this)" style="width:100%;box-sizing:border-box;padding:5px 6px;border:1px solid #D6DEE8;border-radius:6px;font-size:12px;">'+chgCatOpts_().map(function(o){ return '<option'+((String(c.cat||"방법")===o)?" selected":"")+'>'+chgEsc_(o)+'</option>'; }).join("")+'</select>';
   var stockCell = isRev
     ? chgSel_("stockAction",c.stockAction||"구재고 소진",["구재고 소진","구재고 폐기","선별 사용","해당없음"])
     : chgSel_("notify",c.notify||"불필요",["통보완료","통보예정","불필요"]);
@@ -8530,6 +8555,7 @@ function chgRowHtml_(c){
     +'<td>'+chgInput_("part",c.part,"도번/검사 (예: M200-011 / 청정도)")+'</td>'
     +'<td>'+chgInput_("customer",c.customer,"고객")+'</td>'
     +'<td>'+catCell+'</td>'
+    +'<td data-gradecell="1" style="text-align:center;white-space:nowrap;">'+chgGradeBadge_(isRev?"A":chgGradeOf_(c.cat||"방법",false))+'</td>'
     +'<td>'+chgInput_("before",c.before,"변경 전")+'</td>'
     +'<td>'+chgInput_("after",c.after,"변경 후")+'</td>'
     +'<td>'+(isRev?chgInput_("applyDate",c.applyDate,"적용일"):chgInput_("reason",c.reason,"사유"))+'</td>'
@@ -8596,7 +8622,7 @@ function renderChgPanel(){
   var summaryHtml='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">'+card("전체 변경점",all.length,"#1F2A44","all")+card("내부 4M",n4m,"#0B5CAB","내부4M")+card("고객 REV",nrev,"#8A1F1F","고객REV")+card("완료",ndone,"#1E7A46")+card("미완료",nopen,"#B45309")+'</div>';
   summaryHtml+='<div style="font-size:12px;color:#5A6478;margin-bottom:10px;padding:6px 12px;background:#F4F8FD;border-radius:8px;">내부 4M 세부: 사람 <b>'+cat4m.사람+'</b> · 설비 <b>'+cat4m.설비+'</b> · 재료 <b>'+cat4m.재료+'</b> · 방법 <b>'+cat4m.방법+'</b> &nbsp;|&nbsp; <span style="color:#8A93A6;">카드를 누르면 해당 유형만 필터됩니다.</span></div>';
   var rows=(all.length?all:[{type:"내부4M"}]).map(chgRowHtml_).join("");
-  var heads=["유형","발생일","도번/검사","고객","4M구분/Rev","변경 전","변경 후","사유/적용일","통보/구재고","초도품","승인","완료일","삭제"];
+  var heads=["유형","발생일","도번/검사","고객","4M구분/Rev","등급","변경 전","변경 후","사유/적용일","통보/구재고","초도품","승인","완료일","삭제"];
 
   panel.innerHTML='<div class="table-wrap" style="padding:14px;">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">'
@@ -18819,10 +18845,11 @@ function insOpenDefectHistory(){
       +'<td>'+defectHistEsc_(r.draw)+'</td>'
       +'<td>'+defectHistEsc_(r.sn)+'</td>'
       +'<td>'+defectHistEsc_(r.types)+'</td>'
+      +'<td style="text-align:center;">'+ncGradeBadge_(r.types)+'</td>'
       +'<td style="text-align:center;">'+defectHistEsc_(r.actDate||"-")+'</td>'
       +'<td style="text-align:center;">'+(r.days===""?"-":defectHistEsc_(r.days))+'</td>'
       +'<td>'+defectHistEsc_(r.act||"")+'</td></tr>';
-  }).join("") : '<tr><td colspan="9" style="text-align:center;color:#B9C2D6;padding:16px;">부적합 이력이 없습니다.</td></tr>';
+  }).join("") : '<tr><td colspan="10" style="text-align:center;color:#B9C2D6;padding:16px;">부적합 이력이 없습니다.</td></tr>';
   var ov=document.createElement("div"); ov.id="dhist-ov";
   ov.style.cssText="position:fixed;inset:0;z-index:99991;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:14px;";
   ov.innerHTML='<div style="background:#fff;width:100%;max-width:960px;max-height:92vh;overflow:auto;border-radius:14px;box-shadow:0 16px 50px rgba(0,0,0,0.35);">'
@@ -18838,7 +18865,7 @@ function insOpenDefectHistory(){
     +  '<div style="text-align:right;margin-bottom:8px;"><button id="dhist-excel" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button></div>'
     +  '<div style="overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
     +    '<thead><tr style="background:#F0F4F8;">'
-    +      '<th style="padding:7px;border:1px solid #E1E8F0;">상태</th><th style="padding:7px;border:1px solid #E1E8F0;">발생일</th><th style="padding:7px;border:1px solid #E1E8F0;">유형</th><th style="padding:7px;border:1px solid #E1E8F0;">도번</th><th style="padding:7px;border:1px solid #E1E8F0;">S/N</th><th style="padding:7px;border:1px solid #E1E8F0;">부적합</th><th style="padding:7px;border:1px solid #E1E8F0;">조치완료일</th><th style="padding:7px;border:1px solid #E1E8F0;">소요일</th><th style="padding:7px;border:1px solid #E1E8F0;">조치내용</th>'
+    +      '<th style="padding:7px;border:1px solid #E1E8F0;">상태</th><th style="padding:7px;border:1px solid #E1E8F0;">발생일</th><th style="padding:7px;border:1px solid #E1E8F0;">유형</th><th style="padding:7px;border:1px solid #E1E8F0;">도번</th><th style="padding:7px;border:1px solid #E1E8F0;">S/N</th><th style="padding:7px;border:1px solid #E1E8F0;">부적합</th><th style="padding:7px;border:1px solid #E1E8F0;">등급</th><th style="padding:7px;border:1px solid #E1E8F0;">조치완료일</th><th style="padding:7px;border:1px solid #E1E8F0;">소요일</th><th style="padding:7px;border:1px solid #E1E8F0;">조치내용</th>'
     +    '</tr></thead><tbody>'+body+'</tbody></table></div>'
     +  '<div style="font-size:11px;color:#8A93A6;margin-top:8px;">※ 종결 이력은 마감 시 조치완료된 부적합이 자동 기록됩니다. 미조치는 현재 진행 중인 항목입니다.</div>'
     +'</div></div>';
@@ -18893,7 +18920,7 @@ function insOpenUnresolved(){
   if(!list.length){ rowsHtml='<div style="padding:26px;text-align:center;color:#1E7A46;font-weight:800;font-size:15px;">미조치 부적합이 없습니다 \uD83D\uDC4D</div>'; }
   else {
     rowsHtml='<div style="overflow:auto;max-height:60vh;"><table style="border-collapse:collapse;width:100%;font-size:13px;min-width:560px;"><thead><tr>'
-      +['공정','도번','S/N','검사일','부적합수','유형','검사자'].map(function(h){ return '<th style="border:1px solid #E7C9C9;background:#FDECEC;color:#8A1F1F;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
+      +['공정','도번','S/N','검사일','부적합수','유형','등급','검사자'].map(function(h){ return '<th style="border:1px solid #E7C9C9;background:#FDECEC;color:#8A1F1F;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
       +'</tr></thead><tbody>'
       +list.map(function(x){ return '<tr>'
         +'<td style="border:1px solid #EEE1E1;padding:6px;white-space:nowrap;">'+insEsc(x.label)+'</td>'
@@ -18902,6 +18929,7 @@ function insOpenUnresolved(){
         +'<td style="border:1px solid #EEE1E1;padding:6px;white-space:nowrap;">'+insEsc(x.insDate)+'</td>'
         +'<td style="border:1px solid #EEE1E1;padding:6px;text-align:center;color:#C0392B;font-weight:800;">'+x.qty+'</td>'
         +'<td style="border:1px solid #EEE1E1;padding:6px;">'+insEsc(x.types)+'</td>'
+        +'<td style="border:1px solid #EEE1E1;padding:6px;text-align:center;">'+(typeof ncGradeBadge_==="function"?ncGradeBadge_(x.types):"")+'</td>'
         +'<td style="border:1px solid #EEE1E1;padding:6px;white-space:nowrap;">'+insEsc(x.by)+'</td>'
         +'</tr>'; }).join("")
       +'</tbody></table></div>';
