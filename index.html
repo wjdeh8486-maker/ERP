@@ -4583,7 +4583,7 @@ function renderItemHist(){
     +'<span>⚠ 부적합 <b style="color:#FFB3AB;">'+g.defects.length+'</b></span>'
     +'<span>🔄 변경점 <b>'+g.changes.length+'</b></span>'
     +'<span>📐 측정 <b>'+g.meas.length+'</b></span>'
-    +'<span>📦 주문(남은) <b>'+g.orders.filter(function(m){ return String(m.shipped||"").indexOf("완료")<0 && (Number(m.qty)||0)>0; }).length+'</b></span>'
+    +'<span>📦 주문(남은) <b>'+(function(){ var __l=g.orders.filter(function(m){ return String(m.shipped||"").indexOf("완료")<0 && (Number(m.qty)||0)>0; }); var __e=__l.reduce(function(x,m){ return x+(Number(m.qty)||0); },0); return __l.length+"건("+__e+"EA)"; })()+'</b></span>'
     +'<span>📥 재고 <b>'+(g.stock==null?"-":g.stock)+'</b></span>'
     +'</div></div>';
 
@@ -4630,6 +4630,7 @@ function renderItemHist(){
 
   // 4) 주문/납기 — 납품완료 제외 + 날짜 정렬
   var olist=g.orders.filter(function(m){ return String(m.shipped||"").indexOf("완료")<0 && (Number(m.qty)||0)>0; });   // 미납품 + 수량>0
+  var __oea=olist.reduce(function(x,m){ return x+(Number(m.qty)||0); },0);
   olist.sort(function(a,b){ var c=String(a.dueDate).localeCompare(String(b.dueDate)); return __ihOrdDesc?-c:c; });
   var ordExtra='<button type="button" onclick="ihToggleOrd_()" style="background:#EEF3FA;border:1px solid #C9D3E0;border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer;">최종납기 '+(__ihOrdDesc?"↓":"↑")+'</button>';
   var ordInner = olist.length ? wrap('<table style="border-collapse:collapse;width:100%;min-width:460px;"><thead><tr>'
@@ -4644,7 +4645,7 @@ function renderItemHist(){
     + sec("⚠","부적합 · 조치 (등급)", g.defects.length, defInner)
     + sec("🔄","변경점", g.changes.length, chgInner)
     + sec("📐","측정이력", mlist.length, measInner, measExtra)
-    + sec("📦","주문 / 납기 (미납품)", olist.length, ordInner, ordExtra);
+    + sec("📦","주문 / 납기 (미납품)", olist.length+"건("+__oea+"EA)", ordInner, ordExtra);
 }
 
 function mnFmtShort_(due){ var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(due||"")); return m ? ((+m[2])+"월 "+(+m[3])+"일") : (due||""); }
