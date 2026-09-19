@@ -1611,9 +1611,17 @@
         </div>
         <div class="table-scroll" id="inv-agingTableScroll">
           <table>
-            <thead><tr><th>경과일수</th><th>품번</th><th>현재 재고수량</th></tr></thead>
+            <thead><tr><th>경과일수</th><th>품번</th><th>현재 재고수량</th><th>재검사</th></tr></thead>
             <tbody id="inv-agingBody"></tbody>
           </table>
+        </div>
+        <div id="inv-reinspHistWrap" style="margin-top:16px;display:none;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+            <div style="font-weight:700;color:#1F2A44;">♻ 재검사 완료 이력 <span id="inv-reinspHistCnt" style="color:#8A93A6;font-size:12px;font-weight:400;"></span></div>
+            <button type="button" onclick="reinspExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">📊 엑셀</button>
+            <button type="button" onclick="reinspPrint_()" style="background:#475569;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">🖨 인쇄</button>
+          </div>
+          <div class="table-scroll" style="max-height:240px;"><table><thead><tr><th>재검사일</th><th>품번</th><th>검사자</th><th>수량</th><th>판정</th><th>다음 재검사(+180일)</th><th>삭제</th></tr></thead><tbody id="inv-reinspHistBody"></tbody></table></div>
         </div>
         <div class="empty-state" id="inv-agingEmpty">조회 버튼을 클릭하면 기준일수 이상 오래된 재고가 표시됩니다.</div>
       </div>
@@ -2142,6 +2150,15 @@
     <div class="view" id="view-shipjudge">
       <h1 style="margin:0 0 4px;">🚦 QMS 출하판정</h1>
       <div style="font-size:12.5px;color:#7A8598;margin-bottom:12px;">ORDER NO. 또는 PROJECT NO.를 검색하면, 각 항목의 <b>검사 누락·부적합·부족</b>을 종합해 <b>출하 가능 여부</b>를 판정합니다.</div>
+      <div style="background:#fff;border:1px solid #F0C9C4;border-radius:12px;padding:14px 16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+        <div style="font-weight:800;color:#C0392B;font-size:15px;margin-bottom:8px;">🔴 LOT 출하정지 관리</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+          <input id="hold-target" type="text" placeholder="대상 (ORDER/PROJECT/도번)" style="min-width:180px;padding:7px 10px;border:1px solid #D6DEE8;border-radius:7px;font-size:13px;">
+          <input id="hold-reason" type="text" placeholder="정지 사유 (부적합·고객요청 등)" onkeydown="if(event.key==='Enter')holdAdd_()" style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #D6DEE8;border-radius:7px;font-size:13px;">
+          <button type="button" onclick="holdAdd_()" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">🔴 출하정지 등록</button>
+        </div>
+        <div id="hold-body"></div>
+      </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <input id="shipjudge-search" type="text" placeholder="ORDER NO. 또는 PROJECT NO. (예: 26-386 / JB0130311)" onkeydown="if(event.key==='Enter')renderShipJudge()" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
         <button onclick="renderShipJudge()" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:700;cursor:pointer;">🚦 판정</button>
@@ -3463,6 +3480,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="itemhist"){
       if(typeof renderItemHist==="function") renderItemHist();
     }
+    if(target==="shipjudge"){ if(typeof holdEnsure_==="function") holdEnsure_(); if(typeof renderHold_==="function") renderHold_(); }
     if(target==="mnshort"){
       if(typeof stockEnsureLoaded_==="function") stockEnsureLoaded_();
       if(typeof renderMonthlyShortage==="function") runBusy(renderMonthlyShortage);
@@ -4495,7 +4513,7 @@ else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;
         +'<td style="'+td+'text-align:center;"><input type="checkbox" class="insplist-chk" data-order="'+qcEsc(r.orderNo)+'" data-part="'+qcEsc(r.partNo)+'" style="width:15px;height:15px;cursor:pointer;"></td>'
         +'<td style="'+td+'text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
         +'<td style="'+td+'text-align:center;">'+qcEsc(r.project)+'</td>'
-        +'<td style="'+td+'text-align:center;">'+((typeof dwgLink==="function"&&r.oldDraw)?dwgLink(r.oldDraw):qcEsc(r.oldDraw))+(r.oldDraw?(' <span class="insplist-ihist" data-draw="'+qcEsc(r.oldDraw)+'" title="품목이력(전체)" style="cursor:pointer;opacity:0.85;font-size:12px;margin-left:2px;">📇</span>'):'')+'</td>'
+        +'<td style="'+td+'text-align:center;">'+((typeof dwgLink==="function"&&r.oldDraw)?dwgLink(r.oldDraw):qcEsc(r.oldDraw))+(r.oldDraw?(' <span class="insplist-ihist" data-draw="'+qcEsc(r.oldDraw)+'" title="품목이력(전체)" style="cursor:pointer;opacity:0.85;font-size:12px;margin-left:2px;">📇</span>'):'')+((typeof holdBadge_==="function")?holdBadge_((r.orderNo||"")+" "+(r.oldDraw||"")+" "+(r.projectNo||r.project||"")):"")+'</td>'
         +'<td style="'+td+'text-align:center;">'+qcEsc(r.name)+'</td>'
         +'<td style="'+td+'text-align:center;">'+r.qty+'</td>'
         +'<td style="'+td+'text-align:center;">'+r.done+'</td>'
@@ -4531,6 +4549,59 @@ var __insplistShip=[];
 
 
 /* ========================= 📊 월별 납기부족 분석 ========================= */
+/* ========================= 🔴 LOT 출하정지 관리 ========================= */
+var __holdLog=[], __holdLoaded=false;
+function holdEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function holdToday_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
+function holdWho_(){ try{ return (insMetaByType&&insMetaByType.shipping&&insMetaByType.shipping.inspector)||(insMetaByType&&insMetaByType.incoming&&insMetaByType.incoming.inspector)||""; }catch(_){ return ""; } }
+function holdSave_(){ try{ if(typeof idbSet==="function") idbSet("holdLog", __holdLog); }catch(_){}; try{ if(typeof qShareSave_==="function") qShareSave_("holdLog", __holdLog, ""); }catch(_){} }
+function holdEnsure_(){ if(__holdLoaded) return; __holdLoaded=true;
+  try{ if(typeof idbGet==="function"){ idbGet("holdLog").then(function(v){ if(Array.isArray(v)) __holdLog=v;
+    try{ if(typeof qShareLoad_==="function") qShareLoad_("holdLog", function(sv){ if(Array.isArray(sv)){ var ids={}; __holdLog.forEach(function(h){ids[h.id]=1;}); sv.forEach(function(h){ if(!ids[h.id]) __holdLog.push(h); }); } if(typeof renderHold_==="function") renderHold_(); }); }catch(_){}
+    if(typeof renderHold_==="function") renderHold_();
+  }).catch(function(){}); } }catch(_){} }
+// 활성(정지중) HOLD가 이 텍스트(ORDER/PROJECT/도번)와 매칭되나
+function holdActive_(text){
+  var t=String(text||"").trim().toUpperCase(); if(!t) return null;
+  for(var i=0;i<__holdLog.length;i++){ var h=__holdLog[i]; if(h.status==="해제") continue;
+    var tg=String(h.target||"").trim().toUpperCase(); if(!tg) continue;
+    if(t.indexOf(tg)>=0 || tg.indexOf(t)>=0) return h;
+  }
+  return null;
+}
+function holdBadge_(text){ var h=holdActive_(text); if(!h) return ""; return '<span title="출하정지: '+holdEsc_(h.reason)+'" style="background:#C0392B;color:#fff;border-radius:5px;padding:1px 7px;font-size:10.5px;font-weight:800;margin-left:4px;white-space:nowrap;">🔴 출하정지</span>'; }
+function holdAdd_(){
+  var tg=(document.getElementById("hold-target")||{}).value||""; tg=String(tg).trim();
+  var rs=(document.getElementById("hold-reason")||{}).value||""; rs=String(rs).trim();
+  if(!tg){ alert("정지할 대상(ORDER/PROJECT/도번)을 입력하세요."); return; }
+  __holdLog.push({ id:"H"+Date.now()+Math.floor(Math.random()*1000), target:tg, reason:rs, holdDate:holdToday_(), by:holdWho_(), status:"정지" });
+  holdSave_();
+  var a=document.getElementById("hold-target"); if(a) a.value=""; var b=document.getElementById("hold-reason"); if(b) b.value="";
+  renderHold_();
+}
+function holdRelease_(id){
+  var h=null; for(var i=0;i<__holdLog.length;i++){ if(__holdLog[i].id===id){ h=__holdLog[i]; break; } } if(!h) return;
+  var note=prompt("해제 처리내용 (재검사·선별·조치 등):",""); if(note===null) return;
+  h.status="해제"; h.releaseDate=holdToday_(); h.releaseNote=note; h.releaseBy=holdWho_();
+  holdSave_(); renderHold_();
+}
+function holdDelete_(id){ if(!confirm("이 정지 기록을 완전히 삭제할까요?")) return; __holdLog=__holdLog.filter(function(h){ return h.id!==id; }); holdSave_(); renderHold_(); }
+function renderHold_(){
+  var body=document.getElementById("hold-body"); if(!body) return;
+  var td="padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;";
+  var TH="padding:7px;border:1px solid #C9D3E0;background:#1F2A44;color:#fff;font-weight:700;white-space:nowrap;";
+  var active=__holdLog.filter(function(h){ return h.status!=="해제"; }).sort(function(a,b){ return String(b.holdDate).localeCompare(String(a.holdDate)); });
+  var released=__holdLog.filter(function(h){ return h.status==="해제"; }).sort(function(a,b){ return String(b.releaseDate).localeCompare(String(a.releaseDate)); });
+  var E=holdEsc_;
+  var actRows=active.length?active.map(function(h){ return '<tr style="background:#FDECEC;"><td style="'+td+'font-weight:700;color:#C0392B;">'+E(h.target)+'</td><td style="'+td+'">'+E(h.reason)+'</td><td style="'+td+'text-align:center;white-space:nowrap;">'+E(h.holdDate)+'</td><td style="'+td+'text-align:center;">'+E(h.by)+'</td><td style="'+td+'text-align:center;"><button type="button" onclick="holdRelease_(\''+h.id+'\')" style="background:#1D6F42;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;">✅ 해제</button></td></tr>'; }).join(""):'<tr><td colspan="5" style="text-align:center;color:#B9C2D6;padding:12px;">현재 출하정지 중인 항목 없음</td></tr>';
+  var relRows=released.slice(0,50).map(function(h){ return '<tr><td style="'+td+'">'+E(h.target)+'</td><td style="'+td+'">'+E(h.reason)+'</td><td style="'+td+'text-align:center;white-space:nowrap;">'+E(h.holdDate)+'</td><td style="'+td+'text-align:center;white-space:nowrap;color:#1E7A46;">'+E(h.releaseDate)+'</td><td style="'+td+'">'+E(h.releaseNote||"")+'</td><td style="'+td+'text-align:center;"><span onclick="holdDelete_(\''+h.id+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">✕</span></td></tr>'; }).join("");
+  body.innerHTML='<div style="font-weight:800;color:#C0392B;margin-bottom:6px;">🔴 출하정지 중 <span style="color:#8A93A6;font-size:12px;font-weight:400;">('+active.length+'건)</span></div>'
+    +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:560px;margin-bottom:14px;"><thead><tr>'
+    +['대상(ORDER/PROJECT/도번)','정지 사유','정지일','담당','해제'].map(function(x){return '<th style="'+TH+'">'+x+'</th>';}).join("")+'</tr></thead><tbody>'+actRows+'</tbody></table></div>'
+    +(released.length?('<div style="font-weight:700;color:#1F2A44;margin-bottom:6px;">해제 이력 <span style="color:#8A93A6;font-size:12px;font-weight:400;">('+released.length+'건)</span></div>'
+    +'<div style="overflow:auto;max-height:240px;"><table style="border-collapse:collapse;width:100%;min-width:620px;"><thead><tr>'
+    +['대상','사유','정지일','해제일','처리내용','삭제'].map(function(x){return '<th style="'+TH+'">'+x+'</th>';}).join("")+'</tr></thead><tbody>'+relRows+'</tbody></table></div>'):'');
+}
 /* ========================= 📇 품목이력 카드 (도번별 연결관리) ========================= */
 function ihNorm_(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); }
 function ihEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -5217,7 +5288,7 @@ function renderDispatchList(){
         +'<td style="'+td+'text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
         +'<td style="'+td+'text-align:center;">'+qcEsc(r.project)+'</td>'
         +'<td style="'+td+'text-align:center;font-size:11px;">'+qcEsc(r.po||"")+'</td>'
-        +'<td style="'+td+'text-align:center;">'+((typeof dwgLink==="function"&&r.oldDraw)?dwgLink(r.oldDraw):qcEsc(r.oldDraw))+(r.oldDraw?(' <span class="dispatch-ihist" data-draw="'+qcEsc(r.oldDraw)+'" title="품목이력(전체)" style="cursor:pointer;opacity:0.85;font-size:12px;margin-left:2px;">📇</span>'):'')+'</td>'
+        +'<td style="'+td+'text-align:center;">'+((typeof dwgLink==="function"&&r.oldDraw)?dwgLink(r.oldDraw):qcEsc(r.oldDraw))+(r.oldDraw?(' <span class="dispatch-ihist" data-draw="'+qcEsc(r.oldDraw)+'" title="품목이력(전체)" style="cursor:pointer;opacity:0.85;font-size:12px;margin-left:2px;">📇</span>'):'')+((typeof holdBadge_==="function")?holdBadge_((r.orderNo||"")+" "+(r.oldDraw||"")+" "+(r.projectNo||r.project||"")):"")+'</td>'
         +'<td style="'+td+'text-align:center;">'+qcEsc(r.name)+'</td>'
         +'<td style="'+td+'text-align:center;">'+r.qty+'</td>'
         +'<td style="'+td+'text-align:center;">'+r.done+'</td>'
@@ -7241,12 +7312,79 @@ function invGetAgingRows(thresholdDays){
   return Object.values(byPart)
     .filter(p=> (p.totalIn - p.totalOut) > 0 && p.lastDate)
     .map(p=>{
-      const d = new Date(p.lastDate); d.setHours(0,0,0,0);
-      const daysSince = Math.round((today-d)/(1000*60*60*24));
+      let __base = new Date(p.lastDate); __base.setHours(0,0,0,0);
+      try{ var __rdt=reinspLatestDate_(reinspKey_(p.partNo)); if(__rdt){ var __rd=new Date(__rdt); __rd.setHours(0,0,0,0); if(!isNaN(__rd) && __rd>__base) __base=__rd; } }catch(_){}   // 재검사하면 기준일 리셋(최신 재검사일)
+      const daysSince = Math.round((today-__base)/(1000*60*60*24));
       return { partNo:p.partNo, stock: p.totalIn-p.totalOut, daysSince };
     })
     .filter(p=>p.daysSince>=thresholdDays)
     .sort((a,b)=> b.daysSince - a.daysSince);
+}
+// ===== 장기재고 재검사 이력 (라인에서 등록) =====
+var __reinspLog={}, __reinspLoaded=false;
+function reinspKey_(pn){ return String(pn==null?"":pn).trim().toUpperCase(); }
+function reinspEsc_(pn){ return String(pn==null?"":pn).replace(/\\/g,"\\\\").replace(/'/g,"\\'"); }
+function reinspToday_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
+function reinspList_(k){ var v=__reinspLog[k]; if(!v) return []; return Array.isArray(v)?v.slice():[v]; }   // 하위호환(옛 단일객체→배열)
+function reinspLatestDate_(k){ var m=""; reinspList_(k).forEach(function(r){ if(r&&r.date&&String(r.date)>m) m=String(r.date); }); return m; }
+function reinspSave_(){ try{ if(typeof idbSet==="function") idbSet("reinspectLog", __reinspLog); }catch(_){}; try{ if(typeof qShareSave_==="function") qShareSave_("reinspectLog", __reinspLog, ""); }catch(_){} }
+function reinspEnsure_(){ if(__reinspLoaded) return; __reinspLoaded=true;
+  try{ if(typeof idbGet==="function"){ idbGet("reinspectLog").then(function(v){ if(v&&typeof v==="object") __reinspLog=v;
+    try{ if(typeof qShareLoad_==="function") qShareLoad_("reinspectLog", function(sv){ if(sv&&typeof sv==="object"){ __reinspLog=Object.assign({}, sv, __reinspLog); } if(typeof invRenderAging==="function") invRenderAging(); }); }catch(_){}
+  }).catch(function(){}); } }catch(_){} }
+function reinspNext180_(dstr){ try{ var d=new Date(dstr); if(isNaN(d)) return ""; d.setDate(d.getDate()+180); var z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }catch(_){ return ""; } }
+// 재검사 입력 팝업 (검사자·수량·판정)
+function reinspOpen_(pn, stock){
+  var e=reinspEsc_(pn), who="";
+  try{ who=(insMetaByType&&insMetaByType.incoming&&insMetaByType.incoming.inspector)||""; }catch(_){}
+  var html='<div id="reinsp-ov" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100060;display:flex;align-items:center;justify-content:center;padding:16px;">'
+    +'<div style="background:#fff;border-radius:14px;max-width:380px;width:100%;box-shadow:0 16px 50px rgba(0,0,0,.35);overflow:hidden;">'
+    +'<div style="background:#1D6F42;color:#fff;padding:12px 16px;font-weight:800;">\u267B 재검사 등록 · '+String(pn).replace(/</g,"&lt;")+'</div>'
+    +'<div style="padding:16px;display:flex;flex-direction:column;gap:10px;">'
+    +'<label style="font-size:12px;color:#5A6478;font-weight:700;">재검사일<input id="reinsp-date" type="date" value="'+reinspToday_()+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"></label>'
+    +'<label style="font-size:12px;color:#5A6478;font-weight:700;">검사자<input id="reinsp-by" type="text" value="'+String(who).replace(/"/g,"")+'" placeholder="이름" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"></label>'
+    +'<label style="font-size:12px;color:#5A6478;font-weight:700;">재검사 수량<input id="reinsp-qty" type="number" value="'+(stock||"")+'" placeholder="개수" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"></label>'
+    +'<label style="font-size:12px;color:#5A6478;font-weight:700;">판정<select id="reinsp-res" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"><option>양호</option><option>불량</option></select></label>'
+    +'<div style="display:flex;gap:8px;margin-top:6px;">'
+    +'<button type="button" onclick="reinspCommit_(\''+e+'\')" style="flex:1;background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:10px;font-weight:800;cursor:pointer;">등록</button>'
+    +'<button type="button" onclick="var o=document.getElementById(\'reinsp-ov\');if(o)o.remove();" style="flex:0 0 auto;background:#EEF1F6;border:1px solid #D6DEE8;border-radius:8px;padding:10px 16px;cursor:pointer;">취소</button>'
+    +'</div></div></div></div>';
+  var old=document.getElementById("reinsp-ov"); if(old) old.remove();
+  var d=document.createElement("div"); d.innerHTML=html; document.body.appendChild(d.firstChild);
+  var ov=document.getElementById("reinsp-ov"); if(ov) ov.addEventListener("click",function(ev){ if(ev.target===ov) ov.remove(); });
+  setTimeout(function(){ var by=document.getElementById("reinsp-by"); if(by&&!by.value) by.focus(); },60);
+}
+function reinspCommit_(pn){
+  var k=reinspKey_(pn); if(!k) return;
+  var date=(document.getElementById("reinsp-date")||{}).value||reinspToday_();
+  var by=(document.getElementById("reinsp-by")||{}).value||"";
+  var qty=Number((document.getElementById("reinsp-qty")||{}).value||0)||0;
+  var res=(document.getElementById("reinsp-res")||{}).value||"양호";
+  var l=reinspList_(k); l.push({date:date, by:by, qty:qty, result:res}); __reinspLog[k]=l;
+  reinspSave_();
+  var o=document.getElementById("reinsp-ov"); if(o) o.remove();
+  if(typeof invRenderAging==="function") invRenderAging();
+}
+function reinspUndoOne_(pn, date){
+  var k=reinspKey_(pn), l=reinspList_(k), i=-1;
+  for(var x=0;x<l.length;x++){ if(String(l[x].date)===String(date)){ i=x; break; } }
+  if(i>=0){ l.splice(i,1); if(l.length) __reinspLog[k]=l; else delete __reinspLog[k]; reinspSave_(); if(typeof invRenderAging==="function") invRenderAging(); }
+}
+function reinspHistArr_(){ var arr=[]; Object.keys(__reinspLog).forEach(function(k){ reinspList_(k).forEach(function(r){ if(r&&r.date) arr.push({pn:k, date:r.date, by:r.by||"", qty:(r.qty||""), result:r.result||""}); }); }); arr.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); }); return arr; }
+function reinspExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; } var arr=reinspHistArr_(); if(!arr.length){ alert("재검사 이력이 없습니다."); return; } var aoa=[["재검사일","품번","검사자","수량","판정","다음 재검사(+180일)"]]; arr.forEach(function(x){ aoa.push([x.date, x.pn, x.by, x.qty, x.result, reinspNext180_(x.date)]); }); var ws=XLSX.utils.aoa_to_sheet(aoa); var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "재검사이력"); XLSX.writeFile(wb, "재검사이력_"+reinspToday_()+".xlsx"); }
+function reinspPrint_(){ var arr=reinspHistArr_(); var E=function(t){return String(t==null?"":t).replace(/</g,"&lt;");}; var rows=arr.map(function(x){ return "<tr><td>"+E(x.date)+"</td><td>"+E(x.pn)+"</td><td>"+E(x.by)+"</td><td style=\"text-align:center;\">"+E(x.qty)+"</td><td style=\"text-align:center;\">"+E(x.result)+"</td><td>"+E(reinspNext180_(x.date))+"</td></tr>"; }).join(""); var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; } w.document.write('<html><head><title>재검사 완료 이력</title><meta charset="utf-8"><style>body{font-family:sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #999;padding:6px 8px;font-size:12px;}th{background:#1F2A44;color:#fff;}h2{margin:0 0 4px;}</style></head><body><h2>\u267B 재검사 완료 이력</h2><div style="color:#666;font-size:12px;margin-bottom:10px;">출력일: '+reinspToday_()+' · 총 '+arr.length+'건</div><table><thead><tr><th>재검사일</th><th>품번</th><th>검사자</th><th>수량</th><th>판정</th><th>다음 재검사(+180일)</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>'); w.document.close(); setTimeout(function(){ try{ w.print(); }catch(e){} }, 400); }
+function renderReinspHist_(){
+  var body=document.getElementById("inv-reinspHistBody"), wrap=document.getElementById("inv-reinspHistWrap"); if(!body) return;
+  var arr=reinspHistArr_();
+  if(wrap) wrap.style.display=arr.length?"block":"none";
+  var cnt=document.getElementById("inv-reinspHistCnt"); if(cnt) cnt.textContent="("+arr.length+"건 누적)";
+  var td="padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;";
+  body.innerHTML=arr.length?arr.map(function(x){ var e=reinspEsc_(x.pn); var rc=(x.result==="불량")?"#C0392B":"#1E7A46"; return '<tr><td style="'+td+'text-align:center;color:#1E7A46;font-weight:700;">'+x.date+'</td><td style="'+td+'">'+String(x.pn)+'</td><td style="'+td+'text-align:center;">'+String(x.by||"")+'</td><td style="'+td+'text-align:center;">'+(x.qty||"")+'</td><td style="'+td+'text-align:center;color:'+rc+';font-weight:700;">'+String(x.result||"")+'</td><td style="'+td+'text-align:center;color:#B0662A;">'+reinspNext180_(x.date)+'</td><td style="'+td+'text-align:center;"><span onclick="reinspUndoOne_(\''+e+'\',\''+x.date+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">\u2715</span></td></tr>'; }).join(""):'<tr><td colspan="7" style="text-align:center;color:#B9C2D6;padding:12px;">재검사 이력 없음</td></tr>';
+}
+function reinspCell_(pn, stock){
+  var k=reinspKey_(pn), e=reinspEsc_(pn), last=reinspLatestDate_(k), sv=(Number(stock)||0);
+  if(last){ return '\u2705 '+last+' <button type="button" onclick="reinspOpen_(\''+e+'\','+sv+')" style="background:#EEF3FA;border:1px solid #C9D3E0;border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;margin-left:4px;">재검사</button>'; }
+  return '<button type="button" onclick="reinspOpen_(\''+e+'\','+sv+')" style="background:#1D6F42;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;">\u267B 재검사</button>';
 }
 function invRenderAging(){
   const threshold = Number(document.getElementById("inv-agingThreshold").value) || 150;
@@ -7254,12 +7392,15 @@ function invRenderAging(){
   const tbody = document.getElementById("inv-agingBody");
   const empty = document.getElementById("inv-agingEmpty");
   const summary = document.getElementById("inv-agingSummary");
+  reinspEnsure_();
   tbody.innerHTML = rows.map(r=>`<tr>
     <td class="cell-overdue">${r.daysSince}일</td>
     <td>${r.partNo||''}</td>
     <td class="badge-in">${r.stock}</td>
+    <td style="text-align:center;white-space:nowrap;">${reinspCell_(r.partNo, r.stock)}</td>
   </tr>`).join("");
   document.getElementById("inv-agingCount").textContent = rows.length;
+  try{ renderReinspHist_(); }catch(_){}
   summary.style.display = "flex";
   empty.style.display = rows.length===0 ? "block" : "none";
   empty.textContent = `${threshold}일 이상 된 장기 재고가 없습니다.`;
@@ -8259,6 +8400,7 @@ function ctqOnUpload_(file){
   reader.readAsArrayBuffer(file);
 }
 // 저장된 집계가 있으면 로드
+(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){} });
 (window.__afterEnter=window.__afterEnter||[]).push(function(){ qShareLoad_("ctqMonthly", function(sv){ if(window.__qUserLoaded&&window.__qUserLoaded.ctqMonthly) return; if(sv&&typeof sv==="object"){ __ctqMonthly=sv; try{ if(typeof idbSet==="function") idbSet("ctqMonthly",sv); }catch(_){}; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ctqMonthly").then(function(v){ if(v&&typeof v==="object"){ __ctqMonthly=v; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); } }).catch(function(){}); } }catch(_){} }); });
 /* ==================== 📐 공정능력(Ppk) 분석 (측정 종합 시트 업로드 → 특성별 Ppk·문제 검출) ==================== */
 var PPK_GOOD=1.33, PPK_WARN=1.00;
