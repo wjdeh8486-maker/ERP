@@ -4558,81 +4558,93 @@ function ihOpen_(draw){
     setTimeout(function(){ var inp=document.getElementById("ih-draw"); if(inp) inp.value=String(draw||"").trim(); if(typeof renderItemHist==="function") renderItemHist(); }, 160);
   }catch(e){}
 }
+var __ihOrdDesc = true;   // 주문 최종납기 정렬(true=내림)
+var __ihMeasSn = "";      // 측정 S/N 검색
+var __ihMeasDesc = true;  // 측정일 정렬
+function ihToggleOrd_(){ __ihOrdDesc=!__ihOrdDesc; renderItemHist(); }
+function ihMeasSearch_(){ var e=document.getElementById("ih-meas-sn"); __ihMeasSn=e?String(e.value||"").trim():""; renderItemHist(); }
+function ihToggleMeas_(){ __ihMeasDesc=!__ihMeasDesc; renderItemHist(); }
+
 function renderItemHist(){
   var inp=document.getElementById("ih-draw"); var draw=inp?String(inp.value||"").trim():"";
   var body=document.getElementById("ih-body"); if(!body) return;
-  if(!draw){ body.innerHTML='<div style="text-align:center;color:#8A93A6;padding:36px;">도번을 입력하고 🔍 조회를 누르세요. 그 품목의 주문·검사·부적합(등급)·변경점·측정·재고 이력이 한눈에 모입니다.</div>'; return; }
+  if(!draw){ body.innerHTML='<div style="text-align:center;color:#8A93A6;padding:36px;">도번을 입력하고 🔍 조회를 누르세요. 그 품목의 부적합·변경점·측정·주문 이력이 한눈에 모입니다.</div>'; return; }
   var g=itemHistGather_(draw), E=ihEsc_;
+  var TH='padding:8px;border:1px solid #C9D3E0;background:#1F2A44;color:#fff;font-weight:700;white-space:nowrap;position:sticky;top:0;';
   var td='padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;';
-  var sec=function(icon,title,cnt,inner){ return '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px 16px;margin-bottom:12px;"><div style="font-weight:800;color:#1F2A44;margin-bottom:8px;font-size:14px;">'+icon+' '+title+' <span style="color:#8A93A6;font-size:12px;font-weight:600;">('+cnt+')</span></div>'+inner+'</div>'; };
+  var wrap=function(inner){ return '<div style="overflow:auto;max-height:300px;">'+inner+'</div>'; };
+  var sec=function(icon,title,cnt,inner,extra){ return '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px 16px;margin-bottom:12px;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;"><div style="font-weight:800;color:#1F2A44;font-size:14px;">'+icon+' '+title+' <span style="color:#8A93A6;font-size:12px;font-weight:600;">('+cnt+')</span></div>'+(extra||"")+'</div>'+inner+'</div>'; };
   var none=function(t){ return '<div style="color:#B9C2D6;font-size:12px;padding:6px;">'+t+'</div>'; };
 
-  // 헤더
-  var stockTxt = (g.stock==null?"-":g.stock);
-  var head='<div style="background:linear-gradient(135deg,#1F2A44,#33415C);color:#fff;border-radius:14px;padding:16px 20px;margin-bottom:14px;">'
-    +'<div style="font-size:22px;font-weight:800;">'+E(g.draw)+'</div>'
-    +'<div style="font-size:13px;opacity:.9;margin-top:2px;">'+E(g.name||"(품명 미상)")+(g.cust?(" · "+E(g.cust)):"")+'</div>'
-    +'<div style="display:flex;gap:16px;margin-top:10px;font-size:12px;flex-wrap:wrap;">'
-    +'<span>📦 주문 <b>'+g.orders.length+'</b>건</span>'
-    +'<span>⚠ 부적합 <b style="color:#FFB3AB;">'+g.defects.length+'</b>건</span>'
-    +'<span>🔄 변경점 <b>'+g.changes.length+'</b>건</span>'
-    +'<span>📐 측정 <b>'+g.meas.length+'</b>건</span>'
-    +'<span>📥 현재고 <b>'+stockTxt+'</b></span>'
+  // 헤더 — 2줄 컴팩트
+  var head='<div style="background:linear-gradient(135deg,#1F2A44,#33415C);color:#fff;border-radius:12px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
+    +'<div><span style="font-size:17px;font-weight:800;">'+E(g.draw)+'</span> <span style="font-size:12px;opacity:.85;margin-left:6px;">'+E(g.name||"(품명 미상)")+(g.cust?(" · "+E(g.cust)):"")+'</span></div>'
+    +'<div style="display:flex;gap:12px;font-size:12px;flex-wrap:wrap;">'
+    +'<span>⚠ 부적합 <b style="color:#FFB3AB;">'+g.defects.length+'</b></span>'
+    +'<span>🔄 변경점 <b>'+g.changes.length+'</b></span>'
+    +'<span>📐 측정 <b>'+g.meas.length+'</b></span>'
+    +'<span>📦 주문 <b>'+g.orders.length+'</b></span>'
+    +'<span>📥 재고 <b>'+(g.stock==null?"-":g.stock)+'</b></span>'
     +'</div></div>';
 
-  // 주문/납기
-  var ordInner = g.orders.length ? ('<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:520px;"><thead><tr>'
-    +['ORDER NO.','수량','최종납기','상태','납품'].map(function(h){return '<th style="'+td+'background:#F0F4F8;">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
-    +g.orders.slice(0,50).map(function(m){ return '<tr>'
-      +'<td style="'+td+'">'+E(m.orderNo)+'</td>'
-      +'<td style="'+td+'text-align:center;">'+E(m.qty)+'</td>'
-      +'<td style="'+td+'text-align:center;">'+E(m.dueDate)+'</td>'
-      +'<td style="'+td+'text-align:center;">'+E(m.status)+'</td>'
-      +'<td style="'+td+'text-align:center;">'+E(m.shipped||"")+'</td></tr>'; }).join("")
-    +'</tbody></table></div>'+(g.orders.length>50?'<div style="font-size:11px;color:#B0662A;">앞 50건만 표시</div>':'')) : none("주문 이력 없음");
-
-  // 부적합·조치 (등급)
-  var defInner = g.defects.length ? ('<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:620px;"><thead><tr>'
-    +['발생일','구분','유형','등급','수량','조치','조치완료일'].map(function(h){return '<th style="'+td+'background:#FBEDEC;color:#8A1F1F;">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+  // 1) 부적합·조치 (등급)
+  var defInner = g.defects.length ? wrap('<table style="border-collapse:collapse;width:100%;min-width:620px;"><thead><tr>'
+    +['발생일','구분','유형','등급','수량','조치','조치완료일'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
     +g.defects.slice(0,100).map(function(d){ var stc=d.status==="종결"?"#1E7A46":(d.status==="미조치"?"#C0392B":"#0B5CAB");
-      return '<tr>'
-      +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(d.date)+'</td>'
+      return '<tr><td style="'+td+'text-align:center;white-space:nowrap;">'+E(d.date)+'</td>'
       +'<td style="'+td+'text-align:center;color:'+stc+';font-weight:700;">'+E(d.status)+'</td>'
       +'<td style="'+td+'">'+E(d.types)+'</td>'
       +'<td style="'+td+'text-align:center;">'+((typeof ncGradeBadge_==="function")?ncGradeBadge_(d.types):"")+'</td>'
       +'<td style="'+td+'text-align:center;">'+E(d.qty)+'</td>'
       +'<td style="'+td+'font-size:11.5px;">'+E(d.act||"")+'</td>'
       +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(d.actDate||"-")+'</td></tr>'; }).join("")
-    +'</tbody></table></div>') : none("부적합 이력 없음 👍");
+    +'</tbody></table>') : none("부적합 이력 없음 👍");
 
-  // 변경점
-  var chgInner = g.changes.length ? ('<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:560px;"><thead><tr>'
-    +['발생일','유형','구분/Rev','등급','변경 전→후','초도품','완료일'].map(function(h){return '<th style="'+td+'background:#EAF3F5;">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+  // 2) 변경점
+  var chgInner = g.changes.length ? wrap('<table style="border-collapse:collapse;width:100%;min-width:560px;"><thead><tr>'
+    +['발생일','유형','구분/Rev','등급','변경 전→후','초도품','완료일'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
     +g.changes.map(function(c){ var isRev=(c.type==="고객REV"); var gr=(typeof chgGradeOf_==="function")?chgGradeOf_(c.cat||"", isRev):"";
-      return '<tr>'
-      +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(c.date)+'</td>'
+      return '<tr><td style="'+td+'text-align:center;white-space:nowrap;">'+E(c.date)+'</td>'
       +'<td style="'+td+'text-align:center;">'+E(c.type)+'</td>'
       +'<td style="'+td+'">'+E(isRev?("Rev "+(c.oldRev||"")+"→"+(c.newRev||"")):(c.cat||""))+'</td>'
       +'<td style="'+td+'text-align:center;">'+((typeof chgGradeBadge_==="function"&&gr)?chgGradeBadge_(gr):E(gr))+'</td>'
       +'<td style="'+td+'font-size:11.5px;">'+E((c.before||"")+" → "+(c.after||""))+'</td>'
       +'<td style="'+td+'text-align:center;">'+E(c.firstArticle||"")+'</td>'
       +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(c.doneDate||"")+'</td></tr>'; }).join("")
-    +'</tbody></table></div>') : none("변경점 없음");
+    +'</tbody></table>') : none("변경점 없음");
 
-  // 측정이력
-  var measInner = g.meas.length ? ('<div style="overflow:auto;max-height:240px;"><table style="border-collapse:collapse;width:100%;min-width:420px;"><thead><tr>'
-    +['S/N','수량','측정일'].map(function(h){return '<th style="'+td+'background:#F0F4F8;position:sticky;top:0;">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
-    +g.meas.slice(0,200).map(function(r){ return '<tr>'
-      +'<td style="'+td+'text-align:center;">'+E(r.sn)+'</td>'
+  // 3) 측정이력 — S/N 검색 + 정렬
+  var mlist=g.meas.slice();
+  if(__ihMeasSn){ var mq=__ihMeasSn.toUpperCase(); mlist=mlist.filter(function(r){ return String(r.sn||"").toUpperCase().indexOf(mq)>=0; }); }
+  mlist.sort(function(a,b){ var c=String(a.d).localeCompare(String(b.d)); return __ihMeasDesc?-c:c; });
+  var measExtra='<div style="display:flex;gap:5px;align-items:center;">'
+    +'<input id="ih-meas-sn" type="text" value="'+E(__ihMeasSn)+'" placeholder="S/N 검색" onkeydown="if(event.key===\'Enter\')ihMeasSearch_()" style="width:120px;padding:5px 8px;border:1px solid #D6DEE8;border-radius:6px;font-size:12px;">'
+    +'<button type="button" onclick="ihMeasSearch_()" style="background:#B8860B;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">검색</button>'
+    +'<button type="button" onclick="ihToggleMeas_()" style="background:#EEF3FA;border:1px solid #C9D3E0;border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer;">측정일 '+(__ihMeasDesc?"↓":"↑")+'</button></div>';
+  var measInner = mlist.length ? wrap('<table style="border-collapse:collapse;width:100%;min-width:420px;"><thead><tr>'
+    +['S/N','수량','측정일'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+    +mlist.slice(0,300).map(function(r){ return '<tr><td style="'+td+'text-align:center;">'+E(r.sn)+'</td>'
       +'<td style="'+td+'text-align:center;">'+E(Number(r.q)||1)+'</td>'
       +'<td style="'+td+'text-align:center;color:#0B5CAB;">'+E(r.d)+'</td></tr>'; }).join("")
-    +'</tbody></table></div>'+(g.meas.length>200?'<div style="font-size:11px;color:#B0662A;">앞 200건만 표시 (전체 '+g.meas.length+'건)</div>':'')) : none("측정 이력 없음");
+    +'</tbody></table>'+(mlist.length>300?'<div style="font-size:11px;color:#B0662A;">앞 300건만 표시 (전체 '+mlist.length+'건)</div>':'')) : none(__ihMeasSn?"검색 결과 없음":"측정 이력 없음");
+
+  // 4) 주문/납기 — 납품완료 제외 + 날짜 정렬
+  var olist=g.orders.filter(function(m){ return String(m.shipped||"").indexOf("완료")<0; });
+  olist.sort(function(a,b){ var c=String(a.dueDate).localeCompare(String(b.dueDate)); return __ihOrdDesc?-c:c; });
+  var ordExtra='<button type="button" onclick="ihToggleOrd_()" style="background:#EEF3FA;border:1px solid #C9D3E0;border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer;">최종납기 '+(__ihOrdDesc?"↓":"↑")+'</button>';
+  var ordInner = olist.length ? wrap('<table style="border-collapse:collapse;width:100%;min-width:460px;"><thead><tr>'
+    +['ORDER NO.','수량','최종납기','상태'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+    +olist.slice(0,100).map(function(m){ return '<tr><td style="'+td+'">'+E(m.orderNo)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(m.qty)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(m.dueDate)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(m.status)+'</td></tr>'; }).join("")
+    +'</tbody></table>'+(olist.length>100?'<div style="font-size:11px;color:#B0662A;">앞 100건만 표시</div>':'')) : none("미납품 주문 없음 (전체 "+g.orders.length+"건 중 납품완료 제외)");
 
   body.innerHTML = head
-    + sec("📦","주문 / 납기", g.orders.length, ordInner)
     + sec("⚠","부적합 · 조치 (등급)", g.defects.length, defInner)
     + sec("🔄","변경점", g.changes.length, chgInner)
-    + sec("📐","측정이력", g.meas.length, measInner);
+    + sec("📐","측정이력", mlist.length, measInner, measExtra)
+    + sec("📦","주문 / 납기 (미납품)", olist.length, ordInner, ordExtra);
 }
 
 function mnFmtShort_(due){ var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(due||"")); return m ? ((+m[2])+"월 "+(+m[3])+"일") : (due||""); }
@@ -16422,8 +16434,8 @@ var INS_CFG = {
     groups:[
       {label:"No.",   leaf:{key:"no",     kind:"no",   w:5}},
       {label:"검사일", leaf:{key:"insDate", kind:"date", w:11}},
-      {label:"구분", leaf:{key:"matType", kind:"seg", opts:["제품","소재"], w:8}},
-      {label:"도 번", leaf:{key:"draw",   kind:"draw", w:16}},
+      {label:"구분", leaf:{key:"matType", kind:"seg", opts:["제품","소재"], w:11}},
+      {label:"도 번", leaf:{key:"draw",   kind:"draw", w:12}},
       {label:"S/N",   leaf:{key:"sn",     kind:"text", w:55}},
       {label:"비고", leaf:{key:"note", kind:"text", w:14}},
       {label:"거래처",leaf:{key:"vendor", kind:"text", w:10}},
