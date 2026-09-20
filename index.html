@@ -1062,6 +1062,7 @@
     <div class="nav-item" data-view="measurehist"><span class="dot"></span>📐 측정이력</div>
     <div class="nav-item" data-view="mnshort"><span class="dot"></span>📊 반제품 현황</div>
     <div class="nav-item" data-view="shipjudge"><span class="dot"></span>🚦 LOT 출하판정</div>
+    <div class="nav-item" data-view="flow"><span class="dot"></span>🗺 업무흐름도</div>
     <div class="nav-item" id="dataCheckNavBtn" title="데이터 이상 점검 (관리자용)"><span class="dot"></span>🔍 데이터 점검</div>
     <div class="nav-item" id="helpNavBtn" title="사용법 안내"><span class="dot"></span>❓ 사용법</div>
   </div>
@@ -2138,6 +2139,22 @@
             <tbody id="mn-body"></tbody>
           </table>
         </div>
+      </div>
+    </div>
+    <!-- ===================== 🗺 업무흐름도 VIEW ===================== -->
+    <div class="view" id="view-flow">
+      <div style="background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <div style="font-size:20px;font-weight:800;color:#1F2A44;">🗺 QMS 업무흐름도 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 각 단계를 누르면 해당 기능으로 이동합니다 (모두 연동)</span></div>
+        <div style="font-size:12.5px;color:#7A8598;margin:4px 0 16px;">고객요구 → 검사 → 부적합·등급 → 출하 → 고객피드백까지 하나의 흐름으로 연결됩니다.</div>
+
+        <div style="font-weight:800;color:#0B5CAB;margin:6px 0 8px;">▶ 주 프로세스</div>
+        <div id="flow-main" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;"></div>
+
+        <div style="font-weight:800;color:#8A1F1F;margin:18px 0 8px;">▶ 부적합 · 조치 흐름</div>
+        <div id="flow-nc" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;"></div>
+
+        <div style="font-weight:800;color:#1E7A46;margin:18px 0 8px;">▶ 분석 · 관리 (연동 항목)</div>
+        <div id="flow-sub" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;"></div>
       </div>
     </div>
     <!-- ===================== 📇 품목이력 VIEW ===================== -->
@@ -3487,6 +3504,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
       if(typeof mhEnsureLoaded_==="function") mhEnsureLoaded_();
       if(typeof renderMeasureHist==="function") runBusy(renderMeasureHist);
     }
+    if(target==="flow"){ if(typeof renderFlow_==="function") renderFlow_(); }
     if(target==="itemhist"){
       if(typeof renderItemHist==="function") renderItemHist();
     }
@@ -4568,7 +4586,9 @@ function ncrNorm_(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):
 function ncrKey_(r){ return ncrNorm_(r.draw)+"|"+String(r.sn||"").trim()+"|"+String(r.insDate||r.date||"").trim()+"|"+String(r.types||"").trim(); }
 function ncrToday_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
 function ncrWho_(){ try{ return (insMetaByType&&insMetaByType.incoming&&insMetaByType.incoming.inspector)||(insMetaByType&&insMetaByType.shipping&&insMetaByType.shipping.inspector)||""; }catch(_){ return ""; } }
-function ncrSave_(){ try{ if(typeof idbSet==="function") idbSet("ncrDetail", __ncrDetail); }catch(_){}; try{ if(typeof qShareSave_==="function") qShareSave_("ncrDetail", __ncrDetail, ""); }catch(_){} }
+function ncrSave_(){ try{ if(typeof idbSet==="function") idbSet("ncrDetail", __ncrDetail); }catch(_){}
+  if(typeof qShareLoad_==="function"){ qShareLoad_("ncrDetail", function(rm){ if(rm&&typeof rm==="object"){ Object.keys(rm).forEach(function(k){ if(!(k in __ncrDetail)) __ncrDetail[k]=rm[k]; }); } try{ qShareSave_("ncrDetail", __ncrDetail, ""); }catch(_){} }); }
+  else { try{ if(typeof qShareSave_==="function") qShareSave_("ncrDetail", __ncrDetail, ""); }catch(_){} } }
 function ncrEnsure_(){ if(__ncrDetailLoaded) return; __ncrDetailLoaded=true;
   try{ if(typeof idbGet==="function"){ idbGet("ncrDetail").then(function(v){ if(v&&typeof v==="object") __ncrDetail=v;
     try{ if(typeof qShareLoad_==="function") qShareLoad_("ncrDetail", function(sv){ if(sv&&typeof sv==="object"){ __ncrDetail=Object.assign({}, sv, __ncrDetail); } }); }catch(_){}
@@ -4622,7 +4642,9 @@ var __holdLog=[], __holdLoaded=false;
 function holdEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 function holdToday_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
 function holdWho_(){ try{ return (insMetaByType&&insMetaByType.shipping&&insMetaByType.shipping.inspector)||(insMetaByType&&insMetaByType.incoming&&insMetaByType.incoming.inspector)||""; }catch(_){ return ""; } }
-function holdSave_(){ try{ if(typeof idbSet==="function") idbSet("holdLog", __holdLog); }catch(_){}; try{ if(typeof qShareSave_==="function") qShareSave_("holdLog", __holdLog, ""); }catch(_){} }
+function holdSave_(){ try{ if(typeof idbSet==="function") idbSet("holdLog", __holdLog); }catch(_){}
+  if(typeof qShareLoad_==="function"){ qShareLoad_("holdLog", function(rm){ if(Array.isArray(rm)){ var ids={}; __holdLog.forEach(function(h){ if(h) ids[h.id]=1; }); rm.forEach(function(h){ if(h&&h.id&&!ids[h.id]) __holdLog.push(h); }); } try{ qShareSave_("holdLog", __holdLog, ""); }catch(_){} }); }
+  else { try{ if(typeof qShareSave_==="function") qShareSave_("holdLog", __holdLog, ""); }catch(_){} } }
 function holdEnsure_(){ if(__holdLoaded) return; __holdLoaded=true;
   try{ if(typeof idbGet==="function"){ idbGet("holdLog").then(function(v){ if(Array.isArray(v)) __holdLog=v;
     try{ if(typeof qShareLoad_==="function") qShareLoad_("holdLog", function(sv){ if(Array.isArray(sv)){ var ids={}; __holdLog.forEach(function(h){ids[h.id]=1;}); sv.forEach(function(h){ if(!ids[h.id]) __holdLog.push(h); }); } if(typeof renderHold_==="function") renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_(); }); }catch(_){}
@@ -4740,6 +4762,43 @@ function renderHold_(){
     +['대상','범위','사유','정지일','정지담당','해제일','해제담당','처리내용','삭제'].map(function(x){return '<th style="'+TH+'">'+x+'</th>';}).join("")+'</tr></thead><tbody>'+(relRows||'<tr><td colspan="9" style="text-align:center;color:#B9C2D6;padding:12px;">해제 이력 없음</td></tr>')+'</tbody></table></div>';
 }
 
+/* ========================= 🗺 업무흐름도 (연동 시각화) ========================= */
+function flowGo_(view){ try{ var n=document.querySelector('.nav-item[data-view="'+view+'"]'); if(n){ n.click(); return; } }catch(_){}
+  try{ if(typeof showView==="function") showView(view); }catch(_){} }
+function flowCard_(icon,title,desc,view,color){
+  return '<div onclick="flowGo_(\''+view+'\')" style="background:#fff;border:2px solid '+color+';border-radius:12px;padding:12px 14px;cursor:pointer;transition:transform .1s;box-shadow:0 1px 4px rgba(0,0,0,.06);" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'\'">'
+    +'<div style="font-size:15px;font-weight:800;color:'+color+';margin-bottom:3px;">'+icon+' '+title+'</div>'
+    +'<div style="font-size:11.5px;color:#7A8598;line-height:1.4;">'+desc+'</div></div>';
+}
+function renderFlow_(){
+  var mn=document.getElementById("flow-main"); if(!mn) return;
+  var B="#0B5CAB", R="#8A1F1F", G="#1E7A46";
+  mn.innerHTML=[
+    flowCard_("1️⃣","고객 요구사항","도면·품질요구·납기 접수","main",B),
+    flowCard_("2️⃣","요구/변경 검토","검사기준·변경점(4M)·등급","management",B),
+    flowCard_("3️⃣","품질 계획","검사기준·QC공정도 문서","docmaster",B),
+    flowCard_("4️⃣","구매 / 생산","원자재·부품·생산 진행","sched",B),
+    flowCard_("5️⃣","공정 검사","공정·치수·검사일보","insrep",B),
+    flowCard_("6️⃣","최종 검사","수입·출하검사 판정","insrep",B),
+    flowCard_("7️⃣","출하 / 납품","검수·분출·출하정지","insplist",B),
+    flowCard_("8️⃣","고객 피드백","고객부적합·클레임","nc",B)
+  ].join("");
+  var nc=document.getElementById("flow-nc");
+  if(nc) nc.innerHTML=[
+    flowCard_("⚠️","부적합 등급(CTQ)","A/B/C 등급·유형분석","quality",R),
+    flowCard_("📝","NCR 정식화","5Why·시정·재발방지·효과확인","insrep",R),
+    flowCard_("🔴","LOT 출하정지","정지·해제·출고차단","shipjudge",R),
+    flowCard_("♻️","재검사","장기재고 180일 재검사","inventory",R)
+  ].join("");
+  var sb=document.getElementById("flow-sub");
+  if(sb) sb.innerHTML=[
+    flowCard_("📇","품목이력","도번별 전체 연동 조회","itemhist",G),
+    flowCard_("📊","데이터 분석","CTQ·Ppk·불량추세","quality",G),
+    flowCard_("📐","측정 이력","측정 DATE 관리","measurehist",G),
+    flowCard_("📁","문서 관리","품질문서 Rev·개정","docmaster",G),
+    flowCard_("📦","반제품 현황","공정재고·미납 비교","mnshort",G)
+  ].join("");
+}
 /* ========================= 📇 품목이력 카드 (도번별 연결관리) ========================= */
 function ihNorm_(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); }
 function ihEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -7476,7 +7535,10 @@ function reinspEsc_(pn){ return String(pn==null?"":pn).replace(/\\/g,"\\\\").rep
 function reinspToday_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
 function reinspList_(k){ var v=__reinspLog[k]; if(!v) return []; return Array.isArray(v)?v.slice():[v]; }   // 하위호환(옛 단일객체→배열)
 function reinspLatestDate_(k){ var m=""; reinspList_(k).forEach(function(r){ if(r&&r.date&&String(r.date)>m) m=String(r.date); }); return m; }
-function reinspSave_(){ try{ if(typeof idbSet==="function") idbSet("reinspectLog", __reinspLog); }catch(_){}; try{ if(typeof qShareSave_==="function") qShareSave_("reinspectLog", __reinspLog, ""); }catch(_){} }
+function reinspSave_(){ try{ if(typeof idbSet==="function") idbSet("reinspectLog", __reinspLog); }catch(_){}
+  var __do=function(){ try{ if(typeof qShareSave_==="function") qShareSave_("reinspectLog", __reinspLog, ""); }catch(_){} };
+  if(typeof qShareLoad_==="function"){ qShareLoad_("reinspectLog", function(rm){ if(rm&&typeof rm==="object"){ Object.keys(rm).forEach(function(k){ var rl=Array.isArray(rm[k])?rm[k]:[rm[k]]; var ll=Array.isArray(__reinspLog[k])?__reinspLog[k]:(__reinspLog[k]?[__reinspLog[k]]:[]); var seen={}; ll.forEach(function(x){ if(x) seen[(x.date||"")+"|"+(x.by||"")+"|"+(x.qty||"")]=1; }); rl.forEach(function(x){ if(x){ var sg=(x.date||"")+"|"+(x.by||"")+"|"+(x.qty||""); if(!seen[sg]){ ll.push(x); seen[sg]=1; } } }); __reinspLog[k]=ll; }); } __do(); }); }
+  else { __do(); } }
 function reinspEnsure_(){ if(__reinspLoaded) return; __reinspLoaded=true;
   try{ if(typeof idbGet==="function"){ idbGet("reinspectLog").then(function(v){ if(v&&typeof v==="object") __reinspLog=v;
     try{ if(typeof qShareLoad_==="function") qShareLoad_("reinspectLog", function(sv){ if(sv&&typeof sv==="object"){ __reinspLog=Object.assign({}, sv, __reinspLog); } if(typeof invRenderAging==="function") invRenderAging(); }); }catch(_){}
@@ -19341,6 +19403,9 @@ function insOpenDefectHistory(){
   var closed=rows.filter(function(r){return r.status==="종결";}).length;
   var open=rows.length-closed;
   var rate=rows.length?Math.round(closed/rows.length*100):0;
+  var aRows=rows.filter(function(r){ return (typeof ncGradeOfTypes_==="function") && ncGradeOfTypes_(r.types)==="A"; });   // A등급(크리티컬)
+  var aNcr=aRows.filter(function(r){ return (typeof ncrHas_==="function") && ncrHas_(r); }).length;
+  var aRate=aRows.length?Math.round(aNcr/aRows.length*100):0;
   var body=rows.length ? rows.map(function(r){
     var stColor=r.status==="종결"?"#1E7A46":"#C0392B";
     return '<tr>'
@@ -19367,6 +19432,7 @@ function insOpenDefectHistory(){
     +    '<div style="flex:1;min-width:120px;background:#EEF6EF;border-radius:9px;padding:10px;text-align:center;"><div style="font-size:12px;color:#5A6478;">종결</div><div style="font-size:20px;font-weight:800;color:#1E7A46;">'+closed+'</div></div>'
     +    '<div style="flex:1;min-width:120px;background:#FBEDEC;border-radius:9px;padding:10px;text-align:center;"><div style="font-size:12px;color:#5A6478;">미조치</div><div style="font-size:20px;font-weight:800;color:#C0392B;">'+open+'</div></div>'
     +    '<div style="flex:1;min-width:120px;background:#EEF2FA;border-radius:9px;padding:10px;text-align:center;"><div style="font-size:12px;color:#5A6478;">조치 완료율</div><div style="font-size:20px;font-weight:800;color:#0B5CAB;">'+rate+'%</div></div>'
+    +    '<div style="flex:1;min-width:120px;background:#FDECEC;border-radius:9px;padding:10px;text-align:center;" title="A등급(크리티컬)은 NCR 작성해야 종결"><div style="font-size:12px;color:#5A6478;">A등급 NCR 완료율</div><div style="font-size:20px;font-weight:800;color:#C0392B;">'+aRate+'%</div><div style="font-size:11px;color:#8A93A6;">'+aNcr+'/'+aRows.length+'건</div></div>'
     +  '</div>'
     +  '<div style="text-align:right;margin-bottom:8px;"><button id="dhist-excel" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button></div>'
     +  '<div style="overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
