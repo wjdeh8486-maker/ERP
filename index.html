@@ -8357,11 +8357,12 @@ function ctqTableHtml(agg){
     +'</div>'
     +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:13px;min-width:560px;"><thead><tr>'+head+'</tr></thead><tbody>'+trs+'</tbody></table></div>';
 }
+function ctqInPeriod_(dstr){ var m=/^(\d{4})-(\d{2})/.exec(String(dstr||"")); if(!m) return false; if(typeof ctqMode==="undefined"||ctqMode==="all") return true; if(ctqMode==="year") return m[1]===String(ctqYear); if(ctqMode==="month") return m[1]===String(ctqYear) && m[2]===("0"+ctqMonth).slice(-2); return true; }
 function ctqGradeCounts_(){
   var gc={A:0,B:0,C:0};
-  try{ if(typeof insClosedList_==="function") insClosedList_(true).forEach(function(d){ var g=ncGradeOfTypes_(d.types); if(gc[g]!=null) gc[g]++; }); }catch(_){}
-  try{ if(typeof insUnresolvedList_==="function") insUnresolvedList_(true).forEach(function(d){ var g=ncGradeOfTypes_(d.types); if(gc[g]!=null) gc[g]++; }); }catch(_){}
-  try{ ((typeof ncData!=="undefined"&&ncData)||[]).forEach(function(r){ if(typeof trashIsDeleted==="function"&&trashIsDeleted(r))return; var g=ncGradeOfTypes_((typeof ncClassifyCTQ_==="function")?ncClassifyCTQ_(r.content):""); if(gc[g]!=null) gc[g]++; }); }catch(_){}
+  try{ if(typeof insClosedList_==="function") insClosedList_(true).forEach(function(d){ if(!ctqInPeriod_(d.insDate)) return; var g=ncGradeOfTypes_(d.types); if(gc[g]!=null) gc[g]++; }); }catch(_){}
+  try{ if(typeof insUnresolvedList_==="function") insUnresolvedList_(true).forEach(function(d){ if(!ctqInPeriod_(d.insDate)) return; var g=ncGradeOfTypes_(d.types); if(gc[g]!=null) gc[g]++; }); }catch(_){}
+  // [수정] 고객부적합 제외 — CTQ는 내부 검사(수입·출하·공정·측정)만
   return gc;
 }
 function ctqGradeBadges_(){
@@ -8371,14 +8372,14 @@ function ctqGradeBadges_(){
     +b("A","A 크리티컬","#C0392B","#FDECEC","#E7C9C9")
     +b("B","B 조립불가","#B0662A","#FFF3E6","#EBD3B8")
     +b("C","C 사용가능","#5A6478","#EEF1F6","#D6DEE8")
-    +'<span style="font-size:11.5px;color:#8A93A6;">← 등급 클릭 시 발생·처리 상세 (검사일보 부적합 기록 기준·전체기간)</span></div>';
+    +'<span style="font-size:11.5px;color:#8A93A6;">← 등급 클릭 시 발생·처리 상세 (선택 기간 반영 · 내부검사)</span></div>';
 }
 function ctqGradeDetail_(grade){
   var list=[];
   try{ if(typeof insClosedList_==="function") insClosedList_(true).forEach(function(c){ list.push({date:c.insDate,status:"종결",draw:c.draw,sn:c.sn,types:c.types,qty:c.qty,act:c.act,actDate:c.actDate}); }); }catch(_){}
   try{ if(typeof insUnresolvedList_==="function") insUnresolvedList_(true).forEach(function(u){ list.push({date:u.insDate,status:"미조치",draw:u.draw,sn:u.sn,types:u.types,qty:u.qty,act:"",actDate:""}); }); }catch(_){}
-  try{ ((typeof ncData!=="undefined"&&ncData)||[]).forEach(function(r){ if(typeof trashIsDeleted==="function"&&trashIsDeleted(r))return; list.push({date:r.date,status:"고객",draw:r.part,sn:"",types:(typeof ncClassifyCTQ_==="function"?ncClassifyCTQ_(r.content):""),qty:r.qty,act:r.content,actDate:""}); }); }catch(_){}
-  list=list.filter(function(d){ return ncGradeOfTypes_(d.types)===grade; });
+  // [수정] 고객부적합 제외 — 내부 CTQ만
+  list=list.filter(function(d){ return ncGradeOfTypes_(d.types)===grade && ctqInPeriod_(d.date); });
   list.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
   var E=(typeof ihEsc_==="function")?ihEsc_:function(t){return String(t==null?"":t);};
   var td='padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;';
