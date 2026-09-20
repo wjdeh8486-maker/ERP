@@ -980,7 +980,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V9.16</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V9.21</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -1252,6 +1252,11 @@
       </div><!-- /modal box -->
     </div><!-- /summary-reportModal -->
     <div class="view" id="view-main">
+      <div id="main-holdBanner" style="display:none;background:#FDECEC;border:1px solid #F0C9C4;border-radius:12px;padding:11px 16px;margin-bottom:12px;cursor:pointer;" onclick="var n=document.querySelector('.nav-item[data-view=&quot;shipjudge&quot;]'); if(n) n.click();">
+        <span style="font-weight:800;color:#C0392B;">🔴 출하정지 <span id="main-holdCount">0</span>건</span>
+        <span id="main-holdList" style="font-size:12px;color:#8A1F1F;margin-left:8px;"></span>
+        <span style="float:right;font-size:12px;color:#C0392B;font-weight:700;">관리 ▸</span>
+      </div>
       <div class="summary-row">
         <div class="stat-card prod">
           <div class="label">생산</div>
@@ -3903,6 +3908,7 @@ function mainRenderStats(data){
   document.getElementById("main-statDone").textContent = done;
   document.getElementById("main-statOverdue").textContent = overdue;
   document.getElementById("main-statProgress").textContent = pct + "%";
+  try{ if(typeof holdEnsure_==="function") holdEnsure_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_(); }catch(_){}   // 출하정지 배너
   document.getElementById("main-progressFill").style.width = pct + "%";
   document.getElementById("main-progressDetail").textContent = `(${qc + done}/전체 ${total}건)`;
 }
@@ -4554,6 +4560,63 @@ var __insplistShip=[];
 
 
 /* ========================= 📊 월별 납기부족 분석 ========================= */
+/* ==================== 📝 NCR 정식화 (5Why·시정·재발방지·효과확인) ==================== */
+var __ncrDetail={}, __ncrDetailLoaded=false;
+function ncrEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function ncrEscAttr_(t){ return String(t==null?"":t).replace(/\\/g,"\\\\").replace(/'/g,"\\'"); }
+function ncrNorm_(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); }
+function ncrKey_(r){ return ncrNorm_(r.draw)+"|"+String(r.sn||"").trim()+"|"+String(r.insDate||r.date||"").trim()+"|"+String(r.types||"").trim(); }
+function ncrToday_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
+function ncrWho_(){ try{ return (insMetaByType&&insMetaByType.incoming&&insMetaByType.incoming.inspector)||(insMetaByType&&insMetaByType.shipping&&insMetaByType.shipping.inspector)||""; }catch(_){ return ""; } }
+function ncrSave_(){ try{ if(typeof idbSet==="function") idbSet("ncrDetail", __ncrDetail); }catch(_){}; try{ if(typeof qShareSave_==="function") qShareSave_("ncrDetail", __ncrDetail, ""); }catch(_){} }
+function ncrEnsure_(){ if(__ncrDetailLoaded) return; __ncrDetailLoaded=true;
+  try{ if(typeof idbGet==="function"){ idbGet("ncrDetail").then(function(v){ if(v&&typeof v==="object") __ncrDetail=v;
+    try{ if(typeof qShareLoad_==="function") qShareLoad_("ncrDetail", function(sv){ if(sv&&typeof sv==="object"){ __ncrDetail=Object.assign({}, sv, __ncrDetail); } }); }catch(_){}
+  }).catch(function(){}); } }catch(_){} }
+function ncrHas_(r){ var d=__ncrDetail[ncrKey_(r)]; return !!(d && (d.cause||d.escape||d.why||d.corrective||d.preventive||d.effect)); }
+function ncrBtnCell_(r){ var has=ncrHas_(r); var isA=(typeof ncGradeOfTypes_==="function" && ncGradeOfTypes_(r.types)==="A"); var k=ncrEscAttr_(ncrKey_(r)), dr=ncrEscAttr_(r.draw), ty=ncrEscAttr_(r.types);
+  var lbl, bg; if(has){ lbl="\u2705 NCR"; bg="#1E7A46"; } else if(isA){ lbl="\u26A0 NCR 필수"; bg="#C0392B"; } else { lbl="\uD83D\uDCDD NCR"; bg="#8A1F1F"; }   // A등급(크리티컬)은 NCR 없으면 미완결
+  return '<button type="button" title="'+(isA&&!has?"A등급(크리티컬)은 NCR 작성해야 종결":"")+'" onclick="ncrOpen_(\''+k+'\',\''+dr+'\',\''+ty+'\')" style="background:'+bg+';color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">'+lbl+'</button>'; }
+function ncrOpen_(key, draw, types){
+  var d=__ncrDetail[key]||{};
+  var ta=function(id,ph,val,h){ return '<label style="font-size:12px;color:#5A6478;font-weight:700;">'+ph+'<textarea id="'+id+'" rows="'+(h||2)+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;font-size:13px;resize:vertical;">'+ncrEsc_(val||"")+'</textarea></label>'; };
+  var html='<div id="ncr-ov" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100070;display:flex;align-items:center;justify-content:center;padding:16px;">'
+    +'<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
+    +'<div style="background:#8A1F1F;color:#fff;padding:13px 18px;font-weight:800;position:sticky;top:0;">\uD83D\uDCDD NCR 부적합 보고서 · '+ncrEsc_(draw)+' <span style="font-weight:400;font-size:12px;opacity:.85;">('+ncrEsc_(types)+')</span></div>'
+    +'<div style="padding:16px;display:flex;flex-direction:column;gap:11px;">'
+    + ta("ncr-cause","① 발생 원인 (왜 발생?)", d.cause,2)
+    + ta("ncr-escape","② 유출 원인 (왜 걸러지지 못했나?)", d.escape,2)
+    + ta("ncr-why","③ 근본 원인 (5Why)", d.why,4)
+    + ta("ncr-corrective","④ 시정 조치 (즉시)", d.corrective,2)
+    + ta("ncr-preventive","⑤ 재발 방지 대책 (근본)", d.preventive,2)
+    + ta("ncr-effect","⑥ 효과 확인 (검증 결과)", d.effect,2)
+    +'<label style="font-size:12px;color:#5A6478;font-weight:700;">작성자<input id="ncr-by" type="text" value="'+ncrEsc_(d.by||ncrWho_())+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"></label>'
+    +'<div style="display:flex;gap:8px;margin-top:4px;">'
+    +'<button type="button" onclick="ncrCommit_(\''+ncrEscAttr_(key)+'\')" style="flex:1;background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:11px;font-weight:800;cursor:pointer;">저장</button>'
+    +'<button type="button" onclick="ncrPrintOne_(\''+ncrEscAttr_(key)+'\',\''+ncrEscAttr_(draw)+'\',\''+ncrEscAttr_(types)+'\')" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:11px 16px;font-weight:700;cursor:pointer;">\uD83D\uDDA8 출력</button>'
+    +'<button type="button" onclick="var o=document.getElementById(\'ncr-ov\');if(o)o.remove();" style="background:#EEF1F6;border:1px solid #D6DEE8;border-radius:8px;padding:11px 16px;cursor:pointer;">닫기</button>'
+    +'</div></div></div></div>';
+  var old=document.getElementById("ncr-ov"); if(old) old.remove();
+  var w=document.createElement("div"); w.innerHTML=html; document.body.appendChild(w.firstChild);
+  var ov=document.getElementById("ncr-ov"); if(ov) ov.addEventListener("click",function(e){ if(e.target===ov) ov.remove(); });
+}
+function ncrCommit_(key){
+  var g=function(id){ return String((document.getElementById(id)||{}).value||"").trim(); };
+  __ncrDetail[key]={ cause:g("ncr-cause"), escape:g("ncr-escape"), why:g("ncr-why"), corrective:g("ncr-corrective"), preventive:g("ncr-preventive"), effect:g("ncr-effect"), by:g("ncr-by")||ncrWho_(), date:ncrToday_() };
+  ncrSave_();
+  var o=document.getElementById("ncr-ov"); if(o) o.remove();
+  try{ if(typeof insDefectHistOpen_==="function"){} }catch(_){}
+  var dov=document.getElementById("dhist-ov"); if(dov && typeof insShowDefectHist_==="function"){ dov.remove(); insShowDefectHist_(); }
+}
+function ncrPrintOne_(key, draw, types){
+  var d=__ncrDetail[key]||{}; var E=ncrEsc_;
+  var row=function(t,v){ return '<tr><th style="width:170px;background:#F0F4F8;text-align:left;padding:8px;border:1px solid #999;vertical-align:top;">'+t+'</th><td style="padding:8px;border:1px solid #999;white-space:pre-wrap;">'+E(v||"")+'</td></tr>'; };
+  var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; }
+  w.document.write('<html><head><title>NCR 부적합 보고서</title><meta charset="utf-8"><style>body{font-family:sans-serif;padding:24px;}table{border-collapse:collapse;width:100%;}h2{margin:0 0 6px;}</style></head><body>'
+    +'<h2>\uD83D\uDCDD NCR 부적합 보고서</h2><div style="color:#666;font-size:12px;margin-bottom:12px;">도번: '+E(draw)+' · 유형: '+E(types)+' · 작성일: '+E(d.date||"")+' · 작성자: '+E(d.by||"")+'</div>'
+    +'<table>'+row("① 발생 원인",d.cause)+row("② 유출 원인",d.escape)+row("③ 근본 원인(5Why)",d.why)+row("④ 시정 조치",d.corrective)+row("⑤ 재발 방지",d.preventive)+row("⑥ 효과 확인",d.effect)+'</table></body></html>');
+  w.document.close(); setTimeout(function(){ try{ w.print(); }catch(e){} }, 400);
+}
 /* ========================= 🔴 LOT 출하정지 관리 ========================= */
 var __holdLog=[], __holdLoaded=false;
 function holdEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -4562,8 +4625,8 @@ function holdWho_(){ try{ return (insMetaByType&&insMetaByType.shipping&&insMeta
 function holdSave_(){ try{ if(typeof idbSet==="function") idbSet("holdLog", __holdLog); }catch(_){}; try{ if(typeof qShareSave_==="function") qShareSave_("holdLog", __holdLog, ""); }catch(_){} }
 function holdEnsure_(){ if(__holdLoaded) return; __holdLoaded=true;
   try{ if(typeof idbGet==="function"){ idbGet("holdLog").then(function(v){ if(Array.isArray(v)) __holdLog=v;
-    try{ if(typeof qShareLoad_==="function") qShareLoad_("holdLog", function(sv){ if(Array.isArray(sv)){ var ids={}; __holdLog.forEach(function(h){ids[h.id]=1;}); sv.forEach(function(h){ if(!ids[h.id]) __holdLog.push(h); }); } if(typeof renderHold_==="function") renderHold_(); }); }catch(_){}
-    if(typeof renderHold_==="function") renderHold_();
+    try{ if(typeof qShareLoad_==="function") qShareLoad_("holdLog", function(sv){ if(Array.isArray(sv)){ var ids={}; __holdLog.forEach(function(h){ids[h.id]=1;}); sv.forEach(function(h){ if(!ids[h.id]) __holdLog.push(h); }); } if(typeof renderHold_==="function") renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_(); }); }catch(_){}
+    if(typeof renderHold_==="function") renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_();
   }).catch(function(){}); } }catch(_){} }
 // 활성(정지중) HOLD가 이 텍스트(ORDER/PROJECT/도번)와 매칭되나
 function holdActive_(text){
@@ -4583,7 +4646,7 @@ function holdAdd_(){
   holdSave_();
   ["hold-target","hold-reason","hold-qty","hold-sn","hold-by"].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=""; });
   var dt=document.getElementById("hold-date"); if(dt) dt.value=holdToday_();
-  renderHold_();
+  renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_();
 }
 function holdRelease_(id){
   var h=null; for(var i=0;i<__holdLog.length;i++){ if(__holdLog[i].id===id){ h=__holdLog[i]; break; } } if(!h) return;
@@ -4606,9 +4669,9 @@ function holdRelease_(id){
 function holdReleaseCommit_(id){
   var h=null; for(var i=0;i<__holdLog.length;i++){ if(__holdLog[i].id===id){ h=__holdLog[i]; break; } } if(!h) return;
   h.status="해제"; h.releaseDate=(document.getElementById("holdrel-date")||{}).value||holdToday_(); h.releaseSide=(document.getElementById("holdrel-side")||{}).value||"품질담당"; h.releaseBy=(document.getElementById("holdrel-by")||{}).value||""; h.releaseNote=(document.getElementById("holdrel-note")||{}).value||"";
-  holdSave_(); var o=document.getElementById("holdrel-ov"); if(o) o.remove(); renderHold_();
+  holdSave_(); var o=document.getElementById("holdrel-ov"); if(o) o.remove(); renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_();
 }
-function holdDelete_(id){ if(!confirm("이 정지 기록을 완전히 삭제할까요?")) return; __holdLog=__holdLog.filter(function(h){ return h.id!==id; }); holdSave_(); renderHold_(); }
+function holdDelete_(id){ if(!confirm("이 정지 기록을 완전히 삭제할까요?")) return; __holdLog=__holdLog.filter(function(h){ return h.id!==id; }); holdSave_(); renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_(); }
 function holdSideBadge_(side){ var s=side||"품질담당"; var c=(s==="고객사")?"#0B5CAB":"#5A3E7A"; var bg=(s==="고객사")?"#E7F0FA":"#EFEAF7"; return '<span style="background:'+bg+';color:'+c+';border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap;">'+holdEsc_(s)+'</span>'; }
 function holdScopeBadge_(sc){ var s=sc||"전체"; var c=(s==="부분")?"#B0662A":"#C0392B"; var bg=(s==="부분")?"#FFF3E6":"#FDECEC"; return '<span style="background:'+bg+';color:'+c+';border-radius:5px;padding:1px 7px;font-size:11px;font-weight:800;white-space:nowrap;">'+s+'</span>'; }
 function holdFocusHtml_(){
@@ -4629,6 +4692,14 @@ function holdPrint_(){ var E=holdEsc_; var arr=__holdLog.slice().sort(function(a
   var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; }
   w.document.write('<html><head><title>LOT 출하정지 이력</title><meta charset="utf-8"><style>body{font-family:sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #999;padding:5px 7px;font-size:11px;}th{background:#1F2A44;color:#fff;}h2{margin:0 0 4px;}</style></head><body><h2>\uD83D\uDD34 LOT 출하정지 이력</h2><div style="color:#666;font-size:12px;margin-bottom:10px;">출력일: '+holdToday_()+' · 총 '+arr.length+'건</div><table><thead><tr><th>대상</th><th>범위</th><th>사유</th><th>정지일</th><th>수량</th><th>S/N</th><th>정지주체</th><th>상태</th><th>해제일</th><th>해제주체</th><th>처리내용</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>');
   w.document.close(); setTimeout(function(){ try{ w.print(); }catch(e){} }, 400);
+}
+function mainHoldBanner_(){
+  var b=document.getElementById("main-holdBanner"); if(!b) return;
+  var active=(typeof __holdLog!=="undefined"&&__holdLog)?__holdLog.filter(function(h){return h.status!=="해제";}):[];
+  if(!active.length){ b.style.display="none"; return; }
+  b.style.display="block";
+  var c=document.getElementById("main-holdCount"); if(c) c.textContent=active.length;
+  var l=document.getElementById("main-holdList"); if(l) l.textContent=active.slice(0,5).map(function(h){return h.target;}).join(", ")+(active.length>5?(" 외 "+(active.length-5)+"건"):"");
 }
 function renderHold_(){
   var body=document.getElementById("hold-body"); if(!body) return;
@@ -5446,6 +5517,8 @@ function dispatchDispatchOpen_(){
     return { orderNo:o, project:r.project||"", oldDraw:r.oldDraw||"", name:r.name||"", qty:r.qty||0,
              partNo:c.getAttribute("data-part")||r.partNo||"", loc:r.lastLoc||r.loc||"", sn:"" };
   });
+  if(typeof holdActive_==="function"){ var __held=__dispatchUseRows.filter(function(r){ return holdActive_((r.orderNo||"")+" "+(r.oldDraw||"")+" "+(r.partNo||"")); });
+    if(__held.length){ var __m="\uD83D\uDD34 출하정지된 항목 "+__held.length+"건 포함:\n\n"+__held.slice(0,10).map(function(r){ var h=holdActive_((r.orderNo||"")+" "+(r.oldDraw||"")+" "+(r.partNo||"")); return "\u2022 "+(r.orderNo||r.oldDraw)+" \u2014 "+((h&&h.reason)||"사유없음"); }).join("\n")+(__held.length>10?("\n\uC678 "+(__held.length-10)+"건"):"")+"\n\n그래도 납기분출 하시겠습니까?"; if(!confirm(__m)) return; } }
   dispatchDispatchRender_();
   var modal=document.getElementById("dispatch-suModal"); if(modal) modal.style.display="flex";
 }
@@ -5514,6 +5587,8 @@ function insplistStockUseOpen_(){
     return { orderNo:o, project:r.project||"", oldDraw:r.oldDraw||"", name:r.name||"", qty:r.qty||0,
              partNo:c.getAttribute("data-part")||r.partNo||"", loc:r.lastLoc||r.loc||"", sn:"" };
   });
+  if(typeof holdActive_==="function"){ var __held=__stockUseRows.filter(function(r){ return holdActive_((r.orderNo||"")+" "+(r.oldDraw||"")+" "+(r.partNo||"")); });
+    if(__held.length){ var __m="\uD83D\uDD34 출하정지된 항목 "+__held.length+"건 포함:\n\n"+__held.slice(0,10).map(function(r){ var h=holdActive_((r.orderNo||"")+" "+(r.oldDraw||"")+" "+(r.partNo||"")); return "\u2022 "+(r.orderNo||r.oldDraw)+" \u2014 "+((h&&h.reason)||"사유없음"); }).join("\n")+(__held.length>10?("\n\uC678 "+(__held.length-10)+"건"):"")+"\n\n그래도 재고사용 하시겠습니까?"; if(!confirm(__m)) return; } }
   insplistStockUseRender_();
   var modal=document.getElementById("insplist-suModal"); if(modal) modal.style.display="flex";
 }
@@ -8360,10 +8435,35 @@ function ctqTableHtml(agg){
 function ctqInPeriod_(dstr){ var m=/^(\d{4})-(\d{2})/.exec(String(dstr||"")); if(!m) return false; if(typeof ctqMode==="undefined"||ctqMode==="all") return true; if(ctqMode==="year") return m[1]===String(ctqYear); if(ctqMode==="month") return m[1]===String(ctqYear) && m[2]===("0"+ctqMonth).slice(-2); return true; }
 function ctqGradeCounts_(){
   var gc={A:0,B:0,C:0};
-  try{ if(typeof insClosedList_==="function") insClosedList_(true).forEach(function(d){ if(!ctqInPeriod_(d.insDate)) return; var g=ncGradeOfTypes_(d.types); if(gc[g]!=null) gc[g]++; }); }catch(_){}
-  try{ if(typeof insUnresolvedList_==="function") insUnresolvedList_(true).forEach(function(d){ if(!ctqInPeriod_(d.insDate)) return; var g=ncGradeOfTypes_(d.types); if(gc[g]!=null) gc[g]++; }); }catch(_){}
-  // [수정] 고객부적합 제외 — CTQ는 내부 검사(수입·출하·공정·측정)만
+  try{ var agg=ctqAggregate(__ctqMonthly, ctqMode, ctqYear, ctqMonth); if(agg&&agg.defs){ Object.keys(agg.defs).forEach(function(cat){ var g=ncGradeOfTypes_(cat); if(gc[g]!=null) gc[g]+=(Number(agg.defs[cat])||0); }); } }catch(_){}
   return gc;
+}
+function ctqGradeDetail_(grade){
+  var agg=null; try{ agg=ctqAggregate(__ctqMonthly, ctqMode, ctqYear, ctqMonth); }catch(_){}
+  var totIns=(agg&&agg.ins)||0;
+  var rows=[]; if(agg&&agg.defs){ Object.keys(agg.defs).forEach(function(cat){ if(ncGradeOfTypes_(cat)===grade){ rows.push({cat:cat, n:Number(agg.defs[cat])||0}); } }); }
+  rows.sort(function(a,b){ return b.n-a.n; });
+  var totN=rows.reduce(function(a,r){return a+r.n;},0);
+  var E=(typeof ihEsc_==="function")?ihEsc_:function(t){return String(t==null?"":t);};
+  var td='padding:7px 10px;border:1px solid #E6EBF2;font-size:13px;';
+  var TH='padding:9px;border:1px solid #C9D3E0;background:#1F2A44;color:#fff;font-weight:700;white-space:nowrap;position:sticky;top:0;';
+  var gname=grade==="A"?"크리티컬":(grade==="B"?"조립불가":"사용가능");
+  var body=rows.length? rows.map(function(r){ var share=totN?r.n/totN*100:0; var ppm=totIns?Math.round(r.n/totIns*1000000):0; return '<tr>'
+    +'<td style="'+td+'font-weight:700;">'+E(r.cat)+'</td>'
+    +'<td style="'+td+'text-align:center;font-weight:800;color:#8A1F1F;">'+r.n+'</td>'
+    +'<td style="'+td+'text-align:center;">'+share.toFixed(1)+'%</td>'
+    +'<td style="'+td+'text-align:center;">'+ppm.toLocaleString()+'</td></tr>'; }).join("") : '<tr><td colspan="4" style="text-align:center;color:#B9C2D6;padding:20px;">'+grade+'등급 부적합 없음</td></tr>';
+  var html='<div id="ctqgd-ov" style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:100050;display:flex;align-items:center;justify-content:center;padding:16px;">'
+    +'<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
+    +'<div style="background:#1F2A44;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:2;">'
+    +'<div style="font-weight:800;font-size:15px;">'+grade+'등급 ('+gname+') · 총 '+totN+'건</div>'
+    +'<button onclick="var o=document.getElementById(\'ctqgd-ov\'); if(o) o.remove();" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-weight:700;">닫기 ✕</button></div>'
+    +'<div style="padding:14px 16px;overflow:auto;"><table style="border-collapse:collapse;width:100%;"><thead><tr>'
+    +['부적합 유형','부적합수','비중','PPM'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'+body+'</tbody></table>'
+    +'<div style="font-size:11.5px;color:#8A93A6;margin-top:8px;">※ 아래 CTQ 표와 동일 기준(검사종합 집계·선택 기간). 조치 상세는 검사일보 종결 이력에서 확인.</div></div></div></div>';
+  var old=document.getElementById("ctqgd-ov"); if(old) old.remove();
+  var d=document.createElement("div"); d.innerHTML=html; document.body.appendChild(d.firstChild);
+  var ov=document.getElementById("ctqgd-ov"); if(ov) ov.addEventListener("click",function(e){ if(e.target===ov) ov.remove(); });
 }
 function ctqGradeBadges_(){
   var gc=ctqGradeCounts_();
@@ -8475,7 +8575,7 @@ function ctqOnUpload_(file){
   reader.readAsArrayBuffer(file);
 }
 // 저장된 집계가 있으면 로드
-(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){} });
+(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){}; try{ if(typeof ncrEnsure_==="function") ncrEnsure_(); }catch(_){} });
 (window.__afterEnter=window.__afterEnter||[]).push(function(){ qShareLoad_("ctqMonthly", function(sv){ if(window.__qUserLoaded&&window.__qUserLoaded.ctqMonthly) return; if(sv&&typeof sv==="object"){ __ctqMonthly=sv; try{ if(typeof idbSet==="function") idbSet("ctqMonthly",sv); }catch(_){}; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ctqMonthly").then(function(v){ if(v&&typeof v==="object"){ __ctqMonthly=v; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); } }).catch(function(){}); } }catch(_){} }); });
 /* ==================== 📐 공정능력(Ppk) 분석 (측정 종합 시트 업로드 → 특성별 Ppk·문제 검출) ==================== */
 var PPK_GOOD=1.33, PPK_WARN=1.00;
@@ -11112,7 +11212,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=9.16;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=9.21;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -19253,8 +19353,9 @@ function insOpenDefectHistory(){
       +'<td style="text-align:center;">'+ncGradeBadge_(r.types)+'</td>'
       +'<td style="text-align:center;">'+defectHistEsc_(r.actDate||"-")+'</td>'
       +'<td style="text-align:center;">'+(r.days===""?"-":defectHistEsc_(r.days))+'</td>'
-      +'<td>'+defectHistEsc_(r.act||"")+'</td></tr>';
-  }).join("") : '<tr><td colspan="10" style="text-align:center;color:#B9C2D6;padding:16px;">부적합 이력이 없습니다.</td></tr>';
+      +'<td>'+defectHistEsc_(r.act||"")+'</td>'
+      +'<td style="text-align:center;">'+ncrBtnCell_(r)+'</td></tr>';
+  }).join("") : '<tr><td colspan="11" style="text-align:center;color:#B9C2D6;padding:16px;">부적합 이력이 없습니다.</td></tr>';
   var ov=document.createElement("div"); ov.id="dhist-ov";
   ov.style.cssText="position:fixed;inset:0;z-index:99991;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:14px;";
   ov.innerHTML='<div style="background:#fff;width:100%;max-width:960px;max-height:92vh;overflow:auto;border-radius:14px;box-shadow:0 16px 50px rgba(0,0,0,0.35);">'
@@ -19270,7 +19371,7 @@ function insOpenDefectHistory(){
     +  '<div style="text-align:right;margin-bottom:8px;"><button id="dhist-excel" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button></div>'
     +  '<div style="overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
     +    '<thead><tr style="background:#F0F4F8;">'
-    +      '<th style="padding:7px;border:1px solid #E1E8F0;">상태</th><th style="padding:7px;border:1px solid #E1E8F0;">발생일</th><th style="padding:7px;border:1px solid #E1E8F0;">유형</th><th style="padding:7px;border:1px solid #E1E8F0;">도번</th><th style="padding:7px;border:1px solid #E1E8F0;">S/N</th><th style="padding:7px;border:1px solid #E1E8F0;">부적합</th><th style="padding:7px;border:1px solid #E1E8F0;">등급</th><th style="padding:7px;border:1px solid #E1E8F0;">조치완료일</th><th style="padding:7px;border:1px solid #E1E8F0;">소요일</th><th style="padding:7px;border:1px solid #E1E8F0;">조치내용</th>'
+    +      '<th style="padding:7px;border:1px solid #E1E8F0;">상태</th><th style="padding:7px;border:1px solid #E1E8F0;">발생일</th><th style="padding:7px;border:1px solid #E1E8F0;">유형</th><th style="padding:7px;border:1px solid #E1E8F0;">도번</th><th style="padding:7px;border:1px solid #E1E8F0;">S/N</th><th style="padding:7px;border:1px solid #E1E8F0;">부적합</th><th style="padding:7px;border:1px solid #E1E8F0;">등급</th><th style="padding:7px;border:1px solid #E1E8F0;">조치완료일</th><th style="padding:7px;border:1px solid #E1E8F0;">소요일</th><th style="padding:7px;border:1px solid #E1E8F0;">조치내용</th><th style="padding:7px;border:1px solid #E1E8F0;">NCR</th>'
     +    '</tr></thead><tbody>'+body+'</tbody></table></div>'
     +  '<div style="font-size:11px;color:#8A93A6;margin-top:8px;">※ 종결 이력은 마감 시 조치완료된 부적합이 자동 기록됩니다. 미조치는 현재 진행 중인 항목입니다.</div>'
     +'</div></div>';
@@ -21045,6 +21146,30 @@ function reqClearAll(){
   .upload-note{ content-visibility:auto; contain-intrinsic-size:auto 320px; }
   /* 검사 일보 표: 레이아웃 격리로 회전 시 재계산 비용 축소 */
   #insrep-content{ contain:layout; }
+  /* === 모바일·태블릿 최적화 보강 (V9.21) === */
+  @media screen and (max-width: 1024px){
+    .insrep-tablewrap{ max-height:calc(100vh - 240px) !important; }
+    table{ font-size:12px; }
+  }
+  @media screen and (max-width: 820px){
+    /* 넓은 표는 가로 스크롤 컨테이너 안에서만 */
+    .view [style*="overflow:auto"], .view [style*="overflow: auto"]{ -webkit-overflow-scrolling:touch; }
+    /* 툴바·버튼줄 줄바꿈 */
+    .view [style*="display:flex"]{ flex-wrap:wrap; }
+    /* 입력·선택 폭 넘침 방지 */
+    .view input:not([type="checkbox"]):not([type="radio"]), .view select, .view textarea{ max-width:100%; box-sizing:border-box; }
+    /* 터치 타깃 */
+    .view button{ min-height:34px; }
+    /* 상단 메뉴 줄바꿈 */
+    .nav-wrap, .navbar, .topnav{ flex-wrap:wrap !important; }
+  }
+  @media screen and (max-width: 560px){
+    .view table{ font-size:11px; }
+    .view th, .view td{ padding:5px 6px !important; }
+    /* 모달 꽉 차게 */
+    [id$="-ov"] > div{ max-width:100% !important; }
+    h1{ font-size:20px !important; }
+  }
 </style>
 <script>
   (function(){
@@ -21054,6 +21179,6 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.16 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.21 🔔</div>
 </body>
 </html>
