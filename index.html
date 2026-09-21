@@ -4902,8 +4902,15 @@ var QSTD_DATA=[
 ];
 function qstdGo_(view){ try{ var n=document.querySelector('.nav-item[data-view="'+view+'"]'); if(n){ n.click(); return; } }catch(_){}
   try{ if(typeof showView==="function") showView(view); }catch(_){} }
-function qstdDoc_(no){ try{ var n=document.querySelector('.nav-item[data-view="docmaster"]'); if(n) n.click(); }catch(_){}
-  setTimeout(function(){ var el=document.getElementById("docmaster-search"); if(el){ el.value=no||""; try{ el.dispatchEvent(new Event("input",{bubbles:true})); }catch(_){}; try{ el.dispatchEvent(new Event("keyup",{bubbles:true})); }catch(_){} } if(typeof docmasterRender==="function") try{ docmasterRender(); }catch(_){} }, 220); }
+function qstdDoc_(no){ no=String(no||"").trim();
+  try{ if(typeof docmasterData!=="undefined" && docmasterData){ var hit=docmasterData.filter(function(d){ return String(d.no||"").trim().toUpperCase()===no.toUpperCase(); })[0];
+    if(hit && hit.path && !/^https?:/i.test(hit.path)){ var p=String(hit.path);
+      try{ navigator.clipboard.writeText(p); }catch(_){ try{ var ta=document.createElement("textarea"); ta.value=p; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }catch(e){} }
+      alert("📋 문서 경로가 복사되었습니다:\n\n"+p+"\n\n파일 탐색기 주소창에 붙여넣으면 열립니다.\n(브라우저 보안상 사내 경로는 직접 열 수 없어 복사 방식입니다.)"); return; }
+    if(hit && hit.path && /^https?:/i.test(hit.path)){ window.open(hit.path,"_blank"); return; }
+  } }catch(_){}
+  try{ var nv=document.querySelector('.nav-item[data-view="docmaster"]'); if(nv) nv.click(); }catch(_){}
+  setTimeout(function(){ var el=document.getElementById("docmaster-search"); if(el){ el.value=no; try{ el.dispatchEvent(new Event("input",{bubbles:true})); }catch(_){}; try{ el.dispatchEvent(new Event("keyup",{bubbles:true})); }catch(_){} } if(typeof docmasterRender==="function") try{ docmasterRender(); }catch(_){} }, 220); }
 function renderQstd_(){
   var body=document.getElementById("qstd-body"); if(!body) return;
   var E=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
