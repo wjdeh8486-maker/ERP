@@ -1565,9 +1565,11 @@
             <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">소재도번(자동)<input id="matin-draw" type="text" placeholder="자동" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;min-width:140px;background:#F5F8FC;"></label>
             <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">품명(자동)<input id="matin-name" type="text" placeholder="자동" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;min-width:120px;background:#F5F8FC;"></label>
             <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">생산가능수량<input id="matin-qty" type="number" title="이 소재로 생산 가능한 제품 수(예: 6~7)" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:100px;"></label>
-            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">Maker<input id="matin-maker" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:110px;"></label>
-            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">LOT/성적서<input id="matin-lot" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:120px;"></label>
-            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">담당<input id="matin-by" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:90px;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">Maker(제조)<input id="matin-maker" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:100px;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">공급처<input id="matin-supplier" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:100px;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">Mill sheet(번호)<input id="matin-mill" type="text" placeholder="증명서 번호" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:110px;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">Mill sheet(파일)<input id="matin-millfile" type="file" accept=".pdf,image/*,.xls,.xlsx" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:150px;padding:4px;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">담당<input id="matin-by" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:80px;"></label>
             <button type="button" onclick="matinAdd_()" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;">📥 입고 등록</button>
           </div>
         </div>
@@ -4660,17 +4662,21 @@ function ncrPrintOne_(key, draw, types){
   w.document.close(); setTimeout(function(){ try{ w.print(); }catch(e){} }, 400);
 }
 /* ========================= 🔴 LOT 출하정지 관리 ========================= */
-var __holdLog=[], __holdLoaded=false;
+var __holdLog=[], __holdLoaded=false, __holdDel={};   // 삭제 추적
 function holdEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 function holdToday_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
 function holdWho_(){ try{ return (insMetaByType&&insMetaByType.shipping&&insMetaByType.shipping.inspector)||(insMetaByType&&insMetaByType.incoming&&insMetaByType.incoming.inspector)||""; }catch(_){ return ""; } }
-function holdSave_(){ try{ if(typeof idbSet==="function") idbSet("holdLog", __holdLog); }catch(_){}
-  if(typeof qShareLoad_==="function"){ qShareLoad_("holdLog", function(rm){ if(Array.isArray(rm)){ var ids={}; __holdLog.forEach(function(h){ if(h) ids[h.id]=1; }); rm.forEach(function(h){ if(h&&h.id&&!ids[h.id]) __holdLog.push(h); }); } try{ qShareSave_("holdLog", __holdLog, ""); }catch(_){} }); }
-  else { try{ if(typeof qShareSave_==="function") qShareSave_("holdLog", __holdLog, ""); }catch(_){} } }
+function holdSave_(){ try{ if(typeof idbSet==="function"){ idbSet("holdLog", __holdLog); idbSet("holdLog_del", __holdDel); } }catch(_){}
+  var __push=function(){ try{ qShareSave_("holdLog", __holdLog, ""); }catch(_){}; try{ qShareSave_("holdLog_del", __holdDel, ""); }catch(_){} };
+  if(typeof qShareLoad_==="function"){ qShareLoad_("holdLog_del", function(rd){ if(rd&&typeof rd==="object"){ Object.keys(rd).forEach(function(k){ __holdDel[k]=1; }); }
+    qShareLoad_("holdLog", function(rm){ if(Array.isArray(rm)){ var ids={}; __holdLog.forEach(function(h){ if(h) ids[h.id]=1; }); rm.forEach(function(h){ if(h&&h.id&&!ids[h.id]&&!__holdDel[h.id]) __holdLog.push(h); }); }
+      __holdLog=__holdLog.filter(function(h){ return h && !__holdDel[h.id]; }); __push(); }); }); }
+  else { __holdLog=__holdLog.filter(function(h){ return h && !__holdDel[h.id]; }); if(typeof qShareSave_==="function") __push(); } }
 function holdEnsure_(){ if(__holdLoaded) return; __holdLoaded=true;
-  try{ if(typeof idbGet==="function"){ idbGet("holdLog").then(function(v){ if(Array.isArray(v)) __holdLog=v;
-    try{ if(typeof qShareLoad_==="function") qShareLoad_("holdLog", function(sv){ if(Array.isArray(sv)){ var ids={}; __holdLog.forEach(function(h){ids[h.id]=1;}); sv.forEach(function(h){ if(!ids[h.id]) __holdLog.push(h); }); } if(typeof renderHold_==="function") renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_(); }); }catch(_){}
-    if(typeof renderHold_==="function") renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_();
+  try{ if(typeof idbGet==="function"){ idbGet("holdLog_del").then(function(dv){ if(dv&&typeof dv==="object") __holdDel=dv; }).catch(function(){}); idbGet("holdLog").then(function(v){ if(Array.isArray(v)) __holdLog=v;
+    try{ if(typeof qShareLoad_==="function") qShareLoad_("holdLog_del", function(rd){ if(rd&&typeof rd==="object"){ Object.keys(rd).forEach(function(k){ __holdDel[k]=1; }); }
+      qShareLoad_("holdLog", function(sv){ if(Array.isArray(sv)){ var ids={}; __holdLog.forEach(function(h){ids[h.id]=1;}); sv.forEach(function(h){ if(!ids[h.id]&&!__holdDel[h.id]) __holdLog.push(h); }); } __holdLog=__holdLog.filter(function(h){ return h && !__holdDel[h.id]; }); if(typeof renderHold_==="function") renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_(); }); }); }catch(_){}
+    __holdLog=__holdLog.filter(function(h){ return h && !__holdDel[h.id]; }); if(typeof renderHold_==="function") renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_();
   }).catch(function(){}); } }catch(_){} }
 // 활성(정지중) HOLD가 이 텍스트(ORDER/PROJECT/도번)와 매칭되나
 function holdActive_(text){
@@ -4715,7 +4721,7 @@ function holdReleaseCommit_(id){
   h.status="해제"; h.releaseDate=(document.getElementById("holdrel-date")||{}).value||holdToday_(); h.releaseSide=(document.getElementById("holdrel-side")||{}).value||"품질담당"; h.releaseBy=(document.getElementById("holdrel-by")||{}).value||""; h.releaseNote=(document.getElementById("holdrel-note")||{}).value||"";
   holdSave_(); var o=document.getElementById("holdrel-ov"); if(o) o.remove(); renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_();
 }
-function holdDelete_(id){ if(!confirm("이 정지 기록을 완전히 삭제할까요?")) return; __holdLog=__holdLog.filter(function(h){ return h.id!==id; }); holdSave_(); renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_(); }
+function holdDelete_(id){ if(!confirm("이 정지 기록을 완전히 삭제할까요?")) return; __holdDel[id]=1; __holdLog=__holdLog.filter(function(h){ return h.id!==id; }); holdSave_(); renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_(); }
 function holdSideBadge_(side){ var s=side||"품질담당"; var c=(s==="고객사")?"#0B5CAB":"#5A3E7A"; var bg=(s==="고객사")?"#E7F0FA":"#EFEAF7"; return '<span style="background:'+bg+';color:'+c+';border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap;">'+holdEsc_(s)+'</span>'; }
 function holdScopeBadge_(sc){ var s=sc||"전체"; var c=(s==="부분")?"#B0662A":"#C0392B"; var bg=(s==="부분")?"#FFF3E6":"#FDECEC"; return '<span style="background:'+bg+';color:'+c+';border-radius:5px;padding:1px 7px;font-size:11px;font-weight:800;white-space:nowrap;">'+s+'</span>'; }
 function holdFocusHtml_(){
@@ -4785,18 +4791,22 @@ function renderHold_(){
 }
 
 /* ========================= 📥 원자재(소재) 입고 · 재고 (2026 출하분·1:1) ========================= */
-var __matInbound=[], __matinLoaded=false;
+var __matInbound=[], __matinLoaded=false, __matinDel={};   // __matinDel: 삭제 추적(되살아남 방지)
 function matinEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 function matinToday_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
 function matinWho_(){ try{ return (insMetaByType&&insMetaByType.incoming&&insMetaByType.incoming.inspector)||""; }catch(_){ return ""; } }
 function matNorm_(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); }
-function matinSave_(){ try{ if(typeof idbSet==="function") idbSet("matInbound", __matInbound); }catch(_){}
-  if(typeof qShareLoad_==="function"){ qShareLoad_("matInbound", function(rm){ if(Array.isArray(rm)){ var ids={}; __matInbound.forEach(function(h){ if(h) ids[h.id]=1; }); rm.forEach(function(h){ if(h&&h.id&&!ids[h.id]) __matInbound.push(h); }); } try{ qShareSave_("matInbound", __matInbound, ""); }catch(_){} }); }
-  else { try{ if(typeof qShareSave_==="function") qShareSave_("matInbound", __matInbound, ""); }catch(_){} } }
+function matinSave_(){ try{ if(typeof idbSet==="function"){ idbSet("matInbound", __matInbound); idbSet("matInbound_del", __matinDel); } }catch(_){}
+  var __push=function(){ try{ qShareSave_("matInbound", __matInbound, ""); }catch(_){}; try{ qShareSave_("matInbound_del", __matinDel, ""); }catch(_){} };
+  if(typeof qShareLoad_==="function"){ qShareLoad_("matInbound_del", function(rd){ if(rd&&typeof rd==="object"){ Object.keys(rd).forEach(function(k){ __matinDel[k]=1; }); }
+    qShareLoad_("matInbound", function(rm){ if(Array.isArray(rm)){ var ids={}; __matInbound.forEach(function(h){ if(h) ids[h.id]=1; }); rm.forEach(function(h){ if(h&&h.id&&!ids[h.id]&&!__matinDel[h.id]) __matInbound.push(h); }); }
+      __matInbound=__matInbound.filter(function(h){ return h && !__matinDel[h.id]; }); __push(); }); }); }
+  else { __matInbound=__matInbound.filter(function(h){ return h && !__matinDel[h.id]; }); if(typeof qShareSave_==="function") __push(); } }
 function matinEnsure_(){ if(__matinLoaded) return; __matinLoaded=true;
-  try{ if(typeof idbGet==="function"){ idbGet("matInbound").then(function(v){ if(Array.isArray(v)) __matInbound=v;
-    try{ if(typeof qShareLoad_==="function") qShareLoad_("matInbound", function(sv){ if(Array.isArray(sv)){ var ids={}; __matInbound.forEach(function(h){if(h)ids[h.id]=1;}); sv.forEach(function(h){ if(h&&h.id&&!ids[h.id]) __matInbound.push(h); }); } if(typeof renderMatin_==="function") renderMatin_(); }); }catch(_){}
-    if(typeof renderMatin_==="function") renderMatin_();
+  try{ if(typeof idbGet==="function"){ idbGet("matInbound_del").then(function(dv){ if(dv&&typeof dv==="object") __matinDel=dv; }).catch(function(){}); idbGet("matInbound").then(function(v){ if(Array.isArray(v)) __matInbound=v;
+    try{ if(typeof qShareLoad_==="function") qShareLoad_("matInbound_del", function(rd){ if(rd&&typeof rd==="object"){ Object.keys(rd).forEach(function(k){ __matinDel[k]=1; }); }
+      qShareLoad_("matInbound", function(sv){ if(Array.isArray(sv)){ var ids={}; __matInbound.forEach(function(h){if(h)ids[h.id]=1;}); sv.forEach(function(h){ if(h&&h.id&&!ids[h.id]&&!__matinDel[h.id]) __matInbound.push(h); }); } __matInbound=__matInbound.filter(function(h){ return h && !__matinDel[h.id]; }); if(typeof renderMatin_==="function") renderMatin_(); }); }); }catch(_){}
+    __matInbound=__matInbound.filter(function(h){ return h && !__matinDel[h.id]; }); if(typeof renderMatin_==="function") renderMatin_();
   }).catch(function(){}); } }catch(_){} }
 // 2026년 완제품 출고량 (해당 소재도번, 납품완료 기준)
 function matShippedQty2026_(draw){ var nd=matNorm_(draw), sum=0;
@@ -4813,14 +4823,18 @@ function matinLookupOrder_(){
 function matinAdd_(){
   var g=function(id){ return String((document.getElementById(id)||{}).value||"").trim(); };
   var dr=g("matin-draw"); if(!dr){ alert("소재도번을 입력하세요."); return; }
-  var qty=Number(g("matin-qty"))||0; if(qty<=0){ alert("입고수량을 입력하세요."); return; }
-  __matInbound.push({ id:"MI"+Date.now()+Math.floor(Math.random()*1000), date:g("matin-date")||matinToday_(), order:g("matin-order"), draw:dr, name:g("matin-name"), qty:qty, maker:g("matin-maker"), lot:g("matin-lot"), by:g("matin-by")||matinWho_() });
-  matinSave_();
-  ["matin-order","matin-draw","matin-name","matin-qty","matin-maker","matin-lot","matin-by"].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=""; });
-  var dt=document.getElementById("matin-date"); if(dt) dt.value=matinToday_();
-  renderMatin_();
+  var qty=Number(g("matin-qty"))||0; if(qty<=0){ alert("생산가능수량을 입력하세요."); return; }
+  var rec={ id:"MI"+Date.now()+Math.floor(Math.random()*1000), date:g("matin-date")||matinToday_(), order:g("matin-order"), draw:dr, name:g("matin-name"), qty:qty, maker:g("matin-maker"), supplier:g("matin-supplier"), mill:g("matin-mill"), by:g("matin-by")||matinWho_() };
+  var fi=document.getElementById("matin-millfile"); var f=(fi&&fi.files&&fi.files[0])?fi.files[0]:null;
+  var finish=function(){ __matInbound.push(rec); matinSave_();
+    ["matin-order","matin-draw","matin-name","matin-qty","matin-maker","matin-supplier","matin-mill","matin-by"].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=""; });
+    if(fi) fi.value=""; var dt=document.getElementById("matin-date"); if(dt) dt.value=matinToday_(); renderMatin_(); };
+  if(f){ if(f.size>3*1024*1024){ alert("Mill sheet 파일이 너무 큽니다(3MB 이하). 번호만 입력하거나 작은 파일로 올려주세요."); return; }
+    var rd=new FileReader(); rd.onload=function(){ rec.millFile=String(rd.result||""); rec.millName=f.name; finish(); }; rd.onerror=function(){ finish(); }; rd.readAsDataURL(f); }
+  else { finish(); }
 }
-function matinDel_(id){ if(!confirm("이 입고 기록을 삭제할까요?")) return; __matInbound=__matInbound.filter(function(h){ return h.id!==id; }); matinSave_(); renderMatin_(); }
+function matinDel_(id){ if(!confirm("이 입고 기록을 삭제할까요?")) return; __matinDel[id]=1; __matInbound=__matInbound.filter(function(h){ return h.id!==id; }); matinSave_(); renderMatin_(); }
+function matinOpenMill_(id){ var r=__matInbound.filter(function(x){return x.id===id;})[0]; if(!r||!r.millFile){ alert("첨부 파일이 없습니다."); return; } var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; } var nm=String(r.millName||"Mill sheet"); w.document.write('<title>'+nm.replace(/</g,"")+'</title><body style="margin:0;">'+(/pdf/i.test(r.millFile.slice(0,40))||/\.pdf/i.test(nm)?'<iframe src="'+r.millFile+'" style="width:100vw;height:100vh;border:0;"></iframe>':'<img src="'+r.millFile+'" style="max-width:100%;">')+'</body>'); w.document.close(); }
 function matinStockRows_(){
   var by={}; __matInbound.forEach(function(r){ var k=matNorm_(r.draw); if(!k) return; if(!by[k]) by[k]={draw:r.draw, name:r.name||"", inQty:0}; by[k].inQty+=(Number(r.qty)||0); if(!by[k].name && r.name) by[k].name=r.name; });
   return Object.keys(by).map(function(k){ var o=by[k]; var out=matShippedQty2026_(o.draw); return { draw:o.draw, name:o.name, inQty:o.inQty, outQty:out, stock:o.inQty-out }; }).sort(function(a,b){ return String(a.draw).localeCompare(String(b.draw)); });
@@ -4841,11 +4855,13 @@ function renderMatin_(){
     +'</tbody></table></div>'+(neg?('<div style="font-size:12px;color:#C0392B;margin-top:6px;">⚠ 재고 음수 '+neg+'건 = 출고가 입고보다 많음(입고 누락 가능) — 입고를 보완하세요.</div>'):'')) : '<div style="color:#B9C2D6;font-size:12px;padding:6px;">입고 기록이 없습니다.</div>';
   var log=__matInbound.slice().sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
   var logTbl=log.length? ('<div style="overflow:auto;max-height:300px;"><table style="border-collapse:collapse;width:100%;min-width:640px;"><thead><tr>'
-    +['입고일','ORDER NO','소재도번','품명','생산가능수','Maker','LOT','담당','삭제'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+    +['입고일','ORDER NO','소재도번','품명','생산가능수','Maker','공급처','Mill sheet','담당','삭제'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
     +log.map(function(r){ return '<tr><td style="'+td+'text-align:center;white-space:nowrap;">'+E(r.date)+'</td>'
       +'<td style="'+td+'font-weight:700;">'+E(r.draw)+'</td><td style="'+td+'">'+E(r.name)+'</td>'
       +'<td style="'+td+'text-align:center;">'+E(r.qty)+'</td><td style="'+td+'">'+E(r.maker)+'</td>'
-      +'<td style="'+td+'">'+E(r.lot)+'</td><td style="'+td+'text-align:center;">'+E(r.by)+'</td>'
+      +'<td style="'+td+'">'+E(r.supplier||"")+'</td>'
+      +'<td style="'+td+'">'+E(r.mill||r.lot||"")+(r.millFile?(' <span onclick="matinOpenMill_(\''+r.id+'\')" title="'+E(r.millName||"파일")+'" style="color:#0B5CAB;cursor:pointer;font-weight:700;">📎</span>'):'')+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(r.by)+'</td>'
       +'<td style="'+td+'text-align:center;"><span onclick="matinDel_(\''+r.id+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">✕</span></td></tr>'; }).join("")
     +'</tbody></table></div>') : '';
   body.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;"><div style="font-weight:800;color:#1F2A44;">📦 소재 생산가능 재고 <span style="font-size:12px;color:#8A93A6;font-weight:400;">(생산가능수 − 2026 완제품 출고)</span></div>'
@@ -4857,9 +4873,9 @@ async function matinSaveToSheet_(){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 URL이 없습니다."); return; }
   if(!__matInbound.length){ alert("입고 기록이 없습니다."); return; }
   var fileId="1XtlaNPgdhF-fyDAmdoQD2IcKJsO9Vvud2QjPZxCd3W0", sheet="원자재입고";
-  var aoa=[["입고일","ORDER NO","소재도번","품명","생산가능수","Maker","LOT","담당"]];
-  __matInbound.slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));}).forEach(function(r){ aoa.push([r.date||"", r.order||"", r.draw||"", r.name||"", (Number(r.qty)||0), r.maker||"", r.lot||"", r.by||""]); });
-  var numCols=8, CH=500, total=aoa.length, chunks=Math.ceil(total/CH);
+  var aoa=[["입고일","ORDER NO","소재도번","품명","생산가능수","Maker","공급처","Mill sheet","담당"]];
+  __matInbound.slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));}).forEach(function(r){ aoa.push([r.date||"", r.order||"", r.draw||"", r.name||"", (Number(r.qty)||0), r.maker||"", r.supplier||"", r.mill||r.lot||"", r.by||""]); });
+  var numCols=9, CH=500, total=aoa.length, chunks=Math.ceil(total/CH);
   var post=function(body){ return fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)}).catch(function(){}); };
   var sleep=function(ms){ return new Promise(function(r){ setTimeout(r,ms); }); };
   for(var i=0;i<chunks;i++){ var part=aoa.slice(i*CH,(i+1)*CH); await post({action:"replaceSheet", fileId:fileId, sheetName:sheet, rows:part, startRow:i*CH+1, numCols:numCols, clearFirst:(i===0), createIfMissing:(i===0)}); await sleep(150); }
@@ -4869,7 +4885,7 @@ function matinExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브�
   var wb=XLSX.utils.book_new();
   var s1=[["소재도번","품명","입고합","2026출고","소재재고"]]; matinStockRows_().forEach(function(r){ s1.push([r.draw,r.name,r.inQty,r.outQty,r.stock]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s1), "소재재고");
-  var s2=[["입고일","ORDER NO","소재도번","품명","생산가능수","Maker","LOT","담당"]]; __matInbound.slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));}).forEach(function(r){ s2.push([r.date,r.order||"",r.draw,r.name,r.qty,r.maker,r.lot,r.by]); });
+  var s2=[["입고일","ORDER NO","소재도번","품명","생산가능수","Maker","공급처","Mill sheet","담당"]]; __matInbound.slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));}).forEach(function(r){ s2.push([r.date,r.order||"",r.draw,r.name,r.qty,r.maker,r.supplier||"",r.mill||r.lot||"",r.by]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s2), "입고이력");
   XLSX.writeFile(wb, "원자재입고_"+matinToday_()+".xlsx");
 }
