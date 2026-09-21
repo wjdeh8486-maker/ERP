@@ -1062,7 +1062,7 @@
     <div class="nav-item" data-view="measurehist"><span class="dot"></span>📐 측정이력</div>
     <div class="nav-item" data-view="mnshort"><span class="dot"></span>📊 반제품 현황</div>
     <div class="nav-item" data-view="shipjudge"><span class="dot"></span>🚦 LOT 출하판정</div>
-    <div class="nav-item" data-view="flow"><span class="dot"></span>🗺 업무흐름도</div>
+    <div class="nav-item" data-view="flow"><span class="dot"></span>🗺 업무흐름·품질기준</div>
     <div class="nav-item" id="dataCheckNavBtn" title="데이터 이상 점검 (관리자용)"><span class="dot"></span>🔍 데이터 점검</div>
     <div class="nav-item" id="helpNavBtn" title="사용법 안내"><span class="dot"></span>❓ 사용법</div>
   </div>
@@ -2173,6 +2173,10 @@
 
         <div style="font-weight:800;color:#1E7A46;margin:18px 0 8px;">▶ 분석 · 관리 (연동 항목)</div>
         <div id="flow-sub" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;"></div>
+        <div style="border-top:2px solid #EEF1F6;margin:22px 0 14px;"></div>
+        <div style="font-size:18px;font-weight:800;color:#1F2A44;">📋 품질 기준 · 관리 방법 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 영역별 검사기준·관리방법·근거문서 (고객 문의 대응)</span></div>
+        <div style="font-size:12px;color:#7A8598;margin:4px 0 12px;">각 카드의 [기능 →]을 누르면 실제 화면으로 이동합니다.</div>
+        <div id="qstd-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;"></div>
       </div>
     </div>
     <!-- ===================== 📇 품목이력 VIEW ===================== -->
@@ -3522,7 +3526,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
       if(typeof mhEnsureLoaded_==="function") mhEnsureLoaded_();
       if(typeof renderMeasureHist==="function") runBusy(renderMeasureHist);
     }
-    if(target==="flow"){ if(typeof renderFlow_==="function") renderFlow_(); }
+    if(target==="flow"){ if(typeof renderFlow_==="function") renderFlow_(); if(typeof renderQstd_==="function") renderQstd_(); }
     if(target==="itemhist"){
       if(typeof renderItemHist==="function") renderItemHist();
     }
@@ -4856,6 +4860,50 @@ function matinExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브�
   var s2=[["입고일","ORDER NO","소재도번","품명","생산가능수","Maker","LOT","담당"]]; __matInbound.slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));}).forEach(function(r){ s2.push([r.date,r.order||"",r.draw,r.name,r.qty,r.maker,r.lot,r.by]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s2), "입고이력");
   XLSX.writeFile(wb, "원자재입고_"+matinToday_()+".xlsx");
+}
+/* ========================= 📋 품질 기준·업무흐름 허브 ========================= */
+var QSTD_DATA=[
+  { c:"#0B5CAB", icon:"📥", title:"수입검사 (원소재·외주)", doc:"QS-910-01 Rev04 (2025.08.19)", view:"insrep",
+    std:["원소재/외주가공·후처리 제품 대상","발주서(P.O) 근거로 관리번호·품목·규격·수량 확인","소재검사증명서(Mill Cert) 보관·관리","수입검사일지 = 거래명세서 + 소재검사증명서로 대체","고객지정소재(예: 유진테크 AL6061)는 지정 Label 부착 입고"],
+    mng:"검사일보 → 수입검사(제품/소재 구분). 소재는 [소재] 모드로 입력·격리 저장." },
+  { c:"#0B5CAB", icon:"⚙️", title:"공정검사", doc:"QS-910-02 Rev02", view:"insrep",
+    std:["MCT·선반·밀링·사상 공정 전·후 검사","QC 공정도에 의거 항목·방법·주체 진행","측정기: 캘리퍼스·마이크로메터·Steel자·3차원","치수판정: 고객 최신도면(지정공차→없으면 일반공차표)","육안검사: QP-910 / QI-910-01 기준"],
+    mng:"검사일보 → 공정검사(측정소/측정대). 애매 시 품질팀 치수 측정 의뢰." },
+  { c:"#0B5CAB", icon:"📤", title:"출하검사", doc:"QS-910-03 Rev02", view:"insrep",
+    std:["분류: 외관·치수·조립·기능검사","기준: QI-910-01 품질검사표준 (고객기준 우선)","외관: 600Lux 이상 조도, Φ3.0mm 이하 Hole·Chamber Seal면은 Micro Scope 20배","치수: 검교정 측정기(캘리퍼스·마이크로메타·3차원)","알루미늄/SUS/Ni/Cu 가공품·용접·판금·도장 대상"],
+    mng:"검사일보 → 출하검사. 출고NO로 출하 관리." },
+  { c:"#1E7A46", icon:"📦", title:"재고 · 보관 · 납품", doc:"QI-880-03 / QP-890 자재관리", view:"inventory",
+    std:["제품 보관·납품 관리 지침에 따름","입출고·재고 현황 관리(품번·S/N·관리번호)","장기재고(180일) 재검사 대상 관리","원자재(소재) 입고·생산가능 재고 관리"],
+    mng:"입출고·재고관리 → 재고확인·장기재고·원자재 입고 탭." },
+  { c:"#8A6D1F", icon:"💡", title:"검사 환경 (조도·크린룸)", doc:"QI-910-03 조도 / QI-880-05 환경(Rev3) / QP-760 크린룸", view:"docmaster",
+    std:["외관검사 조도 600Lux 이상 유지","크린룸/스막룸 환경(온·습도·청정도) 관리","Air Shower 출입 관리","조도 정기 측정·기록"],
+    mng:"환경·조도 기준은 문서 Master에서 관리(정기 점검 기록)." },
+  { c:"#8A1F1F", icon:"⚠️", title:"부적합 · 특채 처리", doc:"QP-1010 / QI-1010-01 / QI-1010-02 특채 / QP-1020 시정조치", view:"nc",
+    std:["부적합 발견 시 식별·격리 → 오사용·혼입 방지","처리: 특채(사용가능 부적합 채용)·재작업·재검사·폐기","특채: 내부승인 → 고객 승인 의뢰·결과 통보","NCR: 발생·유출원인·5Why·시정·재발방지·효과확인","A등급(크리티컬)은 NCR 완료해야 종결"],
+    mng:"고객부적합·시정조치 + 종결이력의 📝 NCR로 관리." },
+  { c:"#7A3E9A", icon:"📣", title:"고객부적합·클레임 처리", doc:"QP-920 고객만족 / QP-1020 시정조치 / QI-1020-01 시정·재발방지", view:"nc",
+    std:["고객불만·부적합 접수 → QP-1020 시정·예방조치에 의거 처리","원인분석(발생·유출원인) → 시정조치 → 재발방지 대책서 작성","임시대책이 아닌 근본 재발방지·지속 검토(유사문제 예방)","고객 통보(접수·조치·결과) 및 데이터 관리","재발 여부·효과 확인"],
+    mng:"품질분석 → 고객부적합 등록 → 시정조치·재발관리로 추적. CTQ 등급 연동." },
+  { c:"#C0392B", icon:"🔴", title:"출하 LOT 출하정지", doc:"QP-1010 부적합 / QI-1010-02 특채", view:"shipjudge",
+    std:["부적합 LOT 발견 시 출하정지(HOLD) 등록","범위: 전체(PROJECT/도번) / 부분(S/N·수량)","정지·해제 담당(품질담당/고객사) 기록","해제: 재검사·선별·특채 등 처리내용 기록","정지 중 선출고·재고사용·분출 자동 차단"],
+    mng:"LOT 출하판정 → 출하정지 등록·해제. 반복 정지 품목 집중관리." }
+];
+function qstdGo_(view){ try{ var n=document.querySelector('.nav-item[data-view="'+view+'"]'); if(n){ n.click(); return; } }catch(_){}
+  try{ if(typeof showView==="function") showView(view); }catch(_){} }
+function renderQstd_(){
+  var body=document.getElementById("qstd-body"); if(!body) return;
+  var E=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+  body.innerHTML=QSTD_DATA.map(function(d){
+    return '<div style="border:2px solid '+d.c+';border-radius:12px;padding:14px 16px;background:#fff;display:flex;flex-direction:column;">'
+      +'<div style="font-size:15px;font-weight:800;color:'+d.c+';">'+d.icon+' '+E(d.title)+'</div>'
+      +'<div style="font-size:11px;color:#8A93A6;margin:2px 0 8px;">📄 '+E(d.doc)+'</div>'
+      +'<div style="font-size:11px;font-weight:800;color:#5A6478;margin-bottom:3px;">핵심 기준</div>'
+      +'<ul style="margin:0 0 8px;padding-left:16px;font-size:12px;color:#333;line-height:1.5;">'+d.std.map(function(x){return '<li>'+E(x)+'</li>';}).join("")+'</ul>'
+      +'<div style="font-size:11px;font-weight:800;color:#5A6478;margin-bottom:2px;">관리 방법</div>'
+      +'<div style="font-size:12px;color:#333;line-height:1.45;margin-bottom:10px;">'+E(d.mng)+'</div>'
+      +'<button type="button" onclick="qstdGo_(\''+d.view+'\')" style="margin-top:auto;background:'+d.c+';color:#fff;border:none;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;font-size:12px;">기능 →</button>'
+      +'</div>';
+  }).join("");
 }
 /* ========================= 🗺 업무흐름도 (연동 시각화) ========================= */
 function flowGo_(view){ try{ var n=document.querySelector('.nav-item[data-view="'+view+'"]'); if(n){ n.click(); return; } }catch(_){}
