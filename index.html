@@ -1568,7 +1568,7 @@
             <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">Maker(제조)<input id="matin-maker" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:100px;"></label>
             <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">공급처<input id="matin-supplier" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:100px;"></label>
             <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">Mill sheet(번호)<input id="matin-mill" type="text" placeholder="증명서 번호" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:110px;"></label>
-            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">Mill sheet(파일)<input id="matin-millfile" type="file" accept=".pdf,image/*,.xls,.xlsx" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:150px;padding:4px;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;" title="앱에서 올리면 자동으로 구글드라이브 링크로 저장됩니다">Mill sheet(파일→드라이브)<input id="matin-millfile" type="file" accept=".pdf,image/*,.xls,.xlsx" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:150px;padding:4px;"></label>
             <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">담당<input id="matin-by" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:80px;"></label>
             <button type="button" onclick="matinAdd_()" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;">📥 입고 등록</button>
             <button type="button" onclick="matinBulkOpen_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;" title="엑셀에서 복사해 여러 건 한 번에 등록">📋 엑셀 붙여넣기</button>
@@ -4830,11 +4830,71 @@ function matinAdd_(){
   var finish=function(){ __matInbound.push(rec); matinSave_();
     ["matin-order","matin-draw","matin-name","matin-qty","matin-maker","matin-supplier","matin-mill","matin-by"].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=""; });
     if(fi) fi.value=""; var dt=document.getElementById("matin-date"); if(dt) dt.value=matinToday_(); renderMatin_(); };
-  if(f){ if(f.size>3*1024*1024){ alert("Mill sheet 파일이 너무 큽니다(3MB 이하). 번호만 입력하거나 작은 파일로 올려주세요."); return; }
-    var rd=new FileReader(); rd.onload=function(){ rec.millFile=String(rd.result||""); rec.millName=f.name; finish(); }; rd.onerror=function(){ finish(); }; rd.readAsDataURL(f); }
+  if(f){ if(f.size>10*1024*1024){ alert("Mill sheet 파일이 너무 큽니다(10MB 이하)."); return; }
+    var __b=document.querySelector("#panel-matin button[onclick=\"matinAdd_()\"]"); if(__b){ __b.disabled=true; __b.textContent="⏳ 업로드 중…"; }
+    matMillUpload_(f, function(u,err){ if(u){ rec.millUrl=u; rec.millName=f.name; } else { alert("Mill sheet 업로드 실패: "+(err||"")+"\n파일 없이 등록합니다(나중에 ✏️ 수정에서 추가)."); } if(__b){ __b.disabled=false; __b.textContent="📥 입고 등록"; } finish(); }); }
   else { finish(); }
 }
 function matinDel_(id){ if(!confirm("이 입고 기록을 삭제할까요?")) return; __matinDel[id]=1; __matInbound=__matInbound.filter(function(h){ return h.id!==id; }); matinSave_(); renderMatin_(); }
+// 원자재 Mill sheet: 앱에서 파일 선택 → 드라이브 업로드 → 링크 콜백 (POST 후 qTool 키 폴링)
+function matMillUpload_(file, cb){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ cb(null,"백엔드 URL 없음"); return; }
+  var token="MU"+Date.now()+Math.floor(Math.random()*100000);
+  var rd=new FileReader();
+  rd.onerror=function(){ cb(null,"파일 읽기 실패"); };
+  rd.onload=function(){
+    var b64=String(rd.result||"").split(",")[1]||"";
+    try{ fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({mode:"uploadMillFile", token:token, name:file.name, mime:file.type||"application/octet-stream", dataB64:b64})}).catch(function(){}); }catch(e){ cb(null,String(e)); return; }
+    var tries=0;
+    var poll=function(){ tries++;
+      fetch(url+"?mode=qToolMaster&key="+encodeURIComponent("millup_"+token)+"&_t="+Date.now(),{cache:"no-store"})
+        .then(function(r){return r.json();})
+        .then(function(res){ var j=(res&&res.success&&res.json)?res.json:""; if(j){ try{ var o=JSON.parse(j); if(o&&o.url){ cb(o.url); return; } }catch(_){} } if(tries<25){ setTimeout(poll,1500); } else { cb(null,"업로드 시간초과(잠시 후 다시)"); } })
+        .catch(function(){ if(tries<25){ setTimeout(poll,1500); } else { cb(null,"업로드 확인 실패"); } });
+    };
+    setTimeout(poll, 2500);
+  };
+  rd.readAsDataURL(file);
+}
+// 입고 건 수정 팝업 (모든 필드 + Mill sheet 파일 업로드)
+function matinEdit_(id){
+  var r=__matInbound.filter(function(x){return x.id===id;})[0]; if(!r) return;
+  var E=matinEsc_;
+  var fld=function(lbl,fid,val,ph){ return '<label style="font-size:12px;color:#5A6478;font-weight:700;">'+lbl+'<input id="'+fid+'" type="text" value="'+E(val||"")+'" placeholder="'+(ph||"")+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"></label>'; };
+  var html='<div id="matedit-ov" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100070;display:flex;align-items:center;justify-content:center;padding:16px;">'
+    +'<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
+    +'<div style="background:#0B5CAB;color:#fff;padding:13px 18px;font-weight:800;position:sticky;top:0;">✏️ 입고 수정 · '+E(r.draw)+'</div>'
+    +'<div style="padding:16px;display:flex;flex-direction:column;gap:9px;">'
+    +'<label style="font-size:12px;color:#5A6478;font-weight:700;">입고일<input id="me-date" type="date" value="'+E(r.date||"")+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"></label>'
+    +fld("ORDER NO","me-order",r.order)
+    +fld("소재도번","me-draw",r.draw)
+    +fld("품명","me-name",r.name)
+    +fld("생산가능수","me-qty",r.qty)
+    +fld("Maker","me-maker",r.maker)
+    +fld("공급처","me-supplier",r.supplier)
+    +fld("Mill sheet(번호)","me-mill",r.mill||r.lot)
+    +fld("담당","me-by",r.by)
+    +'<label style="font-size:12px;color:#5A6478;font-weight:700;">Mill sheet 파일'+(r.millUrl?(' <a href="'+E(r.millUrl)+'" target="_blank" style="color:#0B5CAB;">📎 현재파일</a>'):'')+'<input id="me-millfile" type="file" accept=".pdf,image/*,.xls,.xlsx" style="width:100%;padding:5px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"></label>'
+    +'<div id="me-status" style="font-size:12px;color:#0B5CAB;"></div>'
+    +'<div style="display:flex;gap:8px;margin-top:4px;">'
+    +'<button type="button" id="me-save" onclick="matinEditCommit_(\''+id+'\')" style="flex:1;background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:10px;font-weight:800;cursor:pointer;">저장</button>'
+    +'<button type="button" onclick="var o=document.getElementById(\'matedit-ov\');if(o)o.remove();" style="background:#EEF1F6;border:1px solid #D6DEE8;border-radius:8px;padding:10px 16px;cursor:pointer;">취소</button>'
+    +'</div></div></div></div>';
+  var old=document.getElementById("matedit-ov"); if(old) old.remove();
+  var d=document.createElement("div"); d.innerHTML=html; document.body.appendChild(d.firstChild);
+  var ov=document.getElementById("matedit-ov"); if(ov) ov.addEventListener("click",function(e){ if(e.target===ov) ov.remove(); });
+}
+function matinEditCommit_(id){
+  var r=__matInbound.filter(function(x){return x.id===id;})[0]; if(!r) return;
+  var g=function(fid){ return String((document.getElementById(fid)||{}).value||"").trim(); };
+  r.date=g("me-date")||r.date; r.order=g("me-order"); r.draw=g("me-draw"); r.name=g("me-name"); r.qty=Number(g("me-qty"))||0; r.maker=g("me-maker"); r.supplier=g("me-supplier"); r.mill=g("me-mill"); r.by=g("me-by");
+  var fi=document.getElementById("me-millfile"); var f=(fi&&fi.files&&fi.files[0])?fi.files[0]:null;
+  var done=function(){ matinSave_(); var o=document.getElementById("matedit-ov"); if(o) o.remove(); renderMatin_(); };
+  if(f){ if(f.size>10*1024*1024){ alert("파일이 너무 큽니다(10MB 이하)."); return; }
+    var st=document.getElementById("me-status"); if(st) st.textContent="⏳ 드라이브 업로드 중… (10~30초)"; var sv=document.getElementById("me-save"); if(sv){ sv.disabled=true; sv.textContent="업로드 중…"; }
+    matMillUpload_(f, function(u,err){ if(u){ r.millUrl=u; r.millName=f.name; delete r.millFile; } else { alert("업로드 실패: "+(err||"")); } done(); });
+  } else { done(); }
+}
 function matinOpenMill_(id){ var r=__matInbound.filter(function(x){return x.id===id;})[0]; if(!r||!r.millFile){ alert("첨부 파일이 없습니다."); return; } var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; } var nm=String(r.millName||"Mill sheet"); w.document.write('<title>'+nm.replace(/</g,"")+'</title><body style="margin:0;">'+(/pdf/i.test(r.millFile.slice(0,40))||/\.pdf/i.test(nm)?'<iframe src="'+r.millFile+'" style="width:100vw;height:100vh;border:0;"></iframe>':'<img src="'+r.millFile+'" style="max-width:100%;">')+'</body>'); w.document.close(); }
 function matinStockRows_(){
   var by={}; __matInbound.forEach(function(r){ var k=matNorm_(r.draw); if(!k) return; if(!by[k]) by[k]={draw:r.draw, name:r.name||"", inQty:0}; by[k].inQty+=(Number(r.qty)||0); if(!by[k].name && r.name) by[k].name=r.name; });
@@ -4856,15 +4916,15 @@ function renderMatin_(){
     +'</tbody></table></div>'+(neg?('<div style="font-size:12px;color:#C0392B;margin-top:6px;">⚠ 재고 음수 '+neg+'건 = 출고가 입고보다 많음(입고 누락 가능) — 입고를 보완하세요.</div>'):'')) : '<div style="color:#B9C2D6;font-size:12px;padding:6px;">입고 기록이 없습니다.</div>';
   var log=__matInbound.slice().sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
   var logTbl=log.length? ('<div style="overflow:auto;max-height:300px;"><table style="border-collapse:collapse;width:100%;min-width:640px;"><thead><tr>'
-    +['입고일','ORDER NO','소재도번','품명','생산가능수','Maker','공급처','Mill sheet','담당','삭제'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+    +['입고일','ORDER NO','소재도번','품명','생산가능수','Maker','공급처','Mill sheet','담당','수정/삭제'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
     +log.map(function(r){ return '<tr><td style="'+td+'text-align:center;white-space:nowrap;">'+E(r.date)+'</td>'
       +'<td style="'+td+'text-align:center;font-weight:700;">'+E(r.order||"")+'</td>'
       +'<td style="'+td+'font-weight:700;">'+E(r.draw)+'</td><td style="'+td+'">'+E(r.name)+'</td>'
       +'<td style="'+td+'text-align:center;">'+E(r.qty)+'</td><td style="'+td+'">'+E(r.maker)+'</td>'
       +'<td style="'+td+'">'+E(r.supplier||"")+'</td>'
-      +'<td style="'+td+'">'+E(r.mill||r.lot||"")+(r.millFile?(' <span onclick="matinOpenMill_(\''+r.id+'\')" title="'+E(r.millName||"파일")+'" style="color:#0B5CAB;cursor:pointer;font-weight:700;">📎</span>'):'')+'</td>'
+      +'<td style="'+td+'">'+E(r.mill||r.lot||"")+(r.millUrl?(' <a href="'+r.millUrl+'" target="_blank" title="Mill sheet 열기" style="color:#0B5CAB;text-decoration:none;font-weight:700;">📎</a>'):(r.millFile?(' <span onclick="matinOpenMill_(\''+r.id+'\')" title="'+E(r.millName||"파일")+'" style="color:#0B5CAB;cursor:pointer;font-weight:700;">📎</span>'):''))+'</td>'
       +'<td style="'+td+'text-align:center;">'+E(r.by)+'</td>'
-      +'<td style="'+td+'text-align:center;"><span onclick="matinDel_(\''+r.id+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">✕</span></td></tr>'; }).join("")
+      +'<td style="'+td+'text-align:center;white-space:nowrap;"><span onclick="matinEdit_(\''+r.id+'\')" title="수정" style="cursor:pointer;margin-right:8px;">✏️</span><span onclick="matinDel_(\''+r.id+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">✕</span></td></tr>'; }).join("")
     +'</tbody></table></div>') : '';
   body.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;"><div style="font-weight:800;color:#1F2A44;">📦 소재 생산가능 재고 <span style="font-size:12px;color:#8A93A6;font-weight:400;">(생산가능수 − 2026 완제품 출고)</span></div>'
     +'<button type="button" onclick="matinExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:7px;padding:4px 11px;font-size:12px;font-weight:700;cursor:pointer;">📊 엑셀</button><button type="button" onclick="matinSaveToSheet_()" title="구글시트 원자재입고 탭에 표로 저장" style="background:#0B5CAB;color:#fff;border:none;border-radius:7px;padding:4px 11px;font-size:12px;font-weight:700;cursor:pointer;">📋 시트저장</button></div>'
@@ -4903,7 +4963,7 @@ async function matinSaveToSheet_(){
   if(!__matInbound.length){ alert("입고 기록이 없습니다."); return; }
   var fileId="1XtlaNPgdhF-fyDAmdoQD2IcKJsO9Vvud2QjPZxCd3W0", sheet="원자재입고";
   var aoa=[["입고일","ORDER NO","소재도번","품명","생산가능수","Maker","공급처","Mill sheet","담당"]];
-  __matInbound.slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));}).forEach(function(r){ aoa.push([r.date||"", r.order||"", r.draw||"", r.name||"", (Number(r.qty)||0), r.maker||"", r.supplier||"", r.mill||r.lot||"", r.by||""]); });
+  __matInbound.slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));}).forEach(function(r){ aoa.push([r.date||"", r.order||"", r.draw||"", r.name||"", (Number(r.qty)||0), r.maker||"", r.supplier||"", (r.mill||r.lot||"")+(r.millUrl?(" "+r.millUrl):""), r.by||""]); });
   var numCols=9, CH=500, total=aoa.length, chunks=Math.ceil(total/CH);
   var post=function(body){ return fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(body)}).catch(function(){}); };
   var sleep=function(ms){ return new Promise(function(r){ setTimeout(r,ms); }); };
@@ -4914,7 +4974,7 @@ function matinExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브�
   var wb=XLSX.utils.book_new();
   var s1=[["소재도번","품명","입고합","2026출고","소재재고"]]; matinStockRows_().forEach(function(r){ s1.push([r.draw,r.name,r.inQty,r.outQty,r.stock]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s1), "소재재고");
-  var s2=[["입고일","ORDER NO","소재도번","품명","생산가능수","Maker","공급처","Mill sheet","담당"]]; __matInbound.slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));}).forEach(function(r){ s2.push([r.date,r.order||"",r.draw,r.name,r.qty,r.maker,r.supplier||"",r.mill||r.lot||"",r.by]); });
+  var s2=[["입고일","ORDER NO","소재도번","품명","생산가능수","Maker","공급처","Mill sheet","담당"]]; __matInbound.slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));}).forEach(function(r){ s2.push([r.date,r.order||"",r.draw,r.name,r.qty,r.maker,r.supplier||"",(r.mill||r.lot||"")+(r.millUrl?(" "+r.millUrl):""),r.by]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s2), "입고이력");
   XLSX.writeFile(wb, "원자재입고_"+matinToday_()+".xlsx");
 }
