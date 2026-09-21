@@ -1554,6 +1554,24 @@
         <button class="tab-btn active" data-tab="check">재고확인</button>
         <button class="tab-btn" data-tab="all">전체 재고 현황</button>
         <button class="tab-btn" data-tab="aging">⏰ 장기 재고</button>
+        <button class="tab-btn" data-tab="matin">📥 원자재 입고</button>
+      </div>
+      <div class="tab-panel" id="panel-matin">
+        <div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px 16px;margin-bottom:12px;">
+          <div style="font-weight:800;color:#1F2A44;margin-bottom:8px;">📥 원자재(소재) 입고 등록 <span style="font-size:12px;color:#8A93A6;font-weight:400;">· ORDER NO로 입고(도번 자동) · 수량=생산가능수 · 재고 = 생산가능수 − 2026 출고</span></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">입고일<input id="matin-date" type="date" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">ORDER NO.<input id="matin-order" type="text" placeholder="예: 26-234-1" onblur="matinLookupOrder_()" onkeydown="if(event.key==='Enter')matinLookupOrder_()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;min-width:130px;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">소재도번(자동)<input id="matin-draw" type="text" placeholder="자동" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;min-width:140px;background:#F5F8FC;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">품명(자동)<input id="matin-name" type="text" placeholder="자동" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;min-width:120px;background:#F5F8FC;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">생산가능수량<input id="matin-qty" type="number" title="이 소재로 생산 가능한 제품 수(예: 6~7)" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:100px;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">Maker<input id="matin-maker" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:110px;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">LOT/성적서<input id="matin-lot" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:120px;"></label>
+            <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">담당<input id="matin-by" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:90px;"></label>
+            <button type="button" onclick="matinAdd_()" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;">📥 입고 등록</button>
+          </div>
+        </div>
+        <div id="matin-body"></div>
       </div>
       <div class="tab-panel active" id="panel-check">
         <div class="search-row">
@@ -4762,6 +4780,83 @@ function renderHold_(){
     +['대상','범위','사유','정지일','정지담당','해제일','해제담당','처리내용','삭제'].map(function(x){return '<th style="'+TH+'">'+x+'</th>';}).join("")+'</tr></thead><tbody>'+(relRows||'<tr><td colspan="9" style="text-align:center;color:#B9C2D6;padding:12px;">해제 이력 없음</td></tr>')+'</tbody></table></div>';
 }
 
+/* ========================= 📥 원자재(소재) 입고 · 재고 (2026 출하분·1:1) ========================= */
+var __matInbound=[], __matinLoaded=false;
+function matinEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function matinToday_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
+function matinWho_(){ try{ return (insMetaByType&&insMetaByType.incoming&&insMetaByType.incoming.inspector)||""; }catch(_){ return ""; } }
+function matNorm_(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); }
+function matinSave_(){ try{ if(typeof idbSet==="function") idbSet("matInbound", __matInbound); }catch(_){}
+  if(typeof qShareLoad_==="function"){ qShareLoad_("matInbound", function(rm){ if(Array.isArray(rm)){ var ids={}; __matInbound.forEach(function(h){ if(h) ids[h.id]=1; }); rm.forEach(function(h){ if(h&&h.id&&!ids[h.id]) __matInbound.push(h); }); } try{ qShareSave_("matInbound", __matInbound, ""); }catch(_){} }); }
+  else { try{ if(typeof qShareSave_==="function") qShareSave_("matInbound", __matInbound, ""); }catch(_){} } }
+function matinEnsure_(){ if(__matinLoaded) return; __matinLoaded=true;
+  try{ if(typeof idbGet==="function"){ idbGet("matInbound").then(function(v){ if(Array.isArray(v)) __matInbound=v;
+    try{ if(typeof qShareLoad_==="function") qShareLoad_("matInbound", function(sv){ if(Array.isArray(sv)){ var ids={}; __matInbound.forEach(function(h){if(h)ids[h.id]=1;}); sv.forEach(function(h){ if(h&&h.id&&!ids[h.id]) __matInbound.push(h); }); } if(typeof renderMatin_==="function") renderMatin_(); }); }catch(_){}
+    if(typeof renderMatin_==="function") renderMatin_();
+  }).catch(function(){}); } }catch(_){} }
+// 2026년 완제품 출고량 (해당 소재도번, 납품완료 기준)
+function matShippedQty2026_(draw){ var nd=matNorm_(draw), sum=0;
+  ((typeof mainData!=="undefined"&&mainData)||[]).forEach(function(m){ if(!m) return; if(matNorm_(m.oldDrawingNo)!==nd) return;
+    if(String(m.shipped||"").indexOf("완료")<0) return;
+    var sd=String(m.shipDate||""); var yr=sd?sd.slice(0,4):String(m.dueDate||"").slice(0,4);
+    if(yr!=="2026") return; sum+=(Number(m.qty)||0); });
+  return sum; }
+function matinLookupOrder_(){
+  var o=String((document.getElementById("matin-order")||{}).value||"").trim(); if(!o) return;
+  var hit=((typeof mainData!=="undefined"&&mainData)||[]).filter(function(m){ return m && String(m.orderNo||"").trim()===o; })[0];
+  if(hit){ var d=document.getElementById("matin-draw"); if(d) d.value=hit.oldDrawingNo||""; var n=document.getElementById("matin-name"); if(n) n.value=hit.partName||""; }
+}
+function matinAdd_(){
+  var g=function(id){ return String((document.getElementById(id)||{}).value||"").trim(); };
+  var dr=g("matin-draw"); if(!dr){ alert("소재도번을 입력하세요."); return; }
+  var qty=Number(g("matin-qty"))||0; if(qty<=0){ alert("입고수량을 입력하세요."); return; }
+  __matInbound.push({ id:"MI"+Date.now()+Math.floor(Math.random()*1000), date:g("matin-date")||matinToday_(), order:g("matin-order"), draw:dr, name:g("matin-name"), qty:qty, maker:g("matin-maker"), lot:g("matin-lot"), by:g("matin-by")||matinWho_() });
+  matinSave_();
+  ["matin-order","matin-draw","matin-name","matin-qty","matin-maker","matin-lot","matin-by"].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=""; });
+  var dt=document.getElementById("matin-date"); if(dt) dt.value=matinToday_();
+  renderMatin_();
+}
+function matinDel_(id){ if(!confirm("이 입고 기록을 삭제할까요?")) return; __matInbound=__matInbound.filter(function(h){ return h.id!==id; }); matinSave_(); renderMatin_(); }
+function matinStockRows_(){
+  var by={}; __matInbound.forEach(function(r){ var k=matNorm_(r.draw); if(!k) return; if(!by[k]) by[k]={draw:r.draw, name:r.name||"", inQty:0}; by[k].inQty+=(Number(r.qty)||0); if(!by[k].name && r.name) by[k].name=r.name; });
+  return Object.keys(by).map(function(k){ var o=by[k]; var out=matShippedQty2026_(o.draw); return { draw:o.draw, name:o.name, inQty:o.inQty, outQty:out, stock:o.inQty-out }; }).sort(function(a,b){ return String(a.draw).localeCompare(String(b.draw)); });
+}
+function renderMatin_(){
+  var body=document.getElementById("matin-body"); if(!body) return;
+  var dt=document.getElementById("matin-date"); if(dt && !dt.value) dt.value=matinToday_();
+  var E=matinEsc_, td="padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;", TH="padding:8px;border:1px solid #C9D3E0;background:#1F2A44;color:#fff;font-weight:700;white-space:nowrap;";
+  var stock=matinStockRows_();
+  var neg=stock.filter(function(r){ return r.stock<0; }).length;
+  var stockTbl=stock.length? ('<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:560px;"><thead><tr>'
+    +['소재도번','품명','생산가능수','2026 출고(제품)','생산가능잔량'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+    +stock.map(function(r){ var neg=r.stock<0; return '<tr'+(neg?' style="background:#FDECEC;"':'')+'>'
+      +'<td style="'+td+'font-weight:700;">'+E(r.draw)+'</td><td style="'+td+'">'+E(r.name)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+r.inQty+'</td>'
+      +'<td style="'+td+'text-align:center;color:#0B5CAB;">'+r.outQty+'</td>'
+      +'<td style="'+td+'text-align:center;font-weight:800;color:'+(neg?"#C0392B":(r.stock===0?"#8A93A6":"#1E7A46"))+';">'+r.stock+(neg?' ⚠':'')+'</td></tr>'; }).join("")
+    +'</tbody></table></div>'+(neg?('<div style="font-size:12px;color:#C0392B;margin-top:6px;">⚠ 재고 음수 '+neg+'건 = 출고가 입고보다 많음(입고 누락 가능) — 입고를 보완하세요.</div>'):'')) : '<div style="color:#B9C2D6;font-size:12px;padding:6px;">입고 기록이 없습니다.</div>';
+  var log=__matInbound.slice().sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
+  var logTbl=log.length? ('<div style="overflow:auto;max-height:300px;"><table style="border-collapse:collapse;width:100%;min-width:640px;"><thead><tr>'
+    +['입고일','ORDER NO','소재도번','품명','생산가능수','Maker','LOT','담당','삭제'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
+    +log.map(function(r){ return '<tr><td style="'+td+'text-align:center;white-space:nowrap;">'+E(r.date)+'</td>'
+      +'<td style="'+td+'font-weight:700;">'+E(r.draw)+'</td><td style="'+td+'">'+E(r.name)+'</td>'
+      +'<td style="'+td+'text-align:center;">'+E(r.qty)+'</td><td style="'+td+'">'+E(r.maker)+'</td>'
+      +'<td style="'+td+'">'+E(r.lot)+'</td><td style="'+td+'text-align:center;">'+E(r.by)+'</td>'
+      +'<td style="'+td+'text-align:center;"><span onclick="matinDel_(\''+r.id+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">✕</span></td></tr>'; }).join("")
+    +'</tbody></table></div>') : '';
+  body.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;"><div style="font-weight:800;color:#1F2A44;">📦 소재 생산가능 재고 <span style="font-size:12px;color:#8A93A6;font-weight:400;">(생산가능수 − 2026 완제품 출고)</span></div>'
+    +'<button type="button" onclick="matinExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:7px;padding:4px 11px;font-size:12px;font-weight:700;cursor:pointer;">📊 엑셀</button></div>'
+    +stockTbl
+    +'<div style="font-weight:700;color:#1F2A44;margin:16px 0 6px;">📥 입고 이력 <span style="font-size:12px;color:#8A93A6;font-weight:400;">('+log.length+'건)</span></div>'+logTbl;
+}
+function matinExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중"); return; }
+  var wb=XLSX.utils.book_new();
+  var s1=[["소재도번","품명","입고합","2026출고","소재재고"]]; matinStockRows_().forEach(function(r){ s1.push([r.draw,r.name,r.inQty,r.outQty,r.stock]); });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s1), "소재재고");
+  var s2=[["입고일","ORDER NO","소재도번","품명","생산가능수","Maker","LOT","담당"]]; __matInbound.slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));}).forEach(function(r){ s2.push([r.date,r.order||"",r.draw,r.name,r.qty,r.maker,r.lot,r.by]); });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s2), "입고이력");
+  XLSX.writeFile(wb, "원자재입고_"+matinToday_()+".xlsx");
+}
 /* ========================= 🗺 업무흐름도 (연동 시각화) ========================= */
 function flowGo_(view){ try{ var n=document.querySelector('.nav-item[data-view="'+view+'"]'); if(n){ n.click(); return; } }catch(_){}
   try{ if(typeof showView==="function") showView(view); }catch(_){} }
@@ -4777,7 +4872,7 @@ function renderFlow_(){
     flowCard_("1️⃣","고객 요구사항","도면·품질요구·납기 접수","main",B),
     flowCard_("2️⃣","요구/변경 검토","검사기준·변경점(4M)·등급","management",B),
     flowCard_("3️⃣","품질 계획","검사기준·QC공정도 문서","docmaster",B),
-    flowCard_("4️⃣","구매 / 생산","원자재·부품·생산 진행","sched",B),
+    flowCard_("4️⃣","구매 / 생산","원자재(소재) 입고·재고","inventory",B),
     flowCard_("5️⃣","공정 검사","공정·치수·검사일보","insrep",B),
     flowCard_("6️⃣","최종 검사","수입·출하검사 판정","insrep",B),
     flowCard_("7️⃣","출하 / 납품","검수·분출·출하정지","insplist",B),
@@ -7626,6 +7721,7 @@ document.querySelectorAll(".tab-btn[data-tab]").forEach(btn=>{
     document.getElementById("panel-"+btn.dataset.tab).classList.add("active");
     if(btn.dataset.tab==="all") invRenderAll();
     if(btn.dataset.tab==="aging") invRenderAging();
+    if(btn.dataset.tab==="matin"){ if(typeof matinEnsure_==="function") matinEnsure_(); if(typeof renderMatin_==="function") renderMatin_(); }
   });
 });
 function getInvCheckCriteria(){
