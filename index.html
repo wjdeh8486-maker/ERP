@@ -2052,6 +2052,7 @@
           <button onclick="renderDispatchList()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🔄 새로고침</button>
           <button onclick="dispatchPrint_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🖨️ 인쇄</button>
           <button onclick="dispatchExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">📊 엑셀 다운로드</button>
+          <button onclick="dispatchLabelPrint_()" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;" title="70×40mm 라벨 인쇄 (선택한 항목만, 미선택 시 전체)">🏷️ 라벨 인쇄</button>
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;">최종납기 <input type="date" id="dispatch-start" onchange="renderDispatchList()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;"></label>
           <span style="color:#7A8598;font-weight:700;">~</span>
           <input type="date" id="dispatch-end" onchange="renderDispatchList()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;">
@@ -5831,6 +5832,63 @@ function dispatchExcel_(){
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "분출LIST");
   XLSX.writeFile(wb, "분출LIST_유진테크_"+(startD||"")+"_"+(endD||"")+(onlyLack?"_미완료":"")+".xlsx");
+}
+
+// ===== 분출 LIST 라벨 인쇄 (70×40mm, 프린터 4B-2054N) =====
+// 발주번호=PO, 품목코드=품번(partNo), 관리번호=ORDER NO.(orderNo), 품명=name,
+// 장비명=PROJECT NO.(project), 납품일자=최종납기(due), 도면번호=기존도번(oldDraw), 수량=qty
+function dispatchLabelPrint_(){
+  var startD=(document.getElementById("dispatch-start")||{}).value||"", endD=(document.getElementById("dispatch-end")||{}).value||"";
+  var q=String((document.getElementById("dispatch-search")||{}).value||"").trim();
+  var all=dispatchBuildRows_(startD, endD, q, __dispatchShip);
+  var checks=Array.prototype.slice.call(document.querySelectorAll(".dispatch-chk:checked"));
+  var rows;
+  if(checks.length){
+    var byOrder={}; all.forEach(function(r){ byOrder[r.orderNo]=r; });
+    rows=checks.map(function(c){ return byOrder[c.getAttribute("data-order")]; }).filter(Boolean);
+  } else {
+    rows=all;
+  }
+  if(!rows.length){ alert("라벨을 인쇄할 항목이 없습니다."); return; }
+  if(rows.length>60 && !confirm(rows.length+"건의 라벨을 인쇄합니다(라벨 "+rows.length+"장). 계속할까요?")) return;
+  var row=function(k,v){ return '<tr><th>'+qcEsc(k)+'</th><td>'+qcEsc(v||"")+'</td></tr>'; };
+  var labelsHtml=rows.map(function(r){
+    return '<div class="lbl">'
+      +'<table class="main">'
+      +row("발주번호", r.po)
+      +row("품목코드", r.partNo)
+      +row("관리번호", r.orderNo)
+      +'<tr><th>품 명</th><td class="nm">'+qcEsc(r.name||"")+'</td></tr>'
+      +row("장비명", r.project)
+      +row("납품일자", r.due)
+      +'<tr><th>도면번호</th><td class="dr"><table class="drt"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><tr><td class="dv">'+qcEsc(r.oldDraw||"")+'</td><td class="qb">수 량</td><td class="qv">'+(Number(r.qty)||0)+'</td></tr></table></td></tr>'
+      +'</table>'
+      +'<div class="ftr">㈜ 엔티엘</div>'
+      +'</div>';
+  }).join("");
+  var win=window.open("","_blank"); if(!win) return;
+  win.document.write('<html><head><title>분출LIST 라벨</title><meta charset="utf-8">'
+    +'<style>'
+    +'@page{ size:70mm 40mm; margin:0; }'
+    +'*{ box-sizing:border-box; }'
+    +'body{ font-family:"Malgun Gothic",sans-serif; margin:0; }'
+    +'.lbl{ width:70mm; height:40mm; padding:1.2mm 1.6mm; page-break-after:always; display:flex; flex-direction:column; overflow:hidden; }'
+    +'.lbl:last-child{ page-break-after:auto; }'
+    +'table.main{ border-collapse:collapse; width:100%; flex:1; table-layout:fixed; }'
+    +'table.main th, table.main td{ border:0.9pt solid #16345a; padding:0.55mm 1.4mm; font-size:7.3pt; text-align:left; line-height:1.15; }'
+    +'table.main th{ width:18mm; background:#eaf1fb; color:#16345a; font-weight:700; white-space:nowrap; }'
+    +'table.main td{ font-weight:700; color:#111; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }'
+    +'td.nm{ font-size:7pt; }'
+    +'td.dr{ padding:0; }'
+    +'table.drt{ border-collapse:collapse; width:100%; height:100%; table-layout:fixed; }'
+    +'table.drt col.c1{ width:56%; } table.drt col.c2{ width:26%; } table.drt col.c3{ width:18%; }'
+    +'table.drt td{ border:none; padding:0.55mm 1.4mm; font-weight:700; font-size:7.3pt; }'
+    +'table.drt td.dv{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }'
+    +'table.drt td.qb{ text-align:right; color:#16345a; font-weight:700; font-size:6.6pt; white-space:nowrap; padding-right:1mm; }'
+    +'table.drt td.qv{ text-align:center; font-weight:800; font-size:8.6pt; }'
+    +'.ftr{ margin-top:0.6mm; text-align:center; background:#16345a; color:#fff; font-weight:800; font-size:7.8pt; padding:0.9mm 0; border-radius:2px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
+    +'</style></head><body>'+labelsHtml+'</body></html>');
+  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
 }
 
 // ===== 납기분출 (팝업 → S/N 입력 → 서버 저장(별도 시트) → 비고 '납기분출') =====
@@ -17421,6 +17479,24 @@ function insRender(){
       __outNoOverList.sort(function(a,b){ return (b.sum-b.qty)-(a.sum-a.qty); });
     }
   }
+  // [추가] TAP(수입검사)/PIN(출하검사) 미체크 행 — 저장 시 팝업 문구만이 아니라 표에서 바로 보이도록 강조 + 배너로 이동
+  var __tapPinType=(insType==="incoming")?"tap":(insType==="shipping"?"pin":null);
+  var __tapPinNeed={}, __tapPinBanner=[];
+  if(__tapPinType){
+    var __tpNorm=function(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x||"").trim().toUpperCase(); };
+    var __tpDoneDraw={};
+    rows.forEach(function(r){ var d=String(r.draw||"").trim(); if(!d) return; if(r[__tapPinType]) __tpDoneDraw[__tpNorm(d)]=1; });
+    rows.forEach(function(r, ri){
+      var d=String(r.draw||"").trim(); if(!d) return;
+      if((Number(r.insCnt)||0)<=0 && !String(r.sn||"").trim()) return;   // 빈 행 제외
+      var info=(typeof tapPinLookup_==="function")?tapPinLookup_(d):null; if(!info) return;
+      var need=(__tapPinType==="tap")?info.tap:info.pin; if(!need) return;
+      if(r[__tapPinType]) return;                    // 이 행 자체가 체크됨
+      if(__tpDoneDraw[__tpNorm(d)]) return;           // 같은 도번을 다른 행에서 체크함 → 통과
+      __tapPinNeed[ri]=true;
+      __tapPinBanner.push({draw:d, ri:ri});
+    });
+  }
     // 2행 헤더
   var head1="", head2="";
   cfg.groups.forEach(function(g){
@@ -17511,8 +17587,11 @@ function insRender(){
     tds+='<td style="border:1px solid #E6EBF2;text-align:center;white-space:nowrap;"><button type="button" class="insrep-edit" data-ri="'+ri+'" style="border:none;background:transparent;color:#0B5CAB;cursor:pointer;font-size:14px;margin-right:2px;">✏️</button><button type="button" class="insrep-del" data-ri="'+ri+'" style="border:none;background:transparent;color:#C0392B;cursor:pointer;font-size:14px;">✕</button></td>';
     var __dup=__rowIsDup(row);
     var __over=(insType==="shipping" && __rowOutOver[ri]);
-    var __trStyle=__over?' style="background:#FFE1C2;" title="⚠ 출고NO 중복/초과 — 같은 출고NO의 검사수 합이 주문수량을 초과했습니다"':(__dup?' style="background:#FFEDED;" title="⚠ 같은 도번+S/N이 다른 행에도 있습니다 — 검사종합 이동 전 중복을 확인하세요"':'');
-    body+='<tr'+__trStyle+'>'+tds+'</tr>';
+    var __tapPin=__tapPinNeed[ri];
+    var __trStyle=__over?' style="background:#FFE1C2;" title="⚠ 출고NO 중복/초과 — 같은 출고NO의 검사수 합이 주문수량을 초과했습니다"'
+      :(__dup?' style="background:#FFEDED;" title="⚠ 같은 도번+S/N이 다른 행에도 있습니다 — 검사종합 이동 전 중복을 확인하세요"'
+      :(__tapPin?' style="background:#FFF6D8;" title="⚠ 이 도번은 '+(__tapPinType==="tap"?"TAP(공정검사)":"PIN 압입")+' 대상인데 아직 체크하지 않았습니다"':''));
+    body+='<tr id="insrep-tr-'+ri+'"'+__trStyle+'>'+tds+'</tr>';
   });  
   if(!body){ body='<tr><td colspan="'+(leaves.length+1)+'" style="padding:20px;text-align:center;color:#8A93A6;">해당 날짜에 행이 없습니다.</td></tr>'; }
   el.innerHTML=
@@ -17521,6 +17600,7 @@ function insRender(){
     + '<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">도번을 입력/스캔하면 자동으로 채워지고, 각 칸은 직접 수정할 수 있습니다. 체크박스는 엑셀에서 ■/□ 로 나옵니다.</div>'
     + (__dupBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#C0392B;font-weight:700;font-size:13px;">⚠ 중복 입력 '+__dupBanner.length+'건 — 같은 도번+S/N이 여러 행에 있습니다. 검사종합 이동 전 확인해 중복을 제거하세요.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__dupBanner.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #E4B4B4;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.draw)+'</b> <span style="color:#8A93A6;">/</span> <b style="color:#C0392B;">'+insEsc(d.sn)+'</b></span>'; }).join("")+(__dupBanner.length>20?'<span style="color:#8A1F1F;font-size:12px;align-self:center;">… 외 '+(__dupBanner.length-20)+'건</span>':'')+'</div></div>'):'')
     + (__outNoOverList.length?('<div style="background:#FFF3E6;border:1px solid #F0C48A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">\u26A0 출고NO 중복/초과 '+__outNoOverList.length+'건 — 개별 출고NO(주문)의 배분 합계가 주문수량을 넘었습니다. (콤마·슬래시로 묶인 출고NO는 개별 주문으로 분해해 계산 · MAIN 수량 기준)<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__outNoOverList.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #F0C48A;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.outNo)+'</b> <span style="color:#8A93A6;">합</span> <b style="color:#B45309;">'+d.sum+'</b> &gt; 수량 '+d.qty+'</span>'; }).join("")+(__outNoOverList.length>20?'<span style="color:#8A5A00;font-size:12px;align-self:center;">… 외 '+(__outNoOverList.length-20)+'건</span>':'')+'</div></div>'):'')
+    + (__tapPinBanner.length?('<div style="background:#FFF8E1;border:1px solid #F0D9A0;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#8A5A00;font-weight:700;font-size:13px;">⚠ '+(__tapPinType==="tap"?"TAP(공정검사)":"PIN 압입")+' 미체크 '+__tapPinBanner.length+'건 — 아래 도번을 누르면 해당 행(노란색)으로 이동합니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__tapPinBanner.slice(0,30).map(function(d){ return '<span onclick="insTapPinScrollTo_('+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #F0D9A0;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;color:#8A5A00;">'+insEsc(d.draw)+' ▸</span>'; }).join("")+(__tapPinBanner.length>30?'<span style="color:#8A5A00;font-size:12px;align-self:center;">… 외 '+(__tapPinBanner.length-30)+'건</span>':'')+'</div></div>'):'')
     + (__capped
         ? '<div style="background:#EAF3FF;border:1px solid #BBD6F5;border-radius:9px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:#1F4E79;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'
           + '<span>⚡ 총 <b>'+__visIdx.length.toLocaleString()+'</b>행 중 <b>최근 '+INS_RENDER_CAP+'행</b>만 표시 중입니다 (빠른 편집용). 날짜별 보기·도번 검색으로 좁히면 원하는 행이 바로 나옵니다.</span>'
@@ -18987,6 +19067,16 @@ function insTapAlertPopup_(msg){
   d.addEventListener("click", function(e){ if(e.target===d) d.remove(); });
   try{ if(navigator.vibrate) navigator.vibrate([120,60,120]); }catch(_){}
 }
+// [추가] TAP/PIN 미체크 배너의 도번을 누르면 해당 행(표에서 노란색으로 표시됨)으로 스크롤 + 테두리 깜빡임
+function insTapPinScrollTo_(ri){
+  try{
+    var tr=document.getElementById("insrep-tr-"+ri); if(!tr) return;
+    tr.scrollIntoView({behavior:"smooth", block:"center"});
+    tr.style.transition="box-shadow .25s";
+    var __n=0, __flash=function(){ tr.style.boxShadow=(__n%2===0)?"inset 0 0 0 3px #C0392B":"none"; __n++; if(__n<6) setTimeout(__flash,220); else tr.style.boxShadow=""; };
+    __flash();
+  }catch(_){}
+}
 // [추가·1단계] 검사일보를 구글시트 4탭(수입/출하/측정소/측정대)에 행 단위로 기록 — 구글시트에서 열람·수정 가능하게
 function insTypeColumns_(type){
   var cfg=INS_CFG[type]; if(!cfg) return [];
@@ -20173,7 +20263,7 @@ function insCloudSave(){
     var __unchk=(typeof insCheckTapPinUnchecked_==="function")?insCheckTapPinUnchecked_():[];
     if(__unchk && __unchk.length){
       var __lbl=(t==="shipping")?"PIN 압입":"TAP(공정검사)";
-      insTapAlertPopup_("\u26A0 "+__lbl+" 미체크 "+__unchk.length+"건 — 확인하세요!\n"+__unchk.slice(0,20).join(", ")+(__unchk.length>20?(" 외 "+(__unchk.length-20)+"건"):""));
+      insTapAlertPopup_("\u26A0 "+__lbl+" 미체크 "+__unchk.length+"건 — 확인하세요!\n"+__unchk.slice(0,20).join(", ")+(__unchk.length>20?(" 외 "+(__unchk.length-20)+"건"):"")+"\n\n표에 노란색으로 표시된 행 위 배너에서 도번을 누르면 해당 행으로 바로 이동합니다.");
     }
   }catch(_){}
   try{ if(typeof insWriteTypeToSheet_==="function") insWriteTypeToSheet_(t); }catch(_){}   // [1단계] 구글시트 4탭에 행 단위 기록(열람·수정용)
