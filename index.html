@@ -2053,6 +2053,7 @@
           <button onclick="dispatchPrint_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🖨️ 인쇄</button>
           <button onclick="dispatchExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">📊 엑셀 다운로드</button>
           <button onclick="dispatchLabelPrint_()" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;" title="70×40mm 라벨 인쇄 (선택한 항목만, 미선택 시 전체)">🏷️ 라벨 인쇄</button>
+          <input type="text" id="dispatch-scanInput" placeholder="🔫 스캐너로 여기 찍기" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();dispatchScanEnterHandled_(this);}" style="width:170px;padding:7px 10px;border:1px solid #5B3EAE;border-radius:8px;font-size:12px;color:#1C2320;box-sizing:border-box;" title="USB/블루투스 바코드 스캐너로 이 칸을 클릭한 뒤 찍으면 목록에서 해당 행을 찾아 자동으로 체크합니다">
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;">최종납기 <input type="date" id="dispatch-start" onchange="renderDispatchList()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;"></label>
           <span style="color:#7A8598;font-weight:700;">~</span>
           <input type="date" id="dispatch-end" onchange="renderDispatchList()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;">
@@ -3313,6 +3314,7 @@ function insScanToast(text){
   __insToastTimer=setTimeout(function(){ el.style.opacity="0"; }, 2000);
 }
 function insrepActive(){ var v=document.getElementById("view-insrep"); return !!(v && v.classList.contains("active")); }
+function dispatchActive(){ var v=document.getElementById("view-dispatchlist"); return !!(v && v.classList.contains("active")); }
 function scanOnDecode(decoded){
   var code=String(decoded||"").trim(); if(!code) return;
   // 검사 일보 화면이 열려 있으면(플래그와 무관하게) 스캔은 항상 검사 일보로 → 통합검색으로 새지 않음
@@ -3326,6 +3328,15 @@ function scanOnDecode(decoded){
     if(msg){ var res=(typeof scanResolveDrawing==="function")?scanResolveDrawing(code):null; var d=(res&&res.drawing)?res.drawing:code; var n=(insState&&insState[insType])?insState[insType].rows.length:0; msg.textContent="✔ 추가: "+d+" · 총 "+n+"행 (계속 찍으세요)"; }
     return;
   }
+  // 분출LIST 화면이 열려 있으면 스캔값으로 해당 행을 찾아 체크 + 강조(연속 스캔 유지)
+  if(window.__dispatchScanTarget || dispatchActive()){
+    var now3=Date.now();
+    if(code===__scanLast && (now3-__scanLastTime)<1200) return;
+    __scanLast=code; __scanLastTime=now3;
+    if(typeof dispatchScanReceive==="function") dispatchScanReceive(code);
+    scanBeep();
+    return;
+  }
   scanHandle(code);
 }
 function scanStop(){
@@ -3334,7 +3345,7 @@ function scanStop(){
     catch(_){ __scanner=null; }
   }
 }
-function scanClose(){ scanStop(); var ov=document.getElementById("scan-overlay"); if(ov) ov.style.display="none"; window.__scanContinuous=false; window.__insScanTarget=false; __scanLast=""; }
+function scanClose(){ scanStop(); var ov=document.getElementById("scan-overlay"); if(ov) ov.style.display="none"; window.__scanContinuous=false; window.__insScanTarget=false; window.__dispatchScanTarget=false; __scanLast=""; }
 // 생산공정현황이 아직 없으면 즉시 불러온다(특히 모바일에서 메인 로드 전 스캔 대비)
 function scanEnsureProcessData(){
   if(typeof processData!=="undefined" && processData.length) return Promise.resolve();
@@ -3364,6 +3375,8 @@ function scanHandle(code){
     scanClose();
     // 검사 일보 화면이면 통합검색으로 가지 않고 행 추가
     if(window.__insScanTarget || insrepActive()){ if(typeof insScanReceive==="function"){ insScanReceive(code); return; } }
+    // 분출LIST 화면이면 통합검색으로 가지 않고 해당 행 체크
+    if(window.__dispatchScanTarget || dispatchActive()){ if(typeof dispatchScanReceive==="function"){ dispatchScanReceive(code); return; } }
     var res=scanResolveDrawing(code);
     var term=(res && res.drawing) ? res.drawing : code;
     gsOpen();
@@ -5785,6 +5798,62 @@ function renderDispatchList(){
       paint(__dispatchShip);
     });
   }
+}
+
+// ===== 분출LIST 바코드 스캔 → 해당 행 찾기 + 체크 =====
+// PC/모바일용 USB·블루투스 스캐너(키보드형): 입력칸을 클릭한 뒤 찍으면 값+Enter로 전달됨(카메라 불필요, 연속 가능)
+function dispatchScanEnterHandled_(input){
+  var code=String(input.value||"").trim();
+  input.value="";
+  if(!code) return;
+  var run=function(){ dispatchScanReceive(code); try{ input.focus(); }catch(e){} };
+  if(typeof scanEnsureProcessData==="function"){ scanEnsureProcessData().then(run); } else { run(); }
+}
+// (참고) 카메라 스캔이 필요할 경우를 위해 dispatchActive() 기반 라우팅은 유지 — 분출LIST 화면에서 전역 📷 스캔 버튼을 쓰면 동일하게 동작함
+function dispatchScanOpen_(){
+  if(typeof scanOpen!=="function"){ alert("스캔 기능을 사용할 수 없습니다."); return; }
+  window.__dispatchScanTarget=true; window.__scanContinuous=true;
+  if(typeof scanEnsureProcessData==="function"){ scanEnsureProcessData().then(function(){ scanOpen(); }); }
+  else { scanOpen(); }
+}
+function dispatchScanReceive(code){
+  code=String(code||"").trim(); if(!code) return;
+  var msg=document.getElementById("scan-msg");
+  var normDraw=function(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x||"").trim().toUpperCase(); };
+  var codeU=code.toUpperCase().replace(/\s+/g,"");
+  var res=(typeof scanResolveDrawing==="function")?scanResolveDrawing(code):null;
+  var drawU=(res&&res.drawing)?normDraw(res.drawing):"";
+
+  var startD=(document.getElementById("dispatch-start")||{}).value||"", endD=(document.getElementById("dispatch-end")||{}).value||"";
+  var q=String((document.getElementById("dispatch-search")||{}).value||"").trim();
+  var all=(typeof dispatchBuildRows_==="function")?dispatchBuildRows_(startD, endD, q, __dispatchShip):[];
+
+  // 우선순위: 관리번호(ORDER NO) → 도번(생산지시번호로 변환된 값) → 도번(스캔값 그대로) → 발주번호(PO) → 품목코드
+  var hit=null;
+  for(var i=0;i<all.length && !hit;i++){ if(String(all[i].orderNo||"").trim().toUpperCase()===codeU) hit=all[i]; }
+  if(!hit && drawU){ for(i=0;i<all.length && !hit;i++){ if(normDraw(all[i].oldDraw)===drawU) hit=all[i]; } }
+  if(!hit){ for(i=0;i<all.length && !hit;i++){ if(normDraw(all[i].oldDraw)===codeU) hit=all[i]; } }
+  if(!hit){ for(i=0;i<all.length && !hit;i++){ if(String(all[i].po||"").trim().toUpperCase()===codeU) hit=all[i]; } }
+  if(!hit){ for(i=0;i<all.length && !hit;i++){ if(String(all[i].partNo||"").trim().toUpperCase()===codeU) hit=all[i]; } }
+
+  if(!hit){
+    if(typeof insScanToast==="function") insScanToast("⚠ 일치 항목 없음: "+code);
+    if(msg) msg.textContent="⚠ 일치하는 항목이 없습니다: "+code+" (계속 찍으세요)";
+    return;
+  }
+  var chk=null;
+  document.querySelectorAll(".dispatch-chk").forEach(function(c){ if(!chk && c.getAttribute("data-order")===hit.orderNo) chk=c; });
+  if(chk){
+    chk.checked=true;
+    var tr=chk.closest("tr");
+    if(tr){
+      try{ tr.scrollIntoView({behavior:"smooth", block:"center"}); }catch(e){ try{ tr.scrollIntoView(); }catch(_){} }
+      var old=tr.style.backgroundColor; tr.style.transition="background-color .35s"; tr.style.backgroundColor="#FFE79A";
+      setTimeout(function(){ try{ tr.style.backgroundColor=old||""; }catch(e){} }, 2200);
+    }
+  }
+  if(typeof insScanToast==="function") insScanToast(hit.orderNo+" 체크됨");
+  if(msg) msg.textContent="✔ "+hit.orderNo+" ("+(hit.name||"")+") 체크 — 계속 찍으세요";
 }
 
 // ===== 분출 LIST 인쇄 / 엑셀 (검수LIST와 동일 디자인, insplistStyleSheet_ 재사용) =====
@@ -21604,4 +21673,3 @@ function reqClearAll(){
 <div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.21 🔔</div>
 </body>
 </html>
-
