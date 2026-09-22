@@ -8773,28 +8773,54 @@ function ctqGradeCounts_(){
   return gc;
 }
 function ctqGradeDetail_(grade){
+  // 상단: 배지(ctqGradeCounts_)와 동일 소스(검사종합 집계)로 숫자를 반드시 일치시킴
   var agg=null; try{ agg=ctqAggregate(__ctqMonthly, ctqMode, ctqYear, ctqMonth); }catch(_){}
   var totIns=(agg&&agg.ins)||0;
   var rows=[]; if(agg&&agg.defs){ Object.keys(agg.defs).forEach(function(cat){ if(ncGradeOfTypes_(cat)===grade){ rows.push({cat:cat, n:Number(agg.defs[cat])||0}); } }); }
   rows.sort(function(a,b){ return b.n-a.n; });
   var totN=rows.reduce(function(a,r){return a+r.n;},0);
+  // 하단: 검사일보 조치 내역(발생일·조치·완료일) — 참고용, 집계 숫자와는 별개 소스임을 명시
+  var list=[];
+  try{ if(typeof insClosedList_==="function") insClosedList_(true).forEach(function(c){ list.push({date:c.insDate,status:"종결",draw:c.draw,sn:c.sn,types:c.types,qty:c.qty,act:c.act,actDate:c.actDate}); }); }catch(_){}
+  try{ if(typeof insUnresolvedList_==="function") insUnresolvedList_(true).forEach(function(u){ list.push({date:u.insDate,status:"미조치",draw:u.draw,sn:u.sn,types:u.types,qty:u.qty,act:"",actDate:""}); }); }catch(_){}
+  list=list.filter(function(d){ return ncGradeOfTypes_(d.types)===grade && ctqInPeriod_(d.date); });
+  list.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
+  var un=list.filter(function(d){ return d.status==="미조치"; }).length;
+
   var E=(typeof ihEsc_==="function")?ihEsc_:function(t){return String(t==null?"":t);};
   var td='padding:7px 10px;border:1px solid #E6EBF2;font-size:13px;';
+  var td2='padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;';
   var TH='padding:9px;border:1px solid #C9D3E0;background:#1F2A44;color:#fff;font-weight:700;white-space:nowrap;position:sticky;top:0;';
+  var TH2='padding:8px;border:1px solid #C9D3E0;background:#1F2A44;color:#fff;font-weight:700;white-space:nowrap;position:sticky;top:0;';
   var gname=grade==="A"?"크리티컬":(grade==="B"?"조립불가":"사용가능");
   var body=rows.length? rows.map(function(r){ var share=totN?r.n/totN*100:0; var ppm=totIns?Math.round(r.n/totIns*1000000):0; return '<tr>'
     +'<td style="'+td+'font-weight:700;">'+E(r.cat)+'</td>'
     +'<td style="'+td+'text-align:center;font-weight:800;color:#8A1F1F;">'+r.n+'</td>'
     +'<td style="'+td+'text-align:center;">'+share.toFixed(1)+'%</td>'
     +'<td style="'+td+'text-align:center;">'+ppm.toLocaleString()+'</td></tr>'; }).join("") : '<tr><td colspan="4" style="text-align:center;color:#B9C2D6;padding:20px;">'+grade+'등급 부적합 없음</td></tr>';
+  var actRows=list.length? list.map(function(d){ var stc=d.status==="종결"?"#1E7A46":"#C0392B"; return '<tr>'
+    +'<td style="'+td2+'text-align:center;white-space:nowrap;">'+E(d.date)+'</td>'
+    +'<td style="'+td2+'text-align:center;color:'+stc+';font-weight:700;">'+E(d.status)+'</td>'
+    +'<td style="'+td2+'text-align:center;font-weight:700;">'+E(d.draw)+'</td>'
+    +'<td style="'+td2+'">'+E(d.types)+'</td>'
+    +'<td style="'+td2+'text-align:center;">'+E(d.qty)+'</td>'
+    +'<td style="'+td2+'font-size:11.5px;">'+E(d.act||"")+'</td>'
+    +'<td style="'+td2+'text-align:center;white-space:nowrap;">'+E(d.actDate||"-")+'</td></tr>'; }).join("") : '<tr><td colspan="7" style="text-align:center;color:#B9C2D6;padding:16px;">검사일보 조치 기록 없음</td></tr>';
   var html='<div id="ctqgd-ov" style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:100050;display:flex;align-items:center;justify-content:center;padding:16px;">'
-    +'<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
+    +'<div style="background:#fff;border-radius:14px;max-width:920px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
     +'<div style="background:#1F2A44;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:2;">'
     +'<div style="font-weight:800;font-size:15px;">'+grade+'등급 ('+gname+') · 총 '+totN+'건</div>'
     +'<button onclick="var o=document.getElementById(\'ctqgd-ov\'); if(o) o.remove();" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-weight:700;">닫기 ✕</button></div>'
-    +'<div style="padding:14px 16px;overflow:auto;"><table style="border-collapse:collapse;width:100%;"><thead><tr>'
+    +'<div style="padding:14px 16px;overflow:auto;">'
+    +'<div style="font-weight:700;font-size:13px;color:#1F2A44;margin-bottom:6px;">유형별 집계 (배지와 동일 기준)</div>'
+    +'<table style="border-collapse:collapse;width:100%;"><thead><tr>'
     +['부적합 유형','부적합수','비중','PPM'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'+body+'</tbody></table>'
-    +'<div style="font-size:11.5px;color:#8A93A6;margin-top:8px;">※ 아래 CTQ 표와 동일 기준(검사종합 집계·선택 기간). 조치 상세는 검사일보 종결 이력에서 확인.</div></div></div></div>';
+    +'<div style="font-size:11.5px;color:#8A93A6;margin:6px 0 16px;">※ 아래 CTQ 표·상단 배지와 동일 기준(검사종합 집계·선택 기간).</div>'
+    +'<div style="font-weight:700;font-size:13px;color:#1F2A44;margin-bottom:6px;">조치 내역 (검사일보)'+(un?(' · <span style="color:#C0392B;">미조치 '+un+'건</span>'):'')+'</div>'
+    +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:640px;"><thead><tr>'
+    +['발생일','구분','도번','유형','수량','조치','조치완료일'].map(function(h){return '<th style="'+TH2+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'+actRows+'</tbody></table></div>'
+    +'<div style="font-size:11.5px;color:#8A93A6;margin-top:6px;">※ 검사일보 개별 기록 기준으로, 위 집계 건수와 건수 집계 단위가 달라 합계가 다를 수 있습니다.</div>'
+    +'</div></div></div>';
   var old=document.getElementById("ctqgd-ov"); if(old) old.remove();
   var d=document.createElement("div"); d.innerHTML=html; document.body.appendChild(d.firstChild);
   var ov=document.getElementById("ctqgd-ov"); if(ov) ov.addEventListener("click",function(e){ if(e.target===ov) ov.remove(); });
@@ -8807,38 +8833,6 @@ function ctqGradeBadges_(){
     +b("B","B 조립불가","#B0662A","#FFF3E6","#EBD3B8")
     +b("C","C 사용가능","#5A6478","#EEF1F6","#D6DEE8")
     +'<span style="font-size:11.5px;color:#8A93A6;">← 등급 클릭 시 발생·처리 상세 (선택 기간 반영 · 내부검사)</span></div>';
-}
-function ctqGradeDetail_(grade){
-  var list=[];
-  try{ if(typeof insClosedList_==="function") insClosedList_(true).forEach(function(c){ list.push({date:c.insDate,status:"종결",draw:c.draw,sn:c.sn,types:c.types,qty:c.qty,act:c.act,actDate:c.actDate}); }); }catch(_){}
-  try{ if(typeof insUnresolvedList_==="function") insUnresolvedList_(true).forEach(function(u){ list.push({date:u.insDate,status:"미조치",draw:u.draw,sn:u.sn,types:u.types,qty:u.qty,act:"",actDate:""}); }); }catch(_){}
-  // [수정] 고객부적합 제외 — 내부 CTQ만
-  list=list.filter(function(d){ return ncGradeOfTypes_(d.types)===grade && ctqInPeriod_(d.date); });
-  list.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
-  var E=(typeof ihEsc_==="function")?ihEsc_:function(t){return String(t==null?"":t);};
-  var td='padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;';
-  var TH='padding:8px;border:1px solid #C9D3E0;background:#1F2A44;color:#fff;font-weight:700;white-space:nowrap;position:sticky;top:0;';
-  var gname=grade==="A"?"크리티컬":(grade==="B"?"조립불가":"사용가능");
-  var un=list.filter(function(d){ return d.status==="미조치"; }).length;
-  var rows=list.length? list.map(function(d){ var stc=d.status==="종결"?"#1E7A46":(d.status==="미조치"?"#C0392B":"#0B5CAB"); return '<tr>'
-    +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(d.date)+'</td>'
-    +'<td style="'+td+'text-align:center;color:'+stc+';font-weight:700;">'+E(d.status)+'</td>'
-    +'<td style="'+td+'text-align:center;font-weight:700;">'+E(d.draw)+'</td>'
-    +'<td style="'+td+'">'+E(d.types)+'</td>'
-    +'<td style="'+td+'text-align:center;">'+E(d.qty)+'</td>'
-    +'<td style="'+td+'font-size:11.5px;">'+E(d.act||"")+'</td>'
-    +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(d.actDate||"-")+'</td></tr>'; }).join("") : '<tr><td colspan="7" style="text-align:center;color:#B9C2D6;padding:20px;">'+grade+'등급 부적합 없음</td></tr>';
-  var html='<div id="ctqgd-ov" style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:100050;display:flex;align-items:center;justify-content:center;padding:16px;">'
-    +'<div style="background:#fff;border-radius:14px;max-width:920px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
-    +'<div style="background:#1F2A44;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:2;">'
-    +'<div style="font-weight:800;font-size:15px;">'+grade+'등급 ('+gname+') 부적합 상세 · 총 '+list.length+'건'+(un?(' · <span style="color:#FFB3AB;">미조치 '+un+'건</span>'):'')+'</div>'
-    +'<button onclick="var o=document.getElementById(\'ctqgd-ov\'); if(o) o.remove();" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-weight:700;">닫기 ✕</button></div>'
-    +'<div style="padding:14px 16px;overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:660px;"><thead><tr>'
-    +['발생일','구분','도번','유형','수량','조치','조치완료일'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'+rows+'</tbody></table></div></div></div>';
-  var old=document.getElementById("ctqgd-ov"); if(old) old.remove();
-  var d=document.createElement("div"); d.innerHTML=html;
-  document.body.appendChild(d.firstChild);
-  var ov=document.getElementById("ctqgd-ov"); if(ov) ov.addEventListener("click", function(e){ if(e.target===ov) ov.remove(); });
 }
 function ctqRenderTable_(){
   var host=document.getElementById("ctq-table"); if(!host) return;
