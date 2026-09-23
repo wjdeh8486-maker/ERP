@@ -1624,12 +1624,12 @@
         <div class="progress-label" id="inv-allRangeLabel" style="margin:4px 0 12px;"></div>
         <div class="search-row" style="justify-content:flex-end;">
           <button id="inv-allPrintBtn">🖨️ 인쇄</button>
-          <button id="inv-allLabelBtn" type="button" onclick="invAllLabelPrint_()" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;">🏷️ 라벨 전체인쇄</button>
+          <button id="inv-allLabelBtn" type="button" onclick="invAllLabelSel_()" title="체크한 품목만 재고 라벨(QR) 인쇄" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;">🏷️ 선택 라벨</button>
           <button id="inv-allExcelBtn" type="button" class="tb-download-btn">📥 엑셀 다운로드</button>
         </div>
         <div class="table-scroll" id="inv-allTableScroll">
           <table>
-            <thead><tr><th>순번</th><th>품번</th><th>총 입고</th><th>총 출고</th><th>현재 재고</th><th>라벨</th></tr></thead>
+            <thead><tr><th style="width:28px;"><input type="checkbox" onclick="document.querySelectorAll('.invall-chk').forEach(function(c){c.checked=this.checked;}.bind(this));" style="cursor:pointer;"></th><th>순번</th><th>품번</th><th>총 입고</th><th>총 출고</th><th>현재 재고</th></tr></thead>
             <tbody id="inv-allBody"></tbody>
           </table>
         </div>
@@ -3795,6 +3795,7 @@ function setLoadDone(key){
   __loadState[key] = true;
   updateLoadingBanner();
 }
+try{ setTimeout(function(){ if(typeof __loadState!=="undefined"){ ["main","inv","quality","wait"].forEach(function(k){ if(k in __loadState && !__loadState[k]){ __loadState[k]=true; } }); if(typeof updateLoadingBanner==="function") updateLoadingBanner(); } }, 25000); }catch(_){}   // 안전장치: 25초 후 배너 강제 종료
 function updateLoadingBanner(){
   const banner = document.getElementById("loading-banner");
   const textEl = document.getElementById("loading-banner-text");
@@ -7926,9 +7927,8 @@ function invRenderAll(){
   const rows = invGetAllRows(invAllYear, invAllMonth);
   rows.forEach((r, idx)=>{
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${idx+1}</td><td>${r.partNo}</td><td class="badge-in">${r.totalIn}</td><td class="badge-out">${r.totalOut}</td>
-      <td style="font-weight:400;color:var(--green)">${r.stock}</td>
-      <td style="text-align:center;"><span onclick="invLabelOne_(this.getAttribute('data-pn'), ${r.stock})" data-pn="${(r.partNo||'').replace(/"/g,'')}" title="이 품목 재고 라벨(QR) 인쇄" style="cursor:pointer;font-size:15px;">🏷️</span></td>`;
+    tr.innerHTML = `<td style="text-align:center;"><input type="checkbox" class="invall-chk" data-pn="${(r.partNo||'').replace(/"/g,'')}" style="cursor:pointer;"></td><td>${idx+1}</td><td>${r.partNo}</td><td class="badge-in">${r.totalIn}</td><td class="badge-out">${r.totalOut}</td>
+      <td style="font-weight:400;color:var(--green)">${r.stock}</td>`;
     body.appendChild(tr);
   });
   const rangeEl = document.getElementById("inv-allRangeLabel");
@@ -8105,6 +8105,7 @@ function stockLabelPrint_(rows){
 }
 function invLabelOne_(pn, stock){ if(!pn){ alert("품번이 없습니다."); return; } var info=invLabelInfo_(pn); stockLabelPrint_([{ partNo:pn, name:info.name, oldDraw:info.draw }]); }
 function invAllLabelPrint_(){ var rows=(typeof invGetAllRows==="function")?invGetAllRows(invAllYear, invAllMonth):[]; if(!rows.length){ alert("재고 품목이 없습니다."); return; } var labelRows=rows.map(function(r){ var info=invLabelInfo_(r.partNo); return { partNo:r.partNo, name:info.name, oldDraw:info.draw }; }); stockLabelPrint_(labelRows); }
+function invAllLabelSel_(){ var checks=document.querySelectorAll(".invall-chk:checked"); if(!checks.length){ alert("라벨 인쇄할 품목을 체크하세요."); return; } var labelRows=[]; checks.forEach(function(c){ var pn=c.getAttribute("data-pn"); var info=invLabelInfo_(pn); labelRows.push({ partNo:pn, name:info.name, oldDraw:info.draw }); }); stockLabelPrint_(labelRows); }
 function reinspLabelPrint_(){ var checks=document.querySelectorAll(".reinsp-hchk:checked"); if(!checks.length){ alert("라벨 인쇄할 재검사 항목을 체크하세요."); return; }
   var labelRows=[]; checks.forEach(function(c){ var pn=c.getAttribute("data-pn"); var info=invLabelInfo_(pn); labelRows.push({ partNo:pn, name:info.name, oldDraw:info.draw }); });
   stockLabelPrint_(labelRows); }
@@ -8227,7 +8228,7 @@ function fetchInvData(){
   statusEl.textContent = "불러오는 중...";
   return fetchJSON_(url + "?dataset=" + encodeURIComponent("입출고"))
     .then(res=>{
-      if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
+      if(!res.success){ statusEl.textContent = "오류: " + res.error; if(typeof setLoadDone==="function") setLoadDone("inv"); return; }
       invApiUrl = url;
       invData = res.rows.map(mapRowToInv); invInvalidateMaps_();
 markMainStatusDirty();
@@ -8255,7 +8256,7 @@ updateSyncBanner();
         statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
       }
     })
-    .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
+    .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; if(typeof setLoadDone==="function") setLoadDone("inv"); });
 }
 document.getElementById("inv-apiSyncBtn").addEventListener("click", fetchInvData);
 document.getElementById("inv-syncBtn").addEventListener("click", ()=>{
