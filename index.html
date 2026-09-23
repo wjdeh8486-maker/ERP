@@ -1946,6 +1946,7 @@
           <span style="font-size:12px;color:#5A6478;font-weight:700;">🔎 출고NO</span>
           <input type="text" id="insrep-outSearch" placeholder="출고NO Enter" autocomplete="off" style="width:120px;padding:7px 9px;border:1px solid #B45309;border-radius:7px;font-size:12px;">
           <button type="button" id="insrep-outClear" title="검색 지우기" style="background:#FFF3E6;border:1px solid #F0C48A;border-radius:7px;padding:6px 8px;cursor:pointer;font-size:12px;">✕</button>
+          <button type="button" id="insrep-outLabelAllBtn" title="현재 표시된 모든 행의 출고NO를 모아 분출LIST 라벨(70×40mm)을 한 번에 인쇄합니다" style="background:#8A1F1F;color:#fff;border:none;border-radius:7px;padding:7px 10px;font-weight:700;cursor:pointer;font-size:12px;">🏷️ 출고NO 라벨 전체인쇄</button>
         </span>
         <span class="ins-dd">
           <button type="button" class="ins-dd-btn" data-menu="mMore" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">⚙ 더보기 ▾</button>
@@ -5918,6 +5919,11 @@ function dispatchLabelPrint_(){
   } else {
     rows=all;
   }
+  dispatchPrintLabelsForRows_(rows);
+}
+// 공통 라벨 인쇄기: 분출LIST 행 배열({po,partNo,orderNo,name,project,due,oldDraw,qty}) → 70×40mm 라벨 인쇄
+function dispatchPrintLabelsForRows_(rows){
+  rows=(rows||[]).filter(Boolean);
   if(!rows.length){ alert("라벨을 인쇄할 항목이 없습니다."); return; }
   if(rows.length>60 && !confirm(rows.length+"건의 라벨을 인쇄합니다(라벨 "+rows.length+"장). 계속할까요?")) return;
   var row=function(k,v){ return '<tr><th>'+qcEsc(k)+'</th><td>'+qcEsc(v||"")+'</td></tr>'; };
@@ -5958,6 +5964,22 @@ function dispatchLabelPrint_(){
     +'.ftr{ margin-top:0.6mm; text-align:center; background:#16345a; color:#fff; font-weight:800; font-size:7.8pt; padding:0.9mm 0; border-radius:2px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
     +'</style></head><body>'+labelsHtml+'</body></html>');
   win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
+}
+// 출고NO(콤마로 여러 개 가능: "261-13,263-13,268-15") → 분출LIST에서 해당 관리번호(ORDER NO) 행을 찾아 라벨 인쇄
+// 검사일보 쪽에서(출하검사, 행별 또는 여러 행 묶어) 호출
+function dispatchLabelsByOutNo_(outNoStr){
+  var orders=(typeof insplistExpandOutNo_==="function")?insplistExpandOutNo_(outNoStr):[];
+  orders=Array.from(new Set(orders.map(function(x){ return String(x||"").trim(); }).filter(Boolean)));
+  if(!orders.length){ alert("출고NO에서 관리번호를 찾지 못했습니다: "+outNoStr); return; }
+  var all=dispatchBuildRows_("", "", orders.join(","), (typeof __dispatchShip!=="undefined")?__dispatchShip:[]);
+  var byOrder={}; all.forEach(function(r){ byOrder[r.orderNo]=r; });
+  var rows=orders.map(function(o){ return byOrder[o]; }).filter(Boolean);
+  var missing=orders.filter(function(o){ return !byOrder[o]; });
+  if(missing.length){
+    if(!rows.length){ alert("분출LIST에서 일치하는 관리번호를 찾지 못했습니다: "+missing.join(", ")+"\n(MAIN 대시보드를 한 번 열어 데이터를 불러왔는지 확인하세요)"); return; }
+    if(!confirm(rows.length+"건은 찾았고, "+missing.length+"건은 분출LIST에 없습니다: "+missing.join(", ")+"\n찾은 "+rows.length+"건만 라벨을 인쇄할까요?")) return;
+  }
+  dispatchPrintLabelsForRows_(rows);
 }
 
 // ===== 납기분출 (팝업 → S/N 입력 → 서버 저장(별도 시트) → 비고 '납기분출') =====
@@ -17460,6 +17482,12 @@ function insInit(){
     __os.addEventListener("change",__doOut);
   }
   var __oc=document.getElementById("insrep-outClear"); if(__oc) __oc.addEventListener("click",function(){ insOutSearch=""; var e=document.getElementById("insrep-outSearch"); if(e) e.value=""; insRender(); });
+  bind("insrep-outLabelAllBtn","click",function(){
+    if(insType!=="shipping"){ alert("출하검사에서만 사용할 수 있습니다."); return; }
+    var vals=(insState[insType]&&insState[insType].rows||[]).map(function(r){ return String(r.outNo||"").trim(); }).filter(Boolean);
+    if(!vals.length){ alert("입력된 출고NO가 없습니다."); return; }
+    if(typeof dispatchLabelsByOutNo_==="function") dispatchLabelsByOutNo_(vals.join(","));
+  });
   bind("insrep-cloudSaveBtn","click",insCloudSave);
   bind("insrep-sheetLoadBtn","click",function(){ insLoadFromSheetToView_(false); });
   bind("insrep-sheetAllBtn","click",function(){ insLoadFromSheetToView_(true); });
@@ -17647,6 +17675,11 @@ function insRender(){
             +'<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'"'+extraAttr+' style="flex:1;min-width:0;border:none;'+bgStyle+'font-size:12px;">'
             +'<span class="ins-sn-ocr" data-ri="'+ri+'" title="S/N 사진 인식(업로드)" style="cursor:pointer;font-size:14px;color:#0B7A8A;padding:0 2px;user-select:none;flex:0 0 auto;">📷</span>'
             +'</div>';
+        } else if(c.key==="outNo"){
+          cell='<div style="display:flex;align-items:center;gap:1px;">'
+            +'<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'"'+extraAttr+' style="flex:1;min-width:0;border:none;'+bgStyle+'font-size:12px;" placeholder="예: 261-13,263-13">'
+            +(v?('<span class="ins-outno-label" data-ri="'+ri+'" title="이 출고NO(들)로 분출LIST에서 관리번호를 찾아 라벨(70×40mm) 인쇄" style="cursor:pointer;font-size:13px;color:#8A1F1F;padding:0 2px;user-select:none;flex:0 0 auto;">🏷️</span>'):'')
+            +'</div>';
         } else {
           cell='<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'"'+extraAttr+' style="width:100%;border:none;'+bgStyle+'font-size:12px;'+(c.kind==="num"?"text-align:center;":"")+'">';
         }
@@ -17794,6 +17827,8 @@ function insRender(){
   });
     el.querySelectorAll(".insrep-del").forEach(function(b){ b.addEventListener("click",function(){ var __i=+b.getAttribute("data-ri"); var __r=insState[insType].rows[__i]; if(__r&&__r._id) insMarkDeleted_(__r._id); insState[insType].rows.splice(__i,1); insRender(); insSaveLocal(); }); });
     el.querySelectorAll(".ins-dwg-open").forEach(function(ic){ ic.addEventListener("click",function(e){ e.stopPropagation(); var __r=+ic.getAttribute("data-ri"); var __di=el.querySelector('input[data-ri="'+__r+'"][data-key="draw"]'); var __dv=String((__di&&__di.value)||"").trim(); if(!__dv){ alert("도번을 먼저 입력하세요."); return; } if(typeof openDrawing==="function") openDrawing(__dv); }); });
+    // 출고NO → 분출LIST 관리번호 매칭 → 라벨(70×40mm) 인쇄
+    el.querySelectorAll(".ins-outno-label").forEach(function(ic){ ic.addEventListener("click",function(e){ e.stopPropagation(); var __r=+ic.getAttribute("data-ri"); var __oi=el.querySelector('input[data-ri="'+__r+'"][data-key="outNo"]'); var __ov=String((__oi&&__oi.value)||"").trim(); if(!__ov){ alert("출고NO를 먼저 입력하세요."); return; } if(typeof dispatchLabelsByOutNo_==="function") dispatchLabelsByOutNo_(__ov); }); });
     // S/N 사진 인식(업로드) — 그 행에 바로 채움
     (function(){
       var f=document.getElementById("ins-sn-ocr-file");
