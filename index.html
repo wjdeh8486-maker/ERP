@@ -980,7 +980,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V9.21</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V9.22</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -1019,6 +1019,7 @@
 <div id="scan-overlay" style="display:none;position:fixed;inset:0;background:rgba(10,15,20,0.92);z-index:10000;flex-direction:column;align-items:center;justify-content:center;padding:16px;">
   <div style="color:#fff;font-weight:700;font-size:16px;margin-bottom:10px;">📷 QR / 바코드를 화면 안에 비추세요</div>
   <div id="scan-reader" style="width:min(92vw,420px);border-radius:14px;overflow:hidden;background:#000;"></div>
+  <select id="scan-camsel" onchange="scanSwitchCam_(this.value)" style="display:none;margin-top:10px;padding:8px 10px;border-radius:8px;border:1px solid #445;background:#1a2030;color:#fff;font-size:13px;max-width:min(92vw,420px);"></select>
   <div id="scan-msg" style="color:#B9C2D6;font-size:13px;margin-top:12px;min-height:18px;text-align:center;"></div>
   <div style="display:flex;gap:8px;margin-top:14px;">
     <button id="scan-manual" type="button" style="background:#2A3556;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;">⌨ 직접 입력</button>
@@ -1550,6 +1551,11 @@
       <div class="sync-note" id="inv-apiStatus"></div>
     </div>
     <div class="view" id="view-inventory">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#EEF3FA;border:1px solid #C9D3E0;border-radius:10px;padding:8px 12px;margin-bottom:10px;">
+        <span style="font-weight:800;color:#1F2A44;font-size:13px;">🔫 재고 바코드 스캔</span>
+        <input id="inv-qrscan" type="text" placeholder="스캐너로 재고 라벨 QR 찍기 (또는 도번 입력 후 Enter)" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();invQrScan_(this);}" style="flex:1;min-width:220px;padding:8px 12px;border:1px solid #5B3EAE;border-radius:8px;font-size:13px;box-sizing:border-box;">
+        <span style="font-size:11.5px;color:#8A93A6;">찍으면 그 품목의 입고일·재검사 이력·다음 예정일이 뜹니다</span>
+      </div>
       <div class="tabs">
         <button class="tab-btn active" data-tab="check">재고확인</button>
         <button class="tab-btn" data-tab="all">전체 재고 현황</button>
@@ -1618,11 +1624,12 @@
         <div class="progress-label" id="inv-allRangeLabel" style="margin:4px 0 12px;"></div>
         <div class="search-row" style="justify-content:flex-end;">
           <button id="inv-allPrintBtn">🖨️ 인쇄</button>
+          <button id="inv-allLabelBtn" type="button" onclick="invAllLabelPrint_()" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;">🏷️ 라벨 전체인쇄</button>
           <button id="inv-allExcelBtn" type="button" class="tb-download-btn">📥 엑셀 다운로드</button>
         </div>
         <div class="table-scroll" id="inv-allTableScroll">
           <table>
-            <thead><tr><th>순번</th><th>품번</th><th>총 입고</th><th>총 출고</th><th>현재 재고</th></tr></thead>
+            <thead><tr><th>순번</th><th>품번</th><th>총 입고</th><th>총 출고</th><th>현재 재고</th><th>라벨</th></tr></thead>
             <tbody id="inv-allBody"></tbody>
           </table>
         </div>
@@ -1647,8 +1654,9 @@
             <div style="font-weight:700;color:#1F2A44;">♻ 재검사 완료 이력 <span id="inv-reinspHistCnt" style="color:#8A93A6;font-size:12px;font-weight:400;"></span></div>
             <button type="button" onclick="reinspExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">📊 엑셀</button>
             <button type="button" onclick="reinspPrint_()" style="background:#475569;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">🖨 인쇄</button>
+            <button type="button" onclick="reinspLabelPrint_()" title="체크한 재검사품의 재고 라벨(QR) 인쇄" style="background:#8A1F1F;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">🏷️ 선택 라벨</button>
           </div>
-          <div class="table-scroll" style="max-height:240px;"><table><thead><tr><th>재검사일</th><th>품번</th><th>검사자</th><th>수량</th><th>판정</th><th>다음 재검사(+180일)</th><th>삭제</th></tr></thead><tbody id="inv-reinspHistBody"></tbody></table></div>
+          <div class="table-scroll" style="max-height:240px;"><table><thead><tr><th style="width:28px;"><input type="checkbox" onclick="document.querySelectorAll('.reinsp-hchk').forEach(function(c){c.checked=this.checked;}.bind(this));" style="cursor:pointer;"></th><th>재검사일</th><th>품번</th><th>품명</th><th>검사자</th><th>수량</th><th>판정</th><th>다음 재검사(+180일)</th><th>삭제</th></tr></thead><tbody id="inv-reinspHistBody"></tbody></table></div>
         </div>
         <div class="empty-state" id="inv-agingEmpty">조회 버튼을 클릭하면 기준일수 이상 오래된 재고가 표시됩니다.</div>
       </div>
@@ -3257,6 +3265,8 @@ function scanLoadLib(){
     document.head.appendChild(s);
   });
 }
+function scanSwitchCam_(camId){ if(!camId||!window.__scanner) return; var msg=document.getElementById("scan-msg");
+  try{ __scanner.stop().then(function(){ __scanner.start(camId, window.__scanCfg||{fps:10}, window.__scanOnDec||function(){}, function(){}).then(function(){ if(msg) msg.textContent="카메라 전환됨 — QR을 비추세요."; }).catch(function(){ if(msg) msg.textContent="이 카메라를 열 수 없습니다. 다른 카메라를 선택하세요."; }); }).catch(function(){}); }catch(e){} }
 function scanOpen(){
   var ov=document.getElementById("scan-overlay"); if(!ov) return;
   var msg=document.getElementById("scan-msg");
@@ -3264,10 +3274,14 @@ function scanOpen(){
   if(msg) msg.textContent="카메라 준비 중…";
   scanLoadLib().then(function(){
     __scanner=new Html5Qrcode("scan-reader");
-    return __scanner.start({facingMode:"environment"}, {fps:10, qrbox:{width:240,height:240}},
-      function(decoded){ scanOnDecode(decoded); }, function(){});
-  }).then(function(){ if(msg) msg.textContent = window.__scanContinuous ? "연속 스캔 중 — 계속 찍으세요. 다 되면 [닫기]." : "QR을 사각형 안에 맞추면 자동으로 인식됩니다."; })
-    .catch(function(){ if(msg) msg.textContent="카메라를 열 수 없습니다. (깃허브 HTTPS 주소로 열고, 카메라 권한을 허용했는지 확인하세요)"; });
+    var cfg={ fps:10, qrbox:function(vw,vh){ var m=Math.min(vw||300, vh||300); var b=Math.max(160, Math.floor(m*0.72)); return {width:b, height:b}; }, aspectRatio:1.0 };
+    var onDec=function(decoded){ scanOnDecode(decoded); };
+    var onOk=function(){ if(msg) msg.textContent = window.__scanContinuous ? "연속 스캔 중 — 계속 찍으세요. 다 되면 [닫기]." : "QR을 사각형 안에 맞추면 자동으로 인식됩니다."; try{ Html5Qrcode.getCameras().then(function(cams){ var sel=document.getElementById("scan-camsel"); if(!sel||!cams||cams.length<2){ return; } sel.innerHTML=cams.map(function(c,i){ return '<option value="'+c.id+'">'+(c.label||("카메라 "+(i+1)))+'</option>'; }).join(""); sel.style.display="block"; }).catch(function(){}); }catch(_){} };
+    window.__scanCfg=cfg; window.__scanOnDec=onDec;
+    __scanner.start({facingMode:"environment"}, cfg, onDec, function(){}).then(onOk).catch(function(){
+      try{ Html5Qrcode.getCameras().then(function(cams){ if(!cams||!cams.length){ if(msg) msg.textContent="카메라를 찾을 수 없습니다. 권한을 허용했는지 확인하세요."; return; } var back=cams.filter(function(c){ return /back|rear|environment|후면|뒤/i.test(c.label||""); }); var camId=(back.length?back[back.length-1]:cams[cams.length-1]).id; __scanner.start(camId, cfg, onDec, function(){}).then(onOk).catch(function(){ __scanner.start(cams[0].id, cfg, onDec, function(){}).then(onOk).catch(function(){ if(msg) msg.textContent="카메라를 열 수 없습니다. (HTTPS·카메라 권한 확인)"; }); }); }).catch(function(){ if(msg) msg.textContent="카메라 접근 실패. 카메라 권한을 허용하세요."; }); }catch(e){ if(msg) msg.textContent="카메라를 열 수 없습니다."; }
+    });
+  }).catch(function(){ if(msg) msg.textContent="스캔 라이브러리 로드 실패. 인터넷 연결을 확인하세요."; });
 }
 // 스캔 인식 분배: 연속모드(검사일보)면 카메라 유지하며 행 누적, 아니면 기존 단발 처리
 var __scanLast="", __scanLastTime=0;
@@ -7913,7 +7927,8 @@ function invRenderAll(){
   rows.forEach((r, idx)=>{
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${idx+1}</td><td>${r.partNo}</td><td class="badge-in">${r.totalIn}</td><td class="badge-out">${r.totalOut}</td>
-      <td style="font-weight:400;color:var(--green)">${r.stock}</td>`;
+      <td style="font-weight:400;color:var(--green)">${r.stock}</td>
+      <td style="text-align:center;"><span onclick="invLabelOne_(this.getAttribute('data-pn'), ${r.stock})" data-pn="${(r.partNo||'').replace(/"/g,'')}" title="이 품목 재고 라벨(QR) 인쇄" style="cursor:pointer;font-size:15px;">🏷️</span></td>`;
     body.appendChild(tr);
   });
   const rangeEl = document.getElementById("inv-allRangeLabel");
@@ -8056,13 +8071,94 @@ function reinspUndoOne_(pn, date){
 function reinspHistArr_(){ var arr=[]; Object.keys(__reinspLog).forEach(function(k){ reinspList_(k).forEach(function(r){ if(r&&r.date) arr.push({pn:k, date:r.date, by:r.by||"", qty:(r.qty||""), result:r.result||""}); }); }); arr.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); }); return arr; }
 function reinspExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; } var arr=reinspHistArr_(); if(!arr.length){ alert("재검사 이력이 없습니다."); return; } var aoa=[["재검사일","품번","검사자","수량","판정","다음 재검사(+180일)"]]; arr.forEach(function(x){ aoa.push([x.date, x.pn, x.by, x.qty, x.result, reinspNext180_(x.date)]); }); var ws=XLSX.utils.aoa_to_sheet(aoa); var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "재검사이력"); XLSX.writeFile(wb, "재검사이력_"+reinspToday_()+".xlsx"); }
 function reinspPrint_(){ var arr=reinspHistArr_(); var E=function(t){return String(t==null?"":t).replace(/</g,"&lt;");}; var rows=arr.map(function(x){ return "<tr><td>"+E(x.date)+"</td><td>"+E(x.pn)+"</td><td>"+E(x.by)+"</td><td style=\"text-align:center;\">"+E(x.qty)+"</td><td style=\"text-align:center;\">"+E(x.result)+"</td><td>"+E(reinspNext180_(x.date))+"</td></tr>"; }).join(""); var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; } w.document.write('<html><head><title>재검사 완료 이력</title><meta charset="utf-8"><style>body{font-family:sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #999;padding:6px 8px;font-size:12px;}th{background:#1F2A44;color:#fff;}h2{margin:0 0 4px;}</style></head><body><h2>\u267B 재검사 완료 이력</h2><div style="color:#666;font-size:12px;margin-bottom:10px;">출력일: '+reinspToday_()+' · 총 '+arr.length+'건</div><table><thead><tr><th>재검사일</th><th>품번</th><th>검사자</th><th>수량</th><th>판정</th><th>다음 재검사(+180일)</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>'); w.document.close(); setTimeout(function(){ try{ w.print(); }catch(e){} }, 400); }
+/* ===== [재고관리] QR 조회 · 재고 라벨(품번·품명·QR) · 바코드 스캔 ===== */
+function invLabelInfo_(pn){ var nd=(typeof insNormDraw_==="function")?insNormDraw_(pn):String(pn==null?"":pn).trim().toUpperCase(); var name="", draw=pn;
+  try{ var __nn=function(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); }; ((typeof mainData!=="undefined"&&mainData)||[]).some(function(m){ if(m){ if(__nn(m.oldDrawingNo)===nd || __nn(m.partNo)===nd){ if(m.partName) name=m.partName; if(m.oldDrawingNo) draw=m.oldDrawingNo; return !!name; } } return false; }); }catch(_){}
+  if(!name){ try{ ((typeof __matInbound!=="undefined"&&__matInbound)||[]).some(function(r){ if(r && ((typeof insNormDraw_==="function")?insNormDraw_(r.draw):String(r.draw||"").toUpperCase())===nd && r.name){ name=r.name; return true; } return false; }); }catch(_){} }
+  return { draw:draw||pn, name:name }; }
+function stockLabelPrint_(rows){
+  rows=(rows||[]).filter(Boolean); if(!rows.length){ alert("라벨 인쇄할 항목이 없습니다."); return; }
+  if(rows.length>80 && !confirm(rows.length+"장을 인쇄합니다. 계속할까요?")) return;
+  var qbase=location.origin+location.pathname;
+  var qr=function(d){ return "https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data="+encodeURIComponent(qbase+"?item="+encodeURIComponent(d||"")); };
+  var html=rows.map(function(r){ var draw=r.partNo||r.oldDraw||"";
+    return '<div class="lbl"><div class="lft">'
+      +'<div class="fld"><div class="lb">품 번</div><div class="vv vpn">'+qcEsc(r.partNo||draw)+'</div></div>'
+      +'<div class="fld"><div class="lb">품 명</div><div class="vv vnm">'+qcEsc(r.name||"")+'</div></div>'
+      +'<div class="ftr">㈜ 엔티엘</div></div>'
+      +'<div class="rgt"><img class="qr" src="'+qr(draw)+'"><div class="qrt">이력조회</div></div></div>'; }).join("");
+  var win=window.open("","_blank"); if(!win) return;
+  win.document.write('<html><head><title>재고 라벨</title><meta charset="utf-8"><style>'
+    +'@page{ size:70mm 40mm; margin:0; } *{ box-sizing:border-box; } body{ font-family:"Malgun Gothic",sans-serif; margin:0; }'
+    +'.lbl{ width:70mm; height:40mm; padding:1.5mm 2mm; page-break-after:always; display:flex; flex-direction:row; gap:1.5mm; overflow:hidden; }'
+    +'.lbl:last-child{ page-break-after:auto; }'
+    +'.lft{ flex:1; display:flex; flex-direction:column; min-width:0; justify-content:center; gap:1mm; }'
+    +'.fld{ border:1pt solid #16345a; border-radius:2px; padding:0.8mm 1.6mm; overflow:hidden; }'
+    +'.fld .lb{ font-size:6.5pt; font-weight:700; color:#16345a; letter-spacing:1px; }'
+    +'.fld .vv{ font-weight:800; color:#111; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.15; }'
+    +'.vpn{ font-size:13pt; } .vnm{ font-size:10.5pt; }'
+    +'.ftr{ margin-top:1mm; text-align:center; background:#16345a; color:#fff; font-weight:800; font-size:8.5pt; padding:1mm 0; border-radius:2px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
+    +'.rgt{ width:17mm; display:flex; flex-direction:column; align-items:center; justify-content:center; }'
+    +'.qr{ width:16.5mm; height:16.5mm; } .qrt{ font-size:6.8pt; font-weight:700; color:#16345a; margin-top:0.5mm; }'
+    +'</style></head><body>'+html+'</body></html>');
+  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 700);
+}
+function invLabelOne_(pn, stock){ if(!pn){ alert("품번이 없습니다."); return; } var info=invLabelInfo_(pn); stockLabelPrint_([{ partNo:pn, name:info.name, oldDraw:info.draw }]); }
+function invAllLabelPrint_(){ var rows=(typeof invGetAllRows==="function")?invGetAllRows(invAllYear, invAllMonth):[]; if(!rows.length){ alert("재고 품목이 없습니다."); return; } var labelRows=rows.map(function(r){ var info=invLabelInfo_(r.partNo); return { partNo:r.partNo, name:info.name, oldDraw:info.draw }; }); stockLabelPrint_(labelRows); }
+function reinspLabelPrint_(){ var checks=document.querySelectorAll(".reinsp-hchk:checked"); if(!checks.length){ alert("라벨 인쇄할 재검사 항목을 체크하세요."); return; }
+  var labelRows=[]; checks.forEach(function(c){ var pn=c.getAttribute("data-pn"); var info=invLabelInfo_(pn); labelRows.push({ partNo:pn, name:info.name, oldDraw:info.draw }); });
+  stockLabelPrint_(labelRows); }
+function invQrScan_(input){ var v=String(input.value||"").trim(); input.value=""; if(!v) return; var draw=v;
+  try{ if(/[?&]item=/.test(v)){ var m=v.match(/[?&]item=([^&]+)/); if(m){ draw=decodeURIComponent(m[1]); } } }catch(_){}
+  if(draw && typeof qrItemView_==="function") qrItemView_(draw); try{ input.focus(); }catch(e){} }
+function qrItemView_(draw){
+  draw=String(draw||"").trim(); if(!draw) return;
+  try{ if(typeof reinspEnsure_==="function") reinspEnsure_(); }catch(_){}
+  try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){}
+  try{ if(typeof matinEnsure_==="function") matinEnsure_(); }catch(_){}
+  var E=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+  var norm=function(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); };
+  var nd=norm(draw);
+  var render=function(){
+    var name="";
+    try{ ((typeof mainData!=="undefined"&&mainData)||[]).some(function(m){ if(m&&(norm(m.oldDrawingNo)===nd||norm(m.partNo)===nd) && m.partName){ name=m.partName; return true; } return false; }); }catch(_){}
+    if(!name){ try{ ((typeof __matInbound!=="undefined"&&__matInbound)||[]).some(function(r){ if(r&&norm(r.draw)===nd && r.name){ name=r.name; return true; } return false; }); }catch(_){} }
+    var inDate="";
+    try{ if(typeof invData!=="undefined"&&invData){ invData.forEach(function(r){ if(r&&(norm(r.partNo)===nd||norm(r.oldDraw)===nd)){ var d=String(r.inDate||""); if(d&&(!inDate||d<inDate)) inDate=d; } }); } }catch(_){}
+    try{ if(!inDate&&typeof __matInbound!=="undefined"){ (__matInbound||[]).forEach(function(r){ if(r&&norm(r.draw)===nd){ var d=String(r.date||""); if(d&&(!inDate||d<inDate)) inDate=d; } }); } }catch(_){}
+    var rel=[]; try{ if(typeof reinspList_==="function") rel=reinspList_((typeof reinspKey_==="function")?reinspKey_(draw):nd); if((!rel||!rel.length)&&typeof reinspList_==="function") rel=reinspList_(nd); }catch(_){}
+    rel=(rel||[]).slice().filter(function(x){return x&&x.date;}).sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
+    var last=rel.length?rel[0].date:"";
+    var next=""; try{ if(last&&typeof reinspNext180_==="function") next=reinspNext180_(last); }catch(_){}
+    var overdue=false; try{ if(next){ overdue=(new Date(next) < new Date()); } }catch(_){}
+    var hold=null; try{ if(typeof holdActive_==="function") hold=holdActive_(draw); }catch(_){}
+    var box=document.getElementById("qritem-body"); if(!box) return;
+    var relHtml=rel.length? rel.map(function(x){ var rc=(x.result==="불량")?"#C0392B":"#1E7A46"; return '<div style="display:flex;justify-content:space-between;padding:9px 2px;border-bottom:1px solid #EEF1F6;font-size:15px;"><span style="font-weight:700;color:#1E7A46;">'+E(x.date)+'</span><span>'+E(x.by||"")+(x.qty?(" · "+E(x.qty)+"개"):"")+' <b style="color:'+rc+';">'+E(x.result||"")+'</b></span></div>'; }).join("") : '<div style="color:#8A93A6;padding:12px 2px;font-size:15px;">재검사 이력 없음</div>';
+    box.innerHTML=(hold?'<div style="background:#C0392B;color:#fff;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-weight:800;font-size:16px;">🔴 출하정지 중 — '+E(hold.reason||"")+'</div>':'')
+      +'<div style="font-size:26px;font-weight:800;color:#1F2A44;">'+E(draw)+'</div>'
+      +'<div style="font-size:15px;color:#5A6478;margin:2px 0 16px;">'+E(name||"(품명 미확인)")+'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">'
+      +'<div style="background:#EEF2FA;border-radius:12px;padding:12px;"><div style="font-size:12px;color:#5A6478;">입고일</div><div style="font-size:18px;font-weight:800;color:#0B5CAB;">'+E(inDate||"-")+'</div></div>'
+      +'<div style="background:'+(overdue?"#FDECEC":"#EAF6EF")+';border-radius:12px;padding:12px;"><div style="font-size:12px;color:#5A6478;">다음 재검사</div><div style="font-size:18px;font-weight:800;color:'+(overdue?"#C0392B":"#1E7A46")+';">'+E(next||"-")+(overdue?" ⚠":"")+'</div></div>'
+      +'</div><div style="font-weight:800;color:#1F2A44;font-size:16px;margin-bottom:4px;">♻ 재검사 이력 ('+rel.length+')</div>'+relHtml
+      +(last?('<div style="font-size:13px;color:#8A93A6;margin-top:10px;">최근 재검사: <b>'+E(last)+'</b></div>'):'');
+  };
+  var old=document.getElementById("qritem-ov"); if(old) old.remove();
+  var html='<div id="qritem-ov" style="position:fixed;inset:0;background:#fff;z-index:100090;overflow:auto;">'
+    +'<div style="background:linear-gradient(135deg,#1F2A44,#33415C);color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;">'
+    +'<div style="font-weight:800;font-size:17px;">📱 제품 이력 조회</div>'
+    +'<button onclick="var o=document.getElementById(\'qritem-ov\'); if(o) o.remove();" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:700;">닫기 ✕</button></div>'
+    +'<div id="qritem-body" style="padding:18px;max-width:520px;margin:0 auto;"><div style="text-align:center;color:#8A93A6;padding:40px;">불러오는 중…</div></div></div>';
+  var d=document.createElement("div"); d.innerHTML=html; document.body.appendChild(d.firstChild);
+  render(); setTimeout(render, 1800); setTimeout(render, 4000);
+}
 function renderReinspHist_(){
   var body=document.getElementById("inv-reinspHistBody"), wrap=document.getElementById("inv-reinspHistWrap"); if(!body) return;
   var arr=reinspHistArr_();
   if(wrap) wrap.style.display=arr.length?"block":"none";
   var cnt=document.getElementById("inv-reinspHistCnt"); if(cnt) cnt.textContent="("+arr.length+"건 누적)";
   var td="padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;";
-  body.innerHTML=arr.length?arr.map(function(x){ var e=reinspEsc_(x.pn); var rc=(x.result==="불량")?"#C0392B":"#1E7A46"; return '<tr><td style="'+td+'text-align:center;color:#1E7A46;font-weight:700;">'+x.date+'</td><td style="'+td+'">'+String(x.pn)+'</td><td style="'+td+'text-align:center;">'+String(x.by||"")+'</td><td style="'+td+'text-align:center;">'+(x.qty||"")+'</td><td style="'+td+'text-align:center;color:'+rc+';font-weight:700;">'+String(x.result||"")+'</td><td style="'+td+'text-align:center;color:#B0662A;">'+reinspNext180_(x.date)+'</td><td style="'+td+'text-align:center;"><span onclick="reinspUndoOne_(\''+e+'\',\''+x.date+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">\u2715</span></td></tr>'; }).join(""):'<tr><td colspan="7" style="text-align:center;color:#B9C2D6;padding:12px;">재검사 이력 없음</td></tr>';
+  body.innerHTML=arr.length?arr.map(function(x){ var e=reinspEsc_(x.pn); var rc=(x.result==="불량")?"#C0392B":"#1E7A46"; var __nm=(typeof invLabelInfo_==="function")?(invLabelInfo_(x.pn).name||""):""; return '<tr><td style="'+td+'text-align:center;"><input type="checkbox" class="reinsp-hchk" data-pn="'+e+'" style="cursor:pointer;"></td><td style="'+td+'text-align:center;color:#1E7A46;font-weight:700;">'+x.date+'</td><td style="'+td+'">'+String(x.pn)+'</td><td style="'+td+'">'+String(__nm||"")+'</td><td style="'+td+'text-align:center;">'+String(x.by||"")+'</td><td style="'+td+'text-align:center;">'+(x.qty||"")+'</td><td style="'+td+'text-align:center;color:'+rc+';font-weight:700;">'+String(x.result||"")+'</td><td style="'+td+'text-align:center;color:#B0662A;">'+reinspNext180_(x.date)+'</td><td style="'+td+'text-align:center;"><span onclick="reinspUndoOne_(\''+e+'\',\''+x.date+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">\u2715</span></td></tr>'; }).join(""):'<tr><td colspan="9" style="text-align:center;color:#B9C2D6;padding:12px;">재검사 이력 없음</td></tr>';
 }
 function reinspCell_(pn, stock){
   var k=reinspKey_(pn), e=reinspEsc_(pn), last=reinspLatestDate_(k), sv=(Number(stock)||0);
@@ -9104,7 +9200,7 @@ function ctqOnUpload_(file){
   reader.readAsArrayBuffer(file);
 }
 // 저장된 집계가 있으면 로드
-(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){}; try{ if(typeof ncrEnsure_==="function") ncrEnsure_(); }catch(_){} });
+(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ var __qi=new URLSearchParams(location.search).get("item"); if(__qi && typeof qrItemView_==="function") setTimeout(function(){ qrItemView_(__qi); }, 1200); }catch(_){}; try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){}; try{ if(typeof ncrEnsure_==="function") ncrEnsure_(); }catch(_){} });
 (window.__afterEnter=window.__afterEnter||[]).push(function(){ qShareLoad_("ctqMonthly", function(sv){ if(window.__qUserLoaded&&window.__qUserLoaded.ctqMonthly) return; if(sv&&typeof sv==="object"){ __ctqMonthly=sv; try{ if(typeof idbSet==="function") idbSet("ctqMonthly",sv); }catch(_){}; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ctqMonthly").then(function(v){ if(v&&typeof v==="object"){ __ctqMonthly=v; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); } }).catch(function(){}); } }catch(_){} }); });
 /* ==================== 📐 공정능력(Ppk) 분석 (측정 종합 시트 업로드 → 특성별 Ppk·문제 검출) ==================== */
 var PPK_GOOD=1.33, PPK_WARN=1.00;
@@ -11741,7 +11837,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=9.21;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=9.22;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -21757,6 +21853,6 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.21 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.22 🔔</div>
 </body>
 </html>
