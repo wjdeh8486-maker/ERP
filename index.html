@@ -1618,11 +1618,12 @@
         <div class="progress-label" id="inv-allRangeLabel" style="margin:4px 0 12px;"></div>
         <div class="search-row" style="justify-content:flex-end;">
           <button id="inv-allPrintBtn">🖨️ 인쇄</button>
+          <button id="inv-allLabelBtn" type="button" onclick="invAllLabelPrint_()" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;">🏷️ 라벨 전체인쇄</button>
           <button id="inv-allExcelBtn" type="button" class="tb-download-btn">📥 엑셀 다운로드</button>
         </div>
         <div class="table-scroll" id="inv-allTableScroll">
           <table>
-            <thead><tr><th>순번</th><th>품번</th><th>총 입고</th><th>총 출고</th><th>현재 재고</th></tr></thead>
+            <thead><tr><th>순번</th><th>품번</th><th>총 입고</th><th>총 출고</th><th>현재 재고</th><th>라벨</th></tr></thead>
             <tbody id="inv-allBody"></tbody>
           </table>
         </div>
@@ -1647,8 +1648,9 @@
             <div style="font-weight:700;color:#1F2A44;">♻ 재검사 완료 이력 <span id="inv-reinspHistCnt" style="color:#8A93A6;font-size:12px;font-weight:400;"></span></div>
             <button type="button" onclick="reinspExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">📊 엑셀</button>
             <button type="button" onclick="reinspPrint_()" style="background:#475569;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">🖨 인쇄</button>
+            <button type="button" onclick="reinspLabelPrint_()" title="체크한 재검사품의 재고 라벨(QR) 인쇄" style="background:#8A1F1F;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">🏷️ 선택 라벨</button>
           </div>
-          <div class="table-scroll" style="max-height:240px;"><table><thead><tr><th>재검사일</th><th>품번</th><th>검사자</th><th>수량</th><th>판정</th><th>다음 재검사(+180일)</th><th>삭제</th></tr></thead><tbody id="inv-reinspHistBody"></tbody></table></div>
+          <div class="table-scroll" style="max-height:240px;"><table><thead><tr><th style="width:28px;"><input type="checkbox" id="reinsp-hall" onclick="document.querySelectorAll('.reinsp-hchk').forEach(function(c){c.checked=this.checked;}.bind(this));" style="cursor:pointer;"></th><th>재검사일</th><th>품번</th><th>검사자</th><th>수량</th><th>판정</th><th>다음 재검사(+180일)</th><th>삭제</th></tr></thead><tbody id="inv-reinspHistBody"></tbody></table></div>
         </div>
         <div class="empty-state" id="inv-agingEmpty">조회 버튼을 클릭하면 기준일수 이상 오래된 재고가 표시됩니다.</div>
       </div>
@@ -5885,7 +5887,7 @@ function dispatchPrint_(){
     +'<col style="width:9%"><col style="width:12%"><col style="width:8%"><col style="width:11%"><col style="width:17%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:10%"><col style="width:15%"><col style="width:6%">'
     +'</colgroup><thead><tr>'+head.map(function(h){return '<th>'+h+'</th>';}).join("")+'</tr></thead><tbody>'+bodyHtml+'</tbody></table>'
     +'</body></html>');
-  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
+  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 700);
 }
 
 function dispatchExcel_(){
@@ -5930,9 +5932,11 @@ function dispatchPrintLabelsForRows_(rows){
   rows=(rows||[]).filter(Boolean);
   if(!rows.length){ alert("라벨을 인쇄할 항목이 없습니다."); return; }
   if(rows.length>60 && !confirm(rows.length+"건의 라벨을 인쇄합니다(라벨 "+rows.length+"장). 계속할까요?")) return;
+  var __qbase=location.origin+location.pathname;
+  var qrImg=function(draw){ var u=__qbase+"?item="+encodeURIComponent(draw||""); return "https://api.qrserver.com/v1/create-qr-code/?size=150x150&margin=0&data="+encodeURIComponent(u); };
   var row=function(k,v){ return '<tr><th>'+qcEsc(k)+'</th><td>'+qcEsc(v||"")+'</td></tr>'; };
   var labelsHtml=rows.map(function(r){
-    return '<div class="lbl">'
+    return '<div class="lbl"><div class="lft">'
       +'<table class="main">'
       +row("발주번호", r.po)
       +row("품목코드", r.partNo)
@@ -5943,6 +5947,7 @@ function dispatchPrintLabelsForRows_(rows){
       +'<tr><th>도면번호</th><td class="dr"><table class="drt"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><tr><td class="dv">'+qcEsc(r.oldDraw||"")+'</td><td class="qb">수 량</td><td class="qv">'+(Number(r.qty)||0)+'</td></tr></table></td></tr>'
       +'</table>'
       +'<div class="ftr">㈜ 엔티엘</div>'
+      +'</div><div class="rgt"><img class="qr" src="'+qrImg(r.oldDraw)+'"><div class="qrt">재검사<br>조회</div></div>'
       +'</div>';
   }).join("");
   var win=window.open("","_blank"); if(!win) return;
@@ -5951,7 +5956,11 @@ function dispatchPrintLabelsForRows_(rows){
     +'@page{ size:70mm 40mm; margin:0; }'
     +'*{ box-sizing:border-box; }'
     +'body{ font-family:"Malgun Gothic",sans-serif; margin:0; }'
-    +'.lbl{ width:70mm; height:40mm; padding:1.2mm 1.6mm; page-break-after:always; display:flex; flex-direction:column; overflow:hidden; }'
+    +'.lbl{ width:70mm; height:40mm; padding:1.2mm 1.6mm; page-break-after:always; display:flex; flex-direction:row; gap:1mm; overflow:hidden; }'
+    +'.lft{ flex:1; display:flex; flex-direction:column; min-width:0; }'
+    +'.rgt{ width:15mm; display:flex; flex-direction:column; align-items:center; justify-content:center; }'
+    +'.qr{ width:14mm; height:14mm; }'
+    +'.qrt{ font-size:6.2pt; font-weight:700; color:#16345a; text-align:center; line-height:1.1; margin-top:0.5mm; }'
     +'.lbl:last-child{ page-break-after:auto; }'
     +'table.main{ border-collapse:collapse; width:100%; flex:1; table-layout:fixed; }'
     +'table.main th, table.main td{ border:0.9pt solid #16345a; padding:0.55mm 1.4mm; font-size:7.3pt; text-align:left; line-height:1.15; }'
@@ -5967,7 +5976,7 @@ function dispatchPrintLabelsForRows_(rows){
     +'table.drt td.qv{ text-align:center; font-weight:800; font-size:8.6pt; }'
     +'.ftr{ margin-top:0.6mm; text-align:center; background:#16345a; color:#fff; font-weight:800; font-size:7.8pt; padding:0.9mm 0; border-radius:2px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
     +'</style></head><body>'+labelsHtml+'</body></html>');
-  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
+  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 700);
 }
 // 출고NO(콤마로 여러 개 가능: "261-13,263-13,268-15") → 분출LIST에서 해당 관리번호(ORDER NO) 행을 찾아 라벨 인쇄
 // 검사일보 쪽에서(출하검사, 행별 또는 여러 행 묶어) 호출
@@ -6655,6 +6664,50 @@ function insplistStockUseCancel_(){
   renderInspList();
   alert("재고사용을 취소했습니다. ("+orders.length+"건)\n비고란이 원래대로 복구됩니다.");
 }
+/* ========================= 📱 QR 조회 화면 (라벨 QR → ?item=도번) ========================= */
+function qrItemView_(draw){
+  draw=String(draw||"").trim(); if(!draw) return;
+  try{ if(typeof reinspEnsure_==="function") reinspEnsure_(); }catch(_){}
+  try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){}
+  try{ if(typeof matinEnsure_==="function") matinEnsure_(); }catch(_){}
+  var E=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+  var norm=function(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); };
+  var nd=norm(draw);
+  var render=function(){
+    var name="";
+    try{ ((typeof mainData!=="undefined"&&mainData)||[]).some(function(m){ if(m&&norm(m.oldDrawingNo)===nd && m.partName){ name=m.partName; return true; } return false; }); }catch(_){}
+    if(!name){ try{ ((typeof __matInbound!=="undefined"&&__matInbound)||[]).some(function(r){ if(r&&norm(r.draw)===nd && r.name){ name=r.name; return true; } return false; }); }catch(_){} }
+    var inDate="";
+    try{ if(typeof invData!=="undefined"&&invData){ invData.forEach(function(r){ if(r&&(norm(r.partNo)===nd||norm(r.oldDraw)===nd)){ var d=String(r.inDate||""); if(d&&(!inDate||d<inDate)) inDate=d; } }); } }catch(_){}
+    try{ if(!inDate&&typeof __matInbound!=="undefined"){ (__matInbound||[]).forEach(function(r){ if(r&&norm(r.draw)===nd){ var d=String(r.date||""); if(d&&(!inDate||d<inDate)) inDate=d; } }); } }catch(_){}
+    var rel=[]; try{ if(typeof reinspList_==="function") rel=reinspList_(nd); }catch(_){}
+    rel=(rel||[]).slice().filter(function(x){return x&&x.date;}).sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
+    var last=rel.length?rel[0].date:"";
+    var next=""; try{ if(last&&typeof reinspNext180_==="function") next=reinspNext180_(last); }catch(_){}
+    var overdue=false; try{ if(next){ overdue=(new Date(next) < new Date()); } }catch(_){}
+    var hold=null; try{ if(typeof holdActive_==="function") hold=holdActive_(draw); }catch(_){}
+    var box=document.getElementById("qritem-body"); if(!box) return;
+    var relHtml=rel.length? rel.map(function(x){ var rc=(x.result==="불량")?"#C0392B":"#1E7A46"; return '<div style="display:flex;justify-content:space-between;padding:9px 2px;border-bottom:1px solid #EEF1F6;font-size:15px;"><span style="font-weight:700;color:#1E7A46;">'+E(x.date)+'</span><span>'+E(x.by||"")+(x.qty?(" · "+E(x.qty)+"개"):"")+' <b style="color:'+rc+';">'+E(x.result||"")+'</b></span></div>'; }).join("") : '<div style="color:#8A93A6;padding:12px 2px;font-size:15px;">재검사 이력 없음</div>';
+    box.innerHTML=(hold?'<div style="background:#C0392B;color:#fff;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-weight:800;font-size:16px;">🔴 출하정지 중 — '+E(hold.reason||"")+'</div>':'')
+      +'<div style="font-size:26px;font-weight:800;color:#1F2A44;">'+E(draw)+'</div>'
+      +'<div style="font-size:15px;color:#5A6478;margin:2px 0 16px;">'+E(name||"(품명 미확인)")+'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">'
+      +'<div style="background:#EEF2FA;border-radius:12px;padding:12px;"><div style="font-size:12px;color:#5A6478;">입고일</div><div style="font-size:18px;font-weight:800;color:#0B5CAB;">'+E(inDate||"-")+'</div></div>'
+      +'<div style="background:'+(overdue?"#FDECEC":"#EAF6EF")+';border-radius:12px;padding:12px;"><div style="font-size:12px;color:#5A6478;">다음 재검사</div><div style="font-size:18px;font-weight:800;color:'+(overdue?"#C0392B":"#1E7A46")+';">'+E(next||"-")+(overdue?" ⚠":"")+'</div></div>'
+      +'</div>'
+      +'<div style="font-weight:800;color:#1F2A44;font-size:16px;margin-bottom:4px;">♻ 재검사 이력 ('+rel.length+')</div>'
+      +relHtml
+      +(last?('<div style="font-size:13px;color:#8A93A6;margin-top:10px;">최근 재검사: <b>'+E(last)+'</b></div>'):'');
+  };
+  var old=document.getElementById("qritem-ov"); if(old) old.remove();
+  var html='<div id="qritem-ov" style="position:fixed;inset:0;background:#fff;z-index:100090;overflow:auto;">'
+    +'<div style="background:linear-gradient(135deg,#1F2A44,#33415C);color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;">'
+    +'<div style="font-weight:800;font-size:17px;">📱 제품 이력 조회</div>'
+    +'<button onclick="var o=document.getElementById(\'qritem-ov\'); if(o) o.remove();" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:700;">닫기 ✕</button></div>'
+    +'<div id="qritem-body" style="padding:18px;max-width:520px;margin:0 auto;"><div style="text-align:center;color:#8A93A6;padding:40px;">불러오는 중…</div></div></div>';
+  var d=document.createElement("div"); d.innerHTML=html; document.body.appendChild(d.firstChild);
+  render(); setTimeout(render, 1800); setTimeout(render, 4000);
+}
 // 검수LIST 라벨 인쇄 (분출LIST 공통 라벨 인쇄기 재사용, 70×40mm)
 function insplistLabelPrint_(){
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
@@ -6693,7 +6746,7 @@ function insplistPrint_(){
     +'<col style="width:9%"><col style="width:12%"><col style="width:11%"><col style="width:25%"><col style="width:4%"><col style="width:4%"><col style="width:4%"><col style="width:15%"><col style="width:10%"><col style="width:6%">'
     +'</colgroup><thead><tr>'+head.map(function(h){return '<th>'+h+'</th>';}).join("")+'</tr></thead><tbody>'+body+'</tbody></table>'
     +'</body></html>');
-  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
+  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 700);
 }
 // 엑셀 인쇄물 디자인 헬퍼: 네이비 헤더·흰글씨·테두리·얼룩무늬·부족 빨강
 function insplistStyleSheet_(ws, aoa, dataRows, lackCol){
@@ -7905,6 +7958,13 @@ function renderInvAllSelectors(){
     });
   }
 }
+// 전체 재고 → 재고 라벨(QR) : 품번 기준으로 도번·품명 매핑
+function invLabelInfo_(pn){ var nd=(typeof insNormDraw_==="function")?insNormDraw_(pn):String(pn==null?"":pn).trim().toUpperCase(); var name="", draw=pn;
+  try{ ((typeof mainData!=="undefined"&&mainData)||[]).some(function(m){ if(m){ var od=(typeof insNormDraw_==="function")?insNormDraw_(m.oldDrawingNo):String(m.oldDrawingNo||"").toUpperCase(); if(od===nd){ if(m.partName) name=m.partName; if(m.oldDrawingNo) draw=m.oldDrawingNo; return !!name; } } return false; }); }catch(_){}
+  if(!name){ try{ ((typeof __matInbound!=="undefined"&&__matInbound)||[]).some(function(r){ if(r && ((typeof insNormDraw_==="function")?insNormDraw_(r.draw):String(r.draw||"").toUpperCase())===nd && r.name){ name=r.name; return true; } return false; }); }catch(_){} }
+  return { draw:draw||pn, name:name }; }
+function invLabelOne_(pn, stock){ if(!pn){ alert("품번이 없습니다."); return; } var info=invLabelInfo_(pn); if(typeof dispatchPrintLabelsForRows_==="function") dispatchPrintLabelsForRows_([{ po:"", partNo:pn, orderNo:"", name:info.name, project:"", due:"", oldDraw:info.draw, qty:(Number(stock)||0) }]); }
+function invAllLabelPrint_(){ var rows=(typeof invGetAllRows==="function")?invGetAllRows(invAllYear, invAllMonth):[]; if(!rows.length){ alert("재고 품목이 없습니다."); return; } var labelRows=rows.map(function(r){ var info=invLabelInfo_(r.partNo); return { po:"", partNo:r.partNo, orderNo:"", name:info.name, project:"", due:"", oldDraw:info.draw, qty:(Number(r.stock)||0) }; }); if(typeof dispatchPrintLabelsForRows_==="function") dispatchPrintLabelsForRows_(labelRows); }
 function invRenderAll(){
   const body = document.getElementById("inv-allBody");
   if(!body) return;
@@ -7913,7 +7973,8 @@ function invRenderAll(){
   rows.forEach((r, idx)=>{
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${idx+1}</td><td>${r.partNo}</td><td class="badge-in">${r.totalIn}</td><td class="badge-out">${r.totalOut}</td>
-      <td style="font-weight:400;color:var(--green)">${r.stock}</td>`;
+      <td style="font-weight:400;color:var(--green)">${r.stock}</td>
+      <td style="text-align:center;"><span onclick="invLabelOne_(this.getAttribute('data-pn'), ${r.stock})" data-pn="${(r.partNo||'').replace(/"/g,'')}" title="이 품목 재고 라벨(QR) 인쇄" style="cursor:pointer;font-size:15px;">🏷️</span></td>`;
     body.appendChild(tr);
   });
   const rangeEl = document.getElementById("inv-allRangeLabel");
@@ -8056,13 +8117,16 @@ function reinspUndoOne_(pn, date){
 function reinspHistArr_(){ var arr=[]; Object.keys(__reinspLog).forEach(function(k){ reinspList_(k).forEach(function(r){ if(r&&r.date) arr.push({pn:k, date:r.date, by:r.by||"", qty:(r.qty||""), result:r.result||""}); }); }); arr.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); }); return arr; }
 function reinspExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; } var arr=reinspHistArr_(); if(!arr.length){ alert("재검사 이력이 없습니다."); return; } var aoa=[["재검사일","품번","검사자","수량","판정","다음 재검사(+180일)"]]; arr.forEach(function(x){ aoa.push([x.date, x.pn, x.by, x.qty, x.result, reinspNext180_(x.date)]); }); var ws=XLSX.utils.aoa_to_sheet(aoa); var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "재검사이력"); XLSX.writeFile(wb, "재검사이력_"+reinspToday_()+".xlsx"); }
 function reinspPrint_(){ var arr=reinspHistArr_(); var E=function(t){return String(t==null?"":t).replace(/</g,"&lt;");}; var rows=arr.map(function(x){ return "<tr><td>"+E(x.date)+"</td><td>"+E(x.pn)+"</td><td>"+E(x.by)+"</td><td style=\"text-align:center;\">"+E(x.qty)+"</td><td style=\"text-align:center;\">"+E(x.result)+"</td><td>"+E(reinspNext180_(x.date))+"</td></tr>"; }).join(""); var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; } w.document.write('<html><head><title>재검사 완료 이력</title><meta charset="utf-8"><style>body{font-family:sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #999;padding:6px 8px;font-size:12px;}th{background:#1F2A44;color:#fff;}h2{margin:0 0 4px;}</style></head><body><h2>\u267B 재검사 완료 이력</h2><div style="color:#666;font-size:12px;margin-bottom:10px;">출력일: '+reinspToday_()+' · 총 '+arr.length+'건</div><table><thead><tr><th>재검사일</th><th>품번</th><th>검사자</th><th>수량</th><th>판정</th><th>다음 재검사(+180일)</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>'); w.document.close(); setTimeout(function(){ try{ w.print(); }catch(e){} }, 400); }
+function reinspLabelPrint_(){ var checks=document.querySelectorAll(".reinsp-hchk:checked"); if(!checks.length){ alert("라벨 인쇄할 재검사 항목을 체크하세요."); return; }
+  var labelRows=[]; checks.forEach(function(c){ var pn=c.getAttribute("data-pn"), qty=Number(c.getAttribute("data-qty"))||0; var info=(typeof invLabelInfo_==="function")?invLabelInfo_(pn):{draw:pn,name:""}; labelRows.push({ po:"", partNo:pn, orderNo:"", name:info.name, project:"", due:"", oldDraw:info.draw, qty:qty }); });
+  if(typeof dispatchPrintLabelsForRows_==="function") dispatchPrintLabelsForRows_(labelRows); else alert("라벨 인쇄기를 찾을 수 없습니다."); }
 function renderReinspHist_(){
   var body=document.getElementById("inv-reinspHistBody"), wrap=document.getElementById("inv-reinspHistWrap"); if(!body) return;
   var arr=reinspHistArr_();
   if(wrap) wrap.style.display=arr.length?"block":"none";
   var cnt=document.getElementById("inv-reinspHistCnt"); if(cnt) cnt.textContent="("+arr.length+"건 누적)";
   var td="padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;";
-  body.innerHTML=arr.length?arr.map(function(x){ var e=reinspEsc_(x.pn); var rc=(x.result==="불량")?"#C0392B":"#1E7A46"; return '<tr><td style="'+td+'text-align:center;color:#1E7A46;font-weight:700;">'+x.date+'</td><td style="'+td+'">'+String(x.pn)+'</td><td style="'+td+'text-align:center;">'+String(x.by||"")+'</td><td style="'+td+'text-align:center;">'+(x.qty||"")+'</td><td style="'+td+'text-align:center;color:'+rc+';font-weight:700;">'+String(x.result||"")+'</td><td style="'+td+'text-align:center;color:#B0662A;">'+reinspNext180_(x.date)+'</td><td style="'+td+'text-align:center;"><span onclick="reinspUndoOne_(\''+e+'\',\''+x.date+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">\u2715</span></td></tr>'; }).join(""):'<tr><td colspan="7" style="text-align:center;color:#B9C2D6;padding:12px;">재검사 이력 없음</td></tr>';
+  body.innerHTML=arr.length?arr.map(function(x){ var e=reinspEsc_(x.pn); var rc=(x.result==="불량")?"#C0392B":"#1E7A46"; return '<tr><td style="'+td+'text-align:center;"><input type="checkbox" class="reinsp-hchk" data-pn="'+e+'" data-qty="'+(x.qty||0)+'" style="cursor:pointer;"></td><td style="'+td+'text-align:center;color:#1E7A46;font-weight:700;">'+x.date+'</td><td style="'+td+'">'+String(x.pn)+'</td><td style="'+td+'text-align:center;">'+String(x.by||"")+'</td><td style="'+td+'text-align:center;">'+(x.qty||"")+'</td><td style="'+td+'text-align:center;color:'+rc+';font-weight:700;">'+String(x.result||"")+'</td><td style="'+td+'text-align:center;color:#B0662A;">'+reinspNext180_(x.date)+'</td><td style="'+td+'text-align:center;"><span onclick="reinspUndoOne_(\''+e+'\',\''+x.date+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">\u2715</span></td></tr>'; }).join(""):'<tr><td colspan="8" style="text-align:center;color:#B9C2D6;padding:12px;">재검사 이력 없음</td></tr>';
 }
 function reinspCell_(pn, stock){
   var k=reinspKey_(pn), e=reinspEsc_(pn), last=reinspLatestDate_(k), sv=(Number(stock)||0);
@@ -9104,7 +9168,8 @@ function ctqOnUpload_(file){
   reader.readAsArrayBuffer(file);
 }
 // 저장된 집계가 있으면 로드
-(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){}; try{ if(typeof ncrEnsure_==="function") ncrEnsure_(); }catch(_){} });
+(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ var __qi=new URLSearchParams(location.search).get("item"); if(__qi && typeof qrItemView_==="function") setTimeout(function(){ qrItemView_(__qi); }, 1000); }catch(_){}
+  try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){}; try{ if(typeof ncrEnsure_==="function") ncrEnsure_(); }catch(_){} });
 (window.__afterEnter=window.__afterEnter||[]).push(function(){ qShareLoad_("ctqMonthly", function(sv){ if(window.__qUserLoaded&&window.__qUserLoaded.ctqMonthly) return; if(sv&&typeof sv==="object"){ __ctqMonthly=sv; try{ if(typeof idbSet==="function") idbSet("ctqMonthly",sv); }catch(_){}; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ctqMonthly").then(function(v){ if(v&&typeof v==="object"){ __ctqMonthly=v; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); } }).catch(function(){}); } }catch(_){} }); });
 /* ==================== 📐 공정능력(Ppk) 분석 (측정 종합 시트 업로드 → 특성별 Ppk·문제 검출) ==================== */
 var PPK_GOOD=1.33, PPK_WARN=1.00;
