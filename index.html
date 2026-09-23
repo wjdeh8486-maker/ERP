@@ -7927,7 +7927,7 @@ function invRenderAll(){
   const rows = invGetAllRows(invAllYear, invAllMonth);
   rows.forEach((r, idx)=>{
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td style="text-align:center;"><input type="checkbox" class="invall-chk" data-pn="${(r.partNo||'').replace(/"/g,'')}" style="cursor:pointer;"></td><td>${idx+1}</td><td>${r.partNo}</td><td class="badge-in">${r.totalIn}</td><td class="badge-out">${r.totalOut}</td>
+    tr.innerHTML = `<td style="text-align:center;"><input type="checkbox" class="invall-chk" data-pn="${String(r.partNo||'').replace(/"/g,'')}" style="cursor:pointer;"></td><td>${idx+1}</td><td>${r.partNo}</td><td class="badge-in">${r.totalIn}</td><td class="badge-out">${r.totalOut}</td>
       <td style="font-weight:400;color:var(--green)">${r.stock}</td>`;
     body.appendChild(tr);
   });
@@ -20631,19 +20631,17 @@ function insDupScanAll_(){
   var results=[], done=0;
   types.forEach(function(ty){
     var key=ty[0], label=ty[1];
-    fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(key)+"&_v="+Date.now(),{cache:"no-store"})
-      .then(function(r){return r.json();})
-      .then(function(res){
-        var rows=[]; try{ if(res&&res.json){ var o=JSON.parse(res.json); if(o&&Array.isArray(o.rows)) rows=o.rows; } }catch(e){}
-        window.__insDupCache=window.__insDupCache||{};
-        window.__insDupCache[key]=rows;   // 입력 중 즉시 비교용 캐시
-        var dups=insDupListInRows_(rows, key);
-        window.__insDupBanner=window.__insDupBanner||{};
-        window.__insDupBanner[key]=dups;   // 배너용: 유형별 중복 목록 (열 때 1회 계산)
-        results.push({ key:key, label:label, dups:dups });
-      })
-      .catch(function(){ results.push({ key:key, label:label, dups:[] }); })
-      .then(function(){ done++; if(done===types.length){ window.__insDupScanning=false; insDupShowPopup_(results); if(typeof insRender==="function") insRender(); } });
+    var finish=function(rows){
+      rows=rows||[];
+      window.__insDupCache=window.__insDupCache||{}; window.__insDupCache[key]=rows;
+      var dups=insDupListInRows_(rows, key);
+      window.__insDupBanner=window.__insDupBanner||{}; window.__insDupBanner[key]=dups;
+      results.push({ key:key, label:label, dups:dups });
+      done++; if(done===types.length){ window.__insDupScanning=false; insDupShowPopup_(results); if(typeof insRender==="function") insRender(); }
+    };
+    // [수정] blob(insrepMaster) 대신 구글시트(검사_*)를 읽어 중복 판정 → 시트에서 삭제하면 즉시 반영
+    if(typeof insReadTypeFromSheet_==="function"){ insReadTypeFromSheet_(key, function(res){ finish((res&&res.all)?res.all:[]); }); }
+    else { finish([]); }
   });
 }
 // 측정실 행이 실제 검사한 항목 집합 반환 (치수·LEAK·FLOW·진공·가압)
