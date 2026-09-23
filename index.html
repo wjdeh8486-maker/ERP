@@ -1978,6 +1978,7 @@
           <div style="font-size:18px;font-weight:800;color:#1F2A44;">📋 검수LIST</div>
           <button id="insplist-refresh" onclick="renderInspList()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🔄 새로고침</button>
           <button id="insplist-print" onclick="insplistPrint_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🖨️ 인쇄</button>
+          <button id="insplist-label" onclick="insplistLabelPrint_()" title="70×40mm 라벨 인쇄 (선택한 항목만, 미선택 시 전체)" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🏷️ 라벨 인쇄</button>
           <button id="insplist-excel" onclick="insplistExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">📊 엑셀 다운로드</button>
           <input id="insplist-search" type="text" placeholder="ORDER NO. 또는 PROJECT NO. (예: 26-386 / JB0130311 / 26-386,26-124)" onkeydown="if(event.key==='Enter')renderInspList()" style="flex:1;min-width:180px;padding:7px 12px;border:1px solid #D6DEE8;border-radius:8px;box-sizing:border-box;">
           <button onclick="renderInspList()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🔍 검색</button>
@@ -6653,6 +6654,16 @@ function insplistStockUseCancel_(){
   orders.forEach(function(o){ delete __inspUsedOrders[o]; });
   renderInspList();
   alert("재고사용을 취소했습니다. ("+orders.length+"건)\n비고란이 원래대로 복구됩니다.");
+}
+// 검수LIST 라벨 인쇄 (분출LIST 공통 라벨 인쇄기 재사용, 70×40mm)
+function insplistLabelPrint_(){
+  var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
+  if(!q){ alert("먼저 ORDER NO. 또는 PROJECT NO.를 검색하세요."); return; }
+  var all=insplistBuildRows_(q, (typeof __insplistShip!=="undefined"?__insplistShip:[]));
+  var checks=Array.prototype.slice.call(document.querySelectorAll(".insplist-chk:checked"));
+  var rows = checks.length ? checks.map(function(c){ var o=c.getAttribute("data-order"); return all.filter(function(r){ return String(r.orderNo)===String(o); })[0]; }).filter(Boolean) : all;
+  var labelRows=rows.map(function(r){ return { po:r.po||"", partNo:r.partNo, orderNo:r.orderNo, name:r.name, project:r.project, due:r.due, oldDraw:r.oldDraw, qty:r.qty }; });
+  if(typeof dispatchPrintLabelsForRows_==="function") dispatchPrintLabelsForRows_(labelRows); else alert("라벨 인쇄기를 찾을 수 없습니다.");
 }
 function insplistPrint_(){
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
@@ -21749,4 +21760,3 @@ function reqClearAll(){
 <div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.21 🔔</div>
 </body>
 </html>
-  
