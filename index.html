@@ -6680,7 +6680,7 @@ function qrItemView_(draw){
     var inDate="";
     try{ if(typeof invData!=="undefined"&&invData){ invData.forEach(function(r){ if(r&&(norm(r.partNo)===nd||norm(r.oldDraw)===nd)){ var d=String(r.inDate||""); if(d&&(!inDate||d<inDate)) inDate=d; } }); } }catch(_){}
     try{ if(!inDate&&typeof __matInbound!=="undefined"){ (__matInbound||[]).forEach(function(r){ if(r&&norm(r.draw)===nd){ var d=String(r.date||""); if(d&&(!inDate||d<inDate)) inDate=d; } }); } }catch(_){}
-    var rel=[]; try{ if(typeof reinspList_==="function") rel=reinspList_(nd); }catch(_){}
+    var rel=[]; try{ if(typeof reinspList_==="function") rel=reinspList_((typeof reinspKey_==="function")?reinspKey_(draw):nd); if((!rel||!rel.length)&&typeof reinspList_==="function") rel=reinspList_(nd); }catch(_){}
     rel=(rel||[]).slice().filter(function(x){return x&&x.date;}).sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
     var last=rel.length?rel[0].date:"";
     var next=""; try{ if(last&&typeof reinspNext180_==="function") next=reinspNext180_(last); }catch(_){}
@@ -7958,13 +7958,42 @@ function renderInvAllSelectors(){
     });
   }
 }
+// 재고 전용 라벨(품번·품명·QR바코드만) — 분출/검수 라벨과 별도
+function stockLabelPrint_(rows){
+  rows=(rows||[]).filter(Boolean); if(!rows.length){ alert("라벨 인쇄할 항목이 없습니다."); return; }
+  if(rows.length>80 && !confirm(rows.length+"장을 인쇄합니다. 계속할까요?")) return;
+  var qbase=location.origin+location.pathname;
+  var qr=function(d){ return "https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data="+encodeURIComponent(qbase+"?item="+encodeURIComponent(d||"")); };
+  var html=rows.map(function(r){ var draw=r.oldDraw||r.partNo||"";
+    return '<div class="lbl"><div class="lft"><table class="main">'
+      +'<tr><th>품 번</th><td>'+qcEsc(r.partNo||draw)+'</td></tr>'
+      +'<tr><th>품 명</th><td class="nm">'+qcEsc(r.name||"")+'</td></tr>'
+      +'</table><div class="ftr">㈜ 엔티엘</div></div>'
+      +'<div class="rgt"><img class="qr" src="'+qr(draw)+'"><div class="qrt">이력조회</div></div></div>'; }).join("");
+  var win=window.open("","_blank"); if(!win) return;
+  win.document.write('<html><head><title>재고 라벨</title><meta charset="utf-8"><style>'
+    +'@page{ size:70mm 40mm; margin:0; } *{ box-sizing:border-box; } body{ font-family:"Malgun Gothic",sans-serif; margin:0; }'
+    +'.lbl{ width:70mm; height:40mm; padding:1.5mm 2mm; page-break-after:always; display:flex; flex-direction:row; gap:1.5mm; overflow:hidden; }'
+    +'.lbl:last-child{ page-break-after:auto; }'
+    +'.lft{ flex:1; display:flex; flex-direction:column; min-width:0; }'
+    +'table.main{ border-collapse:collapse; width:100%; flex:1; table-layout:fixed; }'
+    +'table.main th,table.main td{ border:1pt solid #16345a; padding:1mm 1.6mm; font-size:11pt; text-align:left; line-height:1.2; }'
+    +'table.main th{ width:16mm; background:#eaf1fb; color:#16345a; font-weight:700; white-space:nowrap; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
+    +'table.main td{ font-weight:700; color:#111; overflow:hidden; }'
+    +'td.nm{ font-size:9.5pt; }'
+    +'.ftr{ margin-top:1mm; text-align:center; background:#16345a; color:#fff; font-weight:800; font-size:8.5pt; padding:1mm 0; border-radius:2px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
+    +'.rgt{ width:20mm; display:flex; flex-direction:column; align-items:center; justify-content:center; }'
+    +'.qr{ width:19mm; height:19mm; } .qrt{ font-size:7pt; font-weight:700; color:#16345a; margin-top:0.6mm; }'
+    +'</style></head><body>'+html+'</body></html>');
+  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 700);
+}
 // 전체 재고 → 재고 라벨(QR) : 품번 기준으로 도번·품명 매핑
 function invLabelInfo_(pn){ var nd=(typeof insNormDraw_==="function")?insNormDraw_(pn):String(pn==null?"":pn).trim().toUpperCase(); var name="", draw=pn;
   try{ ((typeof mainData!=="undefined"&&mainData)||[]).some(function(m){ if(m){ var od=(typeof insNormDraw_==="function")?insNormDraw_(m.oldDrawingNo):String(m.oldDrawingNo||"").toUpperCase(); if(od===nd){ if(m.partName) name=m.partName; if(m.oldDrawingNo) draw=m.oldDrawingNo; return !!name; } } return false; }); }catch(_){}
   if(!name){ try{ ((typeof __matInbound!=="undefined"&&__matInbound)||[]).some(function(r){ if(r && ((typeof insNormDraw_==="function")?insNormDraw_(r.draw):String(r.draw||"").toUpperCase())===nd && r.name){ name=r.name; return true; } return false; }); }catch(_){} }
   return { draw:draw||pn, name:name }; }
-function invLabelOne_(pn, stock){ if(!pn){ alert("품번이 없습니다."); return; } var info=invLabelInfo_(pn); if(typeof dispatchPrintLabelsForRows_==="function") dispatchPrintLabelsForRows_([{ po:"", partNo:pn, orderNo:"", name:info.name, project:"", due:"", oldDraw:info.draw, qty:(Number(stock)||0) }]); }
-function invAllLabelPrint_(){ var rows=(typeof invGetAllRows==="function")?invGetAllRows(invAllYear, invAllMonth):[]; if(!rows.length){ alert("재고 품목이 없습니다."); return; } var labelRows=rows.map(function(r){ var info=invLabelInfo_(r.partNo); return { po:"", partNo:r.partNo, orderNo:"", name:info.name, project:"", due:"", oldDraw:info.draw, qty:(Number(r.stock)||0) }; }); if(typeof dispatchPrintLabelsForRows_==="function") dispatchPrintLabelsForRows_(labelRows); }
+function invLabelOne_(pn, stock){ if(!pn){ alert("품번이 없습니다."); return; } var info=invLabelInfo_(pn); stockLabelPrint_([{ partNo:pn, name:info.name, oldDraw:info.draw }]); }
+function invAllLabelPrint_(){ var rows=(typeof invGetAllRows==="function")?invGetAllRows(invAllYear, invAllMonth):[]; if(!rows.length){ alert("재고 품목이 없습니다."); return; } var labelRows=rows.map(function(r){ var info=invLabelInfo_(r.partNo); return { partNo:r.partNo, name:info.name, oldDraw:info.draw }; }); stockLabelPrint_(labelRows); }
 function invRenderAll(){
   const body = document.getElementById("inv-allBody");
   if(!body) return;
@@ -8118,15 +8147,15 @@ function reinspHistArr_(){ var arr=[]; Object.keys(__reinspLog).forEach(function
 function reinspExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; } var arr=reinspHistArr_(); if(!arr.length){ alert("재검사 이력이 없습니다."); return; } var aoa=[["재검사일","품번","검사자","수량","판정","다음 재검사(+180일)"]]; arr.forEach(function(x){ aoa.push([x.date, x.pn, x.by, x.qty, x.result, reinspNext180_(x.date)]); }); var ws=XLSX.utils.aoa_to_sheet(aoa); var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "재검사이력"); XLSX.writeFile(wb, "재검사이력_"+reinspToday_()+".xlsx"); }
 function reinspPrint_(){ var arr=reinspHistArr_(); var E=function(t){return String(t==null?"":t).replace(/</g,"&lt;");}; var rows=arr.map(function(x){ return "<tr><td>"+E(x.date)+"</td><td>"+E(x.pn)+"</td><td>"+E(x.by)+"</td><td style=\"text-align:center;\">"+E(x.qty)+"</td><td style=\"text-align:center;\">"+E(x.result)+"</td><td>"+E(reinspNext180_(x.date))+"</td></tr>"; }).join(""); var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; } w.document.write('<html><head><title>재검사 완료 이력</title><meta charset="utf-8"><style>body{font-family:sans-serif;padding:20px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #999;padding:6px 8px;font-size:12px;}th{background:#1F2A44;color:#fff;}h2{margin:0 0 4px;}</style></head><body><h2>\u267B 재검사 완료 이력</h2><div style="color:#666;font-size:12px;margin-bottom:10px;">출력일: '+reinspToday_()+' · 총 '+arr.length+'건</div><table><thead><tr><th>재검사일</th><th>품번</th><th>검사자</th><th>수량</th><th>판정</th><th>다음 재검사(+180일)</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>'); w.document.close(); setTimeout(function(){ try{ w.print(); }catch(e){} }, 400); }
 function reinspLabelPrint_(){ var checks=document.querySelectorAll(".reinsp-hchk:checked"); if(!checks.length){ alert("라벨 인쇄할 재검사 항목을 체크하세요."); return; }
-  var labelRows=[]; checks.forEach(function(c){ var pn=c.getAttribute("data-pn"), qty=Number(c.getAttribute("data-qty"))||0; var info=(typeof invLabelInfo_==="function")?invLabelInfo_(pn):{draw:pn,name:""}; labelRows.push({ po:"", partNo:pn, orderNo:"", name:info.name, project:"", due:"", oldDraw:info.draw, qty:qty }); });
-  if(typeof dispatchPrintLabelsForRows_==="function") dispatchPrintLabelsForRows_(labelRows); else alert("라벨 인쇄기를 찾을 수 없습니다."); }
+  var labelRows=[]; checks.forEach(function(c){ var pn=c.getAttribute("data-pn"), qty=Number(c.getAttribute("data-qty"))||0; var info=(typeof invLabelInfo_==="function")?invLabelInfo_(pn):{draw:pn,name:""}; labelRows.push({ partNo:pn, name:info.name, oldDraw:info.draw }); });
+  stockLabelPrint_(labelRows); }
 function renderReinspHist_(){
   var body=document.getElementById("inv-reinspHistBody"), wrap=document.getElementById("inv-reinspHistWrap"); if(!body) return;
   var arr=reinspHistArr_();
   if(wrap) wrap.style.display=arr.length?"block":"none";
   var cnt=document.getElementById("inv-reinspHistCnt"); if(cnt) cnt.textContent="("+arr.length+"건 누적)";
   var td="padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;";
-  body.innerHTML=arr.length?arr.map(function(x){ var e=reinspEsc_(x.pn); var rc=(x.result==="불량")?"#C0392B":"#1E7A46"; return '<tr><td style="'+td+'text-align:center;"><input type="checkbox" class="reinsp-hchk" data-pn="'+e+'" data-qty="'+(x.qty||0)+'" style="cursor:pointer;"></td><td style="'+td+'text-align:center;color:#1E7A46;font-weight:700;">'+x.date+'</td><td style="'+td+'">'+String(x.pn)+'</td><td style="'+td+'text-align:center;">'+String(x.by||"")+'</td><td style="'+td+'text-align:center;">'+(x.qty||"")+'</td><td style="'+td+'text-align:center;color:'+rc+';font-weight:700;">'+String(x.result||"")+'</td><td style="'+td+'text-align:center;color:#B0662A;">'+reinspNext180_(x.date)+'</td><td style="'+td+'text-align:center;"><span onclick="reinspUndoOne_(\''+e+'\',\''+x.date+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">\u2715</span></td></tr>'; }).join(""):'<tr><td colspan="8" style="text-align:center;color:#B9C2D6;padding:12px;">재검사 이력 없음</td></tr>';
+  body.innerHTML=arr.length?arr.map(function(x){ var e=reinspEsc_(x.pn); var rc=(x.result==="불량")?"#C0392B":"#1E7A46"; var __nm=(typeof invLabelInfo_==="function")?(invLabelInfo_(x.pn).name||""):""; return '<tr><td style="'+td+'text-align:center;"><input type="checkbox" class="reinsp-hchk" data-pn="'+e+'" data-qty="'+(x.qty||0)+'" style="cursor:pointer;"></td><td style="'+td+'text-align:center;color:#1E7A46;font-weight:700;">'+x.date+'</td><td style="'+td+'">'+String(x.pn)+(__nm?(' <span style="color:#8A93A6;">'+String(__nm)+'</span>'):'')+'</td><td style="'+td+'text-align:center;">'+String(x.by||"")+'</td><td style="'+td+'text-align:center;">'+(x.qty||"")+'</td><td style="'+td+'text-align:center;color:'+rc+';font-weight:700;">'+String(x.result||"")+'</td><td style="'+td+'text-align:center;color:#B0662A;">'+reinspNext180_(x.date)+'</td><td style="'+td+'text-align:center;"><span onclick="reinspUndoOne_(\''+e+'\',\''+x.date+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">\u2715</span></td></tr>'; }).join(""):'<tr><td colspan="8" style="text-align:center;color:#B9C2D6;padding:12px;">재검사 이력 없음</td></tr>';
 }
 function reinspCell_(pn, stock){
   var k=reinspKey_(pn), e=reinspEsc_(pn), last=reinspLatestDate_(k), sv=(Number(stock)||0);
