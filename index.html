@@ -3266,10 +3266,20 @@ function scanOpen(){
   if(msg) msg.textContent="카메라 준비 중…";
   scanLoadLib().then(function(){
     __scanner=new Html5Qrcode("scan-reader");
-    return __scanner.start({facingMode:"environment"}, {fps:10, qrbox:{width:240,height:240}},
-      function(decoded){ scanOnDecode(decoded); }, function(){});
-  }).then(function(){ if(msg) msg.textContent = window.__scanContinuous ? "연속 스캔 중 — 계속 찍으세요. 다 되면 [닫기]." : "QR을 사각형 안에 맞추면 자동으로 인식됩니다."; })
-    .catch(function(){ if(msg) msg.textContent="카메라를 열 수 없습니다. (깃허브 HTTPS 주소로 열고, 카메라 권한을 허용했는지 확인하세요)"; });
+    var cfg={ fps:10, qrbox:function(vw,vh){ var m=Math.min(vw||300, vh||300); var b=Math.max(160, Math.floor(m*0.72)); return {width:b, height:b}; }, aspectRatio:1.0 };
+    var onDec=function(decoded){ scanOnDecode(decoded); };
+    var onOk=function(){ if(msg) msg.textContent = window.__scanContinuous ? "연속 스캔 중 — 계속 찍으세요. 다 되면 [닫기]." : "QR을 사각형 안에 맞추면 자동으로 인식됩니다."; };
+    var startCam=function(camSpec){ return __scanner.start(camSpec, cfg, onDec, function(){}); };
+    startCam({facingMode:"environment"}).then(onOk).catch(function(){
+      // 태블릿 등: environment 실패 시 카메라 목록에서 후면 추정 → 재시도
+      try{ Html5Qrcode.getCameras().then(function(cams){
+        if(!cams||!cams.length){ if(msg) msg.textContent="카메라를 찾을 수 없습니다. 권한을 허용했는지 확인하세요."; return; }
+        var back=cams.filter(function(c){ return /back|rear|environment|후면|뒤/i.test(c.label||""); });
+        var camId=(back.length?back[back.length-1]:cams[cams.length-1]).id;
+        startCam(camId).then(onOk).catch(function(){ startCam(cams[0].id).then(onOk).catch(function(){ if(msg) msg.textContent="카메라를 열 수 없습니다. (HTTPS·카메라 권한 확인)"; }); });
+      }).catch(function(){ if(msg) msg.textContent="카메라 접근 실패. 브라우저에서 카메라 권한을 허용하세요."; }); }catch(e){ if(msg) msg.textContent="카메라를 열 수 없습니다."; }
+    });
+  }).catch(function(){ if(msg) msg.textContent="스캔 라이브러리 로드 실패. 인터넷 연결을 확인하세요."; });
 }
 // 스캔 인식 분배: 연속모드(검사일보)면 카메라 유지하며 행 누적, 아니면 기존 단발 처리
 var __scanLast="", __scanLastTime=0;
