@@ -971,6 +971,70 @@
 </style>
 </head>
 <body>
+<script>
+/* [추가] QR 빠른조회 — 전체 앱(스플래시 동기화+시작하기 버튼)을 기다리지 않고,
+   ?item= 파라미터가 있으면 곧바로 서버(mode=itemQuick)에 현재고/위치만 물어서 화면에 띄운다.
+   전체 앱은 평소처럼 뒤에서 계속 로드되며, "자세히 보기"로 넘어갈 수 있다. */
+(function(){
+  try{
+    var qi = new URLSearchParams(location.search).get("item");
+    if(!qi) return;
+    var GS_FAST_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2Xur_FhnxfQReER1VnjFKNkwvEtezRo-93EVHlJ8uQdECpP/exec";
+    var esc = function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+    var ov = document.createElement("div");
+    ov.id = "qfast-ov";
+    ov.style.cssText = "position:fixed;inset:0;background:#fff;z-index:999999;overflow:auto;font-family:-apple-system,'Malgun Gothic',sans-serif;";
+    ov.innerHTML = '<div style="background:linear-gradient(135deg,#1F2A44,#33415C);color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;">'
+      +'<div style="font-weight:800;font-size:17px;">📦 빠른 재고 조회</div>'
+      +'<button id="qfast-close" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:700;">닫기 ✕</button></div>'
+      +'<div id="qfast-body" style="padding:18px;max-width:480px;margin:0 auto;"><div style="text-align:center;color:#8A93A6;padding:50px 10px;"><div style="font-size:15px;">불러오는 중…</div></div></div>';
+    // [속도] DOMContentLoaded를 기다리지 않는다 — <body> 바로 다음이라 document.body가 이미 존재하고,
+    // 뒤쪽의 무거운 인라인 스크립트들이 파싱을 블로킹하기 전에 오버레이를 먼저 붙이고 fetch부터 시작한다.
+    document.body.appendChild(ov);
+    var closeBtn = document.getElementById("qfast-close");
+    if(closeBtn) closeBtn.addEventListener("click", function(){ ov.remove(); });
+    fetch(GS_FAST_URL + "?mode=itemQuick&draw=" + encodeURIComponent(qi))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var body = document.getElementById("qfast-body"); if(!body) return;
+        if(!d || d.success===false){
+          body.innerHTML = '<div style="text-align:center;color:#C0392B;padding:40px 10px;">조회 실패'+(d&&d.error?('<div style="font-size:12px;color:#8A93A6;margin-top:8px;">'+esc(d.error)+'</div>'):'')+'</div>';
+          return;
+        }
+        var stock = d.stock;
+        body.innerHTML = '<div style="font-size:26px;font-weight:800;color:#1F2A44;">'+esc(qi)+'</div>'
+          +'<div style="font-size:15px;color:#5A6478;margin:2px 0 16px;">'+esc(d.name||"(품명 미확인)")+'</div>'
+          +'<div style="background:'+(stock>0?"#EAF6EF":"#F5F5F5")+';border-radius:12px;padding:14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">'
+          +'<div><div style="font-size:12px;color:#5A6478;">현재 보유 수량</div><div style="font-size:30px;font-weight:800;color:'+(stock>0?"#1E7A46":"#8A93A6")+';">'+(stock==null?"-":stock)+'<span style="font-size:14px;font-weight:700;"> 개</span></div></div>'
+          +'<div style="text-align:right;"><div style="font-size:12px;color:#5A6478;">현재 위치</div><div style="font-size:22px;font-weight:800;color:'+(d.loc?"#0B5CAB":"#B0662A")+';">'+(d.loc?esc(d.loc):"위치 미등록")+'</div></div>'
+          +'</div>'
+          +'<div style="background:#EEF2FA;border-radius:12px;padding:12px;margin-bottom:18px;"><div style="font-size:12px;color:#5A6478;">입고일</div><div style="font-size:18px;font-weight:800;color:#0B5CAB;">'+esc(d.inDate||"-")+'</div></div>'
+          +'<button id="qfast-full" style="width:100%;background:#5B3EAE;color:#fff;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:14px;cursor:pointer;">📋 재검사 이력 등 자세히 보기 (앱 로드)</button>'
+          +'<div style="font-size:11.5px;color:#8A93A6;margin-top:8px;text-align:center;">"자세히 보기"를 누르면 전체 앱이 로드됩니다(몇 초 걸릴 수 있음)</div>';
+        var fullBtn = document.getElementById("qfast-full");
+        if(fullBtn) fullBtn.addEventListener("click", function(){
+          fullBtn.disabled = true; fullBtn.textContent = "앱을 불러오는 중…";
+          var clicked = false;
+          var waitEnter = setInterval(function(){
+            if(!clicked){
+              var eb = document.getElementById("gs-splashEnter");
+              if(eb && !eb.disabled){ clicked = true; eb.click(); }
+            }
+            if(window.__entered && typeof qrItemView_ === "function"){
+              clearInterval(waitEnter);
+              ov.remove();
+              qrItemView_(qi);
+            }
+          }, 250);
+        });
+      })
+      .catch(function(err){
+        var body = document.getElementById("qfast-body"); if(!body) return;
+        body.innerHTML = '<div style="text-align:center;color:#C0392B;padding:40px 10px;">조회 실패 — 네트워크를 확인해 주세요.</div>';
+      });
+  }catch(e){}
+})();
+</script>
 <div id="busy-toast">⏳ 진행중...</div>
 <div id="loading-banner" style="display:none;">
   <span class="lb-spinner"></span>
@@ -9217,7 +9281,7 @@ function ctqOnUpload_(file){
   reader.readAsArrayBuffer(file);
 }
 // 저장된 집계가 있으면 로드
-(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ var __qi=new URLSearchParams(location.search).get("item"); if(__qi && typeof qrItemView_==="function") setTimeout(function(){ qrItemView_(__qi); }, 1200); }catch(_){}; try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){}; try{ if(typeof ncrEnsure_==="function") ncrEnsure_(); }catch(_){} });
+(window.__afterEnter=window.__afterEnter||[]).push(function(){ /* [수정] item= 자동팝업은 위쪽 QR 빠른조회 오버레이("자세히 보기" 버튼)로 대체 — 여기서 자동으로 또 띄우지 않음(중복 팝업 방지) */ try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){}; try{ if(typeof ncrEnsure_==="function") ncrEnsure_(); }catch(_){} });
 (window.__afterEnter=window.__afterEnter||[]).push(function(){ qShareLoad_("ctqMonthly", function(sv){ if(window.__qUserLoaded&&window.__qUserLoaded.ctqMonthly) return; if(sv&&typeof sv==="object"){ __ctqMonthly=sv; try{ if(typeof idbSet==="function") idbSet("ctqMonthly",sv); }catch(_){}; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ctqMonthly").then(function(v){ if(v&&typeof v==="object"){ __ctqMonthly=v; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); } }).catch(function(){}); } }catch(_){} }); });
 /* ==================== 📐 공정능력(Ppk) 분석 (측정 종합 시트 업로드 → 특성별 Ppk·문제 검출) ==================== */
 var PPK_GOOD=1.33, PPK_WARN=1.00;
