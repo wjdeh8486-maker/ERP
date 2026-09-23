@@ -3805,6 +3805,8 @@ function setLoadDone(key){
   __loadState[key] = true;
   updateLoadingBanner();
 }
+try{ setTimeout(function(){ ["main","inv","quality","wait"].forEach(function(k){ if(!__loadState[k]){ __loadState[k]=true; } }); if(typeof updateLoadingBanner==="function") updateLoadingBanner(); }, 25000); }catch(_){}   // 안전장치: 25초 후 배너 강제 종료
+
 function updateLoadingBanner(){
   const banner = document.getElementById("loading-banner");
   const textEl = document.getElementById("loading-banner-text");
@@ -8255,7 +8257,7 @@ function fetchInvData(){
   statusEl.textContent = "불러오는 중...";
   return fetchJSON_(url + "?dataset=" + encodeURIComponent("입출고"))
     .then(res=>{
-      if(!res.success){ statusEl.textContent = "오류: " + res.error; return; }
+      if(!res.success){ statusEl.textContent = "오류: " + res.error; if(typeof setLoadDone==="function") setLoadDone("inv"); return; }
       invApiUrl = url;
       invData = res.rows.map(mapRowToInv); invInvalidateMaps_();
 markMainStatusDirty();
@@ -8283,7 +8285,7 @@ updateSyncBanner();
         statusEl.textContent += " ※ 일부 파일 오류: " + res.warnings.join(" / ");
       }
     })
-    .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; });
+    .catch(()=>{ statusEl.textContent = "불러오기 실패. URL과 배포 권한(모든 사용자)을 확인해 주세요."; if(typeof setLoadDone==="function") setLoadDone("inv"); });
 }
 document.getElementById("inv-apiSyncBtn").addEventListener("click", fetchInvData);
 document.getElementById("inv-syncBtn").addEventListener("click", ()=>{
