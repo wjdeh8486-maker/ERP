@@ -3985,7 +3985,7 @@ function mainRenderStats(data){
   document.getElementById("main-statDone").textContent = done;
   document.getElementById("main-statOverdue").textContent = overdue;
   document.getElementById("main-statProgress").textContent = pct + "%";
-  try{ if(typeof holdEnsure_==="function") holdEnsure_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_(); }catch(_){}   // 출하정지 배너
+  try{ if(!window.__holdBannerQueued){ window.__holdBannerQueued=true; setTimeout(function(){ try{ if(typeof holdEnsure_==="function") holdEnsure_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_(); }catch(_){} }, 4000); } else if(typeof mainHoldBanner_==="function"){ try{ mainHoldBanner_(); }catch(_){} } }catch(_){}   // 출하정지 배너(초기 로드 후 지연 — 입출고 우선)
   document.getElementById("main-progressFill").style.width = pct + "%";
   document.getElementById("main-progressDetail").textContent = `(${qc + done}/전체 ${total}건)`;
 }
@@ -9222,7 +9222,7 @@ function ctqOnUpload_(file){
 }
 // 저장된 집계가 있으면 로드
 (window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ var __qi=new URLSearchParams(location.search).get("item"); if(__qi && typeof qrItemView_==="function") setTimeout(function(){ qrItemView_(__qi); }, 1000); }catch(_){}
-  try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){}; try{ if(typeof ncrEnsure_==="function") ncrEnsure_(); }catch(_){} });
+  setTimeout(function(){ try{ if(typeof holdEnsure_==="function") holdEnsure_(); }catch(_){}; try{ if(typeof ncrEnsure_==="function") ncrEnsure_(); }catch(_){} }, 4500); });   // [속도] 출하정지·NCR 로드는 초기 입출고 로드 뒤로 지연
 (window.__afterEnter=window.__afterEnter||[]).push(function(){ qShareLoad_("ctqMonthly", function(sv){ if(window.__qUserLoaded&&window.__qUserLoaded.ctqMonthly) return; if(sv&&typeof sv==="object"){ __ctqMonthly=sv; try{ if(typeof idbSet==="function") idbSet("ctqMonthly",sv); }catch(_){}; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); return; } try{ if(typeof idbGet==="function"){ idbGet("ctqMonthly").then(function(v){ if(v&&typeof v==="object"){ __ctqMonthly=v; if(document.getElementById("qpanel-ctq")) renderCTQPanel(); } }).catch(function(){}); } }catch(_){} }); });
 /* ==================== 📐 공정능력(Ppk) 분석 (측정 종합 시트 업로드 → 특성별 Ppk·문제 검출) ==================== */
 var PPK_GOOD=1.33, PPK_WARN=1.00;
