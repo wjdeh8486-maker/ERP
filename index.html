@@ -8032,13 +8032,26 @@ function invRenderAll(){
   if(!body) return;
   body.innerHTML = "";
   const rows = invGetAllRows(invAllYear, invAllMonth);
-  rows.forEach((r, idx)=>{
+  if(!rows.length){
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${idx+1}</td><td>${r.partNo}</td><td class="badge-in">${r.totalIn}</td><td class="badge-out">${r.totalOut}</td>
-      <td style="font-weight:400;color:var(--green)">${r.stock}</td>
-      <td style="text-align:center;"><span onclick="invLabelOne_(this.getAttribute('data-pn'), ${r.stock})" data-pn="${(r.partNo||'').replace(/"/g,'')}" title="이 품목 재고 라벨(QR) 인쇄" style="cursor:pointer;font-size:15px;">🏷️</span></td>`;
+    var totalCnt = (typeof invData!=="undefined" && invData) ? invData.length : 0;
+    var msg;
+    if(totalCnt===0){
+      msg = "⚠ 입출고 데이터가 아직 없습니다 — 위 '연동/동기화' 패널에서 Apps Script URL로 동기화했는지 확인해 주세요.";
+    } else {
+      msg = invAllYear+"년 "+invAllMonth+"월 말 기준으로 재고(현재고 1개 이상)가 있는 품목이 없습니다. (전체 입출고 이력 "+totalCnt+"건 중 0건 해당 — 다른 월을 선택해 보세요)";
+    }
+    tr.innerHTML = '<td colspan="6" style="text-align:center;color:#8A93A6;padding:22px 10px;">'+msg+'</td>';
     body.appendChild(tr);
-  });
+  } else {
+    rows.forEach((r, idx)=>{
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${idx+1}</td><td>${r.partNo}</td><td class="badge-in">${r.totalIn}</td><td class="badge-out">${r.totalOut}</td>
+        <td style="font-weight:400;color:var(--green)">${r.stock}</td>
+        <td style="text-align:center;"><span onclick="invLabelOne_(this.getAttribute('data-pn'), ${r.stock})" data-pn="${(r.partNo||'').replace(/"/g,'')}" title="이 품목 재고 라벨(QR) 인쇄" style="cursor:pointer;font-size:15px;">🏷️</span></td>`;
+      body.appendChild(tr);
+    });
+  }
   const rangeEl = document.getElementById("inv-allRangeLabel");
   if(rangeEl) rangeEl.textContent = invAllYear + "년 " + invAllMonth + "월 기준 재고 보유 품목 (" + rows.length + "건)";
 }
@@ -8244,9 +8257,14 @@ document.getElementById("inv-syncToggle").addEventListener("click", ()=>document
 document.getElementById("inv-resetBtn").addEventListener("click", ()=>{ invData = INV_SAMPLE.slice(); invInvalidateMaps_(); markMainStatusDirty(); invRenderCheck(""); invRenderAll(); });
 function mapRowToInv(row){
   return {
-    partNo:row["품 번"]||row["품번"]||"", inDate:normalizeDateValue(row["입고 일자"]||row["입고일자"]), sn:row["S/N"]||"",
-    inQty:Number(row["입고 수량"]||row["입고수량"]||0), outDate:normalizeDateValue(row["출고 일자"]||row["출고일자"]),
-    outQty:Number(row["출고 수량"]||row["출고수량"]||0)||"", ctrlNo:row["관리번호"]||"", note:row["비 고"]||row["비고"]||""
+    partNo:getFieldFuzzy(row,"품번")||row["품 번"]||row["품번"]||"",
+    inDate:normalizeDateValue(getFieldFuzzy(row,"입고일자")||row["입고 일자"]||row["입고일자"]),
+    sn:getFieldFuzzy(row,"S/N")||row["S/N"]||"",
+    inQty:Number(getFieldFuzzy(row,"입고수량")||row["입고 수량"]||row["입고수량"]||0),
+    outDate:normalizeDateValue(getFieldFuzzy(row,"출고일자")||row["출고 일자"]||row["출고일자"]),
+    outQty:Number(getFieldFuzzy(row,"출고수량")||row["출고 수량"]||row["출고수량"]||0)||"",
+    ctrlNo:getFieldFuzzy(row,"관리번호")||row["관리번호"]||"",
+    note:getFieldFuzzy(row,"비고")||row["비 고"]||row["비고"]||""
   };
 }
 let invApiUrl = "";
