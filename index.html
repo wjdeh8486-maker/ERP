@@ -993,8 +993,10 @@
     document.body.appendChild(ov);
     var closeBtn = document.getElementById("qfast-close");
     if(closeBtn) closeBtn.addEventListener("click", function(){ ov.remove(); });
-    fetch(GS_FAST_URL + "?mode=itemQuick&draw=" + encodeURIComponent(qi))
-      .then(function(r){ return r.json(); })
+    var __qfCtrl = (typeof AbortController!=="undefined") ? new AbortController() : null;
+    var __qfTimer = setTimeout(function(){ try{ if(__qfCtrl) __qfCtrl.abort(); }catch(_){} }, 20000);   // [V9.23] 20초 타임아웃
+    fetch(GS_FAST_URL + "?mode=itemQuick&draw=" + encodeURIComponent(qi), __qfCtrl?{signal:__qfCtrl.signal, cache:"no-store"}:{cache:"no-store"})
+      .then(function(r){ clearTimeout(__qfTimer); return r.json(); })
       .then(function(d){
         var body = document.getElementById("qfast-body"); if(!body) return;
         if(!d || d.success===false){
@@ -1030,7 +1032,9 @@
       })
       .catch(function(err){
         var body = document.getElementById("qfast-body"); if(!body) return;
-        body.innerHTML = '<div style="text-align:center;color:#C0392B;padding:40px 10px;">조회 실패 — 네트워크를 확인해 주세요.</div>';
+        body.innerHTML = '<div style="text-align:center;color:#C0392B;padding:40px 10px;">'+((err&&err.name==="AbortError")?"서버 응답이 늦습니다(20초 초과).":"조회 실패 — 네트워크를 확인해 주세요.")
+          +'<div style="margin-top:14px;"><button onclick="var o=document.getElementById(\'qfast-ov\'); if(o) o.remove();" style="background:#5B3EAE;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;">앱에서 조회하기</button></div></div>';
+        try{ var __w=setInterval(function(){ if(window.__entered && typeof qrItemView_==="function"){ clearInterval(__w); var o=document.getElementById("qfast-ov"); if(o) o.remove(); qrItemView_(qi); } }, 500); }catch(_){}
       });
   }catch(e){}
 })();
@@ -1044,7 +1048,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V9.22</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V9.23</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -3740,7 +3744,7 @@ function buildInvStockMap(){
   if(invStockMap) return;
   invStockMap = {};
   (invData||[]).forEach(iv=>{
-    const k = String(iv.partNo||"").trim();
+    const k = (typeof invKey_==="function"?invKey_(iv.partNo):String(iv.partNo==null?"":iv.partNo).trim());   // [V9.23] 재고 공통 키
     if(!k) return;
     if(!invStockMap[k]) invStockMap[k] = 0;
     invStockMap[k] += (Number(iv.inQty)||0) - (Number(iv.outQty)||0);
@@ -3749,7 +3753,7 @@ function buildInvStockMap(){
 function computeWaitDeliverRaw(r){
   if(typeof invData === "undefined") return Number(r.waitDeliver)||0;
   buildInvStockMap();
-  const keys = [String(r.oldDrawingNo||"").trim(), String(r.partNo||"").trim()].filter(Boolean);
+  const keys = [(typeof invKey_==="function"?invKey_(r.oldDrawingNo):String(r.oldDrawingNo==null?"":r.oldDrawingNo).trim()), (typeof invKey_==="function"?invKey_(r.partNo):String(r.partNo==null?"":r.partNo).trim())].filter(Boolean);
   let total = 0, found = false;
   const seen = new Set();
   keys.forEach(k=>{
@@ -4458,14 +4462,14 @@ var __inspUsedOrders = {};   // 서버에서 로드한 재고사용된 ORDER NO.
   var __inspPreShipOrders = {};
 
 function insplistStockQty_(partNo, oldDraw){        // 품번 또는 도번으로 보유재고 (입고−출고). 재고관리와 동일하게 둘 다 조회
-  var keys=[String(partNo||"").trim(), String(oldDraw||"").trim()].filter(Boolean);
+  var keys=[(typeof invKey_==="function"?invKey_(partNo):String(partNo==null?"":partNo).trim()), (typeof invKey_==="function"?invKey_(oldDraw):String(oldDraw==null?"":oldDraw).trim())].filter(Boolean);
   if(!keys.length) return 0;
   if(typeof buildInvStockMap==="function") buildInvStockMap();
   if(typeof invStockMap!=="undefined" && invStockMap){
     for(var i=0;i<keys.length;i++){ if(keys[i] in invStockMap) return Number(invStockMap[keys[i]])||0; }
   }
   var n=0, iv=(typeof invData!=="undefined"&&invData)?invData:[];
-  iv.forEach(function(r){ var pn=String(r.partNo||"").trim(); if(keys.indexOf(pn)>=0) n+=(Number(r.inQty)||0)-(Number(r.outQty)||0); });
+  iv.forEach(function(r){ var pn=(typeof invKey_==="function"?invKey_(r.partNo):String(r.partNo==null?"":r.partNo).trim()); if(keys.indexOf(pn)>=0) n+=(Number(r.inQty)||0)-(Number(r.outQty)||0); });
   return n;
 }
 function insplistLastLoc_(partNo, oldDraw){         // 마지막 등록된 재고 위치 (품번 또는 도번 매칭, 뒤에서부터)
@@ -7412,7 +7416,7 @@ async function sharedCacheBoot(){
     }catch(e){}
     try{ var di=pick(res.inv);
       if(di && Array.isArray(di.invData)){
-        invData=di.invData; invInvalidateMaps_(); invServerLoaded=true;
+        if(!window.__invFreshTs){ invData=di.invData; invInvalidateMaps_(); invServerLoaded=true; }
         if(typeof invRenderAll==="function") invRenderAll();
         if(typeof markDataArrived==="function") markDataArrived("inv");
         if(typeof setLoadDone==="function") setLoadDone("inv");
@@ -7724,25 +7728,26 @@ function invComputeStock(partNo){
 }
 // 위치별 점유 캐시: {"A-1":[{partNo,stock},...]} + 도번별 {loc,stock}  — invData 로드 시에만 갱신
 var invLocMap=null, invPartInfo=null;
+function invKey_(x){ return String(x==null?"":x).trim().toUpperCase().replace(/\s+/g,""); }   // [V9.23] 재고 집계 공통 키
 function invBuildMaps_(){
   var agg={};
   (typeof invData!=="undefined" && invData ? invData : []).forEach(function(r){
-    var p=String(r.partNo||"").trim(); if(!p) return;
-    var a=agg[p]||(agg[p]={in:0,out:0,locDate:"",loc:""});
+    var p=invKey_(r.partNo); if(!p) return;
+    var a=agg[p]||(agg[p]={in:0,out:0,locDate:"",loc:"",pn:String(r.partNo).trim()});
     a.in+=Number(r.inQty)||0; a.out+=Number(r.outQty)||0;
     var L=invExtractLoc_(r.note);
     if(L){ var d=String(r.inDate||""); if(d>=a.locDate){ a.locDate=d; a.loc=L; } }  // 가장 최근 입고 비고의 위치
   });
   var map={}, pinfo={};
-  Object.keys(agg).forEach(function(p){ var a=agg[p], stock=a.in-a.out; pinfo[p]={loc:a.loc||"", stock:stock}; if(stock>0 && a.loc){ (map[a.loc]||(map[a.loc]=[])).push({partNo:p, stock:stock}); } });
+  Object.keys(agg).forEach(function(p){ var a=agg[p], stock=a.in-a.out; pinfo[p]={loc:a.loc||"", stock:stock, partNo:a.pn}; if(stock>0 && a.loc){ (map[a.loc]||(map[a.loc]=[])).push({partNo:a.pn, stock:stock}); } });
   Object.keys(map).forEach(function(k){ map[k].sort(function(x,y){ return y.stock-x.stock; }); });
   invLocMap=map; invPartInfo=pinfo;
 }
-function invInvalidateMaps_(){ invLocMap=null; invPartInfo=null; }
+function invInvalidateMaps_(){ invLocMap=null; invPartInfo=null; try{ if(typeof markMainStatusDirty==="function") markMainStatusDirty(); }catch(_){} }
 function invGetLocMap_(){ if(!invLocMap) invBuildMaps_(); return invLocMap; }
 function invGetPartInfo_(){ if(!invPartInfo) invBuildMaps_(); return invPartInfo; }
-function invPartLoc_(p){ var i=invGetPartInfo_()[String(p||"").trim()]; return i?i.loc:""; }
-function invPartStock_(p){ var i=invGetPartInfo_()[String(p||"").trim()]; return i?i.stock:0; }
+function invPartLoc_(p){ var i=invGetPartInfo_()[invKey_(p)]; return i?i.loc:""; }
+function invPartStock_(p){ var i=invGetPartInfo_()[invKey_(p)]; return i?i.stock:0; }
 // 비고에서 보관 위치(A-1~F-4) 추출 → "A-1" 형태
 function invExtractLoc_(note){
   var m=String(note||"").match(/([A-Fa-f])\s*-\s*([1-4])/);
@@ -7846,7 +7851,7 @@ function invBoardExcel(){
 // 도번 오름차순 · 보유수량>0 목록
 function invListRows_(){
   var pinfo=invGetPartInfo_();
-  return Object.keys(pinfo).map(function(p){ return {partNo:p, stock:pinfo[p].stock, loc:pinfo[p].loc}; })
+  return Object.keys(pinfo).map(function(p){ return {partNo:pinfo[p].partNo||p, stock:pinfo[p].stock, loc:pinfo[p].loc}; })
     .filter(function(x){ return x.stock>0; })
     .sort(function(a,b){ return String(a.partNo).localeCompare(String(b.partNo), undefined, {numeric:true}); });
 }
@@ -7904,8 +7909,11 @@ function invRenderCheck(criteria){
   else if(sortMode==="sn-desc") rows.sort((a,b)=> String(b.sn||"").localeCompare(String(a.sn||""), undefined, {numeric:true}));
   else if(sortMode==="outdate-asc") rows.sort((a,b)=> String(a.outDate||"9999-99-99").localeCompare(String(b.outDate||"9999-99-99")));
   else if(sortMode==="outdate-desc") rows.sort((a,b)=> String(b.outDate||"0000-00-00").localeCompare(String(a.outDate||"0000-00-00")));
-  const totalIn = rows.reduce((s,r)=>s+(Number(r.inQty)||0),0);
-  const totalOut = rows.reduce((s,r)=>s+(Number(r.outQty)||0),0);
+  // [V9.23] 품번 부분일치로 여러 품번이 걸리면, 입력과 정확히 같은 품번만 합계(표는 그대로 전체 표시)
+  var __sumRows = rows;
+  if(partNoQ){ var __qk=invKey_(partNoQ); var __ex=rows.filter(r=>invKey_(r.partNo)===__qk); var __kinds=new Set(rows.map(r=>invKey_(r.partNo))); if(__ex.length && __kinds.size>1) __sumRows=__ex; }
+  const totalIn = __sumRows.reduce((s,r)=>s+(Number(r.inQty)||0),0);
+  const totalOut = __sumRows.reduce((s,r)=>s+(Number(r.outQty)||0),0);
   document.getElementById("inv-stockValue").textContent = totalIn-totalOut;
   document.getElementById("inv-inCount").textContent = totalIn;
   document.getElementById("inv-outCount").textContent = totalOut;
@@ -7935,29 +7943,32 @@ function invRenderCheck(criteria){
 // (해당 월까지 발생한 입고·출고 이력만 합산 → 그 시점의 재고 스냅샷)
 function invComputeStockAsOf(partNo, year, month){
   const endDate = new Date(year, month, 0, 23, 59, 59, 999);
-  const rows = invData.filter(r=>r.partNo===partNo);
+  const key = invKey_(partNo);
+  const rows = invData.filter(r=>invKey_(r.partNo)===key);
   let totalIn = 0, totalOut = 0;
+  // [V9.23] 날짜가 비었거나 인식 불가한 입/출고도 "이미 발생"으로 합산 (재고확인·바코드와 동일 기준)
+  const within = v=>{ if(!v) return true; const d=new Date(v); return isNaN(d) ? true : d<=endDate; };
   rows.forEach(r=>{
-    if(r.inDate){
-      const d = new Date(r.inDate);
-      if(!isNaN(d) && d<=endDate) totalIn += Number(r.inQty)||0;
-    }
-    if(r.outDate){
-      const d = new Date(r.outDate);
-      if(!isNaN(d) && d<=endDate) totalOut += Number(r.outQty)||0;
-    }
+    if(within(r.inDate))  totalIn  += Number(r.inQty)||0;
+    if(within(r.outDate)) totalOut += Number(r.outQty)||0;
   });
   return { totalIn, totalOut, stock: totalIn-totalOut };
 }
 // 지정한 연/월 기준으로 "재고를 보유한" 품목만 순번을 매겨 정렬된 배열로 돌려줍니다.
 // (화면 표시와 인쇄 보고서가 동일한 이 함수를 공유합니다)
 function invGetAllRows(year, month){
-  const parts = [...new Set(invData.map(r=>r.partNo))].filter(Boolean);
-  return parts
-    .map(p=>{
-      const {totalIn, totalOut, stock} = invComputeStockAsOf(p, year, month);
-      return { partNo:p, totalIn, totalOut, stock };
-    })
+  // [V9.23] 한 번 순회로 품번(공통 키)별 집계 — 품번×행 반복 제거(대용량 속도)
+  const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+  const within = v=>{ if(!v) return true; const d=new Date(v); return isNaN(d) ? true : d<=endDate; };
+  const agg = {}; const order = [];
+  invData.forEach(r=>{
+    const k=invKey_(r.partNo); if(!k) return;
+    let a=agg[k]; if(!a){ a=agg[k]={ partNo:String(r.partNo).trim(), totalIn:0, totalOut:0 }; order.push(k); }
+    if(within(r.inDate))  a.totalIn  += Number(r.inQty)||0;
+    if(within(r.outDate)) a.totalOut += Number(r.outQty)||0;
+  });
+  return order
+    .map(k=>{ const a=agg[k]; return { partNo:a.partNo, totalIn:a.totalIn, totalOut:a.totalOut, stock:a.totalIn-a.totalOut }; })
     .filter(r=>r.stock>0)
     .sort((a,b)=>String(a.partNo).localeCompare(String(b.partNo), 'ko'));
 }
@@ -8059,9 +8070,9 @@ renderInvAllSelectors();
 function invGetAgingRows(thresholdDays){
   const byPart = {};
   invData.forEach(r=>{
-    const key = r.partNo;
+    const key = invKey_(r.partNo);   // [V9.23] 재고 공통 키
     if(!key || key === "미분류") return;
-    if(!byPart[key]) byPart[key] = { partNo:key, totalIn:0, totalOut:0, lastDate:null };
+    if(!byPart[key]) byPart[key] = { partNo:String(r.partNo).trim(), totalIn:0, totalOut:0, lastDate:null };
     byPart[key].totalIn += Number(r.inQty)||0;
     byPart[key].totalOut += Number(r.outQty)||0;
     [r.inDate, r.outDate].forEach(d=>{
@@ -8317,6 +8328,7 @@ invRenderAll();
 // 재고가 들어오면 '출고' 판정이 가능해지므로, 지연건수 등 현재 화면을 다시 계산한다.
 // (재고 로드 전엔 출고된 건이 안 빠져 지연건수가 부풀 수 있음)
 invServerLoaded = true;   // 서버에서 재고를 실제로 받음 → 지연건수 정확히 계산 가능
+window.__invFreshTs = Date.now();   // [V9.23] 최신 수신 표시 → 늦게 온 로컬 캐시가 덮어쓰지 않게
 // 화면 교정은 markDataArrived가 담당한다(MAIN·재고 둘 다 왔을 때 1회만). 중복 재렌더 방지.
 if(typeof markDataArrived === "function") markDataArrived("inv");
 if(typeof setLoadDone === "function") setLoadDone("inv");
@@ -8355,7 +8367,7 @@ document.getElementById("inv-syncBtn").addEventListener("click", ()=>{
   });
 });
 setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
-  invData = rows.map(mapRowToInv);
+  invData = rows.map(mapRowToInv); invInvalidateMaps_();
   markMainStatusDirty();
   invRenderCheck(""); invRenderAll();
   document.getElementById("inv-syncPanel").classList.remove("open");
@@ -8364,8 +8376,8 @@ setupDropZone("inv-dropZone","inv-fileInput","inv-dropLabel", rows=>{
   const lastSync = cacheGet("invLastSync");
   const statusEl = document.getElementById("inv-apiStatus");
   const afterCache = function(cachedInv){
-    if(cachedInv && Array.isArray(cachedInv) && cachedInv.length){
-      invData = cachedInv;
+    if(cachedInv && Array.isArray(cachedInv) && cachedInv.length && !window.__invFreshTs){
+      invData = cachedInv; invInvalidateMaps_();
       invServerLoaded = true;
       markMainStatusDirty();
       invRenderCheck("");
@@ -11796,7 +11808,7 @@ window.__qualityInited = true;
         // 캐시가 있으면 먼저 즉시 반영(접속 직후 빈 화면 방지), 그 다음 최신 fetch
         try{
           const cachedInv = (typeof cacheGet==="function") ? cacheGet("cache_invData") : null;
-          if(cachedInv && cachedInv.length){ invData = cachedInv; invServerLoaded = true; if(typeof markMainStatusDirty==="function") markMainStatusDirty(); }
+          if(cachedInv && cachedInv.length && !window.__invFreshTs){ invData = cachedInv; invInvalidateMaps_(); invServerLoaded = true; if(typeof markMainStatusDirty==="function") markMainStatusDirty(); }
         }catch(_){ }
         return (typeof fetchInvData==="function") ? fetchInvData() : Promise.resolve();
       } },
@@ -11918,7 +11930,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=9.22;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=9.23;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -21932,6 +21944,6 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.22 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.23 🔔</div>
 </body>
 </html>
