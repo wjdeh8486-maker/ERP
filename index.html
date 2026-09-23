@@ -1019,6 +1019,7 @@
 <div id="scan-overlay" style="display:none;position:fixed;inset:0;background:rgba(10,15,20,0.92);z-index:10000;flex-direction:column;align-items:center;justify-content:center;padding:16px;">
   <div style="color:#fff;font-weight:700;font-size:16px;margin-bottom:10px;">📷 QR / 바코드를 화면 안에 비추세요</div>
   <div id="scan-reader" style="width:min(92vw,420px);border-radius:14px;overflow:hidden;background:#000;"></div>
+  <select id="scan-camsel" onchange="scanSwitchCam_(this.value)" style="display:none;margin-top:10px;padding:8px 10px;border-radius:8px;border:1px solid #445;background:#1a2030;color:#fff;font-size:13px;max-width:min(92vw,420px);"></select>
   <div id="scan-msg" style="color:#B9C2D6;font-size:13px;margin-top:12px;min-height:18px;text-align:center;"></div>
   <div style="display:flex;gap:8px;margin-top:14px;">
     <button id="scan-manual" type="button" style="background:#2A3556;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;">⌨ 직접 입력</button>
@@ -1655,7 +1656,7 @@
             <button type="button" onclick="reinspPrint_()" style="background:#475569;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">🖨 인쇄</button>
             <button type="button" onclick="reinspLabelPrint_()" title="체크한 재검사품의 재고 라벨(QR) 인쇄" style="background:#8A1F1F;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">🏷️ 선택 라벨</button>
           </div>
-          <div class="table-scroll" style="max-height:240px;"><table><thead><tr><th style="width:28px;"><input type="checkbox" id="reinsp-hall" onclick="document.querySelectorAll('.reinsp-hchk').forEach(function(c){c.checked=this.checked;}.bind(this));" style="cursor:pointer;"></th><th>재검사일</th><th>품번</th><th>검사자</th><th>수량</th><th>판정</th><th>다음 재검사(+180일)</th><th>삭제</th></tr></thead><tbody id="inv-reinspHistBody"></tbody></table></div>
+          <div class="table-scroll" style="max-height:240px;"><table><thead><tr><th style="width:28px;"><input type="checkbox" id="reinsp-hall" onclick="document.querySelectorAll('.reinsp-hchk').forEach(function(c){c.checked=this.checked;}.bind(this));" style="cursor:pointer;"></th><th>재검사일</th><th>품번</th><th>품명</th><th>검사자</th><th>수량</th><th>판정</th><th>다음 재검사(+180일)</th><th>삭제</th></tr></thead><tbody id="inv-reinspHistBody"></tbody></table></div>
         </div>
         <div class="empty-state" id="inv-agingEmpty">조회 버튼을 클릭하면 기준일수 이상 오래된 재고가 표시됩니다.</div>
       </div>
@@ -3264,6 +3265,9 @@ function scanLoadLib(){
     document.head.appendChild(s);
   });
 }
+function scanSwitchCam_(camId){ if(!camId||!window.__scanner) return; var msg=document.getElementById("scan-msg"); window.__scanCurCam=camId;
+  try{ __scanner.stop().then(function(){ __scanner.start(camId, window.__scanCfg||{fps:10}, window.__scanOnDec||function(){}, function(){}).then(function(){ if(msg) msg.textContent="카메라 전환됨 — QR을 비추세요."; }).catch(function(){ if(msg) msg.textContent="이 카메라를 열 수 없습니다. 다른 카메라를 선택하세요."; }); }).catch(function(){}); }catch(e){}
+}
 function scanOpen(){
   var ov=document.getElementById("scan-overlay"); if(!ov) return;
   var msg=document.getElementById("scan-msg");
@@ -3273,15 +3277,18 @@ function scanOpen(){
     __scanner=new Html5Qrcode("scan-reader");
     var cfg={ fps:10, qrbox:function(vw,vh){ var m=Math.min(vw||300, vh||300); var b=Math.max(160, Math.floor(m*0.72)); return {width:b, height:b}; }, aspectRatio:1.0 };
     var onDec=function(decoded){ scanOnDecode(decoded); };
-    var onOk=function(){ if(msg) msg.textContent = window.__scanContinuous ? "연속 스캔 중 — 계속 찍으세요. 다 되면 [닫기]." : "QR을 사각형 안에 맞추면 자동으로 인식됩니다."; };
+    var onOk=function(){ if(msg) msg.textContent = window.__scanContinuous ? "연속 스캔 중 — 계속 찍으세요. 다 되면 [닫기]." : "QR을 사각형 안에 맞추면 자동으로 인식됩니다."; try{ if(window.__scanFillCams) window.__scanFillCams(); }catch(_){} };
     var startCam=function(camSpec){ return __scanner.start(camSpec, cfg, onDec, function(){}); };
+    window.__scanCfg=cfg; window.__scanOnDec=onDec;
+    var fillCams=function(){ try{ Html5Qrcode.getCameras().then(function(cams){ var sel=document.getElementById("scan-camsel"); if(!sel||!cams||cams.length<2) return; sel.innerHTML=cams.map(function(c,i){ return '<option value="'+c.id+'">'+(c.label||("카메라 "+(i+1)))+'</option>'; }).join(""); sel.style.display="block"; try{ if(__scanCurCam) sel.value=__scanCurCam; }catch(_){} }).catch(function(){}); }catch(_){} };
+    window.__scanFillCams=fillCams;
     startCam({facingMode:"environment"}).then(onOk).catch(function(){
       // 태블릿 등: environment 실패 시 카메라 목록에서 후면 추정 → 재시도
       try{ Html5Qrcode.getCameras().then(function(cams){
         if(!cams||!cams.length){ if(msg) msg.textContent="카메라를 찾을 수 없습니다. 권한을 허용했는지 확인하세요."; return; }
         var back=cams.filter(function(c){ return /back|rear|environment|후면|뒤/i.test(c.label||""); });
         var camId=(back.length?back[back.length-1]:cams[cams.length-1]).id;
-        startCam(camId).then(onOk).catch(function(){ startCam(cams[0].id).then(onOk).catch(function(){ if(msg) msg.textContent="카메라를 열 수 없습니다. (HTTPS·카메라 권한 확인)"; }); });
+        window.__scanCurCam=camId; startCam(camId).then(onOk).catch(function(){ startCam(cams[0].id).then(onOk).catch(function(){ if(msg) msg.textContent="카메라를 열 수 없습니다. (HTTPS·카메라 권한 확인)"; }); });
       }).catch(function(){ if(msg) msg.textContent="카메라 접근 실패. 브라우저에서 카메라 권한을 허용하세요."; }); }catch(e){ if(msg) msg.textContent="카메라를 열 수 없습니다."; }
     });
   }).catch(function(){ if(msg) msg.textContent="스캔 라이브러리 로드 실패. 인터넷 연결을 확인하세요."; });
@@ -6699,7 +6706,7 @@ function qrItemView_(draw){
   var nd=norm(draw);
   var render=function(){
     var name="";
-    try{ ((typeof mainData!=="undefined"&&mainData)||[]).some(function(m){ if(m&&norm(m.oldDrawingNo)===nd && m.partName){ name=m.partName; return true; } return false; }); }catch(_){}
+    try{ ((typeof mainData!=="undefined"&&mainData)||[]).some(function(m){ if(m&&(norm(m.oldDrawingNo)===nd||norm(m.partNo)===nd) && m.partName){ name=m.partName; return true; } return false; }); }catch(_){}
     if(!name){ try{ ((typeof __matInbound!=="undefined"&&__matInbound)||[]).some(function(r){ if(r&&norm(r.draw)===nd && r.name){ name=r.name; return true; } return false; }); }catch(_){} }
     var inDate="";
     try{ if(typeof invData!=="undefined"&&invData){ invData.forEach(function(r){ if(r&&(norm(r.partNo)===nd||norm(r.oldDraw)===nd)){ var d=String(r.inDate||""); if(d&&(!inDate||d<inDate)) inDate=d; } }); } }catch(_){}
@@ -7988,7 +7995,7 @@ function stockLabelPrint_(rows){
   if(rows.length>80 && !confirm(rows.length+"장을 인쇄합니다. 계속할까요?")) return;
   var qbase=location.origin+location.pathname;
   var qr=function(d){ return "https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data="+encodeURIComponent(qbase+"?item="+encodeURIComponent(d||"")); };
-  var html=rows.map(function(r){ var draw=r.oldDraw||r.partNo||"";
+  var html=rows.map(function(r){ var draw=r.partNo||r.oldDraw||"";   // QR은 품번 기준(재검사·재고 조회 키 일치)
     return '<div class="lbl"><div class="lft"><table class="main">'
       +'<tr><th>품 번</th><td>'+qcEsc(r.partNo||draw)+'</td></tr>'
       +'<tr><th>품 명</th><td class="nm">'+qcEsc(r.name||"")+'</td></tr>'
@@ -8013,7 +8020,7 @@ function stockLabelPrint_(rows){
 }
 // 전체 재고 → 재고 라벨(QR) : 품번 기준으로 도번·품명 매핑
 function invLabelInfo_(pn){ var nd=(typeof insNormDraw_==="function")?insNormDraw_(pn):String(pn==null?"":pn).trim().toUpperCase(); var name="", draw=pn;
-  try{ ((typeof mainData!=="undefined"&&mainData)||[]).some(function(m){ if(m){ var od=(typeof insNormDraw_==="function")?insNormDraw_(m.oldDrawingNo):String(m.oldDrawingNo||"").toUpperCase(); if(od===nd){ if(m.partName) name=m.partName; if(m.oldDrawingNo) draw=m.oldDrawingNo; return !!name; } } return false; }); }catch(_){}
+  try{ var __nn=function(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); }; ((typeof mainData!=="undefined"&&mainData)||[]).some(function(m){ if(m){ if(__nn(m.oldDrawingNo)===nd || __nn(m.partNo)===nd){ if(m.partName) name=m.partName; if(m.oldDrawingNo) draw=m.oldDrawingNo; return !!name; } } return false; }); }catch(_){}
   if(!name){ try{ ((typeof __matInbound!=="undefined"&&__matInbound)||[]).some(function(r){ if(r && ((typeof insNormDraw_==="function")?insNormDraw_(r.draw):String(r.draw||"").toUpperCase())===nd && r.name){ name=r.name; return true; } return false; }); }catch(_){} }
   return { draw:draw||pn, name:name }; }
 function invLabelOne_(pn, stock){ if(!pn){ alert("품번이 없습니다."); return; } var info=invLabelInfo_(pn); stockLabelPrint_([{ partNo:pn, name:info.name, oldDraw:info.draw }]); }
@@ -8179,7 +8186,7 @@ function renderReinspHist_(){
   if(wrap) wrap.style.display=arr.length?"block":"none";
   var cnt=document.getElementById("inv-reinspHistCnt"); if(cnt) cnt.textContent="("+arr.length+"건 누적)";
   var td="padding:6px 8px;border:1px solid #E6EBF2;font-size:12px;";
-  body.innerHTML=arr.length?arr.map(function(x){ var e=reinspEsc_(x.pn); var rc=(x.result==="불량")?"#C0392B":"#1E7A46"; var __nm=(typeof invLabelInfo_==="function")?(invLabelInfo_(x.pn).name||""):""; return '<tr><td style="'+td+'text-align:center;"><input type="checkbox" class="reinsp-hchk" data-pn="'+e+'" data-qty="'+(x.qty||0)+'" style="cursor:pointer;"></td><td style="'+td+'text-align:center;color:#1E7A46;font-weight:700;">'+x.date+'</td><td style="'+td+'">'+String(x.pn)+(__nm?(' <span style="color:#8A93A6;">'+String(__nm)+'</span>'):'')+'</td><td style="'+td+'text-align:center;">'+String(x.by||"")+'</td><td style="'+td+'text-align:center;">'+(x.qty||"")+'</td><td style="'+td+'text-align:center;color:'+rc+';font-weight:700;">'+String(x.result||"")+'</td><td style="'+td+'text-align:center;color:#B0662A;">'+reinspNext180_(x.date)+'</td><td style="'+td+'text-align:center;"><span onclick="reinspUndoOne_(\''+e+'\',\''+x.date+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">\u2715</span></td></tr>'; }).join(""):'<tr><td colspan="8" style="text-align:center;color:#B9C2D6;padding:12px;">재검사 이력 없음</td></tr>';
+  body.innerHTML=arr.length?arr.map(function(x){ var e=reinspEsc_(x.pn); var rc=(x.result==="불량")?"#C0392B":"#1E7A46"; var __nm=(typeof invLabelInfo_==="function")?(invLabelInfo_(x.pn).name||""):""; return '<tr><td style="'+td+'text-align:center;"><input type="checkbox" class="reinsp-hchk" data-pn="'+e+'" data-qty="'+(x.qty||0)+'" style="cursor:pointer;"></td><td style="'+td+'text-align:center;color:#1E7A46;font-weight:700;">'+x.date+'</td><td style="'+td+'">'+String(x.pn)+'</td><td style="'+td+'">'+String(__nm||"")+'</td><td style="'+td+'text-align:center;">'+String(x.by||"")+'</td><td style="'+td+'text-align:center;">'+(x.qty||"")+'</td><td style="'+td+'text-align:center;color:'+rc+';font-weight:700;">'+String(x.result||"")+'</td><td style="'+td+'text-align:center;color:#B0662A;">'+reinspNext180_(x.date)+'</td><td style="'+td+'text-align:center;"><span onclick="reinspUndoOne_(\''+e+'\',\''+x.date+'\')" style="color:#B02A2A;cursor:pointer;font-weight:700;">\u2715</span></td></tr>'; }).join(""):'<tr><td colspan="9" style="text-align:center;color:#B9C2D6;padding:12px;">재검사 이력 없음</td></tr>';
 }
 function reinspCell_(pn, stock){
   var k=reinspKey_(pn), e=reinspEsc_(pn), last=reinspLatestDate_(k), sv=(Number(stock)||0);
