@@ -1554,7 +1554,7 @@
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#EEF3FA;border:1px solid #C9D3E0;border-radius:10px;padding:8px 12px;margin-bottom:10px;">
         <span style="font-weight:800;color:#1F2A44;font-size:13px;">🔫 재고 바코드 스캔</span>
         <input id="inv-qrscan" type="text" placeholder="스캐너로 재고 라벨 QR 찍기 (또는 도번 입력 후 Enter)" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();invQrScan_(this);}" style="flex:1;min-width:220px;padding:8px 12px;border:1px solid #5B3EAE;border-radius:8px;font-size:13px;box-sizing:border-box;">
-        <span style="font-size:11.5px;color:#8A93A6;">찍으면 그 품목의 입고일·재검사 이력·다음 예정일이 뜹니다</span>
+        <span style="font-size:11.5px;color:#8A93A6;">찍으면 그 품목의 현재 보유 수량·위치·입고일·재검사 이력·다음 예정일이 뜹니다</span>
       </div>
       <div class="tabs">
         <button class="tab-btn active" data-tab="check">재고확인</button>
@@ -8131,6 +8131,14 @@ function qrItemView_(draw){
     var inDate="";
     try{ if(typeof invData!=="undefined"&&invData){ invData.forEach(function(r){ if(r&&(norm(r.partNo)===nd||norm(r.oldDraw)===nd)){ var d=String(r.inDate||""); if(d&&(!inDate||d<inDate)) inDate=d; } }); } }catch(_){}
     try{ if(!inDate&&typeof __matInbound!=="undefined"){ (__matInbound||[]).forEach(function(r){ if(r&&norm(r.draw)===nd){ var d=String(r.date||""); if(d&&(!inDate||d<inDate)) inDate=d; } }); } }catch(_){}
+    // [추가] 현재 보유 수량 + 현재 위치 — invGetPartInfo_()(품번별 현재고/최근 위치 집계)에서 찾음
+    var curStock=null, curLoc="";
+    try{
+      var pinfo=(typeof invGetPartInfo_==="function")?invGetPartInfo_():{};
+      var matchedKey=null;
+      Object.keys(pinfo).some(function(k){ if(norm(k)===nd){ matchedKey=k; return true; } return false; });
+      if(matchedKey){ curStock=Number(pinfo[matchedKey].stock)||0; curLoc=String(pinfo[matchedKey].loc||""); }
+    }catch(_){}
     var rel=[]; try{ if(typeof reinspList_==="function"){ var __ks=[]; if(typeof reinspKey_==="function") __ks.push(reinspKey_(draw)); __ks.push(nd); __ks.push(String(draw).trim()); __ks.push(String(draw).trim().toUpperCase()); for(var __i=0;__i<__ks.length;__i++){ var __r=reinspList_(__ks[__i]); if(__r&&__r.length){ rel=__r; break; } } } }catch(_){}
     rel=(rel||[]).slice().filter(function(x){return x&&x.date;}).sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
     var last=rel.length?rel[0].date:"";
@@ -8142,6 +8150,10 @@ function qrItemView_(draw){
     box.innerHTML=(hold?'<div style="background:#C0392B;color:#fff;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-weight:800;font-size:16px;">🔴 출하정지 중 — '+E(hold.reason||"")+'</div>':'')
       +'<div style="font-size:26px;font-weight:800;color:#1F2A44;">'+E(draw)+'</div>'
       +'<div style="font-size:15px;color:#5A6478;margin:2px 0 16px;">'+E(name||"(품명 미확인)")+'</div>'
+      +(curStock!=null?('<div style="background:'+(curStock>0?"#EAF6EF":"#F5F5F5")+';border-radius:12px;padding:14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">'
+        +'<div><div style="font-size:12px;color:#5A6478;">현재 보유 수량</div><div style="font-size:30px;font-weight:800;color:'+(curStock>0?"#1E7A46":"#8A93A6")+';">'+curStock+'<span style="font-size:14px;font-weight:700;"> 개</span></div></div>'
+        +'<div style="text-align:right;"><div style="font-size:12px;color:#5A6478;">현재 위치</div><div style="font-size:22px;font-weight:800;color:'+(curLoc?"#0B5CAB":"#B0662A")+';">'+(curLoc?E(curLoc):"위치 미등록")+'</div></div>'
+        +'</div>'):'')
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">'
       +'<div style="background:#EEF2FA;border-radius:12px;padding:12px;"><div style="font-size:12px;color:#5A6478;">입고일</div><div style="font-size:18px;font-weight:800;color:#0B5CAB;">'+E(inDate||"-")+'</div></div>'
       +'<div style="background:'+(overdue?"#FDECEC":"#EAF6EF")+';border-radius:12px;padding:12px;"><div style="font-size:12px;color:#5A6478;">다음 재검사</div><div style="font-size:18px;font-weight:800;color:'+(overdue?"#C0392B":"#1E7A46")+';">'+E(next||"-")+(overdue?" ⚠":"")+'</div></div>'
