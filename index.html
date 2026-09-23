@@ -2054,7 +2054,8 @@
           <button onclick="dispatchPrint_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">🖨️ 인쇄</button>
           <button onclick="dispatchExcel_()" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">📊 엑셀 다운로드</button>
           <button onclick="dispatchLabelPrint_()" style="background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;" title="70×40mm 라벨 인쇄 (선택한 항목만, 미선택 시 전체)">🏷️ 라벨 인쇄</button>
-          <input type="text" id="dispatch-scanInput" placeholder="🔫 스캐너로 여기 찍기" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();dispatchScanEnterHandled_(this);}" style="width:170px;padding:7px 10px;border:1px solid #5B3EAE;border-radius:8px;font-size:12px;color:#1C2320;box-sizing:border-box;" title="USB/블루투스 바코드 스캐너로 이 칸을 클릭한 뒤 찍으면 목록에서 해당 행을 찾아 자동으로 체크합니다">
+          <input type="text" id="dispatch-scanInput" placeholder="🔫 스캐너로 여기 찍기" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();dispatchScanEnterHandled_(this);}" style="width:170px;padding:7px 10px;border:1px solid #5B3EAE;border-radius:8px;font-size:12px;color:#1C2320;box-sizing:border-box;" title="USB/블루투스 바코드 스캐너로 이 칸을 클릭한 뒤 찍으면 목록에서 해당 행을 찾아 자동으로 체크합니다. 이미 체크된 항목을 다시 찍으면 체크가 해제됩니다.">
+          <button type="button" onclick="document.querySelectorAll('.dispatch-chk:checked').forEach(function(c){c.checked=false;}); var ca=document.getElementById('dispatch-checkAll'); if(ca) ca.checked=false;" style="background:#EEF3FA;border:1px solid #C9D3E0;color:#5A6478;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;" title="체크된 항목을 모두 선택 해제합니다">✕ 선택 해제</button>
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#33415C;font-weight:700;">최종납기 <input type="date" id="dispatch-start" onchange="renderDispatchList()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;"></label>
           <span style="color:#7A8598;font-weight:700;">~</span>
           <input type="date" id="dispatch-end" onchange="renderDispatchList()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:8px;">
@@ -5844,17 +5845,19 @@ function dispatchScanReceive(code){
   }
   var chk=null;
   document.querySelectorAll(".dispatch-chk").forEach(function(c){ if(!chk && c.getAttribute("data-order")===hit.orderNo) chk=c; });
+  var __toggledOff=false;
   if(chk){
-    chk.checked=true;
+    if(chk.checked){ chk.checked=false; __toggledOff=true; }   // 같은 걸 한 번 더 찍으면 체크 해제(선택 제거)
+    else chk.checked=true;
     var tr=chk.closest("tr");
     if(tr){
       try{ tr.scrollIntoView({behavior:"smooth", block:"center"}); }catch(e){ try{ tr.scrollIntoView(); }catch(_){} }
-      var old=tr.style.backgroundColor; tr.style.transition="background-color .35s"; tr.style.backgroundColor="#FFE79A";
+      var old=tr.style.backgroundColor; tr.style.transition="background-color .35s"; tr.style.backgroundColor=__toggledOff?"#E6E9EF":"#FFE79A";
       setTimeout(function(){ try{ tr.style.backgroundColor=old||""; }catch(e){} }, 2200);
     }
   }
-  if(typeof insScanToast==="function") insScanToast(hit.orderNo+" 체크됨");
-  if(msg) msg.textContent="✔ "+hit.orderNo+" ("+(hit.name||"")+") 체크 — 계속 찍으세요";
+  if(typeof insScanToast==="function") insScanToast(hit.orderNo+(__toggledOff?" 체크 해제됨":" 체크됨"));
+  if(msg) msg.textContent="✔ "+hit.orderNo+" ("+(hit.name||"")+") "+(__toggledOff?"체크 해제":"체크")+" — 계속 찍으세요";
 }
 
 // ===== 분출 LIST 인쇄 / 엑셀 (검수LIST와 동일 디자인, insplistStyleSheet_ 재사용) =====
@@ -5975,11 +5978,49 @@ function dispatchLabelsByOutNo_(outNoStr){
   var byOrder={}; all.forEach(function(r){ byOrder[r.orderNo]=r; });
   var rows=orders.map(function(o){ return byOrder[o]; }).filter(Boolean);
   var missing=orders.filter(function(o){ return !byOrder[o]; });
-  if(missing.length){
-    if(!rows.length){ alert("분출LIST에서 일치하는 관리번호를 찾지 못했습니다: "+missing.join(", ")+"\n(MAIN 대시보드를 한 번 열어 데이터를 불러왔는지 확인하세요)"); return; }
-    if(!confirm(rows.length+"건은 찾았고, "+missing.length+"건은 분출LIST에 없습니다: "+missing.join(", ")+"\n찾은 "+rows.length+"건만 라벨을 인쇄할까요?")) return;
-  }
-  dispatchPrintLabelsForRows_(rows);
+  if(!rows.length){ alert("분출LIST에서 일치하는 관리번호를 찾지 못했습니다: "+missing.join(", ")+"\n(MAIN 대시보드를 한 번 열어 데이터를 불러왔는지 확인하세요)"); return; }
+  dispatchLabelSelectPopup_(rows, missing);
+}
+// 출고NO로 찾은 라벨 인쇄 대상을 보여주고, 원치 않는 항목은 체크 해제한 뒤 인쇄할 수 있는 확인 팝업
+function dispatchLabelSelectPopup_(rows, missing){
+  var E=qcEsc;
+  var itemsHtml=rows.map(function(r,i){
+    return '<label style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #EEF1F6;cursor:pointer;">'
+      +'<input type="checkbox" class="dlbl-chk" data-i="'+i+'" checked style="width:16px;height:16px;cursor:pointer;flex:0 0 auto;">'
+      +'<span style="flex:0 0 84px;font-weight:800;color:#1F2A44;font-size:13px;">'+E(r.orderNo)+'</span>'
+      +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333;font-size:12.5px;">'+E(r.name||"")+'</span>'
+      +'<span style="flex:0 0 44px;text-align:right;color:#5A6478;font-size:12.5px;">'+(Number(r.qty)||0)+'개</span>'
+      +'</label>';
+  }).join("");
+  var missHtml=(missing&&missing.length)?('<div style="padding:8px 12px;background:#FFF3E6;color:#B45309;font-size:11.5px;border-top:1px solid #F0C48A;">⚠ 분출LIST에 없어 인쇄 대상에서 빠졌습니다: '+missing.map(E).join(", ")+'</div>'):'';
+  var html='<div id="dlbl-ov" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100060;display:flex;align-items:center;justify-content:center;padding:16px;">'
+    +'<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;max-height:80vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
+    +'<div style="background:#1F2A44;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:2;">'
+    +'<div style="font-weight:800;font-size:14px;">라벨 인쇄 대상 확인 ('+rows.length+'건)</div>'
+    +'<button id="dlbl-closeBtn" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;">닫기 ✕</button>'
+    +'</div>'
+    +'<div style="padding:4px 0 0;font-size:11.5px;color:#8A93A6;padding-left:12px;padding-bottom:4px;">인쇄를 원치 않는 항목은 체크를 해제하세요.</div>'
+    +'<div>'+itemsHtml+'</div>'
+    +missHtml
+    +'<div style="padding:10px 14px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #EEF1F6;">'
+    +'<button id="dlbl-cancelBtn" style="background:#EEF3FA;border:1px solid #C9D3E0;color:#5A6478;border-radius:7px;padding:7px 14px;font-weight:700;cursor:pointer;">취소</button>'
+    +'<button id="dlbl-printBtn" style="background:#8A1F1F;color:#fff;border:none;border-radius:7px;padding:7px 16px;font-weight:700;cursor:pointer;">🏷️ 선택 라벨 인쇄</button>'
+    +'</div></div></div>';
+  var old=document.getElementById("dlbl-ov"); if(old) old.remove();
+  var d=document.createElement("div"); d.innerHTML=html; document.body.appendChild(d.firstChild);
+  window.__dlblRows=rows;
+  var closeIt=function(){ var ov=document.getElementById("dlbl-ov"); if(ov) ov.remove(); };
+  var cb=document.getElementById("dlbl-closeBtn"); if(cb) cb.addEventListener("click", closeIt);
+  var xb=document.getElementById("dlbl-cancelBtn"); if(xb) xb.addEventListener("click", closeIt);
+  var pb=document.getElementById("dlbl-printBtn");
+  if(pb) pb.addEventListener("click", function(){
+    var checks=document.querySelectorAll(".dlbl-chk:checked");
+    var sel=Array.prototype.slice.call(checks).map(function(c){ return window.__dlblRows[+c.getAttribute("data-i")]; }).filter(Boolean);
+    closeIt();
+    if(!sel.length){ alert("선택된 항목이 없습니다."); return; }
+    dispatchPrintLabelsForRows_(sel);
+  });
+  var ov=document.getElementById("dlbl-ov"); if(ov) ov.addEventListener("click", function(e){ if(e.target===ov) closeIt(); });
 }
 
 // ===== 납기분출 (팝업 → S/N 입력 → 서버 저장(별도 시트) → 비고 '납기분출') =====
