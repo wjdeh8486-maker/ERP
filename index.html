@@ -1629,7 +1629,7 @@
         </div>
         <div class="table-scroll" id="inv-allTableScroll">
           <table>
-            <thead><tr><th style="width:28px;"><input type="checkbox" onclick="document.querySelectorAll('.invall-chk').forEach(function(c){c.checked=this.checked;}.bind(this));" style="cursor:pointer;"></th><th>순번</th><th>품번</th><th>총 입고</th><th>총 출고</th><th>현재 재고</th></tr></thead>
+            <thead><tr><th style="width:28px;"><input type="checkbox" onclick="document.querySelectorAll('.invall-chk').forEach(function(c){c.checked=this.checked;}.bind(this));" style="cursor:pointer;"></th><th>순번</th><th>품번</th><th>품명</th><th>총 입고</th><th>총 출고</th><th>현재 재고</th></tr></thead>
             <tbody id="inv-allBody"></tbody>
           </table>
         </div>
@@ -7925,9 +7925,13 @@ function invRenderAll(){
   if(!body) return;
   body.innerHTML = "";
   const rows = invGetAllRows(invAllYear, invAllMonth);
+  var __nn=function(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); };
+  var __nameMap={}; try{ ((typeof mainData!=="undefined"&&mainData)||[]).forEach(function(m){ if(m&&m.partName){ var k1=__nn(m.oldDrawingNo), k2=__nn(m.partNo); if(k1&&!__nameMap[k1])__nameMap[k1]=m.partName; if(k2&&!__nameMap[k2])__nameMap[k2]=m.partName; } }); }catch(_){}
+  try{ ((typeof __matInbound!=="undefined"&&__matInbound)||[]).forEach(function(r){ if(r&&r.name){ var k=__nn(r.draw); if(k&&!__nameMap[k])__nameMap[k]=r.name; } }); }catch(_){}
   rows.forEach((r, idx)=>{
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td style="text-align:center;"><input type="checkbox" class="invall-chk" data-pn="${String(r.partNo||'').replace(/"/g,'')}" style="cursor:pointer;"></td><td>${idx+1}</td><td>${r.partNo}</td><td class="badge-in">${r.totalIn}</td><td class="badge-out">${r.totalOut}</td>
+    var __nm=__nameMap[__nn(r.partNo)]||"";
+    tr.innerHTML = `<td style="text-align:center;"><input type="checkbox" class="invall-chk" data-pn="${String(r.partNo||'').replace(/"/g,'')}" style="cursor:pointer;"></td><td>${idx+1}</td><td>${r.partNo}</td><td>${__nm}</td><td class="badge-in">${r.totalIn}</td><td class="badge-out">${r.totalOut}</td>
       <td style="font-weight:400;color:var(--green)">${r.stock}</td>`;
     body.appendChild(tr);
   });
@@ -8127,7 +8131,7 @@ function qrItemView_(draw){
     var inDate="";
     try{ if(typeof invData!=="undefined"&&invData){ invData.forEach(function(r){ if(r&&(norm(r.partNo)===nd||norm(r.oldDraw)===nd)){ var d=String(r.inDate||""); if(d&&(!inDate||d<inDate)) inDate=d; } }); } }catch(_){}
     try{ if(!inDate&&typeof __matInbound!=="undefined"){ (__matInbound||[]).forEach(function(r){ if(r&&norm(r.draw)===nd){ var d=String(r.date||""); if(d&&(!inDate||d<inDate)) inDate=d; } }); } }catch(_){}
-    var rel=[]; try{ if(typeof reinspList_==="function") rel=reinspList_((typeof reinspKey_==="function")?reinspKey_(draw):nd); if((!rel||!rel.length)&&typeof reinspList_==="function") rel=reinspList_(nd); }catch(_){}
+    var rel=[]; try{ if(typeof reinspList_==="function"){ var __ks=[]; if(typeof reinspKey_==="function") __ks.push(reinspKey_(draw)); __ks.push(nd); __ks.push(String(draw).trim()); __ks.push(String(draw).trim().toUpperCase()); for(var __i=0;__i<__ks.length;__i++){ var __r=reinspList_(__ks[__i]); if(__r&&__r.length){ rel=__r; break; } } } }catch(_){}
     rel=(rel||[]).slice().filter(function(x){return x&&x.date;}).sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
     var last=rel.length?rel[0].date:"";
     var next=""; try{ if(last&&typeof reinspNext180_==="function") next=reinspNext180_(last); }catch(_){}
