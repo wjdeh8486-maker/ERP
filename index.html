@@ -994,19 +994,56 @@
     // 뒤쪽의 무거운 인라인 스크립트들이 파싱을 블로킹하기 전에 오버레이를 먼저 붙이고 fetch부터 시작한다.
     document.body.appendChild(ov);
     var closeBtn = document.getElementById("qfast-close");
-    if(closeBtn) closeBtn.addEventListener("click", function(){ ov.remove(); });
-    var __qfCtrl = (typeof AbortController!=="undefined") ? new AbortController() : null;
-    var __qfTimer = setTimeout(function(){ try{ if(__qfCtrl) __qfCtrl.abort(); }catch(_){} }, 20000);   // [V9.23] 20초 타임아웃
-    fetch(GS_FAST_URL + "?mode=itemQuick&draw=" + encodeURIComponent(qi), __qfCtrl?{signal:__qfCtrl.signal, cache:"no-store"}:{cache:"no-store"})
-      .then(function(r){ clearTimeout(__qfTimer); return r.json(); })
+    if(closeBtn) closeBtn.addEventListener("click", function(){ qfStopScan(); ov.remove(); });
+    // [추가] 다른 품목 조회: 도번 입력 · QR 다시 스캔 · 최근 조회 — 전체 앱 로드 없이 계속 조회
+    var cur = qi, recent = [], scanner = null;
+    var bar = document.createElement("div");
+    bar.style.cssText = "max-width:480px;margin:0 auto;padding:12px 18px 0;";
+    bar.innerHTML = '<div style="display:flex;gap:6px;">'
+      +'<input id="qfast-in" type="text" inputmode="text" autocapitalize="characters" placeholder="다른 도번 입력" style="flex:1;min-width:0;padding:11px 12px;border:1.5px solid #C9D3E0;border-radius:10px;font-size:16px;">'
+      +'<button id="qfast-go" style="background:#1F2A44;color:#fff;border:none;border-radius:10px;padding:0 14px;font-weight:800;font-size:14px;">조회</button>'
+      +'<button id="qfast-scan" style="background:#0B7A8A;color:#fff;border:none;border-radius:10px;padding:0 12px;font-weight:800;font-size:14px;">📷 QR</button></div>'
+      +'<div id="qfast-reader" style="display:none;margin-top:10px;border-radius:12px;overflow:hidden;"></div>'
+      +'<div id="qfast-scanmsg" style="display:none;font-size:12px;color:#5A6478;text-align:center;margin-top:6px;"></div>'
+      +'<div id="qfast-recent" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"></div>';
+    ov.insertBefore(bar, document.getElementById("qfast-body"));
+    function qfDrawFrom(v){ v=String(v||"").trim(); try{ var m=v.match(/[?&]item=([^&#]+)/); if(m) v=decodeURIComponent(m[1]); }catch(_){} return v.trim(); }
+    function qfRecent(){ var el=document.getElementById("qfast-recent"); if(!el) return;
+      el.innerHTML = recent.filter(function(x){ return x!==cur; }).map(function(x){ return '<button data-d="'+esc(x)+'" style="background:#EEF2FA;color:#1F2A44;border:1px solid #D6DEE8;border-radius:16px;padding:5px 11px;font-size:12.5px;font-weight:700;">↩ '+esc(x)+'</button>'; }).join("");
+      el.querySelectorAll("button").forEach(function(b){ b.addEventListener("click", function(){ qfLoad(b.getAttribute("data-d")); }); }); }
+    function qfStopScan(){ try{ if(scanner){ scanner.stop().catch(function(){}); scanner=null; } }catch(_){}
+      var r=document.getElementById("qfast-reader"), m=document.getElementById("qfast-scanmsg"); if(r){ r.style.display="none"; r.innerHTML=""; } if(m) m.style.display="none"; }
+    function qfScan(){
+      if(scanner){ qfStopScan(); return; }
+      var r=document.getElementById("qfast-reader"), m=document.getElementById("qfast-scanmsg"); r.style.display="block"; m.style.display="block"; m.textContent="카메라 준비 중…";
+      var start=function(){ try{ scanner=new Html5Qrcode("qfast-reader");
+        scanner.start({ facingMode:"environment" }, { fps:10, qrbox:220 }, function(txt){ var d=qfDrawFrom(txt); qfStopScan(); if(d) qfLoad(d); }, function(){})
+          .then(function(){ m.textContent="QR을 사각형 안에 맞추세요. (다시 누르면 닫힘)"; })
+          .catch(function(){ m.textContent="카메라를 열 수 없습니다. 카메라 권한을 허용하세요."; scanner=null; }); }catch(e){ m.textContent="카메라를 열 수 없습니다."; } };
+      if(window.Html5Qrcode) start();
+      else { var sc=document.createElement("script"); sc.src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"; sc.onload=start; sc.onerror=function(){ m.textContent="스캔 기능을 불러오지 못했습니다(네트워크 확인)."; }; document.head.appendChild(sc); }
+    }
+    document.getElementById("qfast-go").addEventListener("click", function(){ var i=document.getElementById("qfast-in"); var d=qfDrawFrom(i.value); if(d){ i.value=""; i.blur(); qfLoad(d); } });
+    document.getElementById("qfast-in").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); document.getElementById("qfast-go").click(); } });
+    document.getElementById("qfast-scan").addEventListener("click", qfScan);
+    function qfLoad(draw){
+      cur = draw; if(recent.indexOf(draw)<0) recent.unshift(draw); recent = recent.slice(0,6); qfRecent();
+      try{ history.replaceState(null, "", location.pathname + "?item=" + encodeURIComponent(draw)); }catch(_){}
+      var body = document.getElementById("qfast-body"); if(!body) return;
+      body.innerHTML = '<div style="text-align:center;color:#8A93A6;padding:40px 10px;"><div style="font-size:15px;">'+esc(draw)+' 불러오는 중…</div></div>';
+      var ctrl = (typeof AbortController!=="undefined") ? new AbortController() : null;
+      var tm = setTimeout(function(){ try{ if(ctrl) ctrl.abort(); }catch(_){} }, 20000);   // [V9.23] 20초 타임아웃
+      fetch(GS_FAST_URL + "?mode=itemQuick&draw=" + encodeURIComponent(draw), ctrl?{signal:ctrl.signal, cache:"no-store"}:{cache:"no-store"})
+      .then(function(r){ clearTimeout(tm); return r.json(); })
       .then(function(d){
+        if(cur!==draw) return;   // 그 사이 다른 품목을 조회함
         var body = document.getElementById("qfast-body"); if(!body) return;
         if(!d || d.success===false){
           body.innerHTML = '<div style="text-align:center;color:#C0392B;padding:40px 10px;">조회 실패'+(d&&d.error?('<div style="font-size:12px;color:#8A93A6;margin-top:8px;">'+esc(d.error)+'</div>'):'')+'</div>';
           return;
         }
         var stock = d.stock;
-        body.innerHTML = '<div style="font-size:26px;font-weight:800;color:#1F2A44;">'+esc(qi)+'</div>'
+        body.innerHTML = '<div style="font-size:26px;font-weight:800;color:#1F2A44;">'+esc(draw)+'</div>'
           +'<div style="font-size:15px;color:#5A6478;margin:2px 0 16px;">'+esc(d.name||"(품명 미확인)")+'</div>'
           +'<div style="background:'+(stock>0?"#EAF6EF":"#F5F5F5")+';border-radius:12px;padding:14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">'
           +'<div><div style="font-size:12px;color:#5A6478;">현재 보유 수량</div><div style="font-size:30px;font-weight:800;color:'+(stock>0?"#1E7A46":"#8A93A6")+';">'+(stock==null?"-":stock)+'<span style="font-size:14px;font-weight:700;"> 개</span></div></div>'
@@ -1026,18 +1063,21 @@
             }
             if(window.__entered && typeof qrItemView_ === "function"){
               clearInterval(waitEnter);
-              ov.remove();
-              qrItemView_(qi);
+              qfStopScan(); ov.remove();
+              qrItemView_(draw);
             }
           }, 250);
         });
       })
       .catch(function(err){
+        if(cur!==draw) return;
         var body = document.getElementById("qfast-body"); if(!body) return;
         body.innerHTML = '<div style="text-align:center;color:#C0392B;padding:40px 10px;">'+((err&&err.name==="AbortError")?"서버 응답이 늦습니다(20초 초과).":"조회 실패 — 네트워크를 확인해 주세요.")
-          +'<div style="margin-top:14px;"><button onclick="var o=document.getElementById(\'qfast-ov\'); if(o) o.remove();" style="background:#5B3EAE;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;">앱에서 조회하기</button></div></div>';
-        try{ var __w=setInterval(function(){ if(window.__entered && typeof qrItemView_==="function"){ clearInterval(__w); var o=document.getElementById("qfast-ov"); if(o) o.remove(); qrItemView_(qi); } }, 500); }catch(_){}
+          +'<div style="margin-top:14px;"><button id="qfast-retry" style="background:#1F2A44;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;">다시 조회</button></div></div>';
+        var rb=document.getElementById("qfast-retry"); if(rb) rb.addEventListener("click", function(){ qfLoad(draw); });
       });
+    }
+    qfLoad(qi);
   }catch(e){}
 })();
 </script>
@@ -3692,6 +3732,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     }
     if(target==="insrep"){
       if(!window.__insrepInited){ window.__insrepInited = true; insInit(); }
+      else { try{ if(typeof insRollDateToToday_==="function" && insRollDateToToday_()){ insSyncMetaInputs(); insSaveLocal(); } }catch(_){} }   // 켜 둔 채 날이 바뀐 경우
       insRender();
       setTimeout(function(){ var __si=document.getElementById("insrep-scanInput"); if(__si){ try{ __si.focus(); }catch(e){} } }, 150);
       // 검사일보 열 때: 4개 유형(수입·출하·측정소형·측정대형) 서버 전체와 대조해 중복 점검 팝업
@@ -18136,6 +18177,10 @@ function insMarkDeleted_(id){ if(!id) return; insDeletedIds[String(id)]=Date.now
 function insCfg(){ return INS_CFG[insType]; }
 function insLeaves(cfg){ cfg=cfg||insCfg(); var out=[]; cfg.groups.forEach(function(g){ if(g.subs){ g.subs.forEach(function(s){ out.push(s); }); } else { out.push(g.leaf); } }); return out; }
 function insEsc(t){ return docmasterEsc(t); }
+// [수정] 검사일자: 날이 바뀐 뒤 처음 열면 오늘 날짜로 자동 전환 (그날 직접 고른 과거 날짜는 그날만 유지)
+function insRollDateToToday_(){ var t=(typeof insToday_==="function")?insToday_():""; if(!t) return false; var chg=false;
+  Object.keys(insMetaByType||{}).forEach(function(k){ var m=insMetaByType[k]; if(!m) return; if(m.dateOn!==t){ if(m.date!==t && k===insType) chg=true; m.date=t; m.dateOn=t; } });
+  if(chg) insDayFilter=t; return chg; }
 function insDefaultDate_(){ try{ var m=insMetaByType[insType]; if(m&&m.date) return m.date; }catch(e){} var d=new Date(),p=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
 function insRowId_(){ return "r"+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function insEnsureIds_(rows){ if(Array.isArray(rows)) rows.forEach(function(r){ if(r && !r._id) r._id=insRowId_(); }); return rows; }
@@ -18258,7 +18303,7 @@ function insInit(){
   bind("insrep-ncrBtn","click",insOpenNcrExport);
   bind("insrep-printBtn","click",insPrintDay);
   bind("insrep-masterExBtn","click",function(){ insExportMaster(true); });
-  var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; insShowAllRows=false; if(insDayFilter!=="all" && insType!=="processin" && insMetaByType[insType]){ insMetaByType[insType].date=insDayFilter; insSyncMetaInputs(); } insRender(); insSaveLocal(); });
+  var __df=document.getElementById("insrep-dayFilter"); if(__df) __df.addEventListener("change",function(){ insDayFilter=this.value; insShowAllRows=false; if(insDayFilter!=="all" && insType!=="processin" && insMetaByType[insType]){ insMetaByType[insType].date=insDayFilter; insMetaByType[insType].dateOn=insToday_(); insSyncMetaInputs(); } insRender(); insSaveLocal(); });
   var __ds=document.getElementById("insrep-drawSearch"); if(__ds){
     // 글자마다 렌더하면 누적 데이터에서 버벅임 → 엔터 또는 포커스 아웃(blur) 시에만 검색
     var __doSearch=function(){ if(insDrawSearch!==__ds.value){ insDrawSearch=__ds.value; insRender(); } };
@@ -18284,7 +18329,7 @@ function insInit(){
   bind("insrep-saveFolderBtn","click",insPickSaveFolder);
   bind("insrep-cloudLoadBtn","click",insCloudLoad);
   bind("insrep-inspector","input",function(){ var __v=this.value; var __m=insMetaByType[insType]; if(__m){ __m.inspector=__v; __m.inspByDate=__m.inspByDate||{}; var __cur=(insDayFilter&&insDayFilter!=="all")?insDayFilter:(__m.date||(typeof insToday_==="function"?insToday_():"")); if(__cur){ if(__v.trim()) __m.inspByDate[__cur]=__v; else delete __m.inspByDate[__cur]; (insState[insType]&&insState[insType].rows||[]).forEach(function(r){ if(String(r.insDate||"")===__cur) r.inspector=__v; }); } } try{ if(__v.trim()) localStorage.setItem("insLastInspector", __v.trim()); }catch(e){} insSaveLocal(); });
-  bind("insrep-date","change",function(){ var v=this.value; if(insMetaByType[insType]) insMetaByType[insType].date=v; insDayFilter = v ? v : "all"; insRender(); insSaveLocal(); });
+  bind("insrep-date","change",function(){ var v=this.value; if(insMetaByType[insType]){ insMetaByType[insType].date=v; insMetaByType[insType].dateOn=insToday_(); } insDayFilter = v ? v : "all"; insRender(); insSaveLocal(); });
   // PC 스캐너(키보드형) 입력: 찍으면 값+Enter → 행 추가, 연속 가능
   var scanInp=document.getElementById("insrep-scanInput");
   if(scanInp){
@@ -18308,6 +18353,7 @@ function insInit(){
   document.addEventListener("click", function(e){ if(e.target && e.target.closest && e.target.closest("#topbar-insrep .ins-dd")) return; document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); });
   // 기기 내 저장본 복구 (없을 때만 빈 행 시드)
   insRestoreLocal();
+  try{ insRollDateToToday_(); }catch(_){}
   insSyncMetaInputs();
   insDayFilter = (insMetaByType[insType] && insMetaByType[insType].date) || (typeof insToday_==="function"?insToday_():"all");   // 열 때 오늘 시트만(누적 커져도 빠름)
   insRender();
@@ -19047,7 +19093,7 @@ function insImportExcel(file){
       inforow.forEach(function(cell){
         var sX=String(cell||"");
         var m1=sX.match(/검사자:\s*(.*)$/); if(m1 && insMetaByType[insType]){ var v1=m1[1].trim(); if(v1) insMetaByType[insType].inspector=v1; }
-        var m2=sX.match(/검사일자:\s*(.*)$/); if(m2 && insMetaByType[insType]){ var v2=m2[1].trim(); if(v2) insMetaByType[insType].date=v2; }
+        var m2=sX.match(/검사일자:\s*(.*)$/); if(m2 && insMetaByType[insType]){ var v2=m2[1].trim(); if(v2){ insMetaByType[insType].date=v2; insMetaByType[insType].dateOn=insToday_(); } }
       });
       // 데이터 시작행: No.(정수)로 시작하는 행
       var start=-1;
