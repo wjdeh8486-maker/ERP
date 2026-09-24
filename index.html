@@ -1186,7 +1186,11 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
 <div class="app-shell">
   <div class="side-nav" id="sideNav">
     <div class="brand">NTL QMS Portal<small>Quality Management System</small></div>
-    <div class="nav-item qnav-solo" data-view="main" title="MAIN 대시보드 (주문·납기 종합 현황)"><span class="qnav-ico">🏠</span><span>MAIN</span><span class="qs-r">&nbsp;대시보드</span></div>
+    <div class="qnav-cat" data-cat="mainkpi"><button type="button" class="qnav-btn"><span class="qnav-ico">🏠</span>MAIN<span class="qnav-caret">▾</span></button>
+      <div class="qnav-panel">
+        <div class="nav-item nav-sub active" data-view="main"><span class="qnav-i">🏠</span><span class="qnav-t"><b>MAIN 대시보드</b><small>주문·납기 종합 현황</small></span></div>
+        <div class="nav-item nav-sub" data-view="qualitykpi"><span class="qnav-i">📊</span><span class="qnav-t"><b>품질 KPI 대시보드</b><small>합격률·CAPA·고객불만 한눈에</small></span></div>
+      </div></div>
     <div class="qnav-cat" data-cat="dash"><button type="button" class="qnav-btn"><span class="qnav-ico">📊</span>현황<span class="qnav-caret">▾</span></button>
       <div class="qnav-panel">
         <div class="nav-item nav-sub active" data-view="summary"><span class="qnav-i">📊</span><span class="qnav-t"><b>월별 현황</b><small>월별 출하·품질 요약</small></span></div>
@@ -1419,6 +1423,53 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         </div><!-- /summary-reportContent -->
       </div><!-- /modal box -->
     </div><!-- /summary-reportModal -->
+    <div class="view" id="view-qualitykpi">
+      <h1 style="margin-bottom:14px;">📊 품질 KPI 대시보드</h1>
+      <div class="summary-row" id="qkpi-cards" style="margin-bottom:16px;">
+        <div class="stat-card" style="border-top:3px solid var(--green);">
+          <div class="label">수입 합격률</div>
+          <div class="value" id="qkpi-incomingRate" style="color:var(--green);">-</div>
+          <div style="font-size:11.5px;color:var(--text-mute);margin-top:2px;" id="qkpi-incomingSub">&nbsp;</div>
+        </div>
+        <div class="stat-card" style="border-top:3px solid var(--blue);">
+          <div class="label">이번 달 검사건수</div>
+          <div class="value" id="qkpi-inspCount" style="color:var(--blue);">-</div>
+          <div style="font-size:11.5px;color:var(--text-mute);margin-top:2px;" id="qkpi-inspSub">수입+공정+출하</div>
+        </div>
+        <div class="stat-card" style="border-top:3px solid #C4700A;">
+          <div class="label">CAPA 진행중</div>
+          <div class="value" id="qkpi-capaOpen" style="color:#C4700A;">-</div>
+          <div style="font-size:11.5px;color:var(--text-mute);margin-top:2px;" id="qkpi-capaSub">&nbsp;</div>
+        </div>
+        <div class="stat-card" style="border-top:3px solid var(--red);">
+          <div class="label">고객불만 접수</div>
+          <div class="value" id="qkpi-complaint" style="color:var(--red);">-</div>
+          <div style="font-size:11.5px;color:var(--text-mute);margin-top:2px;" id="qkpi-complaintSub">이번 달 접수 기준</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+        <div class="table-wrap" style="flex:2;min-width:320px;padding:16px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:10px;">월별 품질현황 (수입+공정+출하 합산 · 검사수/부적합수/합격률)</div>
+          <div id="qkpi-trendChart"></div>
+        </div>
+        <div class="table-wrap" style="flex:1;min-width:260px;padding:16px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:10px;">이번 달 부적합 유형 현황 (CTQ 기준)</div>
+          <div id="qkpi-donutChart"></div>
+        </div>
+      </div>
+      <div class="table-wrap" style="padding:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text-mute);margin-bottom:10px;">최근 CAPA(고객부적합) 현황 <span id="qkpi-recentCount" style="font-weight:400;color:#AEB9CC;"></span></div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;min-width:640px;">
+            <thead><tr>
+              <th style="padding:9px 8px;">접수일</th><th style="padding:9px 8px;">고객사</th><th style="padding:9px 8px;">품번</th>
+              <th style="padding:9px 8px;">부적합내용</th><th style="padding:9px 8px;text-align:center;">경과일</th><th style="padding:9px 8px;text-align:center;">상태</th>
+            </tr></thead>
+            <tbody id="qkpi-recentBody"><tr><td colspan="6" style="text-align:center;color:var(--text-mute);padding:18px;">불러오는 중…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
     <div class="view" id="view-main">
       <div id="main-holdBanner" style="display:none;background:#FDECEC;border:1px solid #F0C9C4;border-radius:12px;padding:11px 16px;margin-bottom:12px;cursor:pointer;" onclick="var n=document.querySelector('.nav-item[data-view=&quot;shipjudge&quot;]'); if(n) n.click();">
         <span style="font-weight:800;color:#C0392B;">🔴 출하정지 <span id="main-holdCount">0</span>건</span>
@@ -3891,6 +3942,9 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="weekly"){
       if(__viewRendered.weekly){ /* 캐시된 화면 그대로 */ }
       else runBusy(()=>{ renderWeeklyView(); __viewRendered.weekly = true; });
+    }
+    if(target==="qualitykpi"){
+      if(typeof renderQualityKpiDashboard==="function") runBusy(renderQualityKpiDashboard);
     }
     if(target==="waitinsp"){
       runBusy(initWaitInspView);   // 검사대기는 자동 최신화가 걸려 있으므로 항상 갱신
@@ -11148,6 +11202,162 @@ function capaJudge(r){
   else                         stage = { key:"received",     label:"접수(미조치)",  bg:"#EEF0F3", color:"#5A6478" }; // 조치 전(임시조치만 포함)
   return { closed, stage, needsReport:hasReport, actionDone };
 }
+// ===== 품질 KPI 대시보드 (MAIN 소메뉴) =====
+function qkpiDaysSince_(d){ var t=new Date(); t.setHours(0,0,0,0); return Math.floor((t - new Date(d.getFullYear(),d.getMonth(),d.getDate())) / 86400000); }
+function renderQualityKpiDashboard(){
+  var esc = function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+  var today = new Date();
+  var year = today.getFullYear(), month = today.getMonth()+1;
+  var catKeys = ["incoming","process","shipping"];
+
+  // ---- 1) 수입 합격률(당월) ----
+  var inc = (typeof computeCategoryMonthStats==="function") ? computeCategoryMonthStats("incoming", year, month) : {qty:0,defect:0};
+  var incRateEl = document.getElementById("qkpi-incomingRate"), incSubEl = document.getElementById("qkpi-incomingSub");
+  if(incRateEl){
+    if(inc.qty>0){
+      var incRate = Math.round(((inc.qty-inc.defect)/inc.qty)*1000)/10;
+      incRateEl.textContent = incRate + "%";
+      if(incSubEl) incSubEl.textContent = year+"년 "+month+"월 · 검사 "+inc.qty.toLocaleString()+"건 중 부적합 "+inc.defect.toLocaleString()+"건";
+    } else {
+      incRateEl.textContent = "-";
+      if(incSubEl) incSubEl.textContent = "이번 달 수입검사 데이터 없음";
+    }
+  }
+
+  // ---- 2) 이번 달 검사건수(수입+공정+출하 합산) ----
+  var totQty=0, totDefect=0;
+  catKeys.forEach(function(k){ var s=(typeof computeCategoryMonthStats==="function")?computeCategoryMonthStats(k, year, month):{qty:0,defect:0}; totQty+=s.qty; totDefect+=s.defect; });
+  var inspCountEl = document.getElementById("qkpi-inspCount"), inspSubEl = document.getElementById("qkpi-inspSub");
+  if(inspCountEl) inspCountEl.textContent = totQty.toLocaleString();
+  if(inspSubEl) inspSubEl.textContent = "수입+공정+출하 · 부적합 "+totDefect.toLocaleString()+"건";
+
+  // ---- 3) CAPA 진행중(연초~당월 누적 미종결) / 고객불만 접수(당월) ----
+  var ncRows = (typeof qualityRawData!=="undefined" && qualityRawData[CUSTOMER_NC_KEY]) || [];
+  var ytdRows = ncRows.filter(function(r){ return r.date && r.date.getFullYear()===year && (r.date.getMonth()+1)<=month; })
+    .map(function(r){ var j=capaJudge(r); var elapsed=qkpiDaysSince_(r.date); var overdue=!j.closed && elapsed>CAPA_OVERDUE_DAYS; return Object.assign({}, r, {_stage:j.stage, _closed:j.closed, _elapsed:elapsed, _overdue:overdue}); });
+  var capaOpenCnt = ytdRows.filter(function(r){ return !r._closed; }).length;
+  var capaOpenEl = document.getElementById("qkpi-capaOpen"), capaSubEl = document.getElementById("qkpi-capaSub");
+  if(capaOpenEl) capaOpenEl.textContent = capaOpenCnt.toLocaleString();
+  if(capaSubEl) capaSubEl.textContent = year+"년 1~"+month+"월 누적 · 지연(7일 초과) "+ytdRows.filter(function(r){return r._overdue;}).length+"건";
+
+  var thisMonthNc = ncRows.filter(function(r){ return r.date && r.date.getFullYear()===year && (r.date.getMonth()+1)===month; });
+  var complaintEl = document.getElementById("qkpi-complaint");
+  if(complaintEl) complaintEl.textContent = thisMonthNc.length.toLocaleString();
+
+  // ---- 4) 월별 품질현황 트렌드(라인+바) — 당해 1월~당월 ----
+  var trendEl = document.getElementById("qkpi-trendChart");
+  if(trendEl){
+    var months = []; for(var m=1;m<=month;m++) months.push(m);
+    var series = months.map(function(m){
+      var q=0,d=0; catKeys.forEach(function(k){ var s=(typeof computeCategoryMonthStats==="function")?computeCategoryMonthStats(k, year, m):{qty:0,defect:0}; q+=s.qty; d+=s.defect; });
+      return { m:m, qty:q, defect:d, rate: q>0 ? Math.round(((q-d)/q)*1000)/10 : null };
+    });
+    trendEl.innerHTML = qkpiTrendChartSvg_(series);
+  }
+
+  // ---- 5) 이번 달 부적합 유형 현황(CTQ 기준, 도넛) ----
+  var donutEl = document.getElementById("qkpi-donutChart");
+  if(donutEl){
+    var agg = (typeof ctqAggregate==="function" && __ctqMonthly) ? ctqAggregate(__ctqMonthly, "month", year, month) : {ins:0, defs:{}};
+    donutEl.innerHTML = qkpiDonutSvg_(agg);
+  }
+
+  // ---- 6) 최근 CAPA(고객부적합) 현황 테이블 — 지연/미종결 우선, 상위 8건 ----
+  var recentBody = document.getElementById("qkpi-recentBody"), recentCountEl = document.getElementById("qkpi-recentCount");
+  if(recentBody){
+    var stageOrder = { received:0, ncrWait:1, validate:2, selfClosed:3, reportClosed:4 };
+    var sorted = ytdRows.slice().sort(function(a,b){
+      if(a._overdue !== b._overdue) return a._overdue ? -1 : 1;
+      if(a._closed !== b._closed) return a._closed ? 1 : -1;
+      var ao=stageOrder[a._stage.key], bo=stageOrder[b._stage.key];
+      if(ao!==bo) return ao-bo;
+      return b._elapsed - a._elapsed;
+    }).slice(0, 8);
+    if(recentCountEl) recentCountEl.textContent = "(연초 누적 "+ytdRows.length+"건 중 지연·진행 우선 "+sorted.length+"건)";
+    if(!sorted.length){
+      recentBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-mute);padding:18px;">데이터가 없습니다. 품질분석 → 고객부적합관리대장을 먼저 불러오세요.</td></tr>';
+    } else {
+      recentBody.innerHTML = sorted.map(function(r){
+        var badge = '<span style="background:'+r._stage.bg+';color:'+r._stage.color+';border-radius:12px;padding:2px 10px;font-size:11.5px;font-weight:700;white-space:nowrap;">'+esc(r._stage.label)+'</span>';
+        return '<tr style="'+(r._overdue?'background:#FDECEC;':'')+'">'
+          +'<td style="padding:8px;white-space:nowrap;">'+(typeof mgmtFmtYMD==="function"?mgmtFmtYMD(r.date):esc(r.date))+'</td>'
+          +'<td style="padding:8px;">유진테크</td>'
+          +'<td style="padding:8px;white-space:nowrap;">'+esc(r.partNo)+'</td>'
+          +'<td style="padding:8px;max-width:280px;">'+esc(r.content)+'</td>'
+          +'<td style="padding:8px;text-align:center;font-weight:700;color:'+(r._overdue?'#E02424':'#5A6478')+';">'+(r._closed?'-':r._elapsed+'일')+'</td>'
+          +'<td style="padding:8px;text-align:center;">'+badge+'</td>'
+          +'</tr>';
+      }).join("");
+    }
+  }
+}
+// 월별 품질현황: 바(검사수) + 라인(합격률%) 콤보차트
+function qkpiTrendChartSvg_(series){
+  if(!series.length) return '<div style="padding:30px;text-align:center;color:var(--text-mute);">데이터가 없습니다.</div>';
+  var w=560, h=220, padL=42, padR=42, padT=16, padB=28;
+  var innerW=w-padL-padR, innerH=h-padT-padB;
+  var n=series.length, gap=innerW/n;
+  var maxQty=Math.max.apply(null, series.map(function(s){return s.qty;}).concat([1]));
+  var barW=Math.min(34, gap*0.5);
+  var bars="", line="", dots="", labels="";
+  var pts=[];
+  series.forEach(function(s,i){
+    var cx=padL+gap*i+gap/2;
+    var bh = maxQty>0 ? (s.qty/maxQty)*innerH : 0;
+    var by = padT+innerH-bh;
+    bars += '<rect x="'+(cx-barW/2).toFixed(1)+'" y="'+by.toFixed(1)+'" width="'+barW.toFixed(1)+'" height="'+bh.toFixed(1)+'" rx="3" fill="#CFE0FF"></rect>';
+    bars += '<text x="'+cx.toFixed(1)+'" y="'+(by-4).toFixed(1)+'" font-size="9.5" text-anchor="middle" fill="#5A87C9">'+s.qty+'</text>';
+    var ry = s.rate==null ? null : padT+innerH-(s.rate/100)*innerH;
+    if(ry!=null) pts.push([cx,ry,s.rate]);
+    labels += '<text x="'+cx.toFixed(1)+'" y="'+(h-8)+'" font-size="10" text-anchor="middle" fill="#8A93A6">'+s.m+'월</text>';
+  });
+  if(pts.length>1){
+    line = '<polyline points="'+pts.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(" ")+'" fill="none" stroke="#2E9E5B" stroke-width="2.4"></polyline>';
+  }
+  pts.forEach(function(p){
+    dots += '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="3.4" fill="#2E9E5B"></circle>';
+    dots += '<text x="'+p[0].toFixed(1)+'" y="'+(p[1]-8).toFixed(1)+'" font-size="10" font-weight="700" text-anchor="middle" fill="#1E7E45">'+p[2]+'%</text>';
+  });
+  return '<svg viewBox="0 0 '+w+' '+h+'" width="100%" style="display:block;max-width:'+w+'px;margin:0 auto;height:auto;">'
+    +'<line x1="'+padL+'" y1="'+(padT+innerH)+'" x2="'+(w-padR)+'" y2="'+(padT+innerH)+'" stroke="#EAEDF2"></line>'
+    +bars+line+dots+labels
+    +'<g transform="translate('+(w-padR-2)+',12)" font-size="10">'
+    +'<rect x="-100" y="-2" width="9" height="9" fill="#CFE0FF"></rect><text x="-88" y="6" fill="#5A6478">검사수</text>'
+    +'<line x1="-40" y1="2" x2="-30" y2="2" stroke="#2E9E5B" stroke-width="2.4"></line><text x="-27" y="6" fill="#5A6478">합격률%</text>'
+    +'</g></svg>';
+}
+// 부적합 유형 현황: 도넛차트(상위 5개 + 기타)
+function qkpiDonutSvg_(agg){
+  var list = Object.keys(agg.defs||{}).map(function(k){ return {cat:k, n:agg.defs[k]}; }).sort(function(a,b){ return b.n-a.n; });
+  var total = list.reduce(function(a,d){ return a+d.n; }, 0);
+  if(!total) return '<div style="padding:30px;text-align:center;color:var(--text-mute);">이번 달 CTQ 부적합 데이터가 없습니다.</div>';
+  var top = list.slice(0,5), rest = list.slice(5);
+  var restSum = rest.reduce(function(a,d){ return a+d.n; }, 0);
+  var slices = top.map(function(d){ return {cat:d.cat, n:d.n}; });
+  if(restSum>0) slices.push({cat:"기타", n:restSum});
+  var colors = ["#0B5CAB","#2E9E5B","#F0A020","#8E44AD","#E02424","#9AA6B2"];
+  var cx=90, cy=90, r=64, sw=26;
+  var circumf = 2*Math.PI*r;
+  var offset=0, arcs="", legend="";
+  slices.forEach(function(s,i){
+    var frac = s.n/total;
+    var len = frac*circumf;
+    var color = colors[i%colors.length];
+    arcs += '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" '
+      +'stroke-dasharray="'+len.toFixed(1)+' '+(circumf-len).toFixed(1)+'" stroke-dashoffset="'+(-offset).toFixed(1)+'" transform="rotate(-90 '+cx+' '+cy+')"></circle>';
+    offset += len;
+    legend += '<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5A6478;margin-bottom:4px;">'
+      +'<span style="width:9px;height:9px;border-radius:2px;background:'+color+';display:inline-block;flex:0 0 auto;"></span>'
+      +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+s.cat+'</span>'
+      +'<b style="color:#1F2A44;">'+Math.round(s.n/total*100)+'%</b></div>';
+  });
+  return '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">'
+    +'<svg viewBox="0 0 180 180" width="150" height="150" style="flex:0 0 auto;">'+arcs
+    +'<text x="90" y="85" text-anchor="middle" font-size="12" fill="#8A93A6">총</text>'
+    +'<text x="90" y="104" text-anchor="middle" font-size="20" font-weight="800" fill="#1F2A44">'+total+'건</text>'
+    +'</svg><div style="flex:1;min-width:120px;">'+legend+'</div></div>';
+}
+
 function renderCAPAPanel(){
   const panel = document.getElementById("qpanel-capa");
   if(!panel) return;
