@@ -968,6 +968,8 @@
   /* 버튼/메뉴가 눌린 것을 바로 알 수 있게 눌림 효과 */
   button:active, .nav-item:active{ transform:scale(0.96); opacity:0.75; }
 
+  #pf-wrap:fullscreen{background:#fff !important;padding:24px 30px !important;overflow:auto !important;}
+  #pf-wrap:fullscreen #pf-canvas{max-width:none !important;}
 </style>
 </head>
 <body>
@@ -2245,6 +2247,22 @@
     </div>
     <!-- ===================== 🗺 업무흐름도 VIEW ===================== -->
     <div class="view" id="view-flow">
+      <div id="pf-wrap" style="background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 2px 10px rgba(0,0,0,0.06);margin-bottom:14px;overflow:auto;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div style="font-size:20px;font-weight:800;color:#1F2A44;">🔀 품질 프로세스 흐름도 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 발주 → 생산·검사 → 출하 → 클레임 → 사후관리</span></div>
+          <div style="margin-left:auto;display:flex;gap:6px;">
+            <button type="button" onclick="pfFull_()" style="background:#fff;color:#1F2A44;border:1.5px solid #1F2A44;border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer;font-size:12px;">⛶ 발표 모드</button>
+            <button type="button" onclick="pfPrint_()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer;font-size:12px;">🖨 인쇄 (A4)</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:#5A6478;margin:6px 0 10px;">
+          <span><b style="color:#0B5CAB;">▭</b> 업무</span><span><b style="color:#1E7A46;">◇</b> 검사·판정</span><span><b style="color:#C0392B;">━</b> 불합격·부적합</span><span><b style="color:#7A3E9A;">┅</b> 재발방지 피드백</span><span>💾 기록·저장 위치</span><span style="color:#8A93A6;">재작업·재검사 합격품은 원 공정으로 복귀 · 특채는 고객 승인 후 출하</span>
+        </div>
+        <div style="overflow-x:auto;"><div id="pf-canvas" style="min-width:760px;max-width:1100px;margin:0 auto;"></div></div>
+        <div id="pf-detail" style="background:#F7F9FC;border:1px solid #E3E8F0;border-radius:10px;padding:12px 14px;margin-top:10px;"></div>
+        <div style="font-size:15px;font-weight:800;color:#1F2A44;margin:16px 0 6px;">📋 단계별 기준 · 검사 · 기록 · 처리</div>
+        <div id="pf-table" style="overflow-x:auto;"></div>
+      </div>
       <div style="background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 2px 10px rgba(0,0,0,0.06);">
         <div style="font-size:20px;font-weight:800;color:#1F2A44;">🗺 QMS 업무흐름도 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 각 단계를 누르면 해당 기능으로 이동합니다 (모두 연동)</span></div>
         <div style="font-size:12.5px;color:#7A8598;margin:4px 0 16px;">고객요구 → 검사 → 부적합·등급 → 출하 → 고객피드백까지 하나의 흐름으로 연결됩니다.</div>
@@ -3628,7 +3646,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
       if(typeof mhEnsureLoaded_==="function") mhEnsureLoaded_();
       if(typeof renderMeasureHist==="function") runBusy(renderMeasureHist);
     }
-    if(target==="flow"){ if(typeof renderFlow_==="function") renderFlow_(); if(typeof renderQstd_==="function") renderQstd_(); }
+    if(target==="flow"){ if(typeof renderProcFlow_==="function") renderProcFlow_(); if(typeof renderFlow_==="function") renderFlow_(); if(typeof renderQstd_==="function") renderQstd_(); }
     if(target==="itemhist"){
       if(typeof renderItemHist==="function") renderItemHist();
     }
@@ -5172,6 +5190,246 @@ function renderFlow_(){
     flowCard_("📁","문서 관리","품질문서 Rev·개정","docmaster",G),
     flowCard_("📦","반제품 현황","공정재고·미납 비교","mnshort",G)
   ].join("");
+}
+/* ========================= 🗺 전체 프로세스 흐름도 (발주 → 클레임 → 사후관리) ========================= */
+// 문구 수정은 PF_D(단계별 내용)만 고치면 흐름도·상세·표·인쇄에 모두 반영됩니다.
+var PF_D={
+  m1:{ t:"수주 · 도면 접수", doc:"(문서번호 입력)", go:{view:"main"},
+    std:["고객 P.O(발주서)·도면(최신 REV)·납기 기준"],
+    ins:["도번·도면 REV·수량·납기 확인"],
+    rec:["주문 데이터: ERP 엑셀 → 매일 자동 업로드 → MAIN 대시보드"],
+    act:["납기 임박·지연 품목은 지연 LIST·주간 출하로 관리"] },
+  m2:{ t:"요구사항 · 변경점 검토", doc:"변경점 4M 부표", go:{qtab:"chg"},
+    std:["변경점 4M 부표: 세부내용별 A/B/C 등급","고객 도면 REV 변경 = A등급"],
+    ins:["도면·소재·공정·설비 변경 여부 확인"],
+    rec:["품질분석 → 변경점 관리 (QMS 공유저장)","품목이력에 도번별 자동 연동"],
+    act:["검사기준·QC공정도 반영 → 문서 Master 개정"] },
+  m3:{ t:"원자재 입고", doc:"QP-890 자재관리 / QS-910-01", go:{view:"inventory"},
+    std:["발주서(P.O) 기준 관리번호·품목·규격·수량","소재검사증명서(Mill Cert) 보관"],
+    ins:["규격·수량·Mill Cert 대조"],
+    rec:["입출고·재고관리 → 원자재 입고 (ORDER NO 기준, 생산가능수)"],
+    act:["소재재고 = 생산가능수 − 당해연도 완제품 출고","재고 음수 = 입고누락 경보"] },
+  m4:{ t:"수입검사 (소재)", doc:"QS-910-01", go:{view:"insrep"},
+    std:["QS-910-01 수입검사 기준","고객지정소재(예: 유진테크 AL6061)는 지정 Label 부착 입고"],
+    ins:["거래명세서 + 소재검사증명서로 수입검사일지 대체"],
+    rec:["검사일보 → 수입검사 [소재] 모드","구글시트 '검사_수입' 탭 (행 단위 저장)"],
+    act:["합격 → 생산 투입","불합격 → 부적합 식별·격리"] },
+  m5:{ t:"가공 생산", doc:"QC 공정도", go:{view:"mnshort"},
+    std:["QC 공정도에 따른 MCT·선반·밀링·사상 공정"],
+    ins:["공정 진행현황 확인"],
+    rec:["생산공정현황 시트 → MAIN 수입검사 대기 수량 산출","반제품 현황(공정재고·미납 비교)"],
+    act:["공정 완료분은 공정검사·외주 후처리로 이동"] },
+  m6:{ t:"공정검사 (측정)", doc:"QS-910-02 / QI-910-01", go:{view:"insrep"},
+    std:["치수: 고객 최신도면 지정공차 → 없으면 일반공차표","육안: QP-910 / QI-910-01"],
+    ins:["캘리퍼스·마이크로메터·Steel자·3차원 측정"],
+    rec:["검사일보 → 측정실 · '검사_측정소' / '검사_측정대' 탭","측정이력(측정 DATE 관리)"],
+    act:["판정 애매 시 품질팀 치수 측정 의뢰","불합격 → 부적합 식별·격리"] },
+  m7:{ t:"외주가공 · 후처리", doc:"QS-910-01", go:{view:"insrep"},
+    std:["외주가공·후처리는 발주서 기준"],
+    ins:["입고 시 제품 수입검사 실시"],
+    rec:["입고 이력은 제품 수입검사 기록으로 관리"],
+    act:["수입검사 불합격 시 부적합 처리"] },
+  m8:{ t:"수입검사 (제품)", doc:"QS-910-01", go:{view:"insrep"},
+    std:["QS-910-01 수입검사 기준","도면상 TAP 대상 품목은 TAP 검사 필수"],
+    ins:["외관·치수·TAP 확인"],
+    rec:["검사일보 → 수입검사 [제품] 모드 · '검사_수입' 탭"],
+    act:["TAP 대상인데 미체크 시 저장 전 경고","불합격 → 부적합 식별·격리"] },
+  m9:{ t:"재고 · 보관", doc:"QI-880-03 / QP-890", go:{view:"inventory"},
+    std:["제품 보관·납품 관리 지침","장기재고 180일 = 재검사 대상"],
+    ins:["품번·S/N·관리번호·보관위치(A-1~F-4) 확인"],
+    rec:["입출고·재고관리 (재고·위치·장기재고)","재검사 이력 (QMS 공유저장)"],
+    act:["180일 도래 → 재검사 → 기준일 리셋(주기 반복)"] },
+  m10:{ t:"출하검사", doc:"QS-910-03 / QI-910-01", go:{view:"insrep"},
+    std:["QI-910-01 품질검사표준 (고객 기준 우선)","외관 600Lux 이상, Φ3.0 이하 Hole·Seal면 Micro Scope 20배"],
+    ins:["외관·치수·조립·기능 검사","검교정된 측정기 사용"],
+    rec:["검사일보 → 출하검사 · '검사_출하' 탭 (출고NO)"],
+    act:["출하 게이트: 도번/S/N 입력 시 수입·측정 이력 누락 ⛔ 표시","PIN 압입 미체크 경고"] },
+  m11:{ t:"LOT 출하판정", doc:"QP-1010 / QI-1010-02", go:{view:"shipjudge"},
+    std:["부적합 LOT는 출하정지(HOLD)","범위: 전체(PROJECT/도번) / 부분(S/N·수량)"],
+    ins:["출하 대상 LOT의 정지 여부 확인"],
+    rec:["LOT 출하판정 → 출하정지 등록·해제 이력 (정지·해제 담당 기록)"],
+    act:["정지 중 선출고·재고사용·분출 자동 차단","해제 시 재검사·선별·특채 처리내용 기록"] },
+  m12:{ t:"납품 · 출하", doc:"QI-880-03", go:{view:"insplist"},
+    std:["납기·수량 기준 출하"],
+    ins:["검수LIST·분출LIST 확인"],
+    rec:["납기분출내역 · 선출고내역 · 재고사용내역 시트"],
+    act:["주간 출하·지연 LIST로 납기 관리"] },
+  r1:{ t:"부적합 식별 · 격리", doc:"QP-1010 / QI-1010-01", go:{view:"insrep"},
+    std:["부적합 발견 시 식별 표시·격리 → 오사용·혼입 방지"],
+    ins:["불량 유형·수량·S/N 기록"],
+    rec:["검사일보 불량 기록 (유형·수량)","부적합 알림 → 전 PC 공유"],
+    act:["처리 판정으로 이관"] },
+  r2:{ t:"처리 판정 · CTQ 등급", doc:"QP-1010", go:{qtab:"ctq"},
+    std:["CTQ 등급: A 크리티컬 / B 조립불가 / C 사용가능"],
+    ins:["불량 유형 → 등급 자동 분류"],
+    rec:["검사일보 조치내용·조치일","품질분석 → CTQ 분석"],
+    act:["재작업 · 재검사 · 특채 · 폐기 중 결정"] },
+  r3:{ t:"처리 (재작업·재검사·특채·폐기)", doc:"QI-1010-02 특채", go:{view:"insrep"},
+    std:["특채: 내부 승인 → 고객 승인 의뢰 → 결과 통보"],
+    ins:["재작업·선별 후 해당 검사 재실시"],
+    rec:["검사일보 조치내용 → 종결이력"],
+    act:["재작업·재검사 합격 → 원 공정 복귀","특채는 고객 승인 후 출하","A등급은 NCR 필수"] },
+  r4:{ t:"원인분석 · NCR", doc:"QP-1020 / QI-1020-01", go:{qtab:"ncr"},
+    std:["발생원인·유출원인 분석 (5Why)"],
+    ins:["동일 도번·유사 품목 영향 범위 확인"],
+    rec:["NCR 대장 (QMS 공유저장)","고객 건은 고객부적합Master와 연결"],
+    act:["A등급은 NCR 완료해야 종결"] },
+  r5:{ t:"시정조치 · 재발방지", doc:"QP-1020 / QI-1020-01", go:{qtab:"capa"},
+    std:["임시대책이 아닌 근본 재발방지 대책"],
+    ins:["대책 실행 여부 확인"],
+    rec:["고객부적합Master 조치내용·완료일","첨부파일(대책서·사진)"],
+    act:["고객 통보(접수·조치·결과)"] },
+  r6:{ t:"효과 확인", doc:"QP-1020", go:{qtab:"recur"},
+    std:["대책 후 동일 부적합 재발 여부"],
+    ins:["동일 도번 2회 이상 부적합 자동 감지"],
+    rec:["품질분석 → 재발관리"],
+    act:["재발 시 원인 재분석(NCR로 복귀)"] },
+  r7:{ t:"종결 · 사후관리", doc:"QP-1020", go:{view:"itemhist"},
+    std:["종결 조건: 완료일 또는 조치내용 입력 (A등급은 NCR 완료)"],
+    ins:["월별 PPM·불량률·고객사별 현황 점검"],
+    rec:["품목이력(도번별 주문·검사·부적합·변경점·측정·재고)","월별 리포트"],
+    act:["재발방지 내용 → 검사기준·문서 개정 (문서 Master)"] },
+  c1:{ t:"고객 클레임 접수", doc:"QP-920 / QP-1020", go:{view:"nc"},
+    std:["QP-920 고객만족 · QP-1020 시정조치 절차"],
+    ins:["클레임 내용·수량·도번 확인, CTQ 등급 분류"],
+    rec:["고객부적합관리 (고객부적합Master) + 첨부"],
+    act:["필요 시 재고·출하 대기분 LOT 출하정지","원인분석·NCR로 이관"] }
+};
+var PF_ORDER=["m1","m2","m3","m4","m5","m6","m7","m8","m9","m10","m11","m12","r1","r2","r3","r4","r5","r6","r7","c1"];
+var PF_STYLE={ box:{f:"#EAF2FB",s:"#0B5CAB"}, chk:{f:"#E9F6EE",s:"#1E7A46"}, nc:{f:"#FDECEC",s:"#C0392B"}, ca:{f:"#F4ECF8",s:"#7A3E9A"}, cl:{f:"#FFF4E0",s:"#C77700"} };
+var PF_N=[
+  {k:"m1",x:300,y:50, sh:"box",c:"box",sub:"MAIN · 주문 자동 업로드"},
+  {k:"m2",x:300,y:125,sh:"box",c:"box",sub:"변경점 관리 (4M A/B/C)"},
+  {k:"m3",x:300,y:200,sh:"box",c:"box",sub:"원자재 입고 · ORDER NO"},
+  {k:"m4",x:300,y:280,sh:"dia",c:"chk",sub:"검사일보 · 검사_수입"},
+  {k:"m5",x:300,y:360,sh:"box",c:"box",sub:"생산공정현황 · 반제품"},
+  {k:"m6",x:300,y:440,sh:"dia",c:"chk",sub:"검사_측정소/측정대"},
+  {k:"m7",x:300,y:520,sh:"box",c:"box",sub:"발주서 기준 입고"},
+  {k:"m8",x:300,y:600,sh:"dia",c:"chk",sub:"검사_수입 · TAP 확인"},
+  {k:"m9",x:300,y:680,sh:"box",c:"box",sub:"재고 · 180일 재검사"},
+  {k:"m10",x:300,y:760,sh:"dia",c:"chk",sub:"검사_출하 · 출하 게이트"},
+  {k:"m11",x:300,y:840,sh:"dia",c:"chk",sub:"출하정지(HOLD) 이력"},
+  {k:"m12",x:300,y:920,sh:"box",c:"box",sub:"검수 · 분출LIST"},
+  {k:"r1",x:830,y:280,sh:"box",c:"nc",sub:"검사일보 불량 · 부적합 알림"},
+  {k:"r2",x:830,y:360,sh:"dia",c:"nc",sub:"CTQ A · B · C"},
+  {k:"r4",x:830,y:560,sh:"box",c:"ca",sub:"발생·유출원인 · 5Why"},
+  {k:"r5",x:830,y:640,sh:"box",c:"ca",sub:"고객부적합Master · 첨부"},
+  {k:"r6",x:830,y:725,sh:"dia",c:"ca",sub:"재발관리 (2회+ 감지)"},
+  {k:"r7",x:830,y:810,sh:"box",c:"ca",sub:"품목이력 · 월별 리포트"},
+  {k:"c1",x:830,y:920,sh:"box",c:"cl",sub:"고객부적합관리대장"}
+];
+var PF_R3=[{t:"재작업",x:655},{t:"재검사",x:765},{t:"특채",x:875,sub:"고객 승인"},{t:"폐기",x:985}];
+var __pfSel="";
+function pfEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function pfSvg_(){
+  var o=[], E=pfEsc_;
+  var line=function(pts,col,mk,dash){ return '<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2"'+(dash?' stroke-dasharray="6 4"':'')+(mk?' marker-end="url(#'+mk+')"':'')+'/>'; };
+  var lab=function(x,y,t,col,anc){ return '<text x="'+x+'" y="'+y+'" font-size="11" font-weight="700" fill="'+col+'" text-anchor="'+(anc||"middle")+'">'+E(t)+'</text>'; };
+  o.push('<svg id="pf-svg" viewBox="0 0 1100 975" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;font-family:inherit;">');
+  o.push('<defs>');
+  [["pf-a","#5A6478"],["pf-aR","#C0392B"],["pf-aP","#7A3E9A"],["pf-aO","#C77700"]].forEach(function(m){
+    o.push('<marker id="'+m[0]+'" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="'+m[1]+'"/></marker>'); });
+  o.push('</defs>');
+  // 단계 구분(좌측 띠)
+  [["수주·계획",18,162,"#0B5CAB"],["구매·입고",168,318,"#0B5CAB"],["생산·검사",324,638,"#1E7A46"],["보관·출하",644,958,"#0B5CAB"]].forEach(function(b){
+    o.push('<rect x="10" y="'+b[1]+'" width="530" height="'+(b[2]-b[1])+'" rx="10" fill="#F7F9FC" stroke="#E3E8F0"/>');
+    o.push('<rect x="10" y="'+b[1]+'" width="34" height="'+(b[2]-b[1])+'" rx="10" fill="'+b[3]+'" opacity=".12"/>');
+    var cy=(b[1]+b[2])/2; o.push('<text x="27" y="'+cy+'" font-size="12" font-weight="800" fill="'+b[3]+'" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 27 '+cy+')">'+E(b[0])+'</text>'); });
+  [["내부 부적합 처리",236,490,"#FDF5F5","#F2C9C4","#C0392B"],["원인분석 · 시정 · 사후관리",520,852,"#FAF6FC","#E3D3EC","#7A3E9A"],["고객 클레임",880,958,"#FFFAF0","#F2DDB3","#C77700"]].forEach(function(b){
+    o.push('<rect x="590" y="'+b[1]+'" width="480" height="'+(b[2]-b[1])+'" rx="10" fill="'+b[3]+'" stroke="'+b[4]+'"/>');
+    o.push(lab(600,b[1]+15,b[0],b[5],"start")); });
+  // 주 흐름 화살표
+  var M={}; PF_N.forEach(function(n){ M[n.k]=n; });
+  var hh=function(n){ return n.sh==="dia"?33:24; };
+  var main=["m1","m2","m3","m4","m5","m6","m7","m8","m9","m10","m11","m12"];
+  for(var i=0;i<main.length-1;i++){ var a=M[main[i]], b=M[main[i+1]];
+    o.push(line(a.x+','+(a.y+hh(a))+' '+b.x+','+(b.y-hh(b)),"#5A6478","pf-a"));
+    if(a.sh==="dia") o.push(lab(a.x+14,(a.y+hh(a)+b.y-hh(b))/2+4,a.k==="m11"?"출하 가능":"합격","#1E7A46","start")); }
+  // 불합격 → 부적합 (빨간 버스)
+  ["m4","m6","m8","m10","m11"].forEach(function(k){ var n=M[k];
+    if(k!=="m4") o.push(line('425,'+n.y+' 560,'+n.y,"#C0392B"));
+    o.push(lab(492,n.y-6,k==="m11"?"HOLD":"불합격","#C0392B")); });
+  o.push(line('560,840 560,280',"#C0392B"));
+  o.push(line('425,280 700,280',"#C0392B","pf-aR"));
+  // 부적합 처리
+  o.push(line('830,304 830,327',"#C0392B","pf-aR"));
+  o.push(line('830,393 830,410',"#C0392B")); o.push(line('655,410 985,410',"#C0392B"));
+  PF_R3.forEach(function(r){ o.push(line(r.x+',410 '+r.x+',428',"#C0392B","pf-aR")); o.push(line(r.x+',470 '+r.x+',490',"#7A3E9A")); });
+  o.push(line('655,490 985,490',"#7A3E9A")); o.push(line('830,490 830,534',"#7A3E9A","pf-aP"));
+  o.push(lab(840,515,"원인분석 (A등급 필수)","#7A3E9A","start"));
+  // 시정·사후관리
+  o.push(line('830,584 830,614',"#7A3E9A","pf-aP"));
+  o.push(line('830,664 830,690',"#7A3E9A","pf-aP"));
+  o.push(line('830,760 830,784',"#7A3E9A","pf-aP")); o.push(lab(842,777,"재발 없음","#1E7A46","start"));
+  o.push(line('960,725 1010,725 1010,552 960,552',"#C0392B","pf-aR")); o.push(lab(1015,640,"재발","#C0392B","start"));
+  // 클레임
+  o.push(line('425,920 700,920',"#C77700","pf-aO")); o.push(lab(560,912,"고객 사용 중 문제 발생","#C77700"));
+  o.push(line('960,920 1045,920 1045,570 960,570',"#C77700","pf-aO"));
+  // 피드백 (기준·문서 개정)
+  o.push(line('960,810 1085,810 1085,125 425,125',"#7A3E9A","pf-aP",true));
+  o.push(lab(760,117,"재발방지 → 검사기준 · QC공정도 · 문서 개정 반영","#7A3E9A"));
+  // 노드
+  PF_N.forEach(function(n){ var st=PF_STYLE[n.c], sel=(__pfSel===n.k), sw=sel?4:2, w=(n.x>600?260:250);
+    o.push('<g class="pf-n" data-k="'+n.k+'" onclick="pfShow_(\''+n.k+'\')" style="cursor:pointer;">');
+    if(n.sh==="dia") o.push('<polygon points="'+(n.x-w/2)+','+n.y+' '+n.x+','+(n.y-33)+' '+(n.x+w/2)+','+n.y+' '+n.x+','+(n.y+33)+'" fill="'+st.f+'" stroke="'+st.s+'" stroke-width="'+sw+'"/>');
+    else o.push('<rect x="'+(n.x-w/2)+'" y="'+(n.y-24)+'" width="'+w+'" height="48" rx="9" fill="'+st.f+'" stroke="'+st.s+'" stroke-width="'+sw+'"/>');
+    o.push('<text x="'+n.x+'" y="'+(n.y-4)+'" font-size="13.5" font-weight="800" fill="'+st.s+'" text-anchor="middle">'+E(PF_D[n.k].t)+'</text>');
+    o.push('<text x="'+n.x+'" y="'+(n.y+13)+'" font-size="10.5" fill="#5A6478" text-anchor="middle">💾 '+E(n.sub)+'</text>');
+    o.push('</g>'); });
+  PF_R3.forEach(function(r){ var sel=(__pfSel==="r3");
+    o.push('<g class="pf-n" data-k="r3" onclick="pfShow_(\'r3\')" style="cursor:pointer;"><rect x="'+(r.x-48)+'" y="430" width="96" height="40" rx="8" fill="#FFFFFF" stroke="#C0392B" stroke-width="'+(sel?3.5:1.8)+'"/>'
+      +'<text x="'+r.x+'" y="'+(r.sub?447:455)+'" font-size="12.5" font-weight="800" fill="#C0392B" text-anchor="middle">'+E(r.t)+'</text>'
+      +(r.sub?'<text x="'+r.x+'" y="462" font-size="10" fill="#5A6478" text-anchor="middle">'+E(r.sub)+'</text>':'')+'</g>'); });
+  o.push('</svg>');
+  return o.join("");
+}
+function pfDetailHtml_(k){
+  var d=PF_D[k]; if(!d) return ""; var E=pfEsc_;
+  var col=function(ti,arr,c){ return '<div style="flex:1;min-width:190px;background:#fff;border:1px solid #E3E8F0;border-top:3px solid '+c+';border-radius:9px;padding:9px 11px;">'
+    +'<div style="font-size:11.5px;font-weight:800;color:'+c+';margin-bottom:4px;">'+ti+'</div>'
+    +'<ul style="margin:0;padding-left:16px;font-size:12.5px;color:#2B3345;line-height:1.55;">'+arr.map(function(x){ return '<li>'+E(x)+'</li>'; }).join("")+'</ul></div>'; };
+  return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">'
+    +'<div style="font-size:16px;font-weight:800;color:#1F2A44;">'+E(d.t)+'</div>'
+    +'<div style="font-size:11.5px;color:#8A93A6;">📄 '+E(d.doc)+'</div>'
+    +'<button type="button" onclick="pfGo_(\''+k+'\')" style="margin-left:auto;background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:12px;">해당 기능 열기 →</button></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+    +col("① 기준",d.std,"#0B5CAB")+col("② 검사·확인",d.ins,"#1E7A46")+col("③ 기록·저장 위치",d.rec,"#8A6D1F")+col("④ 처리·관리",d.act,"#8A1F1F")+'</div>';
+}
+function pfTableHtml_(){
+  var E=pfEsc_, td='style="border:1px solid #D6DEE8;padding:6px 8px;vertical-align:top;font-size:12px;line-height:1.5;"';
+  var li=function(a){ return a.map(function(x){ return "· "+E(x); }).join("<br>"); };
+  var h='<table style="width:100%;border-collapse:collapse;min-width:820px;"><thead><tr style="background:#1F2A44;color:#fff;">'
+    +['단계','기준 (근거문서)','검사·확인','기록·저장 위치','처리·관리'].map(function(t){ return '<th style="border:1px solid #1F2A44;padding:7px 8px;font-size:12px;text-align:left;">'+t+'</th>'; }).join("")+'</tr></thead><tbody>';
+  PF_ORDER.forEach(function(k,i){ var d=PF_D[k]; var grp=k.charAt(0);
+    var bg=grp==="m"?(i%2?"#F7F9FC":"#fff"):(grp==="c"?"#FFFAF0":(k==="r1"||k==="r2"||k==="r3"?"#FDF5F5":"#FAF6FC"));
+    h+='<tr data-pfk="'+k+'" style="background:'+bg+';"><td '+td+'><b>'+E(d.t)+'</b></td><td '+td+'>'+li(d.std)+'<div style="color:#8A93A6;font-size:11px;margin-top:3px;">📄 '+E(d.doc)+'</div></td><td '+td+'>'+li(d.ins)+'</td><td '+td+'>'+li(d.rec)+'</td><td '+td+'>'+li(d.act)+'</td></tr>'; });
+  return h+'</tbody></table>';
+}
+function renderProcFlow_(){
+  var cv=document.getElementById("pf-canvas"); if(!cv) return;
+  cv.innerHTML=pfSvg_();
+  var tb=document.getElementById("pf-table"); if(tb) tb.innerHTML=pfTableHtml_();
+  var dt=document.getElementById("pf-detail"); if(dt && !__pfSel) dt.innerHTML='<div style="color:#8A93A6;font-size:12.5px;text-align:center;padding:10px;">흐름도의 단계를 누르면 기준 · 검사 · 저장 위치 · 처리 방법이 여기에 표시됩니다.</div>';
+}
+function pfShow_(k){
+  __pfSel=k;
+  var cv=document.getElementById("pf-canvas"); if(cv) cv.innerHTML=pfSvg_();
+  var dt=document.getElementById("pf-detail"); if(dt){ dt.innerHTML=pfDetailHtml_(k); try{ dt.scrollIntoView({behavior:"smooth",block:"nearest"}); }catch(_){} }
+}
+function pfGo_(k){ var d=PF_D[k]; if(!d||!d.go) return;
+  try{ if(typeof qmsGoto_==="function"){ qmsGoto_(d.go); return; } }catch(_){}
+  if(d.go.view) flowGo_(d.go.view); }
+function pfPrint_(){
+  var sel=__pfSel; __pfSel=""; var svg=pfSvg_(); __pfSel=sel;
+  var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되어 인쇄 창을 열 수 없습니다."); return; }
+  w.document.write('<html><head><meta charset="UTF-8"><title>NTL 품질 프로세스 흐름도</title><style>body{font-family:Pretendard,"Malgun Gothic",sans-serif;margin:14px;color:#1F2A44;}h2{margin:0 0 4px;}.pg{page-break-after:always;}@page{size:A4 portrait;margin:10mm;}table{min-width:0 !important;}</style></head><body>'
+    +'<div class="pg"><h2>NTL 품질 프로세스 흐름도</h2><div style="font-size:12px;color:#7A8598;margin-bottom:8px;">발주 → 입고 → 생산·검사 → 출하 → 고객 클레임 → 시정조치 · 사후관리 &nbsp;|&nbsp; 💾 = 기록·저장 위치</div>'+svg+'</div>'
+    +'<h2 style="margin-top:6px;">단계별 기준 · 검사 · 기록 · 처리</h2>'+pfTableHtml_()+'</body></html>');
+  w.document.close(); setTimeout(function(){ try{ w.focus(); w.print(); }catch(_){} },400);
+}
+function pfFull_(){
+  var el=document.getElementById("pf-wrap"); if(!el) return;
+  try{ if(document.fullscreenElement){ document.exitFullscreen(); return; } (el.requestFullscreen||el.webkitRequestFullscreen).call(el); }catch(_){ alert("이 브라우저는 전체화면을 지원하지 않습니다."); }
 }
 /* ========================= 📇 품목이력 카드 (도번별 연결관리) ========================= */
 function ihNorm_(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x==null?"":x).trim().toUpperCase(); }
