@@ -4732,34 +4732,98 @@ function ncrNorm_(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):
 function ncrKey_(r){ return ncrNorm_(r.draw)+"|"+String(r.sn||"").trim()+"|"+String(r.insDate||r.date||"").trim()+"|"+String(r.types||"").trim(); }
 function ncrToday_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
 function ncrWho_(){ try{ return (insMetaByType&&insMetaByType.incoming&&insMetaByType.incoming.inspector)||(insMetaByType&&insMetaByType.shipping&&insMetaByType.shipping.inspector)||""; }catch(_){ return ""; } }
-function ncrSave_(){ try{ if(typeof idbSet==="function") idbSet("ncrDetail", __ncrDetail); }catch(_){}
-  if(typeof qShareLoad_==="function"){ qShareLoad_("ncrDetail", function(rm){ if(rm&&typeof rm==="object"){ Object.keys(rm).forEach(function(k){ if(!(k in __ncrDetail)) __ncrDetail[k]=rm[k]; }); } try{ qShareSave_("ncrDetail", __ncrDetail, ""); }catch(_){} }); }
-  else { try{ if(typeof qShareSave_==="function") qShareSave_("ncrDetail", __ncrDetail, ""); }catch(_){} } }
-function ncrEnsure_(){ if(__ncrDetailLoaded) return; __ncrDetailLoaded=true;
-  try{ if(typeof idbGet==="function"){ idbGet("ncrDetail").then(function(v){ if(v&&typeof v==="object") __ncrDetail=v;
-    try{ if(typeof qShareLoad_==="function") qShareLoad_("ncrDetail", function(sv){ if(sv&&typeof sv==="object"){ __ncrDetail=Object.assign({}, sv, __ncrDetail); } }); }catch(_){}
-  }).catch(function(){}); } }catch(_){} }
-function ncrHas_(r){ var d=__ncrDetail[ncrKey_(r)]; return !!(d && (d.cause||d.escape||d.why||d.corrective||d.preventive||d.effect)); }
-function ncrBtnCell_(r){ var has=ncrHas_(r); var isA=(typeof ncGradeOfTypes_==="function" && ncGradeOfTypes_(r.types)==="A"); var k=ncrEscAttr_(ncrKey_(r)), dr=ncrEscAttr_(r.draw), ty=ncrEscAttr_(r.types);
-  var lbl, bg; if(has){ lbl="\u2705 NCR"; bg="#1E7A46"; } else if(isA){ lbl="\u26A0 NCR 필수"; bg="#C0392B"; } else { lbl="\uD83D\uDCDD NCR"; bg="#8A1F1F"; }   // A등급(크리티컬)은 NCR 없으면 미완결
-  return '<button type="button" title="'+(isA&&!has?"A등급(크리티컬)은 NCR 작성해야 종결":"")+'" onclick="ncrOpen_(\''+k+'\',\''+dr+'\',\''+ty+'\')" style="background:'+bg+';color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">'+lbl+'</button>'; }
-function ncrOpen_(key, draw, types){
-  var d=__ncrDetail[key]||{};
-  var ta=function(id,ph,val,h){ return '<label style="font-size:12px;color:#5A6478;font-weight:700;">'+ph+'<textarea id="'+id+'" rows="'+(h||2)+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;font-size:13px;resize:vertical;">'+ncrEsc_(val||"")+'</textarea></label>'; };
+// [V9.28+] NCR 저장: 구글시트 'NCR_Master' 탭(행 단위 upsert) = 기준 데이터. idb는 빠른 표시용 캐시.
+//   · 이전 공유저장(qShare "ncrDetail")은 읽기만 → 시트에 없는 건은 1회 자동 이관. 더 이상 qShare에 쓰지 않음(로컬 우선 병합으로 되돌아가던 문제 제거)
+//   · 내부 부적합(검사일보 종결이력)과 고객 클레임(고객부적합관리)이 같은 탭을 공용으로 사용
+var NCR_TAB="NCR_Master";
+var NCR_CUTOVER="2026-08-11";   // QMS 입력 시작일: 이후 같은 건(발생일+도번)은 엑셀 대장보다 QMS NCR 우선
+var NCR_COLS=[
+  ["src","구분"],["draw","도번"],["sn","S/N"],["customer","고객"],["date","발생일"],["types","불량유형/내용"],["grade","등급"],
+  ["temp","임시조치(D3)"],["cause","발생원인"],["escape","유출원인"],["why","근본원인(5Why)"],
+  ["corrective","시정조치"],["preventive","재발방지"],["horiz","수평전개·문서개정(D7)"],["effect","효과확인"],
+  ["by","작성자"],["appr","승인자"],["apprDate","승인일"],["created","최초작성일"],["updated","최종수정일"],["ts","_ts"]
+];
+var __ncrMeta={}, __ncrOpenTs=0, __ncrSheetLoaded=false;
+function ncrNowStr_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return ncrToday_()+" "+z(d.getHours())+":"+z(d.getMinutes()); }
+function ncrCustKey_(r){ return "C|"+String(r.date||"").replace(/[^0-9]/g,"")+"|"+String(r.customer||"").trim()+"|"+ncrNorm_(r.partNo); }
+function ncrHasKey_(key){ var d=__ncrDetail[key]; return !!(d && (d.cause||d.escape||d.why||d.corrective||d.preventive||d.effect)); }
+// 이전 형식(키만 있고 필드 없음) 보완: 내부 키 = 도번|S/N|검사일|유형, 고객 키 = C|일자|고객|도번
+function ncrFillFromKey_(key, d){ d=d||{}; var p=String(key).split("|");
+  if(p[0]==="C"){ if(!d.src) d.src="고객"; if(!d.customer) d.customer=p[2]||""; if(!d.draw) d.draw=p[3]||""; if(!d.date&&p[1]&&p[1].length>=8) d.date=p[1].slice(0,4)+"-"+p[1].slice(4,6)+"-"+p[1].slice(6,8); }
+  else { if(!d.src) d.src="내부"; if(!d.draw) d.draw=p[0]||""; if(!d.sn) d.sn=p[1]||""; if(!d.date) d.date=p[2]||""; if(!d.types) d.types=p.slice(3).join("|"); }
+  return d; }
+// 이전 형식 레코드(구분 없음)는 date가 '마지막 저장일'이었음 → 작성일로 옮기고 발생일은 키에서 복원
+function ncrUpgrade_(k,d){ if(!d||d.src) return d; d.created=d.created||d.date||""; d.updated=d.updated||d.date||""; d.date=""; return ncrFillFromKey_(k,d); }
+function ncrUpgradeAll_(){ Object.keys(__ncrDetail||{}).forEach(function(k){ ncrUpgrade_(k,__ncrDetail[k]); }); }
+function ncrRowFromRec_(key, d){ return NCR_COLS.map(function(c){ var v=(c[0]==="ts")?(d.ts||0):d[c[0]]; v=(v==null?"":String(v)); return (v!==""&&c[0]!=="ts")?("'"+v):v; }).concat([key]); }
+function ncrPostRows_(rows){ var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url||!rows.length) return Promise.resolve();
+  var header=NCR_COLS.map(function(c){ return c[1]; }).concat(["_id"]);
+  return fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({ action:"upsertRows", fileId:INS_SHEET_FILE, sheetName:NCR_TAB, header:header, rows:rows, deleteIds:[], createIfMissing:true })}).catch(function(){}); }
+function ncrReadSheet_(cb){ var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ cb(null); return; }
+  fetch(url+"?dataset="+encodeURIComponent(NCR_TAB)+"&nocache=1&_t="+Date.now(),{cache:"no-store"}).then(function(r){ return r.json(); }).then(function(res){
+    if(!res||!res.success||!Array.isArray(res.rows)){ cb(null); return; }
+    var map={}; res.rows.forEach(function(o){ var id=String(o["_id"]||"").trim(); if(!id) return; var d={};
+      NCR_COLS.forEach(function(c){ var v=o[c[1]]; v=(v==null?"":String(v)); if(v.charAt(0)==="'") v=v.slice(1); d[c[0]]=v; }); d.ts=Number(d.ts)||0; map[id]=d; });
+    cb(map);
+  }).catch(function(){ cb(null); }); }
+function ncrSave_(){ try{ if(typeof idbSet==="function") idbSet("ncrDetail", __ncrDetail); }catch(_){} }
+function ncrEnsure_(onDone){
+  if(__ncrDetailLoaded){ if(onDone&&__ncrSheetLoaded) onDone(); else if(onDone) (window.__ncrWaiters=window.__ncrWaiters||[]).push(onDone); return; }
+  __ncrDetailLoaded=true; if(onDone) (window.__ncrWaiters=window.__ncrWaiters||[]).push(onDone);
+  var finish=function(){ __ncrSheetLoaded=true; ncrUpgradeAll_(); ncrSave_(); var w=window.__ncrWaiters||[]; window.__ncrWaiters=[]; w.forEach(function(f){ try{ f(); }catch(_){} }); };
+  var fromSheet=function(){
+    ncrReadSheet_(function(sm){
+      if(!sm){ finish(); return; }   // 시트 읽기 실패 → 캐시로 표시, 이관은 다음 기회에
+      ncrUpgradeAll_();
+      var mig=[];
+      Object.keys(sm).forEach(function(k){ var loc=__ncrDetail[k]; if(!loc || (Number(loc.ts)||0)<=sm[k].ts) __ncrDetail[k]=sm[k]; else mig.push(ncrRowFromRec_(k,loc)); });   // 로컬이 더 최신(전송 실패분) → 재전송
+      var legacy=function(sv){
+        if(sv&&typeof sv==="object"){ Object.keys(sv).forEach(function(k){ if(!(k in __ncrDetail)) __ncrDetail[k]=sv[k]; }); }
+        ncrUpgradeAll_();
+        Object.keys(__ncrDetail).forEach(function(k){ if(sm[k]) return; var d=__ncrDetail[k]; if(!d) return;
+          if(!d.ts) d.ts=1;   // 이전 형식 → 1회 이관
+          mig.push(ncrRowFromRec_(k,d)); });
+        if(mig.length) ncrPostRows_(mig);
+        finish(); };
+      try{ if(typeof qShareLoad_==="function") qShareLoad_("ncrDetail", legacy); else legacy(null); }catch(_){ legacy(null); }
+    }); };
+  try{ if(typeof idbGet==="function"){ idbGet("ncrDetail").then(function(v){ if(v&&typeof v==="object") __ncrDetail=v; fromSheet(); }).catch(fromSheet); } else fromSheet(); }catch(_){ fromSheet(); }
+}
+function ncrHas_(r){ return ncrHasKey_(ncrKey_(r)); }
+function ncrBtnCell_(r, key, meta){
+  key=key||ncrKey_(r);
+  __ncrMeta[key]=meta||{ src:"내부", draw:r.draw, sn:r.sn||"", date:r.insDate||r.date||"", types:r.types||"" };
+  var has=ncrHasKey_(key), done=ncrDoneKey_(key); var isA=(typeof ncGradeOfTypes_==="function" && ncGradeOfTypes_(r.types)==="A"); var k=ncrEscAttr_(key);
+  var lbl, bg; if(done){ lbl="\u2705 NCR"; bg="#1E7A46"; } else if(isA){ lbl=has?"\u26A0 NCR 작성중":"\u26A0 NCR 필수"; bg="#C0392B"; } else if(has){ lbl="\uD83D\uDCDD NCR 작성중"; bg="#B45309"; } else { lbl="\uD83D\uDCDD NCR"; bg="#8A1F1F"; }   // A등급(크리티컬)은 NCR 없으면 미완결
+  return '<button type="button" title="'+(isA&&!done?"A등급(크리티컬)은 NCR(원인+재발방지) 작성해야 종결":"")+'" onclick="ncrOpen_(\''+k+'\')" style="background:'+bg+';color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">'+lbl+'</button>'; }
+// 고객부적합 행 → NCR (키: 일자|고객|도번)
+function ncrBtnCellCust_(r){ if(!r) return ""; var key=ncrCustKey_(r);
+  return ncrBtnCell_({ draw:r.partNo, types:r.content }, key, { src:"고객", draw:r.partNo||"", sn:"", customer:r.customer||"", date:r.date||"", types:r.content||"" }); }
+function ncrOpen_(key){
+  var d=ncrUpgrade_(key, __ncrDetail[key])||{}; var m=__ncrMeta[key]||{}; d=ncrFillFromKey_(key, Object.assign({}, m, d));
+  __ncrOpenTs=Number(d.ts)||0;
+  var E=ncrEsc_;
+  var ta=function(id,ph,val,h){ return '<label style="font-size:12px;color:#5A6478;font-weight:700;">'+ph+'<textarea id="'+id+'" rows="'+(h||2)+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;font-size:13px;resize:vertical;">'+E(val||"")+'</textarea></label>'; };
+  var inp=function(id,ph,val,type){ return '<label style="flex:1;min-width:140px;font-size:12px;color:#5A6478;font-weight:700;">'+ph+'<input id="'+id+'" type="'+(type||"text")+'" value="'+E(val||"")+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"></label>'; };
+  var sub=[d.src==="고객"?("고객: "+(d.customer||"-")):"", d.sn?("S/N: "+d.sn):"", d.date?("발생일: "+d.date):""].filter(Boolean).join(" · ");
   var html='<div id="ncr-ov" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100070;display:flex;align-items:center;justify-content:center;padding:16px;">'
-    +'<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
-    +'<div style="background:#8A1F1F;color:#fff;padding:13px 18px;font-weight:800;position:sticky;top:0;">\uD83D\uDCDD NCR 부적합 보고서 · '+ncrEsc_(draw)+' <span style="font-weight:400;font-size:12px;opacity:.85;">('+ncrEsc_(types)+')</span></div>'
+    +'<div style="background:#fff;border-radius:14px;max-width:600px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
+    +'<div style="background:'+(d.src==="고객"?"#7A3E9A":"#8A1F1F")+';color:#fff;padding:13px 18px;font-weight:800;position:sticky;top:0;z-index:1;">\uD83D\uDCDD NCR 부적합 보고서 ('+E(d.src||"내부")+') · '+E(d.draw)
+    +'<div style="font-weight:400;font-size:12px;opacity:.9;margin-top:2px;">'+E(d.types)+(sub?(" · "+E(sub)):"")+'</div></div>'
     +'<div style="padding:16px;display:flex;flex-direction:column;gap:11px;">'
+    + ta("ncr-temp","⓪ 임시조치 (격리·선별·재고/출하분 확인·HOLD)", d.temp,2)
     + ta("ncr-cause","① 발생 원인 (왜 발생?)", d.cause,2)
     + ta("ncr-escape","② 유출 원인 (왜 걸러지지 못했나?)", d.escape,2)
     + ta("ncr-why","③ 근본 원인 (5Why)", d.why,4)
     + ta("ncr-corrective","④ 시정 조치 (즉시)", d.corrective,2)
     + ta("ncr-preventive","⑤ 재발 방지 대책 (근본)", d.preventive,2)
-    + ta("ncr-effect","⑥ 효과 확인 (검증 결과)", d.effect,2)
-    +'<label style="font-size:12px;color:#5A6478;font-weight:700;">작성자<input id="ncr-by" type="text" value="'+ncrEsc_(d.by||ncrWho_())+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"></label>'
+    + ta("ncr-horiz","⑥ 수평전개 · 문서개정 (유사 도번·공정 적용, 개정 문서번호)", d.horiz,2)
+    + ta("ncr-effect","⑦ 효과 확인 (검증 결과)", d.effect,2)
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;">'+inp("ncr-by","작성자",d.by||ncrWho_())+inp("ncr-appr","승인자",d.appr)+inp("ncr-apprDate","승인일",d.apprDate,"date")+'</div>'
+    +'<div style="font-size:11px;color:#8A93A6;">최초작성 '+E(d.created||"-")+' · 최종수정 '+E(d.updated||"-")+' · 저장 위치: 구글시트 \''+NCR_TAB+'\' 탭</div>'
     +'<div style="display:flex;gap:8px;margin-top:4px;">'
-    +'<button type="button" onclick="ncrCommit_(\''+ncrEscAttr_(key)+'\')" style="flex:1;background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:11px;font-weight:800;cursor:pointer;">저장</button>'
-    +'<button type="button" onclick="ncrPrintOne_(\''+ncrEscAttr_(key)+'\',\''+ncrEscAttr_(draw)+'\',\''+ncrEscAttr_(types)+'\')" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:11px 16px;font-weight:700;cursor:pointer;">\uD83D\uDDA8 출력</button>'
+    +'<button type="button" id="ncr-save-btn" onclick="ncrCommit_(\''+ncrEscAttr_(key)+'\')" style="flex:1;background:#8A1F1F;color:#fff;border:none;border-radius:8px;padding:11px;font-weight:800;cursor:pointer;">저장</button>'
+    +'<button type="button" onclick="ncrPrintOne_(\''+ncrEscAttr_(key)+'\')" style="background:#475569;color:#fff;border:none;border-radius:8px;padding:11px 16px;font-weight:700;cursor:pointer;">\uD83D\uDDA8 출력</button>'
     +'<button type="button" onclick="var o=document.getElementById(\'ncr-ov\');if(o)o.remove();" style="background:#EEF1F6;border:1px solid #D6DEE8;border-radius:8px;padding:11px 16px;cursor:pointer;">닫기</button>'
     +'</div></div></div></div>';
   var old=document.getElementById("ncr-ov"); if(old) old.remove();
@@ -4768,20 +4832,58 @@ function ncrOpen_(key, draw, types){
 }
 function ncrCommit_(key){
   var g=function(id){ return String((document.getElementById(id)||{}).value||"").trim(); };
-  __ncrDetail[key]={ cause:g("ncr-cause"), escape:g("ncr-escape"), why:g("ncr-why"), corrective:g("ncr-corrective"), preventive:g("ncr-preventive"), effect:g("ncr-effect"), by:g("ncr-by")||ncrWho_(), date:ncrToday_() };
-  ncrSave_();
-  var o=document.getElementById("ncr-ov"); if(o) o.remove();
-  try{ if(typeof insDefectHistOpen_==="function"){} }catch(_){}
-  var dov=document.getElementById("dhist-ov"); if(dov && typeof insShowDefectHist_==="function"){ dov.remove(); insShowDefectHist_(); }
+  var prev=ncrUpgrade_(key, __ncrDetail[key])||{}; var m=__ncrMeta[key]||{};
+  var base=ncrFillFromKey_(key, Object.assign({}, m, prev));
+  var grade=""; try{ if(typeof ncGradeOfTypes_==="function") grade=ncGradeOfTypes_(base.types)||""; }catch(_){}
+  var rec=Object.assign({}, base, { grade:grade, temp:g("ncr-temp"), cause:g("ncr-cause"), escape:g("ncr-escape"), why:g("ncr-why"), corrective:g("ncr-corrective"), preventive:g("ncr-preventive"), horiz:g("ncr-horiz"), effect:g("ncr-effect"),
+    by:g("ncr-by")||ncrWho_(), appr:g("ncr-appr"), apprDate:g("ncr-apprDate"), created:base.created||ncrNowStr_(), updated:ncrNowStr_(), ts:Date.now() });
+  var btn=document.getElementById("ncr-save-btn"); if(btn){ btn.disabled=true; btn.textContent="저장 중…"; }
+  var doSave=function(){
+    __ncrDetail[key]=rec; ncrSave_(); ncrPostRows_([ncrRowFromRec_(key,rec)]);
+    var o=document.getElementById("ncr-ov"); if(o) o.remove();
+    var dov=document.getElementById("dhist-ov"); if(dov && typeof insShowDefectHist_==="function"){ dov.remove(); insShowDefectHist_(); }
+    try{ if(document.getElementById("nc-content") && typeof ncRender==="function") ncRender(); }catch(_){}
+    try{ if(document.getElementById("ncr-body")) ncrRenderBody_(); }catch(_){}
+  };
+  // 저장 직전 시트 확인: 창을 연 뒤 다른 PC가 먼저 수정했으면 덮어쓸지 확인
+  ncrReadSheet_(function(sm){
+    var sv=sm&&sm[key];
+    if(sv && sv.ts>__ncrOpenTs){
+      if(!confirm("다른 PC에서 이 NCR을 먼저 수정했습니다 ("+(sv.updated||"")+", "+(sv.by||"")+").\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장 안 함 (다시 열면 최신 내용 표시)")){
+        __ncrDetail[key]=sv; ncrSave_(); if(btn){ btn.disabled=false; btn.textContent="저장"; } var o=document.getElementById("ncr-ov"); if(o) o.remove(); return; }
+      rec.created=sv.created||rec.created;
+    }
+    doSave();
+  });
 }
-function ncrPrintOne_(key, draw, types){
-  var d=__ncrDetail[key]||{}; var E=ncrEsc_;
+function ncrPrintOne_(key){
+  var d=ncrFillFromKey_(key, Object.assign({}, __ncrMeta[key]||{}, __ncrDetail[key]||{})); var E=ncrEsc_;
   var row=function(t,v){ return '<tr><th style="width:170px;background:#F0F4F8;text-align:left;padding:8px;border:1px solid #999;vertical-align:top;">'+t+'</th><td style="padding:8px;border:1px solid #999;white-space:pre-wrap;">'+E(v||"")+'</td></tr>'; };
   var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; }
   w.document.write('<html><head><title>NCR 부적합 보고서</title><meta charset="utf-8"><style>body{font-family:sans-serif;padding:24px;}table{border-collapse:collapse;width:100%;}h2{margin:0 0 6px;}</style></head><body>'
-    +'<h2>\uD83D\uDCDD NCR 부적합 보고서</h2><div style="color:#666;font-size:12px;margin-bottom:12px;">도번: '+E(draw)+' · 유형: '+E(types)+' · 작성일: '+E(d.date||"")+' · 작성자: '+E(d.by||"")+'</div>'
-    +'<table>'+row("① 발생 원인",d.cause)+row("② 유출 원인",d.escape)+row("③ 근본 원인(5Why)",d.why)+row("④ 시정 조치",d.corrective)+row("⑤ 재발 방지",d.preventive)+row("⑥ 효과 확인",d.effect)+'</table></body></html>');
+    +'<h2>\uD83D\uDCDD NCR 부적합 보고서 ('+E(d.src||"내부")+')</h2><div style="color:#666;font-size:12px;margin-bottom:12px;">도번: '+E(d.draw)+(d.customer?(' · 고객: '+E(d.customer)):'')+(d.sn?(' · S/N: '+E(d.sn)):'')+' · 발생일: '+E(d.date||"")+' · 유형: '+E(d.types)+'<br>작성자: '+E(d.by||"")+' · 최초작성: '+E(d.created||"")+' · 최종수정: '+E(d.updated||"")+'</div>'
+    +'<table>'+row("⓪ 임시조치",d.temp)+row("① 발생 원인",d.cause)+row("② 유출 원인",d.escape)+row("③ 근본 원인(5Why)",d.why)+row("④ 시정 조치",d.corrective)+row("⑤ 재발 방지",d.preventive)+row("⑥ 수평전개·문서개정",d.horiz)+row("⑦ 효과 확인",d.effect)+'</table>'
+    +'<table style="margin-top:14px;width:320px;margin-left:auto;"><tr><th style="border:1px solid #999;padding:6px;background:#F0F4F8;">작성</th><th style="border:1px solid #999;padding:6px;background:#F0F4F8;">승인</th></tr><tr><td style="border:1px solid #999;height:48px;text-align:center;">'+E(d.by||"")+'</td><td style="border:1px solid #999;text-align:center;">'+E(d.appr||"")+'<div style="font-size:11px;color:#666;">'+E(d.apprDate||"")+'</div></td></tr></table>'
+    +'</body></html>');
   w.document.close(); setTimeout(function(){ try{ w.print(); }catch(e){} }, 400);
+}
+// [종결 규칙] A등급(크리티컬)은 NCR 완료(발생원인 또는 5Why + 재발방지)해야 종결. 기준일(NCR_CUTOVER) 이후 발생 건만 적용(과거 엑셀 시기 건은 소급 안 함)
+function ncrDoneKey_(key){ var d=__ncrDetail[key]; return !!(d && (d.cause||d.why) && d.preventive); }
+function ncrAfterCut_(date){ var n=ncrDateNum_(date); return !!n && n>=NCR_CUTOVER.replace(/-/g,""); }
+function ncrNeedA_(types, key, date){ try{ return (typeof ncGradeOfTypes_==="function") && ncGradeOfTypes_(types)==="A" && ncrAfterCut_(date) && !ncrDoneKey_(key); }catch(_){ return false; } }
+function ncrWaitInternal_(){ var n=0; try{ insClosedList_(true).forEach(function(c){ if(ncrNeedA_(c.types, ncrKey_(c), c.insDate)) n++; }); }catch(_){} return n; }
+function ncrWaitCustomer_(){ var n=0; try{ (ncData||[]).forEach(function(r){ if(typeof trashIsDeleted==="function"&&trashIsDeleted(r)) return; if(ncJudge(r).stage.key==="ncrWait") n++; }); }catch(_){} return n; }
+// NCR 대장: 엑셀 대장 + QMS NCR 합쳐 보기 (기준일 이후 같은 발생일+도번은 QMS 우선)
+function ncrDateNum_(s){ var m=String(s||"").match(/(\d{4})\D?(\d{1,2})\D?(\d{1,2})/); return m?(m[1]+("0"+m[2]).slice(-2)+("0"+m[3]).slice(-2)):""; }
+function ncrAllRows_(){
+  var cut=NCR_CUTOVER.replace(/-/g,""), q=[], qk={};
+  Object.keys(__ncrDetail||{}).forEach(function(k){ var d=ncrFillFromKey_(k, Object.assign({}, __ncrDetail[k]));
+    if(!ncrHasKey_(k) && !d.temp) return;
+    q.push({ date:d.date, part:d.draw, customer:d.customer||"", content:d.types, vendor:d.src||"", register:d.by||"", src:"QMS", key:k });
+    qk[ncrDateNum_(d.date)+"|"+ncrNorm_(d.draw)]=1; });
+  var x=(__ncrData||[]).filter(function(r){ var dn=ncrDateNum_(r.date); if(dn && dn>=cut && qk[dn+"|"+ncrNorm_(r.part)]) return false; return true; })
+    .map(function(r){ return Object.assign({ src:"엑셀" }, r); });
+  return q.concat(x).sort(function(a,b){ return ncrDateNum_(b.date).localeCompare(ncrDateNum_(a.date)); });
 }
 /* ========================= 🔴 LOT 출하정지 관리 ========================= */
 var __holdLog=[], __holdLoaded=false, __holdDel={};   // 삭제 추적
@@ -5272,7 +5374,7 @@ var PF_D={
   r4:{ t:"원인분석 · NCR", doc:"QP-1020 / QI-1020-01", go:{qtab:"ncr"},
     std:["발생원인·유출원인 분석 (5Why)"],
     ins:["동일 도번·유사 품목 영향 범위 확인"],
-    rec:["NCR 대장 (QMS 공유저장)","고객 건은 고객부적합Master와 연결"],
+    rec:["구글시트 'NCR_Master' 탭 (행 단위 저장)","내부 부적합·고객 클레임 공용 (고객 건은 일자·고객·도번으로 연결)"],
     act:["A등급은 NCR 완료해야 종결"] },
   r5:{ t:"시정조치 · 재발방지", doc:"QP-1020 / QI-1020-01", go:{qtab:"capa"},
     std:["임시대책이 아닌 근본 재발방지 대책"],
@@ -5441,7 +5543,7 @@ function itemHistGather_(draw){
   var name="", cust="";
   orders.forEach(function(m){ if(!name&&m.partName) name=m.partName; if(!cust&&m.customer) cust=m.customer; });
   var defects=[];
-  try{ if(typeof insClosedList_==="function") insClosedList_(true).forEach(function(c){ if(ihNorm_(c.draw)===nd) defects.push({date:c.insDate, status:"종결", sn:c.sn, types:c.types, qty:c.qty, act:c.act, actDate:c.actDate, src:c.label}); }); }catch(_){}
+  try{ if(typeof insClosedList_==="function") insClosedList_(true).forEach(function(c){ if(ihNorm_(c.draw)===nd) defects.push({date:c.insDate, status:((typeof ncrNeedA_==="function"&&ncrNeedA_(c.types, ncrKey_(c), c.insDate))?"NCR 대기":"종결"), sn:c.sn, types:c.types, qty:c.qty, act:c.act, actDate:c.actDate, src:c.label}); }); }catch(_){}
   try{ if(typeof insUnresolvedList_==="function") insUnresolvedList_(true).forEach(function(u){ if(ihNorm_(u.draw)===nd) defects.push({date:u.insDate, status:"미조치", sn:u.sn, types:u.types, qty:u.qty, act:"", actDate:"", src:u.label}); }); }catch(_){}
   try{ ((typeof ncData!=="undefined"&&ncData)||[]).forEach(function(r){ if(typeof trashIsDeleted==="function"&&trashIsDeleted(r)) return; if(ihNorm_(r.part)===nd) defects.push({date:r.date, status:"고객", sn:"", types:(typeof ncClassifyCTQ_==="function"?ncClassifyCTQ_(r.content):""), qty:r.qty, act:r.content, actDate:"", src:"고객부적합"}); }); }catch(_){}
   defects.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
@@ -5490,7 +5592,7 @@ function renderItemHist(){
   // 1) 부적합·조치 (등급)
   var defInner = g.defects.length ? wrap('<table style="border-collapse:collapse;width:100%;min-width:620px;"><thead><tr>'
     +['발생일','구분','유형','등급','수량','조치','조치완료일'].map(function(h){return '<th style="'+TH+'">'+h+'</th>';}).join("")+'</tr></thead><tbody>'
-    +g.defects.slice(0,100).map(function(d){ var stc=d.status==="종결"?"#1E7A46":(d.status==="미조치"?"#C0392B":"#0B5CAB");
+    +g.defects.slice(0,100).map(function(d){ var stc=d.status==="종결"?"#1E7A46":(d.status==="미조치"?"#C0392B":(d.status==="NCR 대기"?"#B45309":"#0B5CAB"));
       return '<tr><td style="'+td+'text-align:center;white-space:nowrap;">'+E(d.date)+'</td>'
       +'<td style="'+td+'text-align:center;color:'+stc+';font-weight:700;">'+E(d.status)+'</td>'
       +'<td style="'+td+'">'+E(d.types)+'</td>'
@@ -9455,7 +9557,7 @@ function ctqGradeDetail_(grade){
   var totN=rows.reduce(function(a,r){return a+r.n;},0);
   // 하단: 검사일보 조치 내역(발생일·조치·완료일) — 참고용, 집계 숫자와는 별개 소스임을 명시
   var list=[];
-  try{ if(typeof insClosedList_==="function") insClosedList_(true).forEach(function(c){ list.push({date:c.insDate,status:"종결",draw:c.draw,sn:c.sn,types:c.types,qty:c.qty,act:c.act,actDate:c.actDate}); }); }catch(_){}
+  try{ if(typeof insClosedList_==="function") insClosedList_(true).forEach(function(c){ list.push({date:c.insDate,status:((typeof ncrNeedA_==="function"&&ncrNeedA_(c.types, ncrKey_(c), c.insDate))?"NCR 대기":"종결"),draw:c.draw,sn:c.sn,types:c.types,qty:c.qty,act:c.act,actDate:c.actDate}); }); }catch(_){}
   try{ if(typeof insUnresolvedList_==="function") insUnresolvedList_(true).forEach(function(u){ list.push({date:u.insDate,status:"미조치",draw:u.draw,sn:u.sn,types:u.types,qty:u.qty,act:"",actDate:""}); }); }catch(_){}
   list=list.filter(function(d){ return ncGradeOfTypes_(d.types)===grade && ctqInPeriod_(d.date); });
   list.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
@@ -9788,10 +9890,10 @@ function ncrParseWorkbook_(wb){
   return out;
 }
 function ncrYear_(d){ var m=String(d||"").match(/(\d{4})/); return m?m[1]:""; }
-function ncrYears_(){ var ys={}; (__ncrData||[]).forEach(function(r){ var y=ncrYear_(r.date); if(y) ys[y]=1; }); return Object.keys(ys).sort(function(a,b){return b.localeCompare(a);}); }
+function ncrYears_(){ var ys={}; ncrAllRows_().forEach(function(r){ var y=ncrYear_(r.date); if(y) ys[y]=1; }); return Object.keys(ys).sort(function(a,b){return b.localeCompare(a);}); }
 function ncrFiltered_(){
   var q=ncrSearch.trim().toLowerCase();
-  return (__ncrData||[]).filter(function(r){
+  return ncrAllRows_().filter(function(r){
     if(ncrYear!=="all" && ncrYear_(r.date)!==ncrYear) return false;
     if(!q) return true;
     return (r.part+" "+r.content+" "+r.customer+" "+r.register).toLowerCase().indexOf(q)>=0;
@@ -9799,7 +9901,7 @@ function ncrFiltered_(){
 }
 function ncrRenderBody_(){
   var host=document.getElementById("ncr-body"); if(!host) return;
-  if(!__ncrData){ host.innerHTML='<div style="padding:20px;color:var(--text-mute);">NCR 추출 대장(NCR대장_추출.xlsx)을 업로드하면 조회·검색·분석이 여기에 표시됩니다.</div>'; return; }
+  if(!__ncrData && !ncrAllRows_().length){ host.innerHTML='<div style="padding:20px;color:var(--text-mute);">NCR 추출 대장(NCR대장_추출.xlsx)을 업로드하면 조회·검색·분석이 여기에 표시됩니다.</div>'; return; }
   var rows=ncrFiltered_();
   var esc=insEscQ_;
   // 유형 요약(키워드 분류) + 재발 도번
@@ -9811,7 +9913,9 @@ function ncrRenderBody_(){
 
   var trs=rows.slice(0,500).map(function(r){
     var fileLink = r.file ? '<span title="'+esc(r.file)+'" style="color:#8A93A6;">파일</span>' : '';
+    var srcCell = r.src==="QMS" ? '<button type="button" onclick="ncrOpen_(\''+ncrEscAttr_(r.key)+'\')" style="background:#1E7A46;color:#fff;border:none;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;">QMS 📝</button>' : '<span style="color:#8A93A6;font-size:11px;">엑셀</span>';
     return '<tr>'
+      +'<td style="border:1px solid #E6EBF2;padding:5px;text-align:center;white-space:nowrap;">'+srcCell+'</td>'
       +'<td style="border:1px solid #E6EBF2;padding:5px;text-align:center;white-space:nowrap;">'+esc(r.date)+'</td>'
       +'<td style="border:1px solid #E6EBF2;padding:5px;font-weight:700;white-space:nowrap;">'+esc(r.part)+'</td>'
       +'<td style="border:1px solid #E6EBF2;padding:5px;white-space:nowrap;">'+esc(r.customer)+'</td>'
@@ -9829,7 +9933,7 @@ function ncrRenderBody_(){
     +'</div>'
     +(recur.length?'<div style="background:#FFFBF2;border:1px solid #F0DCB4;border-radius:10px;padding:8px 12px;margin-bottom:10px;"><span style="font-size:12px;color:#B45309;font-weight:700;">🔁 재발 도번(2건+): </span>'+chips(recur,"#FFF3E0")+'</div>':'')
     +'<div style="overflow:auto;max-height:520px;"><table style="border-collapse:collapse;width:100%;font-size:12.5px;min-width:640px;"><thead><tr>'
-    +  ['발생일','도번','고객','부적합 내용','업체','등록자'].map(function(h){ return '<th style="position:sticky;top:0;border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
+    +  ['출처','발생일','도번','고객','부적합 내용','업체/구분','등록자'].map(function(h){ return '<th style="position:sticky;top:0;border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:7px;white-space:nowrap;">'+h+'</th>'; }).join("")
     +'</tr></thead><tbody>'+trs+'</tbody></table></div>'+more;
 }
 function renderNcrPanel(){
@@ -9840,7 +9944,7 @@ function renderNcrPanel(){
     +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">'
     +  '<div style="font-weight:800;font-size:16px;color:#1F2A44;">📁 NCR 대장 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 추출 대장 조회·검색·유형분석</span></div>'
     +  '<div style="display:flex;gap:8px;align-items:center;">'
-    +    '<span id="ncr-status" style="font-size:12px;color:#5A6478;">'+(__ncrData?(__ncrData.length.toLocaleString()+"건 로드됨"):"파일 미업로드")+'</span>'
+    +    '<span id="ncr-status" style="font-size:12px;color:#5A6478;">'+(__ncrData?(__ncrData.length.toLocaleString()+"건(엑셀)"):"엑셀 미업로드")+' · QMS NCR '+ncrAllRows_().filter(function(x){return x.src==="QMS";}).length+'건 <span style="color:#8A93A6;">(기준일 '+NCR_CUTOVER+' 이후 같은 건은 QMS 우선)</span></span>'
     +    '<input type="file" id="ncr-file" accept=".xlsx,.xls,.csv" style="display:none;">'
     +    '<button type="button" id="ncr-upload" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📤 NCR 대장 업로드</button>'
     +  '</div>'
@@ -9857,6 +9961,7 @@ function renderNcrPanel(){
   var sb=document.getElementById("ncr-search"); if(sb) sb.addEventListener("input",function(){ ncrSearch=this.value; ncrRenderBody_(); });
   var ys=document.getElementById("ncr-year"); if(ys) ys.addEventListener("change",function(){ ncrYear=this.value; ncrRenderBody_(); });
   ncrRenderBody_();
+  if(!__ncrSheetLoaded && typeof ncrEnsure_==="function") ncrEnsure_(function(){ if(document.getElementById("qpanel-ncr")) renderNcrPanel(); });
 }
 function ncrOnUpload_(file){
   var st=document.getElementById("ncr-status"); if(st) st.textContent="읽는 중…";
@@ -10185,6 +10290,9 @@ function qmsMorningAlerts_(){
     }
   } }catch(e){}
   try{ var un=(typeof insUnresolvedList_==="function")?insUnresolvedList_(!!(typeof insUnresolvedSrc!=="undefined"&&insUnresolvedSrc)):[]; if(un&&un.length) items.push({icon:"⚠️",title:"미조치 부적합",count:un.length,color:"#C0392B",view:"insrep"}); }catch(e){}
+  try{ var nwI=(typeof ncrWaitInternal_==="function")?ncrWaitInternal_():0; if(nwI) items.push({icon:"📝",title:"A등급 NCR 대기 (사내)",count:nwI,color:"#B45309",fn:"insOpenDefectHistory"}); }catch(e){}
+  try{ var nwC=(typeof ncrWaitCustomer_==="function")?ncrWaitCustomer_():0; if(nwC) items.push({icon:"📝",title:"A등급 NCR 대기 (고객)",count:nwC,color:"#7A3E9A",view:"nc"}); }catch(e){}
+  try{ if(typeof ncData!=="undefined"&&Array.isArray(ncData)&&typeof ncJudge==="function"){ var ncOd=ncData.filter(function(r){ return !(typeof trashIsDeleted==="function"&&trashIsDeleted(r)) && ncJudge(r).overdue; }).length; if(ncOd) items.push({icon:"📣",title:"고객 클레임 지연 ("+NC_OVERDUE_DAYS+"일 초과 미종결)",count:ncOd,color:"#C0392B",view:"nc"}); } }catch(e){}
   try{ if(typeof __chgData!=="undefined"&&Array.isArray(__chgData)){
     var op=__chgData.filter(function(c){return !(c.doneDate&&String(c.doneDate).trim());}); if(op.length) items.push({icon:"🔄",title:"미완료 변경점",count:op.length,color:"#B45309",qtab:"chg"});
     var mix=__chgData.filter(function(c){return c.type==="고객REV"&&(!c.doneDate||!String(c.doneDate).trim())&&(!c.stockAction||c.stockAction==="구재고 소진"||c.stockAction==="선별 사용");}); if(mix.length) items.push({icon:"🔀",title:"구/신 도면 혼입주의",count:mix.length,color:"#8A1F1F",qtab:"chg"});
@@ -10201,6 +10309,7 @@ function qmsGoto_(it){
       setTimeout(function(){ var inp=document.getElementById("insplist-search"); if(inp){ inp.value=it.searchInsp; } if(typeof renderInspList==="function") renderInspList(); }, 200);
       return;
     }
+    if(it.fn && typeof window[it.fn]==="function"){ window[it.fn](); return; }
     if(it.view){ var nv2=document.querySelector('.nav-item[data-view="'+it.view+'"]'); if(nv2) nv2.click(); return; }
     if(it.qtab){ var q=document.querySelector('.nav-item[data-view="quality"]'); if(q) q.click(); setTimeout(function(){ var tb=document.querySelector('[data-qtab="'+it.qtab+'"]'); if(tb) tb.click(); },220); }
   }catch(e){}
@@ -10668,9 +10777,12 @@ function capaJudge(r){
   // 조치 완료 여부: 조치완료일이 있거나 처리내용(조치)이 기재되면 조치 완료로 본다.
   const actionDone = hasDone || hasTreat;
   // 종결 판정: 대책서 나가는 건은 유효성확인, 아닌 건은 조치가 완료되면 종결
-  const closed = hasReport ? hasValid : actionDone;
+  let closed = hasReport ? hasValid : actionDone;
+  let ncrWait = false;
+  if(closed && r.customer!==undefined && typeof ncrNeedA_==="function" && ncrNeedA_(r.content, ncrCustKey_({date:r._rawDate, customer:r.customer, partNo:r.partNo}), r._rawDate)){ closed=false; ncrWait=true; }   // A등급 NCR 미완료
   let stage;
-  if(closed && hasReport)      stage = { key:"reportClosed", label:"종결",        bg:"#E7F5EC", color:"#1E7E45" }; // 대책서 경로 최종 종결
+  if(ncrWait)                  stage = { key:"ncrWait", label:"NCR 대기", bg:"#FFF4E0", color:"#B45309" };
+  else if(closed && hasReport) stage = { key:"reportClosed", label:"종결",        bg:"#E7F5EC", color:"#1E7E45" }; // 대책서 경로 최종 종결
   else if(closed)              stage = { key:"selfClosed",   label:"조치완료(종결)", bg:"#E9F6EE", color:"#2E9E5B" }; // 조치완료로 종결(사내)
   else if(hasReport)           stage = { key:"validate",     label:"유효성확인 대기", bg:"#E7F0FA", color:"#0B5CAB" }; // 대책서 발행, 유효성 전
   else                         stage = { key:"received",     label:"접수(미조치)",  bg:"#EEF0F3", color:"#5A6478" }; // 조치 전(임시조치만 포함)
@@ -17554,8 +17666,10 @@ function ncJudge(r){
   var hasReport=ncHasVal(r.reportDate), hasValid=ncHasVal(r.validation), hasDone=ncHasVal(r.doneDate), hasTreat=ncHasVal(r.treatment);
   var actionDone=hasDone||hasTreat;
   var closed=hasReport?hasValid:actionDone;
+  var ncrWait=false; if(closed && typeof ncrNeedA_==="function" && ncrNeedA_(r.content, ncrCustKey_(r), r.date)){ closed=false; ncrWait=true; }   // A등급 NCR 미완료 → 종결 아님
   var stage;
-  if(closed && hasReport) stage={key:"reportClosed",label:"종결",bg:"#E7F5EC",color:"#1E7E45"};
+  if(ncrWait) stage={key:"ncrWait",label:"NCR 대기",bg:"#FFF4E0",color:"#B45309"};
+  else if(closed && hasReport) stage={key:"reportClosed",label:"종결",bg:"#E7F5EC",color:"#1E7E45"};
   else if(closed) stage={key:"selfClosed",label:"조치완료",bg:"#E9F6EE",color:"#2E9E5B"};
   else if(hasReport) stage={key:"validate",label:"유효성확인 대기",bg:"#E7F0FA",color:"#0B5CAB"};
   else stage={key:"received",label:"접수(미조치)",bg:"#EEF0F3",color:"#5A6478"};
@@ -17601,7 +17715,7 @@ function ncRowsHTML(list){
       + '<td style="padding:8px;text-align:center;">'+docmasterEsc(r.owner||"-")+'</td>'
       + '<td style="padding:8px;text-align:center;white-space:nowrap;"><span style="background:'+j.stage.bg+';color:'+j.stage.color+';border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;">'+j.stage.label+'</span>'+(j.overdue?' <span style="background:#C0392B;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700;">지연'+(j.elapsed!=null?(" "+j.elapsed+"일"):"")+'</span>':'')+'</td>'
       + '<td style="padding:8px;text-align:center;white-space:nowrap;">'
-      +   '<button type="button" class="nc-attbtn" data-id="'+docmasterEsc(r._id)+'" title="첨부(메일 캡처)" style="font-size:11px;padding:4px 8px;border:1px solid #B7E0C4;border-radius:6px;background:#fff;color:#1E7A46;cursor:pointer;">📎'+(ncAttachCount_(r)?('<b style="color:#C0392B;">'+ncAttachCount_(r)+'</b>'):'')+'</button> '      +   '<button type="button" class="nc-editbtn" data-id="'+docmasterEsc(r._id)+'" title="수정" style="font-size:11px;padding:4px 8px;border:1px solid #BBD3F0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">✏️</button>'
+      +   ncrBtnCellCust_(r)+' '+   '<button type="button" class="nc-attbtn" data-id="'+docmasterEsc(r._id)+'" title="첨부(메일 캡처)" style="font-size:11px;padding:4px 8px;border:1px solid #B7E0C4;border-radius:6px;background:#fff;color:#1E7A46;cursor:pointer;">📎'+(ncAttachCount_(r)?('<b style="color:#C0392B;">'+ncAttachCount_(r)+'</b>'):'')+'</button> '      +   '<button type="button" class="nc-editbtn" data-id="'+docmasterEsc(r._id)+'" title="수정" style="font-size:11px;padding:4px 8px;border:1px solid #BBD3F0;border-radius:6px;background:#fff;color:#0B5CAB;cursor:pointer;">✏️</button>'
       +   ' <button type="button" class="nc-delbtn" data-id="'+docmasterEsc(r._id)+'" title="삭제" style="font-size:11px;padding:4px 8px;border:1px solid #E4B4B4;border-radius:6px;background:#fff;color:#C0392B;cursor:pointer;">🗑️</button>'
       + '</td></tr>';
   });
@@ -20387,19 +20501,21 @@ function defectHistRows_(){
   (__defectLog||[]).forEach(function(x){ push({ status:"종결", label:x.label, draw:x.draw, sn:x.sn, insDate:x.insDate, types:x.types, qty:x.qty, actDate:x.actDate, act:x.act, days:x.days }); });
   // 미조치(조치완료일 빈 부적합)
   try{ var un=(typeof insUnresolvedList_==="function")?insUnresolvedList_(useSrc):[]; un.forEach(function(u){ push({ status:"미조치", label:u.label, draw:u.draw, sn:u.sn, insDate:u.insDate, types:u.types, qty:u.qty, actDate:"", act:"", days:insDaysBetween_(u.insDate, today) }); }); }catch(e){}
+  rows.forEach(function(r){ if(r.status==="종결" && typeof ncrNeedA_==="function" && ncrNeedA_(r.types, ncrKey_(r), r.insDate)) r.status="NCR 대기"; });   // A등급 NCR 미완료 → 종결 아님
   rows.sort(function(a,b){ return String(b.insDate).localeCompare(String(a.insDate)); });
   return rows;
 }
 function insOpenDefectHistory(){
   var rows=defectHistRows_();
   var closed=rows.filter(function(r){return r.status==="종결";}).length;
-  var open=rows.length-closed;
+  var ncrWait=rows.filter(function(r){return r.status==="NCR 대기";}).length;
+  var open=rows.length-closed-ncrWait;
   var rate=rows.length?Math.round(closed/rows.length*100):0;
-  var aRows=rows.filter(function(r){ return (typeof ncGradeOfTypes_==="function") && ncGradeOfTypes_(r.types)==="A"; });   // A등급(크리티컬)
-  var aNcr=aRows.filter(function(r){ return (typeof ncrHas_==="function") && ncrHas_(r); }).length;
+  var aRows=rows.filter(function(r){ return (typeof ncGradeOfTypes_==="function") && ncGradeOfTypes_(r.types)==="A" && ncrAfterCut_(r.insDate); });   // A등급(크리티컬) · 기준일 이후
+  var aNcr=aRows.filter(function(r){ return ncrDoneKey_(ncrKey_(r)); }).length;
   var aRate=aRows.length?Math.round(aNcr/aRows.length*100):0;
   var body=rows.length ? rows.map(function(r){
-    var stColor=r.status==="종결"?"#1E7A46":"#C0392B";
+    var stColor=r.status==="종결"?"#1E7A46":(r.status==="NCR 대기"?"#B45309":"#C0392B");
     return '<tr>'
       +'<td style="text-align:center;color:'+stColor+';font-weight:700;">'+r.status+'</td>'
       +'<td style="text-align:center;">'+defectHistEsc_(r.insDate)+'</td>'
@@ -20423,8 +20539,9 @@ function insOpenDefectHistory(){
     +  '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">'
     +    '<div style="flex:1;min-width:120px;background:#EEF6EF;border-radius:9px;padding:10px;text-align:center;"><div style="font-size:12px;color:#5A6478;">종결</div><div style="font-size:20px;font-weight:800;color:#1E7A46;">'+closed+'</div></div>'
     +    '<div style="flex:1;min-width:120px;background:#FBEDEC;border-radius:9px;padding:10px;text-align:center;"><div style="font-size:12px;color:#5A6478;">미조치</div><div style="font-size:20px;font-weight:800;color:#C0392B;">'+open+'</div></div>'
+    +    '<div style="flex:1;min-width:120px;background:#FFF4E0;border-radius:9px;padding:10px;text-align:center;" title="A등급인데 NCR(원인+재발방지)이 없어 종결 안 된 건 (기준일 '+NCR_CUTOVER+' 이후)"><div style="font-size:12px;color:#5A6478;">NCR 대기</div><div style="font-size:20px;font-weight:800;color:#B45309;">'+ncrWait+'</div></div>'
     +    '<div style="flex:1;min-width:120px;background:#EEF2FA;border-radius:9px;padding:10px;text-align:center;"><div style="font-size:12px;color:#5A6478;">조치 완료율</div><div style="font-size:20px;font-weight:800;color:#0B5CAB;">'+rate+'%</div></div>'
-    +    '<div style="flex:1;min-width:120px;background:#FDECEC;border-radius:9px;padding:10px;text-align:center;" title="A등급(크리티컬)은 NCR 작성해야 종결"><div style="font-size:12px;color:#5A6478;">A등급 NCR 완료율</div><div style="font-size:20px;font-weight:800;color:#C0392B;">'+aRate+'%</div><div style="font-size:11px;color:#8A93A6;">'+aNcr+'/'+aRows.length+'건</div></div>'
+    +    '<div style="flex:1;min-width:120px;background:#FDECEC;border-radius:9px;padding:10px;text-align:center;" title="A등급(크리티컬)은 NCR 작성해야 종결"><div style="font-size:12px;color:#5A6478;">A등급 NCR 완료율 <span style="font-size:10px;">('+NCR_CUTOVER.slice(5).replace("-","/")+'~)</span></div><div style="font-size:20px;font-weight:800;color:#C0392B;">'+aRate+'%</div><div style="font-size:11px;color:#8A93A6;">'+aNcr+'/'+aRows.length+'건</div></div>'
     +  '</div>'
     +  '<div style="text-align:right;margin-bottom:8px;"><button id="dhist-excel" style="background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button></div>'
     +  '<div style="overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">'
@@ -21177,6 +21294,7 @@ function ncToQualityRows(){
       partName: String(r.partName||"").trim(),
       sn: "", method: "",
       finder: String(r.finder||"").trim(),
+      customer: String(r.customer||"").trim(), _rawDate: r.date,
       qty: Number(String(r.qty||"").replace(/[^0-9.]/g,""))||0,
       content: String(r.content||"").trim(),
       treatment: String(r.treatment||"").trim(),
@@ -22251,4 +22369,3 @@ function reqClearAll(){
 <div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.28 🔔</div>
 </body>
 </html>
-      
