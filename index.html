@@ -1805,6 +1805,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         <button class="tab-btn" data-qtab="customer">고객부적합</button>
         <button class="tab-btn" data-qtab="capa">시정조치</button>
         <button class="tab-btn" data-qtab="recur">재발관리</button>
+        <button class="tab-btn" data-qtab="goal">🏁 품질목표</button>
         <div id="qtool-dd" style="position:relative;display:inline-block;">
           <button type="button" class="tab-btn" id="qtool-btn">📊 품질도구 ▾</button>
           <div id="qtool-menu" style="display:none;position:absolute;top:100%;left:0;z-index:60;background:#fff;border:1px solid #D6DEE8;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.18);min-width:190px;max-width:calc(100vw - 24px);padding:6px;">
@@ -1822,6 +1823,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
       <div class="tab-panel" id="qpanel-customer"></div>
       <div class="tab-panel" id="qpanel-capa"></div>
       <div class="tab-panel" id="qpanel-recur"></div>
+      <div class="tab-panel" id="qpanel-goal"></div>
       <div class="tab-panel" id="qpanel-ctq"></div>
       <div class="tab-panel" id="qpanel-ppk"></div>
       <div class="tab-panel" id="qpanel-ncr"></div>
@@ -9292,6 +9294,7 @@ function renderQualityAll(){
   try{ renderNcrPanel(); }catch(e){}
   try{ renderEduPanel(); }catch(e){}
   try{ renderChgPanel(); }catch(e){}
+  try{ renderGoalPanel(); }catch(e){}
 }
 /* ===== 고객부적합 (출하검사와 동일한 구성: KPI → 월별 추이 그래프/표 → 주차별 → 상세 → 유형) ===== */
 // 해당 월의 납품완료 수량 (MAIN 데이터의 납품일자 기준) — 고객부적합 PPM 분모
@@ -10396,6 +10399,136 @@ function renderChgPanel(){
   var sb=document.getElementById("chg-search"); if(sb) sb.addEventListener("input",function(){ chgSearch=this.value; var p=this.selectionStart; renderChgPanel(); var n=document.getElementById("chg-search"); if(n){ n.focus(); try{ n.setSelectionRange(p,p); }catch(_){} } });
   var ff=document.getElementById("chg-filter"); if(ff) ff.addEventListener("change",function(){ chgFilter=this.value; renderChgPanel(); });
   panel.querySelectorAll(".chg-card").forEach(function(cd){ cd.addEventListener("click",function(){ chgStageFilter=cd.getAttribute("data-f"); renderChgPanel(); }); });
+}
+/* ==================== 🏁 품질목표 (방침 → 목표 → 전년 실적 자동 → 설정 근거) ==================== */
+// 저장: 구글시트 'GOAL_Master' 탭(공통 행 저장소). 행 = 연도|항목 (목표·설정 유형·근거) + 품질방침 1행
+// 실적은 QMS 데이터에서 자동 계산(수작업 입력 없음). 금년 목표는 품질분석 각 탭의 목표(ppm)선에도 자동 반영.
+var __goalRecs=[], __goalLoaded=false, goalYear=(new Date()).getFullYear();
+var GOAL_DIRS=[["①","고객 유출 제로","불량을 고객에게 보내지 않는다"],["②","공정 안정화","불량을 만들지 않는다"],["③","재발 방지","한 번 난 불량은 다시 나지 않는다"]];
+var GOAL_ITEMS=[
+  {k:"custPpm", g:0, t:"고객 부적합률",          u:"PPM", low:true,  qt:"customer", f:"고객 부적합 수량 ÷ 납품완료 수량 × 10⁶"},
+  {k:"claim",   g:0, t:"고객 클레임 건수",        u:"건",  low:true,  f:"고객부적합 접수 건수(수량 있는 건)"},
+  {k:"shipPpm", g:0, t:"출하검사 부적합률",       u:"PPM", low:true,  qt:"shipping", cat:"shipping", f:"출하검사 부적합 수 ÷ 검사수 × 10⁶"},
+  {k:"procPpm", g:1, t:"공정(측정)검사 부적합률",  u:"PPM", low:true,  qt:"process",  cat:"process",  f:"공정검사 부적합 수 ÷ 검사수 × 10⁶"},
+  {k:"incPpm",  g:1, t:"수입검사 부적합률",       u:"PPM", low:true,  qt:"incoming", cat:"incoming", f:"수입검사 부적합 수 ÷ 검사수 × 10⁶"},
+  {k:"ppk",     g:1, t:"CTQ 공정능력 달성률",     u:"%",   low:false, f:"Ppk 1.33 이상 특성 ÷ 전체 특성 (현재 측정 데이터)"},
+  {k:"capa",    g:2, t:"시정조치 기한 내 완료율", u:"%",   low:false, f:"접수 후 7일 이내 조치완료 건 ÷ 고객부적합 건"},
+  {k:"ncrA",    g:2, t:"A등급 NCR 완료율",        u:"%",   low:false, f:"원인+재발방지 작성된 A등급 ÷ A등급 부적합 (QMS 도입 후)"},
+  {k:"recur",   g:2, t:"재발 도번 수",            u:"건",  low:true,  f:"같은 해 고객부적합 2회 이상 발생 도번 수"}
+];
+var GOAL_STORE=qmsSyncStore_({ tab:"GOAL_Master", idb:"goalStore",
+  cols:[["year","연도"],["k","항목키"],["title","항목"],["target","목표"],["type","설정 유형"],["reason","설정 근거"],["text","품질방침"],["_ts","_ts"],["_del","_del"]],
+  apply:function(list){ __goalRecs=list; goalSyncTargets_(); if(document.getElementById("qpanel-goal")) renderGoalPanel(); } });
+function goalEnsure_(){ if(__goalLoaded) return; __goalLoaded=true; GOAL_STORE.load(); }
+(window.__afterEnter=window.__afterEnter||[]).push(function(){ goalEnsure_(); });
+function goalRec_(y,k){ var id=y+"|"+k; for(var i=0;i<__goalRecs.length;i++){ if(__goalRecs[i].id===id) return __goalRecs[i]; } return null; }
+function goalPolicy_(){ for(var i=0;i<__goalRecs.length;i++){ if(__goalRecs[i].id==="policy") return __goalRecs[i].text||""; } return ""; }
+function goalNum_(v){ if(v===""||v==null) return null; var n=Number(String(v).replace(/,/g,"")); return isNaN(n)?null:n; }
+function goalFmt_(v,u){ if(v==null) return "–"; return (u==="%"?(Math.round(v*10)/10):Math.round(v)).toLocaleString()+(u==="%"?"%":(u==="건"?"건":"")); }
+// 금년 목표 → 품질분석 각 탭 목표(ppm)선에 반영
+function goalSyncTargets_(){ try{ var y=(new Date()).getFullYear(); GOAL_ITEMS.forEach(function(it){ if(!it.qt) return; var r=goalRec_(y,it.k), n=r?goalNum_(r.target):null; if(n!=null && typeof qualityTargets!=="undefined") qualityTargets[it.qt]=n; }); }catch(_){} }
+
+// ── 실적 자동 계산 (연도 y: 지난 해는 1~12월, 올해는 1월~이번 달 누적)
+function goalMonths_(y){ var now=new Date(); return (y<now.getFullYear())?12:(y===now.getFullYear()?(now.getMonth()+1):0); }
+function goalCustRows_(y){ try{ return (qualityRawData[CUSTOMER_NC_KEY]||[]).filter(function(r){ return r.date && r.date.getFullYear()===y; }); }catch(_){ return []; } }
+function goalActual_(it, y){
+  var M=goalMonths_(y); if(!M) return null;
+  try{
+    if(it.cat){ var q=0,d=0; for(var m=1;m<=M;m++){ var s=computeCategoryMonthStats(it.cat,y,m); q+=s.qty; d+=s.defect; } return q>0?{v:d/q*1e6, b:"검사 "+q.toLocaleString()+" · 부적합 "+d.toLocaleString()}:null; }
+    if(it.k==="custPpm"){ var qq=0,dl=0; for(var m2=1;m2<=M;m2++){ var s2=computeNCMonthStats(y,m2); qq+=s2.qty; dl+=s2.delivered; } return dl>0?{v:qq/dl*1e6, b:"납품 "+dl.toLocaleString()+" · 부적합 "+qq.toLocaleString()}:null; }
+    if(it.k==="claim"){ var rs=goalCustRows_(y); return {v:rs.length, b:"접수 "+rs.length+"건"}; }
+    if(it.k==="recur"){ var g={}; goalCustRows_(y).forEach(function(r){ var p=String(r.partNo||"").trim(); if(p) g[p]=(g[p]||0)+1; }); var n=Object.keys(g).filter(function(p){ return g[p]>=2; }).length; return {v:n, b:"도번 "+Object.keys(g).length+"개 중 "+n+"개 재발"}; }
+    if(it.k==="capa"){ var rs2=goalCustRows_(y); if(!rs2.length) return null; var ok=0; rs2.forEach(function(r){ var dd=parseQualityDate(r.doneDate); if(dd && r.date && (dd-r.date)/86400000<=NC_OVERDUE_DAYS) ok++; }); return {v:ok/rs2.length*100, b:rs2.length+"건 중 "+ok+"건 7일 이내"}; }
+    if(it.k==="ncrA"){ if(y<Number(NCR_CUTOVER.slice(0,4))) return null; var tot=0, done=0;
+      insClosedList_(true).forEach(function(c){ if(String(c.insDate).slice(0,4)!==String(y)||!ncrAfterCut_(c.insDate)||ncGradeOfTypes_(c.types)!=="A") return; tot++; if(ncrDoneKey_(ncrKey_(c))) done++; });
+      (ncData||[]).forEach(function(r){ if(trashIsDeleted(r)||String(r.date).slice(0,4)!==String(y)||!ncrAfterCut_(r.date)||ncGradeOfTypes_(r.content)!=="A") return; tot++; if(ncrDoneKey_(ncrCustKey_(r))) done++; });
+      return tot?{v:done/tot*100, b:"A등급 "+tot+"건 중 "+done+"건 완료"}:{v:null, b:"대상 없음"}; }
+    if(it.k==="ppk"){ if(y!==(new Date()).getFullYear()||!__ppkData) return null; var a=0,b=0; __ppkData.products.forEach(function(p){ p.chars.forEach(function(ch){ if(ch.ppk==null) return; a++; if(!ch.oos && ch.ppk>=1.33) b++; }); }); return a?{v:b/a*100, b:"특성 "+a+"개 중 "+b+"개"}:null; }
+  }catch(_){ return null; }
+  return null;
+}
+function goalAchieved_(it, act, tgt){ if(act==null||act.v==null||tgt==null) return null; return it.low ? act.v<=tgt : act.v>=tgt; }
+function goalSuggest_(it, prevAct, prevT){ // 설정 유형 제안 + 제안 목표
+  if(prevT==null || !prevAct || prevAct.v==null) return {type:"신규", t:(it.k==="ncrA"?100:null)};
+  var ach=goalAchieved_(it, prevAct, prevT);
+  if(!ach) return {type:"재도전", t:prevT};
+  var best=it.low?0:100; if(prevT===best) return {type:"유지", t:prevT};
+  var sug=it.low ? Math.min(prevT, it.u==="PPM"?Math.ceil(prevAct.v/100)*100:Math.ceil(prevAct.v)) : Math.max(prevT, Math.floor(prevAct.v));
+  return {type:(sug===prevT?"유지":"강화"), t:sug}; }
+function goalReason_(it, type, py, prevAct, prevT, t){ var u=it.u, A=prevAct&&prevAct.v!=null?goalFmt_(prevAct.v,u):"–", P=prevT!=null?goalFmt_(prevT,u):"–", T=t!=null?goalFmt_(t,u):"[목표]";
+  if(type==="강화") return py+" 실적 "+A+"로 목표 "+P+" 달성 → 실적 수준 반영해 "+T+"로 강화";
+  if(type==="유지") return py+" 목표 "+P+" 달성(실적 "+A+") → "+T+" 수준 유지 관리";
+  if(type==="재도전") return py+" 실적 "+A+"로 목표 "+P+" 미달 → 개선 대책 적용 후 "+T+" 재도전";
+  return (py+1)+"년 신규 관리 항목 → 내부 기준 "+T+" 적용"; }
+
+// ── 화면
+function renderGoalPanel(){
+  var panel=document.getElementById("qpanel-goal"); if(!panel) return; goalEnsure_();
+  var E=qmsEsc_, Y=goalYear, PY=Y-1, thisY=(new Date()).getFullYear();
+  var th=function(h,w){ return '<th style="position:sticky;top:0;background:#1F2A44;color:#fff;border:1px solid #1F2A44;padding:7px 6px;white-space:nowrap;'+(w?'min-width:'+w+'px;':'')+'">'+h+'</th>'; };
+  var td='style="border:1px solid #E1E8F0;padding:5px 6px;vertical-align:middle;"';
+  var body=GOAL_ITEMS.map(function(it){
+    var pr=goalRec_(PY,it.k)||{}, cr=goalRec_(Y,it.k)||{};
+    var pT=goalNum_(pr.target), cT=goalNum_(cr.target), pA=goalActual_(it,PY), cA=goalActual_(it,Y);
+    var ach=goalAchieved_(it,pA,pT), sg=goalSuggest_(it,pA,pT), type=cr.type||"";
+    var cAch=goalAchieved_(it,cA,cT);
+    var dir=GOAL_DIRS[it.g];
+    return '<tr data-k="'+it.k+'">'
+      +'<td '+td+' style="white-space:nowrap;color:#5A6478;">'+dir[0]+' '+dir[1]+'</td>'
+      +'<td '+td+'><b>'+E(it.t)+'</b><div style="font-size:10.5px;color:#8A93A6;">'+E(it.f)+'</div></td>'
+      +'<td '+td+' align="center"><input class="gl-pt" value="'+E(pr.target||"")+'" placeholder="-" style="width:70px;padding:4px;border:1px solid #D6DEE8;border-radius:5px;text-align:right;"></td>'
+      +'<td '+td+' align="right" title="'+E(pA&&pA.b||"데이터 없음")+'"><b>'+goalFmt_(pA&&pA.v,it.u)+'</b><div style="font-size:10px;color:#8A93A6;">'+E(pA&&pA.b||"")+'</div></td>'
+      +'<td '+td+' align="center">'+(ach==null?'<span style="color:#B9C2D6;">–</span>':(ach?'<span style="color:#1E7A46;font-weight:800;">달성</span>':'<span style="color:#C0392B;font-weight:800;">미달</span>'))+'</td>'
+      +'<td '+td+' align="center" style="background:#F4F8FD;"><input class="gl-ct" value="'+E(cr.target||"")+'" placeholder="'+(sg.t!=null?("제안 "+sg.t):"")+'" style="width:78px;padding:4px;border:1.5px solid #0B5CAB;border-radius:5px;text-align:right;font-weight:800;"></td>'
+      +'<td '+td+' align="right">'+(Y<=thisY?('<span style="color:'+(cAch==null?"#5A6478":(cAch?"#1E7A46":"#C0392B"))+';font-weight:700;">'+goalFmt_(cA&&cA.v,it.u)+'</span>'):'<span style="color:#B9C2D6;">–</span>')+'</td>'
+      +'<td '+td+' align="center"><select class="gl-ty" style="padding:4px;border:1px solid #D6DEE8;border-radius:5px;">'+['','강화','유지','재도전','신규'].map(function(o){ return '<option value="'+o+'"'+(type===o?' selected':'')+'>'+(o||('(제안: '+sg.type+')'))+'</option>'; }).join("")+'</select></td>'
+      +'<td '+td+'><input class="gl-rs" value="'+E(cr.reason||"")+'" placeholder="[✍ 근거 자동 작성]을 누르면 채워집니다" style="width:100%;min-width:260px;box-sizing:border-box;padding:4px 6px;border:1px solid #D6DEE8;border-radius:5px;"></td></tr>'; }).join("");
+  var yopt=[thisY-1,thisY,thisY+1].map(function(y){ return '<option value="'+y+'"'+(y===Y?' selected':'')+'>'+y+'년 목표</option>'; }).join("");
+  panel.innerHTML='<div class="table-wrap" style="padding:14px;">'
+    +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'
+    +  '<div style="font-weight:800;font-size:16px;color:#1F2A44;">🏁 품질방침 · 품질목표</div>'
+    +  '<select id="gl-year" style="padding:6px 8px;border:1px solid #C9D3E0;border-radius:8px;font-weight:700;">'+yopt+'</select>'
+    +  '<span id="gl-msg" style="font-size:12px;color:#1E7A46;font-weight:700;"></span><div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">'
+    +  '<button type="button" onclick="goalAutoReason_()" style="background:#fff;color:#1F2A44;border:1px solid #C9D3E0;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer;">✍ 근거 자동 작성</button>'
+    +  '<button type="button" onclick="goalSave_()" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:800;cursor:pointer;">💾 저장</button>'
+    +  '<button type="button" onclick="goalPrint_()" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;">🖨 고객 제시용 출력</button></div></div>'
+    +'<label style="display:block;font-size:12px;color:#5A6478;font-weight:700;margin-bottom:10px;">품질방침<textarea id="gl-policy" rows="2" placeholder="회사 품질방침 문구를 입력하세요" style="width:100%;box-sizing:border-box;margin-top:4px;padding:8px 10px;border:1.5px solid #C9D3E0;border-radius:8px;font-size:14px;font-weight:700;color:#1F2A44;font-family:inherit;">'+E(goalPolicy_())+'</textarea></label>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'+GOAL_DIRS.map(function(d){ return '<div style="flex:1;min-width:180px;background:#F4F8FD;border-left:4px solid #0B5CAB;border-radius:8px;padding:8px 10px;"><div style="font-weight:800;color:#0B3D7A;">'+d[0]+' '+d[1]+'</div><div style="font-size:12px;color:#5A6478;">'+d[2]+'</div></div>'; }).join("")+'</div>'
+    +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;font-size:12px;min-width:1100px;"><thead><tr>'
+    +th("추진 방향")+th("목표 항목 · 산식",200)+th(PY+" 목표")+th(PY+" 실적 (QMS)")+th("달성")+th(Y+" 목표")+th(Y+" 실적"+(Y===thisY?" (누적)":""))+th("설정")+th("설정 근거",260)+'</tr></thead><tbody>'+body+'</tbody></table></div>'
+    +'<div style="font-size:11.5px;color:#8A93A6;margin-top:8px;line-height:1.6;">실적은 QMS 데이터로 자동 계산됩니다(수입·공정·출하: 품질분석 검사 데이터 / 고객: 고객부적합관리 + MAIN 납품완료 수량). 지난 해는 1~12월, 올해는 1월~이번 달 누적입니다. '
+    +'설정 제안: 전년 달성 → 강화(실적 수준) · 이미 최고 수준 → 유지 · 미달 → 재도전 · 전년 목표 없음 → 신규. 저장하면 '+thisY+'년 목표가 품질분석 각 탭의 목표(ppm)선에 반영됩니다. 저장 위치: 구글시트 \'GOAL_Master\' 탭</div></div>';
+  var ys=document.getElementById("gl-year"); if(ys) ys.addEventListener("change",function(){ goalYear=Number(this.value); renderGoalPanel(); });
+}
+function goalAutoReason_(){ var Y=goalYear, PY=Y-1;
+  document.querySelectorAll("#qpanel-goal tr[data-k]").forEach(function(tr){ var it=GOAL_ITEMS.filter(function(x){ return x.k===tr.getAttribute("data-k"); })[0]; if(!it) return;
+    var pT=goalNum_(tr.querySelector(".gl-pt").value), pA=goalActual_(it,PY), sg=goalSuggest_(it,pA,pT);
+    var ty=tr.querySelector(".gl-ty"), ct=tr.querySelector(".gl-ct"), rs=tr.querySelector(".gl-rs");
+    if(!ty.value) ty.value=sg.type; if(!ct.value && sg.t!=null) ct.value=sg.t;
+    if(!rs.value) rs.value=goalReason_(it, ty.value, PY, pA, pT, goalNum_(ct.value)); });
+}
+function goalSave_(){ var Y=goalYear, PY=Y-1, list=__goalRecs.slice(), byId={}; list.forEach(function(r,i){ byId[r.id]=i; });
+  var put=function(rec){ if(rec.id in byId) list[byId[rec.id]]=Object.assign({}, list[byId[rec.id]], rec); else { byId[rec.id]=list.length; list.push(rec); } };
+  put({ id:"policy", year:"", k:"policy", title:"품질방침", text:String((document.getElementById("gl-policy")||{}).value||"").trim() });
+  document.querySelectorAll("#qpanel-goal tr[data-k]").forEach(function(tr){ var k=tr.getAttribute("data-k"), it=GOAL_ITEMS.filter(function(x){ return x.k===k; })[0];
+    var pt=tr.querySelector(".gl-pt").value.trim(), ct=tr.querySelector(".gl-ct").value.trim(), ty=tr.querySelector(".gl-ty").value, rs=tr.querySelector(".gl-rs").value.trim();
+    if(pt||goalRec_(PY,k)) put({ id:PY+"|"+k, year:String(PY), k:k, title:it.t, target:pt });
+    put({ id:Y+"|"+k, year:String(Y), k:k, title:it.t, target:ct, type:ty, reason:rs }); });
+  __goalRecs=list; GOAL_STORE.save(list); goalSyncTargets_(); renderGoalPanel();
+  try{ if(typeof renderQualityAll==="function") renderQualityAll(); }catch(_){}
+  var mg=document.getElementById("gl-msg"); if(mg){ mg.textContent="✓ 저장됨 "+qmsNow_().slice(11); }
+}
+function goalPrint_(){ var Y=goalYear, PY=Y-1, E=qmsEsc_;
+  var rows=GOAL_ITEMS.map(function(it){ var pr=goalRec_(PY,it.k)||{}, cr=goalRec_(Y,it.k)||{}, pT=goalNum_(pr.target), pA=goalActual_(it,PY), ach=goalAchieved_(it,pA,pT);
+    return '<tr><td>'+GOAL_DIRS[it.g][0]+' '+GOAL_DIRS[it.g][1]+'</td><td><b>'+E(it.t)+'</b><div class="f">'+E(it.f)+'</div></td><td class="n">'+(pT!=null?goalFmt_(pT,it.u):"–")+'</td><td class="n">'+goalFmt_(pA&&pA.v,it.u)+'</td><td class="c">'+(ach==null?"–":(ach?"달성":"미달"))+'</td><td class="n t">'+(goalNum_(cr.target)!=null?goalFmt_(goalNum_(cr.target),it.u):"–")+'</td><td class="c">'+E(cr.type||"")+'</td><td>'+E(cr.reason||"")+'</td></tr>'; }).join("");
+  var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; }
+  w.document.write('<html><head><meta charset="utf-8"><title>'+Y+' 품질방침 및 품질목표</title><style>@page{size:A4 landscape;margin:12mm;}body{font-family:Pretendard,"Malgun Gothic",sans-serif;color:#1F2A44;}h1{font-size:20px;margin:0 0 4px;}.sub{color:#7A8598;font-size:12px;margin-bottom:12px;}.pol{border:2px solid #1F2A44;border-radius:8px;padding:12px 16px;font-size:16px;font-weight:800;margin-bottom:12px;}.dirs{display:flex;gap:8px;margin-bottom:12px;}.dirs div{flex:1;border-left:4px solid #0B5CAB;background:#F4F8FD;padding:7px 10px;font-size:12px;}table{border-collapse:collapse;width:100%;font-size:11.5px;}th{background:#1F2A44;color:#fff;padding:6px;border:1px solid #1F2A44;}td{border:1px solid #B8C2D3;padding:5px 6px;vertical-align:middle;}.n{text-align:right;white-space:nowrap;}.c{text-align:center;}.t{font-weight:800;background:#EEF4FB;}.f{font-size:10px;color:#7A8598;}.sign{margin-top:14px;display:flex;justify-content:flex-end;}.sign table{width:260px;}.sign td{height:44px;text-align:center;}</style></head><body>'
+    +'<h1>'+Y+'년 품질방침 및 품질목표</h1><div class="sub">주식회사 엔티엘 · 품질팀 · 실적은 QMS 데이터 기준('+PY+'년 1~12월) · 출력일 '+qmsToday_()+'</div>'
+    +'<div class="pol">품질방침 : '+E(goalPolicy_()||"(품질방침 미입력)")+'</div>'
+    +'<div class="dirs">'+GOAL_DIRS.map(function(d){ return '<div><b>'+d[0]+' '+d[1]+'</b><br>'+d[2]+'</div>'; }).join("")+'</div>'
+    +'<table><thead><tr><th>추진 방향</th><th>목표 항목 · 산식</th><th>'+PY+' 목표</th><th>'+PY+' 실적</th><th>달성</th><th>'+Y+' 목표</th><th>설정</th><th>설정 근거</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<div class="sign"><table><tr><th>작성</th><th>검토</th><th>승인</th></tr><tr><td></td><td></td><td></td></tr></table></div></body></html>');
+  w.document.close(); setTimeout(function(){ try{ w.focus(); w.print(); }catch(_){} },400);
 }
 /* ==================== 🔔 아침 알림 팝업 (접속 시 1일 1회, 오늘 챙길 것 종합) ==================== */
 function qmsParseMonths_(cycle){ var m=String(cycle||"").match(/(\d+)/); return m?parseInt(m[1],10):0; }
