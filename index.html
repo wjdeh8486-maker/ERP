@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NTL QMS Portal</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/400.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/500.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/600.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"></noscript>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/400.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/400.css"></noscript>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/500.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/500.css"></noscript>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/600.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/600.css"></noscript>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/700.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/700.css"></noscript>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" defer></script>
 <!-- xlsx-js-style: 기존 SheetJS 0.18.5와 API 동일 + 셀 스타일(색/테두리/폰트) 지원 -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js" defer></script>
@@ -1048,7 +1048,7 @@
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V9.27</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V9.28</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -3721,8 +3721,10 @@ function isOverdue(dateStr){
   const y = parseInt(parts[0]), m = parseInt(parts[1]), d = parseInt(parts[2]);
   if(isNaN(y) || isNaN(m) || isNaN(d)) return false;
   const dueDate = new Date(y, m-1, d); // 로컬 자정으로 생성
-  const today = new Date(); today.setHours(0,0,0,0); // 오늘 자정
-  return dueDate < today;
+  // [V9.28] 오늘 자정은 1분 캐시(행마다 Date 생성 방지)
+  const __now = Date.now();
+  if(!isOverdue.__t || __now - isOverdue.__at > 60000){ const t=new Date(); t.setHours(0,0,0,0); isOverdue.__t=t.getTime(); isOverdue.__at=__now; }
+  return dueDate.getTime() < isOverdue.__t;
 }
 function lookupWaitMap(map, r){
   const keys = [String(r.oldDrawingNo||"").trim(), String(r.partNo||"").trim()].filter(Boolean);
@@ -4104,7 +4106,8 @@ function mainRenderTable(data){
 function mainRenderCards(data){
   const wrap = document.getElementById("main-cardsView");
   mainCardsData = data; // 확대 팝업에서 참조
-  const cardsHtml = data.map((r, idx)=>{
+  const __cCap = (window.__mainRenderCap||300), __cOver = data.length > __cCap;   // [V9.28] 카드도 표와 같은 상한(전체를 그려 모바일 버벅임)
+  const cardsHtml = (__cOver ? data.slice(0, __cCap) : data).map((r, idx)=>{
     const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
     const _cdwg = String(r.oldDrawingNo||'').trim();
     const _cchecked = (_cdwg && typeof reqSelectedDwg!=='undefined' && reqSelectedDwg.has(_cdwg)) ? ' checked' : '';
@@ -4124,7 +4127,7 @@ function mainRenderCards(data){
       </div>
     </div>`;
   }).join("");
-  wrap.innerHTML = cardsHtml;
+  wrap.innerHTML = cardsHtml + (__cOver ? '<div style="text-align:center;color:#B0662A;background:#FFF6EC;padding:12px;border-radius:10px;font-weight:700;">앞 '+__cCap+'건만 표시 · 전체 '+data.length+'건 — 검색/필터로 좁혀서 보세요</div>' : '');
 }
 // ===== 모바일 카드 확대 팝업 =====
 let mainCardsData = [];
@@ -7439,6 +7442,14 @@ function setLocalCacheVersion(v){
 }
 function pushSharedCache(url, section, payload){
   if(!url) return;
+  // [V9.28] 수 MB 데이터 직렬화+업로드 비용 절감 — 모바일/태블릿은 올리지 않고(받기만), PC는 섹션별 2시간에 1번
+  try{
+    var __touch=(window.matchMedia && matchMedia("(pointer:coarse)").matches) || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent||"");
+    if(__touch) return;
+    var __k="sharedPushAt_"+section, __last=Number(localStorage.getItem(__k)||0);
+    if(Date.now()-__last < 2*60*60*1000) return;
+    localStorage.setItem(__k, String(Date.now()));
+  }catch(_){}
   // Apps Script는 응답에 CORS 헤더를 못 붙이므로, 응답이 필요 없는 저장 요청은
   // no-cors로 보낸다(요청은 전달되되 응답은 읽지 않음). 콘솔의 CORS 오류도 사라진다.
   fetch(url, {
@@ -8075,14 +8086,17 @@ function invGetAgingRows(thresholdDays){
     if(!byPart[key]) byPart[key] = { partNo:String(r.partNo).trim(), totalIn:0, totalOut:0, lastDate:null };
     byPart[key].totalIn += Number(r.inQty)||0;
     byPart[key].totalOut += Number(r.outQty)||0;
-    [r.inDate, r.outDate].forEach(d=>{
-      if(!d) return;
-      const dt = new Date(d);
-      if(isNaN(dt)) return;
-      if(!byPart[key].lastDate || dt > byPart[key].lastDate) byPart[key].lastDate = dt;
-    });
+    // [V9.28] yyyy-mm-dd 는 문자열 비교(빠름), 그 외 형식만 Date 변환
+    for(let __k=0; __k<2; __k++){
+      const d = __k ? r.outDate : r.inDate; if(!d) continue;
+      const ds = String(d); let key8;
+      if(ds.length>=10 && ds.charCodeAt(4)===45 && ds.charCodeAt(7)===45){ key8 = (+ds.slice(0,4))*10000 + (+ds.slice(5,7))*100 + (+ds.slice(8,10)); if(isNaN(key8)) continue; }
+      else { const dt = new Date(d); if(isNaN(dt)) continue; key8 = dt.getFullYear()*10000 + (dt.getMonth()+1)*100 + dt.getDate(); }
+      if(!byPart[key].__lk || key8 > byPart[key].__lk) byPart[key].__lk = key8;   // 날짜를 숫자(yyyymmdd)로 비교
+    }
   });
   const today = new Date(); today.setHours(0,0,0,0);
+  Object.values(byPart).forEach(p=>{ if(p.__lk) p.lastDate=new Date((p.__lk/10000|0), ((p.__lk/100|0)%100)-1, p.__lk%100); });
   return Object.values(byPart)
     .filter(p=> (p.totalIn - p.totalOut) > 0 && p.lastDate)
     .map(p=>{
@@ -11942,7 +11956,7 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=9.27;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=9.28;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
@@ -14994,7 +15008,8 @@ function qcprioFillCustomers(rows){
   sel.innerHTML = '<option value="">전체 고객사</option>' + names.map(function(c){ return '<option value="'+qcEsc(c)+'">'+qcEsc(c)+'</option>'; }).join("");
   if(cur && names.indexOf(cur)>=0) sel.value = cur;
 }
-function qcprioRender(){
+function qcprioRender(keepLimit){
+  if(keepLimit!==true) window.__qcprioLimit = 300;   // [V9.28] 필터/재진입 시 300행부터
   const listEl = document.getElementById("qcprio-list");
   const sumEl  = document.getElementById("qcprio-summary");
   if(!listEl || !sumEl) return;
@@ -15135,7 +15150,8 @@ else if(proc === "재고"){
   }
 
   const cell = function(v){ return v>0 ? '<b style="color:#1F2A44;">'+v+'</b>' : '<span style="color:#C6CCD6;">·</span>'; };
-  const rowsHtml = rows.map(function(r, i){
+  const __qpLim = window.__qcprioLimit||300, __qpOver = rows.length > __qpLim;
+  const rowsHtml = (__qpOver ? rows.slice(0, __qpLim) : rows).map(function(r, i){
     const T = QCPRIO_TIERS[r.tier];
     const daysTxt = r.days>=9999 ? '미정' : (r.days<0 ? Math.abs(r.days)+'일 지남' : r.days+'일');
     return '<tr style="background:'+(r.tier===1?"#FEF5F5":"#fff")+';border-bottom:1px solid #EEF1F5;">'
@@ -15183,13 +15199,18 @@ else if(proc === "재고"){
    +     '</tr></thead>'
     +     '<tbody>'+rowsHtml+'</tbody>'
     +   '</table>'
-    + '</div>';
+    + '</div>'
+    + (__qpOver ? '<div class="qcprio-more" style="text-align:center;margin:10px 0;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">'
+        + '<span style="align-self:center;color:#B0662A;font-weight:700;font-size:13px;">'+__qpLim+' / '+rows.length+'건 표시</span>'
+        + '<button type="button" onclick="window.__qcprioLimit=(window.__qcprioLimit||300)+300; qcprioRender(true);" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">더보기 (+300)</button>'
+        + '<button type="button" onclick="window.__qcprioLimit=1e9; qcprioRender(true);" style="background:#fff;color:#0B5CAB;border:1.5px solid #0B5CAB;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">전체 보기</button></div>' : '');
   document.getElementById("qcprio-status").textContent =
     "총 "+rows.length+"건 (미납 "+agg[1].c+" / 임박 "+agg[2].c+" / 차주 "+agg[3].c+")";
 }
 function qcprioPrint(){
   const page = document.getElementById("qcprio-print-page");
   if(!page){ window.print(); return; }
+  try{ if((window.__qcprioLimit||300) < 1e9){ window.__qcprioLimit=1e9; qcprioRender(true); } }catch(_){}   // [V9.28] 인쇄는 항상 전체 행
   const extraCSS = `
     @page { size: A4 landscape; margin: 8mm; }
     #print-area h2 { font-size:15px; margin:0 0 8px; }
@@ -15236,7 +15257,7 @@ function qcprioPrint(){
     #print-area col.c15 { width:10%; }
   `;
   const stamp = new Date().toLocaleString("ko-KR");
-  openPrintWindow('<h2>검사 요청서 ('+stamp+')</h2>' + page.innerHTML, extraCSS, "검사 요청서");
+  openPrintWindow('<h2>검사 요청서 ('+stamp+')</h2>' + page.innerHTML.replace(/<div class="qcprio-more"[\s\S]*?<\/button><\/div>/, ""), extraCSS, "검사 요청서");
 }
 
 /* ===================== 📑 문서 Master (품질문서 관리) ===================== */
@@ -21969,6 +21990,6 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.27 🔔</div>
+<div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V9.28 🔔</div>
 </body>
 </html>
