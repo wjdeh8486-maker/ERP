@@ -10112,159 +10112,299 @@ function renderEduPanel(){
   try{ if(typeof qShareLoad_==="function"){ qShareLoad_("eduData", function(sv){ if(apply(sv)){ try{ if(typeof idbSet==="function") idbSet("eduData",sv); }catch(_){}; return; } try{ if(typeof idbGet==="function") idbGet("eduData").then(apply).catch(function(){}); }catch(_){} }); return; } }catch(_){}
   try{ if(typeof idbGet==="function") idbGet("eduData").then(apply).catch(function(){}); }catch(_){}
 })();
-/* ==================== 🔄 변경점 관리 (내부 4M / 고객 도면 REV) ==================== */
-var __chgData=null;   // [{type,date,part,customer,cat,before,after,oldRev,newRev,applyDate,stockAction,reason,firstArticle,notify,approve,doneDate}]
-var chgSearch="", chgFilter="all";
+/* ==================== 🔄 변경점 관리 (내부 4M / 고객 도면 REV) — 단계별 진행관리 + 검사 연동 ==================== */
+// 저장: 구글시트 'CHG_Master' 탭(행 단위, 고유 ID) = 기준 데이터 · idb 'chgMaster' = 빠른 표시용 캐시
+// 이전 공유저장(qShare "chgData", 표 통째 저장)은 읽기만 → 시트에 없는 건 1회 자동 이관(내용 기반 고정 ID → 여러 PC가 동시에 이관해도 중복 없음)
+var __chgData=null;            // 활성(삭제 안 된) 변경점 배열
+var chgSearch="", chgFilter="all", chgStageFilter="open";
+var CHG_TAB="CHG_Master";
+var CHG_EFFECT_LOTS=3;         // ⑥ 유효성 확인: 적용 후 해당 도번 N LOT(=서로 다른 검사일) 무불량이면 완료 제안 — 규정 확정 시 이 숫자만 변경
+var __chgLoaded=false, __chgSheetOk=false, __chgOpenTs=0;
+var CHG_FIELDS=[["type","유형"],["date","발생일"],["part","도번/검사"],["customer","고객"],["cat","세부항목"],["grade","등급"],["before","변경 전"],["after","변경 후"],["oldRev","구Rev"],["newRev","신Rev"],["reason","사유"],["reporter","신고자"],
+  ["approve","검토·승인자"],["approveDate","승인일"],["notify","고객 통보/승인"],["notifyDate","통보·승인일"],["stockAction","구재고 처리"],["stockDate","구재고 처리일"],
+  ["applyDate","적용일"],["fromSn","변경시작 S/N"],["firstArticle","초도품 결과"],["faDate","초도품 검증일"],["faRef","초도품 근거"],
+  ["effDate","유효성 확인일"],["effRef","유효성 근거"],["docRev","개정 문서"],["docDate","문서 반영일"],
+  ["doneDate","종결일"],["closeBy","종결 승인자"],["note","비고"],["legacy","이관"],["del","삭제"],["created","최초작성"],["updated","최종수정"],["ts","_ts"]];
 function chgDefault_(){ return []; }
 function chgEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-function chgSave_(){ try{ if(typeof idbSet==="function") idbSet("chgData", __chgData); }catch(e){} try{ if(typeof qShareSave_==="function") qShareSave_("chgData", __chgData); }catch(e){} try{ window.__unsaved=false; }catch(e){} }
-
-function chgReadTable_(){
-  var out=[]; var tb=document.getElementById("chg-table"); if(!tb) return out;
-  var keys=["type","date","part","customer","cat","before","after","oldRev","newRev","applyDate","stockAction","reason","firstArticle","fromSn","notify","approve","doneDate"];
-  tb.querySelectorAll("tbody tr").forEach(function(tr){
-    var o={},has=false;
-    keys.forEach(function(k){ var el=tr.querySelector('[data-k="'+k+'"]'); var v=el?String(el.value||"").trim():""; o[k]=v; if(v&&k!=="type") has=true; });
-    var tp=tr.querySelector('[data-k="type"]'); o.type=tp?tp.value:"내부4M";
-    if(has) out.push(o);
-  });
-  return out;
-}
-function chgCollect_(){ __chgData=chgReadTable_(); chgSave_(); }
-function chgApplyFilter_(){ var tb=document.getElementById("chg-table"); if(!tb) return; var q=(chgSearch||"").trim().toLowerCase();
-  tb.querySelectorAll("tbody tr").forEach(function(tr){ var tsel=tr.querySelector('[data-k="type"]'); var type=tsel?tsel.value:""; var g=function(k){ var el=tr.querySelector('[data-k="'+k+'"]'); return el?String(el.value||"").toLowerCase():""; };
-    var typeOk=(chgFilter==="all")||(type===chgFilter); var text=g("part")+" "+g("customer")+" "+g("before")+" "+g("after")+" "+g("reason"); var qOk=!q||text.indexOf(q)>=0; tr.style.display=(typeOk&&qOk)?"":"none"; }); }
-
-function chgInput_(k,v,ph,w){ return '<input data-k="'+k+'" value="'+chgEsc_(v||"")+'" placeholder="'+(ph||"")+'" style="width:'+(w||"100%")+';box-sizing:border-box;padding:5px 6px;border:1px solid #D6DEE8;border-radius:6px;font-size:12px;">'; }
-function chgSel_(k,v,opts){ return '<select data-k="'+k+'" style="width:100%;box-sizing:border-box;padding:5px 6px;border:1px solid #D6DEE8;border-radius:6px;font-size:12px;">'+opts.map(function(o){ return '<option'+(String(v)===String(o)?" selected":"")+'>'+chgEsc_(o)+'</option>'; }).join("")+'</select>'; }
+function chgToday_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
+function chgNow_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return chgToday_()+" "+z(d.getHours())+":"+z(d.getMinutes()); }
+function chgWho_(){ try{ var m=(typeof insMetaByType!=="undefined")&&insMetaByType[insType]; if(m&&m.inspector) return m.inspector; }catch(_){} return ""; }
+function chgDn_(s){ var m=String(s||"").match(/(\d{4})\D?(\d{1,2})\D?(\d{1,2})/); return m?(m[1]+("0"+m[2]).slice(-2)+("0"+m[3]).slice(-2)):""; }
 
 // [부표1] 변경점 세부내용 → 등급(A/B/C) 매핑
 var CHG_DETAIL_GRADE=[["중요공정 작업자 변경","B"],["미숙련 작업자","C"],["숙련 작업자","C"],["작업 근무형태 변경","C"],["설비 변경(신규/개조)","A"],["Lay-Out 변경","B"],["금형/치공구 변경","C"],["유휴설비/주요부품 교체","B"],["검사방법 변경","B"],["측정방법 변경","B"],["측정장비 변경","B"],["QC공정도/작업방법 변경","B"],["표면처리(후처리) 변경","A"],["제조/시험방법 변경","A"],["재질 변경","A"],["Maker(공급업체) 변경","A"],["제품 변경(단종/설계)","A"],["포장 변경","B"],["생산지 변경(이전/신설)","A"],["생산업체 일원화/신규","B"],["상호명 변경","B"],["기타","B"]];
 var CHG_GRADE_OF={}; CHG_DETAIL_GRADE.forEach(function(x){ CHG_GRADE_OF[x[0]]=x[1]; });
 CHG_GRADE_OF["사람"]="C"; CHG_GRADE_OF["설비"]="B"; CHG_GRADE_OF["재료"]="A"; CHG_GRADE_OF["방법"]="B";   // 구버전 4M 호환
+// 세부항목 → 4M 분류 (통계용)
+var CHG_4M_OF={"중요공정 작업자 변경":"사람","미숙련 작업자":"사람","숙련 작업자":"사람","작업 근무형태 변경":"사람",
+  "설비 변경(신규/개조)":"설비","Lay-Out 변경":"설비","금형/치공구 변경":"설비","유휴설비/주요부품 교체":"설비","측정장비 변경":"설비",
+  "재질 변경":"재료","Maker(공급업체) 변경":"재료","생산업체 일원화/신규":"재료",
+  "검사방법 변경":"방법","측정방법 변경":"방법","QC공정도/작업방법 변경":"방법","표면처리(후처리) 변경":"방법","제조/시험방법 변경":"방법","포장 변경":"방법",
+  "사람":"사람","설비":"설비","재료":"재료","방법":"방법"};
+function chg4mOf_(cat){ return CHG_4M_OF[cat]||"기타"; }
 function chgGradeOf_(cat, isRev){ if(isRev) return "A"; return CHG_GRADE_OF[cat] || "B"; }
 function chgGradeBadge_(g){ var c=g==="A"?"#C0392B":(g==="B"?"#B0662A":"#5A6478"); var bg=g==="A"?"#FDECEC":(g==="B"?"#FFF3E6":"#EEF1F6"); return '<span style="background:'+bg+';color:'+c+';border-radius:6px;padding:2px 10px;font-weight:800;">'+g+'</span>'; }
-function chgOnCatChange_(sel){ try{ var tr=sel.closest("tr"); if(!tr) return; var gc=tr.querySelector("[data-gradecell]"); if(gc) gc.innerHTML=chgGradeBadge_(chgGradeOf_(sel.value,false)); }catch(e){} }
-function chgCatOpts_(){ return CHG_DETAIL_GRADE.map(function(x){return x[0];}).concat(["사람","설비","재료","방법"]); }
-function chgRowHtml_(c){
-  c=c||{type:"내부4M"};
-  var isRev=(c.type==="고객REV");
-  // 유형에 따라 셀 내용이 달라짐
-  var catCell = isRev
-    ? '<span style="font-size:11px;color:#8A93A6;">Rev '+chgInput_("oldRev",c.oldRev,"구",'46px')+' → '+chgInput_("newRev",c.newRev,"신",'46px')+'</span>'
-    : '<select data-k="cat" onchange="chgOnCatChange_(this)" style="width:100%;box-sizing:border-box;padding:5px 6px;border:1px solid #D6DEE8;border-radius:6px;font-size:12px;">'+chgCatOpts_().map(function(o){ return '<option'+((String(c.cat||"방법")===o)?" selected":"")+'>'+chgEsc_(o)+'</option>'; }).join("")+'</select>';
-  var stockCell = isRev
-    ? chgSel_("stockAction",c.stockAction||"구재고 소진",["구재고 소진","구재고 폐기","선별 사용","해당없음"])
-    : chgSel_("notify",c.notify||"불필요",["통보완료","통보예정","불필요"]);
-  return '<tr>'
-    +'<td>'+chgSel_("type",c.type,["내부4M","고객REV"])+'</td>'
-    +'<td>'+chgInput_("date",c.date,"발생일")+'</td>'
-    +'<td>'+chgInput_("part",c.part,"도번/검사 (예: M200-011 / 청정도)")+'</td>'
-    +'<td>'+chgInput_("customer",c.customer,"고객")+'</td>'
-    +'<td>'+catCell+'</td>'
-    +'<td data-gradecell="1" style="text-align:center;white-space:nowrap;">'+chgGradeBadge_(isRev?"A":chgGradeOf_(c.cat||"방법",false))+'</td>'
-    +'<td>'+chgInput_("before",c.before,"변경 전")+'</td>'
-    +'<td>'+chgInput_("after",c.after,"변경 후")+'</td>'
-    +'<td>'+(isRev?chgInput_("applyDate",c.applyDate,"적용일"):chgInput_("reason",c.reason,"사유"))+'</td>'
-    +'<td>'+stockCell+'</td>'
-    +'<td>'+chgSel_("firstArticle",c.firstArticle||"예정",["합격","진행중","예정","해당없음"])+'</td>'
-    +'<td>'+chgInput_("fromSn",c.fromSn,"S/N ○번부터")+'</td>'
-    +'<td>'+chgInput_("approve",c.approve,"승인")+'</td>'
-    +'<td>'+chgInput_("doneDate",c.doneDate,"완료일")+'</td>'
-    +'<td style="text-align:center;white-space:nowrap;"><button type="button" class="chg-rep" title="변경점 신고서 엑셀 발행" style="border:none;background:#0B7A8A;color:#fff;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:11px;margin-right:3px;">📄</button><button type="button" class="chg-del" style="border:none;background:#F0F4F8;border-radius:6px;width:26px;height:26px;cursor:pointer;">✕</button></td>'
-    +'</tr>';
+function chgCatOpts_(){ return CHG_DETAIL_GRADE.map(function(x){return x[0];}); }
+
+// ── 단계 정의: 등급별 필수 단계, 현재 단계 자동 계산
+var CHG_NUM=["","①","②","③","④","⑤","⑥","⑦","⑧"];
+function chgIsRev_(c){ return c && c.type==="고객REV"; }
+function chgGrade_(c){ return chgGradeOf_(c.cat||"", chgIsRev_(c)); }
+function chgStepTitle_(n,c){ return ["","신고","검토·승인",(chgIsRev_(c)?"구재고 처리":"고객 통보/승인"),"적용","초도품 검증","유효성 확인","문서 반영","종결"][n]; }
+function chgStepDone_(n,c){
+  switch(n){
+    case 1: return true;
+    case 2: return !!(c.approveDate||c.approve);
+    case 3: if(chgIsRev_(c)) return !!c.stockDate; return chgGrade_(c)==="A" ? (c.notify==="고객 승인") : (c.notify==="고객 승인"||c.notify==="통보완료"||c.notify==="불필요");
+    case 4: return !!c.applyDate;
+    case 5: return c.firstArticle==="합격"||c.firstArticle==="해당없음";
+    case 6: return !!c.effDate;
+    case 7: return !!(c.docDate||c.docRev);
+    case 8: return !!String(c.doneDate||"").trim();
+  } return false; }
+function chgReq_(c){ var g=chgGrade_(c); if(chgIsRev_(c)||g==="A") return [1,2,3,4,5,6,7,8]; if(g==="B") return [1,2,3,4,5,7,8]; return [1,2,4,8]; }
+function chgStage_(c){
+  var req=chgReq_(c), miss=req.filter(function(n){ return n<8 && !chgStepDone_(n,c); });
+  if(chgStepDone_(8,c)) return { n:8, closed:true, miss:(c.legacy?[]:miss), label:"종결", color:"#1E7A46", bg:"#E9F6EE" };
+  var cur=8; for(var i=0;i<req.length;i++){ if(!chgStepDone_(req[i],c)){ cur=req[i]; break; } }
+  return { n:cur, closed:false, miss:miss, label:CHG_NUM[cur]+" "+chgStepTitle_(cur,c)+" 대기", color:(cur<=3?"#B45309":"#0B5CAB"), bg:(cur<=3?"#FFF4E0":"#E7F0FA") };
 }
+function chgDotsHtml_(c){ var req=chgReq_(c);
+  return [1,2,3,4,5,6,7,8].map(function(n){ var need=req.indexOf(n)>=0, done=chgStepDone_(n,c);
+    var bg=!need?"#F1F3F6":(done?"#1E7A46":"#fff"), bd=!need?"#E3E7EE":(done?"#1E7A46":"#B8C2D3"), col=!need?"#C8CED9":(done?"#fff":"#5A6478");
+    return '<span title="'+chgStepTitle_(n,c)+(need?(done?" 완료":" 미완료"):" (해당없음)")+'" style="display:inline-block;width:17px;height:17px;line-height:15px;border-radius:50%;border:1px solid '+bd+';background:'+bg+';color:'+col+';font-size:10px;text-align:center;margin-right:2px;">'+n+'</span>'; }).join(""); }
+
+// ── 검사일보 연동: 도번 매칭, 적용 후 검사행, 초도품/유효성 후보
+function chgN_(x){ return (typeof ihNorm_==="function")?ihNorm_(x):String(x||"").trim().toUpperCase(); }
+function chgTokens_(c){ return String(c.part||"").split(/[\/,·]+|\s+/).map(function(t){ return chgN_(t); }).filter(function(t){ return t.length>=3; }); }
+function chgMatch_(c, draw){ var d=chgN_(draw); return !!d && chgTokens_(c).indexOf(d)>=0; }
+function chgInsRows_(c){ var out=[], toks=chgTokens_(c); if(!toks.length) return out;
+  var useSrc=!!(typeof insUnresolvedSrc!=="undefined"&&insUnresolvedSrc);
+  ["incoming","shipping","measureS","measureL"].forEach(function(t){ var rows=[]; try{ rows=insUnrRows_(t,useSrc)||[]; }catch(_){}
+    rows.forEach(function(r){ if(!r||toks.indexOf(chgN_(r.draw))<0) return; var dn=chgDn_(r.insDate); if(!dn) return; var df=null; try{ df=insRowDefect_(t,r); }catch(_){}
+      out.push({ lab:(typeof insTypeLabel==="function"?insTypeLabel(t):t), dn:dn, date:String(r.insDate).slice(0,10), sn:String(r.sn||"").trim(), def:df }); }); });
+  out.sort(function(a,b){ return a.dn.localeCompare(b.dn); }); return out; }
+function chgRef_(x){ return x.lab+" "+x.date+(x.sn?(" S/N "+x.sn):"")+(x.def?(" · 불량 "+x.def.types):" · 불량 없음"); }
+function chgFaCand_(c){ var ad=chgDn_(c.applyDate); if(!ad) return null; var rows=chgInsRows_(c).filter(function(x){ return x.dn>=ad; }); return rows.length?rows[0]:null; }
+function chgEffInfo_(c){ var st=chgDn_(c.faDate)||chgDn_(c.applyDate); if(!st) return null;
+  var rows=chgInsRows_(c).filter(function(x){ return x.dn>=st; }), lots={}, defs=0;
+  rows.forEach(function(x){ lots[x.dn]=1; if(x.def) defs+=x.def.qty; });
+  var n=Object.keys(lots).length; return { lots:n, defs:defs, ok:(n>=CHG_EFFECT_LOTS && defs===0), last:(rows.length?rows[rows.length-1].date:"") }; }
+// 검사일보 도번 입력 시: 진행중 변경점
+function chgActiveFor_(draw){ if(!Array.isArray(__chgData)) return []; return __chgData.filter(function(c){ return !chgStepDone_(8,c) && chgMatch_(c,draw); }); }
+function chgInsNoticeHtml_(list){ if(!list||!list.length) return ""; var E=chgEsc_;
+  return '<div style="padding:10px 16px;background:#EEF6FF;border-bottom:2px solid #0B5CAB;">'+list.map(function(c){ var st=chgStage_(c), req=chgReq_(c);
+    var head=chgIsRev_(c)?("🔀 도면 REV "+E(c.oldRev||"?")+" → "+E(c.newRev||"?")):("🔄 4M 변경 · "+E(c.cat||"")+(c.before||c.after?(" · "+E(c.before||"")+" → "+E(c.after||"")):""));
+    var info=[c.applyDate?("적용 "+E(c.applyDate)):"적용일 미정", c.fromSn?("S/N "+E(c.fromSn)+"부터"):"", chgIsRev_(c)&&c.stockAction?("구재고: "+E(c.stockAction)):""].filter(Boolean).join(" · ");
+    var hint="";
+    if(req.indexOf(5)>=0 && !chgStepDone_(5,c) && c.applyDate) hint='<div style="color:#C0392B;font-weight:800;margin-top:3px;">★ 초도품 검증 대상 — 변경 적용 후 첫 검사입니다. 변경 내용을 중점 확인하세요.</div>';
+    else if(req.indexOf(6)>=0 && chgStepDone_(5,c) && !chgStepDone_(6,c)){ var ef=chgEffInfo_(c); hint='<div style="color:#0B5CAB;font-weight:800;margin-top:3px;">🔍 집중검사 기간 ('+(ef?ef.lots:0)+'/'+CHG_EFFECT_LOTS+' LOT) — 변경 후 유효성 확인 중입니다.</div>'; }
+    else if(!c.applyDate) hint='<div style="color:#B45309;font-weight:700;margin-top:3px;">변경 적용 전입니다 — 현행(변경 전) 기준으로 검사하세요.</div>';
+    return '<div style="margin:3px 0;"><div style="font-size:14px;font-weight:800;color:#0B3D7A;">'+head+' <span style="font-size:11px;background:'+st.bg+';color:'+st.color+';border-radius:6px;padding:1px 7px;">'+E(st.label)+'</span></div>'
+      +'<div style="font-size:12px;color:#1F2A44;">'+info+'</div>'+hint+'</div>'; }).join("")+'</div>'; }
+
+// ── 저장 (구글시트 행 단위)
+function chgHash_(s){ var h=5381; s=String(s); for(var i=0;i<s.length;i++){ h=((h<<5)+h+s.charCodeAt(i))|0; } return (h>>>0).toString(36); }
+function chgLegacyId_(c){ return "L"+chgHash_([c.type,c.date,c.part,c.customer,c.cat,c.before,c.after,c.oldRev,c.newRev].join("|")); }
+function chgRow_(c){ return CHG_FIELDS.map(function(f){ var v=(f[0]==="ts")?(c.ts||0):c[f[0]]; v=(v==null?"":String(v)); return (v!==""&&f[0]!=="ts")?("'"+v):v; }).concat([c.id]); }
+function chgPost_(list){ var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url||!list.length) return Promise.resolve();
+  var header=CHG_FIELDS.map(function(f){ return f[1]; }).concat(["_id"]);
+  return fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({ action:"upsertRows", fileId:INS_SHEET_FILE, sheetName:CHG_TAB, header:header, rows:list.map(chgRow_), deleteIds:[], createIfMissing:true })}).catch(function(){}); }
+function chgReadSheet_(cb){ var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ cb(null); return; }
+  fetch(url+"?dataset="+encodeURIComponent(CHG_TAB)+"&nocache=1&_t="+Date.now(),{cache:"no-store"}).then(function(r){ return r.json(); }).then(function(res){
+    if(!res||!res.success||!Array.isArray(res.rows)){ cb(null); return; }
+    var map={}; res.rows.forEach(function(o){ var id=String(o["_id"]||"").trim(); if(!id) return; var c={id:id};
+      CHG_FIELDS.forEach(function(f){ var v=o[f[1]]; v=(v==null?"":String(v)); if(v.charAt(0)==="'") v=v.slice(1); c[f[0]]=v; }); c.ts=Number(c.ts)||0; map[id]=c; });
+    cb(map); }).catch(function(){ cb(null); }); }
+var __chgAll={};   // id → 레코드(삭제 포함) — 동기화용
+function chgRebuild_(){ __chgData=Object.keys(__chgAll).map(function(k){ return __chgAll[k]; }).filter(function(c){ return c && c.del!=="1"; });
+  __chgData.sort(function(a,b){ return chgDn_(b.date).localeCompare(chgDn_(a.date)); }); }
+function chgSave_(){ try{ if(typeof idbSet==="function") idbSet("chgMaster", __chgAll); }catch(e){} }
+function chgRefreshViews_(){ try{ if(document.getElementById("qpanel-chg")) renderChgPanel(); }catch(_){} }
+function chgEnsure_(force){
+  if(__chgLoaded && !force) return; __chgLoaded=true;
+  var fromSheet=function(){
+    chgReadSheet_(function(sm){
+      if(!sm){ chgRebuild_(); chgRefreshViews_(); return; }
+      __chgSheetOk=true; var push=[];
+      Object.keys(sm).forEach(function(k){ var loc=__chgAll[k]; if(!loc || (Number(loc.ts)||0)<=sm[k].ts) __chgAll[k]=sm[k]; });
+      Object.keys(__chgAll).forEach(function(k){ if(!sm[k] || (Number(__chgAll[k].ts)||0)>sm[k].ts) push.push(__chgAll[k]); });   // 시트에 없거나 로컬이 더 최신(전송 실패분) → 재전송
+      var legacy=function(arr){
+        (Array.isArray(arr)?arr:[]).forEach(function(o){ if(!o) return; var has=["date","part","before","after","oldRev","newRev","reason"].some(function(k){ return String(o[k]||"").trim(); }); if(!has) return;
+          var id=chgLegacyId_(o); if(__chgAll[id]) return;
+          var c=Object.assign({}, o, { id:id, legacy:"1", ts:1, created:"", updated:"" }); c.grade=chgGrade_(c);
+          __chgAll[id]=c; push.push(c); });
+      };
+      var done=function(){ if(push.length) chgPost_(push); chgRebuild_(); chgSave_(); chgRefreshViews_(); };
+      try{ if(typeof qShareLoad_==="function") qShareLoad_("chgData", function(sv){ legacy(sv);
+          try{ if(typeof idbGet==="function") idbGet("chgData").then(function(lv){ legacy(lv); done(); }).catch(done); else done(); }catch(_){ done(); } });
+        else done(); }catch(_){ done(); }
+    }); };
+  try{ if(typeof idbGet==="function"){ idbGet("chgMaster").then(function(v){ if(v&&typeof v==="object") __chgAll=v; chgRebuild_(); chgRefreshViews_(); fromSheet(); }).catch(fromSheet); } else fromSheet(); }catch(_){ fromSheet(); }
+}
+(window.__afterEnter=window.__afterEnter||[]).push(function(){ chgEnsure_(); });
+
+// ── 등록/수정 창
+function chgOpen_(id, draft){
+  var c=draft?Object.assign({}, draft):(id?Object.assign({}, __chgAll[id]||{}):{ type:"내부4M", date:chgToday_(), reporter:chgWho_(), cat:"기타" });
+  if(!draft) __chgOpenTs=Number((__chgAll[id]||{}).ts)||0; var E=chgEsc_, isRev=chgIsRev_(c);
+  var inp=function(k,lab,ph,w,isDate){ return '<label style="flex:'+(w||1)+';min-width:120px;font-size:11.5px;color:#5A6478;font-weight:700;">'+lab
+    +'<div style="display:flex;gap:3px;margin-top:3px;"><input data-ck="'+k+'" value="'+E(c[k]||"")+'" placeholder="'+(ph||"")+'" style="flex:1;min-width:0;padding:6px 7px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;">'
+    +(isDate?'<button type="button" onclick="this.previousElementSibling.value=chgToday_()" style="border:1px solid #D6DEE8;background:#F4F6FA;border-radius:6px;font-size:11px;cursor:pointer;padding:0 6px;">오늘</button>':'')+'</div></label>'; };
+  var sel=function(k,lab,opts,w,onch){ return '<label style="flex:'+(w||1)+';min-width:120px;font-size:11.5px;color:#5A6478;font-weight:700;">'+lab+'<select data-ck="'+k+'"'+(onch?' onchange="'+onch+'"':'')+' style="width:100%;margin-top:3px;padding:6px 7px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;">'
+    +opts.map(function(o){ return '<option'+(String(c[k]||opts[0])===o?" selected":"")+'>'+E(o)+'</option>'; }).join("")+'</select></label>'; };
+  var req=chgReq_(c);
+  var sec=function(n,body,extra){ var need=req.indexOf(n)>=0, done=chgStepDone_(n,c);
+    return '<div data-step="'+n+'" style="border:1px solid '+(need?"#D6DEE8":"#EEF1F5")+';border-left:4px solid '+(!need?"#D5DAE3":(done?"#1E7A46":"#B45309"))+';border-radius:9px;padding:9px 11px;'+(need?"":"opacity:.55;")+'">'
+      +'<div style="font-size:12.5px;font-weight:800;color:#1F2A44;margin-bottom:6px;">'+CHG_NUM[n]+' '+chgStepTitle_(n,c)+' <span style="font-size:11px;font-weight:600;color:'+(!need?"#8A93A6":(done?"#1E7A46":"#B45309"))+';">'+(!need?"(이 등급은 해당없음)":(done?"완료":"미완료"))+'</span>'+(extra||"")+'</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;">'+body+'</div></div>'; };
+  var fa=chgFaCand_(c), ef=chgEffInfo_(c);
+  var faBox = c.applyDate ? (fa ? '<div style="flex-basis:100%;font-size:12px;background:#F4F8FD;border-radius:7px;padding:6px 9px;">🔗 검사일보 자동 후보: <b>'+E(chgRef_(fa))+'</b> <button type="button" onclick="chgUseFa_()" style="margin-left:6px;background:#0B5CAB;color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer;">이 검사로 입력</button><span data-fa="'+E(JSON.stringify({d:fa.date,r:chgRef_(fa),ok:!fa.def}))+'" style="display:none;"></span></div>'
+      : '<div style="flex-basis:100%;font-size:11.5px;color:#8A93A6;">적용일 이후 이 도번의 검사일보 기록이 아직 없습니다. (검사일보를 ☁ 불러온 상태에서 자동 확인)</div>') : '';
+  var efBox = (req.indexOf(6)>=0 && ef) ? '<div style="flex-basis:100%;font-size:12px;background:'+(ef.ok?"#E9F6EE":"#F4F8FD")+';border-radius:7px;padding:6px 9px;">🔗 적용 후 검사: <b>'+ef.lots+' LOT</b> / 기준 '+CHG_EFFECT_LOTS+' LOT · 불량 <b>'+ef.defs+'</b>개'
+      +(ef.ok?' <button type="button" onclick="chgUseEff_(\''+E(ef.last)+'\',\''+E(ef.lots+" LOT 무불량 (검사일보 자동확인)")+'\')" style="margin-left:6px;background:#1E7A46;color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer;">유효성 확인 완료로 입력</button>':(ef.defs?' <span style="color:#C0392B;font-weight:700;">→ 불량 발생: 원인 확인 필요</span>':''))+'</div>' : '';
+  var st=chgStage_(c);
+  var html='<div id="chg-ov" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100060;display:flex;align-items:center;justify-content:center;padding:14px;">'
+    +'<div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:94vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
+    +'<div style="background:#0B3D7A;color:#fff;padding:12px 18px;font-weight:800;position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;">🔄 변경점 '+(id?"수정":"등록")
+    +(id?' <span style="font-size:11px;background:'+st.bg+';color:'+st.color+';border-radius:6px;padding:2px 8px;">'+E(st.label)+'</span>':'')+'<span style="margin-left:auto;">'+chgDotsHtml_(c)+'</span></div>'
+    +'<div id="chg-form" style="padding:14px;display:flex;flex-direction:column;gap:9px;">'
+    + sec(1, sel("type","유형",["내부4M","고객REV"],1,"chgFormRefresh_()")+inp("date","발생일","YYYY-MM-DD",1,true)+inp("part","도번/검사","예: M200-011 / 청정도",2)+inp("customer","고객","",1)
+        +(isRev? inp("oldRev","구 Rev","",1)+inp("newRev","신 Rev","",1) : sel("cat","세부항목(부표1)",chgCatOpts_().concat(["사람","설비","재료","방법"].filter(function(x){return c.cat===x;})),2,"chgFormRefresh_()"))
+        +inp("before","변경 전","",2)+inp("after","변경 후","",2)+inp("reason","사유","",2)+inp("reporter","신고자","",1),
+        ' · 등급 '+chgGradeBadge_(chgGrade_(c)))
+    + sec(2, inp("approve","검토·승인자","팀장",1)+inp("approveDate","승인일","YYYY-MM-DD",1,true))
+    + sec(3, isRev ? (sel("stockAction","구재고 처리(혼입방지)",["구재고 소진","구재고 폐기","선별 사용","해당없음"],1)+inp("stockDate","처리 완료일","YYYY-MM-DD",1,true))
+        : (sel("notify","고객 통보/승인",["통보예정","통보완료","고객 승인","불필요"],1)+inp("notifyDate","통보·승인일","YYYY-MM-DD",1,true)
+           +'<div style="flex-basis:100%;font-size:11px;color:#8A93A6;">A등급은 <b>고객 승인</b>이 있어야 완료, B등급은 통보완료·불필요도 완료로 봅니다</div>'))
+    + sec(4, inp("applyDate","적용일","YYYY-MM-DD",1,true)+inp("fromSn","변경시작 S/N · LOT","S/N ○번부터",1))
+    + sec(5, sel("firstArticle","초도품 결과",["예정","진행중","합격","불합격","해당없음"],1)+inp("faDate","검증일","YYYY-MM-DD",1,true)+inp("faRef","근거(검사 기록)","",2)+faBox)
+    + sec(6, inp("effDate","유효성 확인일","YYYY-MM-DD",1,true)+inp("effRef","근거","예: 3 LOT 무불량",2)+efBox, ' <span style="font-size:10.5px;color:#8A93A6;font-weight:600;">(적용 후 '+CHG_EFFECT_LOTS+' LOT 집중검사)</span>')
+    + sec(7, inp("docRev","개정 문서(번호·Rev)","예: QC공정도 Rev.3, 검사기준서",2)+inp("docDate","반영일","YYYY-MM-DD",1,true))
+    + sec(8, inp("closeBy","종결 승인자","팀장",1)+inp("doneDate","종결일","YYYY-MM-DD",1,true))
+    +'<label style="font-size:11.5px;color:#5A6478;font-weight:700;">비고<textarea data-ck="note" rows="2" style="width:100%;box-sizing:border-box;margin-top:3px;padding:6px 7px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;">'+E(c.note||"")+'</textarea></label>'
+    +(id?'<div style="font-size:11px;color:#8A93A6;">최초작성 '+E(c.created||(c.legacy?"(이관)":"-"))+' · 최종수정 '+E(c.updated||"-")+' · 저장 위치: 구글시트 \''+CHG_TAB+'\' 탭</div>':'')
+    +'<div style="display:flex;gap:8px;">'
+    +'<button type="button" id="chg-save-btn" onclick="chgCommit_(\''+E(id||"")+'\')" style="flex:1;background:#0B3D7A;color:#fff;border:none;border-radius:8px;padding:11px;font-weight:800;cursor:pointer;">저장</button>'
+    +(id?'<button type="button" onclick="chgMakeReportXlsx_(__chgAll[\''+E(id)+'\'])" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:11px 14px;font-weight:700;cursor:pointer;">📄 신고서</button>':'')
+    +'<button type="button" onclick="var o=document.getElementById(\'chg-ov\');if(o)o.remove();" style="background:#EEF1F6;border:1px solid #D6DEE8;border-radius:8px;padding:11px 16px;cursor:pointer;">닫기</button>'
+    +'</div></div></div></div>';
+  var old=document.getElementById("chg-ov"); if(old) old.remove();
+  var w=document.createElement("div"); w.innerHTML=html; document.body.appendChild(w.firstChild);
+  var ov=document.getElementById("chg-ov"); ov.__id=id||""; ov.__base=c;
+}
+function chgFormVals_(){ var o={}; document.querySelectorAll("#chg-form [data-ck]").forEach(function(el){ o[el.getAttribute("data-ck")]=String(el.value||"").trim(); }); return o; }
+// 유형·세부항목 변경 시 입력값 유지한 채 창 다시 그림(등급·필수 단계 즉시 반영)
+function chgFormRefresh_(){ var ov=document.getElementById("chg-ov"); if(!ov) return; chgOpen_(ov.__id, Object.assign({}, ov.__base, chgFormVals_())); }
+function chgUseFa_(){ var sp=document.querySelector("#chg-form [data-fa]"); if(!sp) return; var o={}; try{ o=JSON.parse(sp.getAttribute("data-fa")); }catch(_){ return; }
+  var set=function(k,v){ var el=document.querySelector('#chg-form [data-ck="'+k+'"]'); if(el) el.value=v; };
+  set("faDate",o.d); set("faRef",o.r); set("firstArticle",o.ok?"합격":"불합격"); }
+function chgUseEff_(d,r){ var set=function(k,v){ var el=document.querySelector('#chg-form [data-ck="'+k+'"]'); if(el) el.value=v; }; set("effDate",d); set("effRef",r); }
+function chgCommit_(id){
+  var ov=document.getElementById("chg-ov"); var base=(ov&&ov.__base)||{}; var v=chgFormVals_();
+  if(!v.part && !v.before && !v.after){ alert("도번/검사 또는 변경 내용을 입력하세요."); return; }
+  var isNew=!id; var c=Object.assign({}, isNew?{}:(__chgAll[id]||base), v);
+  if(isNew) c.id="CHG"+Date.now().toString(36)+Math.floor(Math.random()*1000); 
+  if(c.type==="고객REV") c.cat=c.cat||"";
+  c.grade=chgGrade_(c); c.created=c.created||chgNow_(); c.updated=chgNow_(); c.ts=Date.now(); c.del="";
+  var btn=document.getElementById("chg-save-btn"); if(btn){ btn.disabled=true; btn.textContent="저장 중…"; }
+  var doSave=function(){ __chgAll[c.id]=c; chgRebuild_(); chgSave_(); chgPost_([c]); var o=document.getElementById("chg-ov"); if(o) o.remove(); chgRefreshViews_(); };
+  if(isNew){ doSave(); return; }
+  chgReadSheet_(function(sm){ var sv=sm&&sm[c.id];
+    if(sv && sv.ts>__chgOpenTs){
+      if(!confirm("다른 PC에서 이 변경점을 먼저 수정했습니다 ("+(sv.updated||"")+").\n\n[확인] 내 내용으로 덮어쓰기\n[취소] 저장 안 함 (다시 열면 최신 내용 표시)")){
+        __chgAll[c.id]=sv; chgRebuild_(); chgSave_(); if(btn){ btn.disabled=false; btn.textContent="저장"; } var o=document.getElementById("chg-ov"); if(o) o.remove(); chgRefreshViews_(); return; }
+      c.created=sv.created||c.created; }
+    doSave(); });
+}
+function chgDelete_(id){ var c=__chgAll[id]; if(!c) return;
+  if(!confirm("이 변경점을 삭제할까요?\n["+(c.part||"")+"] "+(c.before||"")+" → "+(c.after||"")+"\n\n(시트에는 '삭제' 표시로 남아 추적할 수 있습니다)")) return;
+  c=Object.assign({}, c, { del:"1", updated:chgNow_(), ts:Date.now() }); __chgAll[id]=c; chgRebuild_(); chgSave_(); chgPost_([c]); chgRefreshViews_(); }
+
+// ── 신고서 엑셀 (단계 이력 포함)
 function chgMakeReportXlsx_(c){
-  if(typeof XLSX==="undefined"||!XLSX.utils){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
-  var isRev=(c.type==="고객REV");
-  var C=insNcrCell_, ws={};
-  ws["A1"]=C(isRev?"고객 도면 REV(설계변경) 신고서":"변경점(4M) 관리 신고서",{bold:true,sz:15,align:"center",fill:"1F2A44",color:"FFFFFF"});
-  var L=function(a,t){ ws[a]=C(t,{bold:true,align:"center",fill:"EEF3FA"}); };
-  var V=function(a,t){ ws[a]=C(t==null?"":t,{align:"left"}); };
-  L("A3","유형"); V("C3", isRev?"고객 도면 REV":"내부 4M");
-  L("E3","발생일"); V("G3", c.date);
-  L("A4","도번/검사"); V("C4", c.part);
-  L("E4","고객"); V("G4", c.customer);
-  if(isRev){ L("A5","구 Rev → 신 Rev"); V("C5",(c.oldRev||"")+"  →  "+(c.newRev||"")); L("E5","신도면 적용일"); V("G5",c.applyDate); }
-  else { L("A5","4M 구분"); V("C5",c.cat); L("E5","고객 통보"); V("G5",c.notify); }
-  L("A6","변경 전"); V("C6",c.before);
-  L("A7","변경 후"); V("C7",c.after);
-  L("A8", isRev?"구재고 처리(혼입방지)":"발생 사유"); V("C8", isRev?c.stockAction:c.reason);
-  L("A9","초도품 검증"); V("C9",c.firstArticle); L("E9","완료일"); V("G9",c.doneDate);
-  L("A11","조치 / 비고"); ws["A12"]=C("",{});
-  L("A16","신고자"); ws["C16"]=C("",{}); L("E16","품질팀장 승인"); ws["G16"]=C("",{});
-  // 병합
-  ws["!merges"]=["A1:H1","A3:B3","C3:D3","E3:F3","G3:H3","A4:B4","C4:D4","E4:F4","G4:H4","A5:B5","C5:D5","E5:F5","G5:H5","A6:B6","C6:H6","A7:B7","C7:H7","A8:B8","C8:H8","A9:B9","C9:D9","E9:F9","G9:H9","A11:H11","A12:H15","A16:B16","C16:D16","E16:F16","G16:H16"].map(function(r){ return XLSX.utils.decode_range(r); });
-  ws["!cols"]=[{wch:14},{wch:10},{wch:12},{wch:8},{wch:14},{wch:8},{wch:12},{wch:10}];
-  ws["!ref"]="A1:H16";
-  var __col="ABCDEFGH"; for(var rr=1;rr<=16;rr++){ for(var cc=0;cc<8;cc++){ var ad=__col[cc]+rr; if(!ws[ad]) ws[ad]=C("",{}); } }
-  var __h={1:30,11:20,12:20}; ws["!rows"]=[]; for(var i=0;i<16;i++){ ws["!rows"][i]={hpt:(__h[i+1]||22)}; }
+  if(!c) return; if(typeof XLSX==="undefined"||!XLSX.utils){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
+  var isRev=chgIsRev_(c), C=insNcrCell_, ws={};
+  ws["A1"]=C(isRev?"고객 도면 REV(설계변경) 관리 신고서":"변경점(4M) 관리 신고서",{bold:true,sz:15,align:"center",fill:"1F2A44",color:"FFFFFF"});
+  var L=function(a,t){ ws[a]=C(t,{bold:true,align:"center",fill:"EEF3FA"}); }, V=function(a,t){ ws[a]=C(t==null?"":t,{align:"left"}); };
+  L("A3","유형"); V("C3",isRev?"고객 도면 REV":"내부 4M"); L("E3","발생일"); V("G3",c.date);
+  L("A4","도번/검사"); V("C4",c.part); L("E4","고객"); V("G4",c.customer);
+  if(isRev){ L("A5","구 Rev → 신 Rev"); V("C5",(c.oldRev||"")+"  →  "+(c.newRev||"")); } else { L("A5","세부항목(4M)"); V("C5",(c.cat||"")+" ("+chg4mOf_(c.cat)+")"); }
+  L("E5","등급"); V("G5",chgGrade_(c));
+  L("A6","변경 전"); V("C6",c.before); L("A7","변경 후"); V("C7",c.after); L("A8","사유"); V("C8",c.reason);
+  L("A10","단계"); L("C10","결과 / 근거"); L("F10","일자"); L("G10","담당·승인"); var r=11, req=chgReq_(c);
+  [[2,c.approve?"승인":"",c.approveDate,c.approve],[3,isRev?(c.stockAction||""):(c.notify||""),isRev?c.stockDate:c.notifyDate,""],[4,c.fromSn?("변경시작 "+c.fromSn):"",c.applyDate,""],
+   [5,(c.firstArticle||"")+(c.faRef?(" / "+c.faRef):""),c.faDate,""],[6,c.effRef||"",c.effDate,""],[7,c.docRev||"",c.docDate,""],[8,c.doneDate?"종결":"",c.doneDate,c.closeBy]].forEach(function(s){
+    var need=req.indexOf(s[0])>=0; L("A"+r,CHG_NUM[s[0]]+" "+chgStepTitle_(s[0],c)); V("C"+r,need?s[1]:"해당없음"); V("F"+r,s[2]); V("G"+r,s[3]); r++; });
+  L("A19","신고자"); V("C19",c.reporter); L("E19","품질팀장 승인"); V("G19",c.closeBy||c.approve);
+  ws["!merges"]=["A1:H1","A3:B3","C3:D3","E3:F3","G3:H3","A4:B4","C4:D4","E4:F4","G4:H4","A5:B5","C5:D5","E5:F5","G5:H5","A6:B6","C6:H6","A7:B7","C7:H7","A8:B8","C8:H8","A10:B10","C10:E10","G10:H10",
+    "A11:B11","C11:E11","G11:H11","A12:B12","C12:E12","G12:H12","A13:B13","C13:E13","G13:H13","A14:B14","C14:E14","G14:H14","A15:B15","C15:E15","G15:H15","A16:B16","C16:E16","G16:H16","A17:B17","C17:E17","G17:H17",
+    "A19:B19","C19:D19","E19:F19","G19:H19"].map(function(x){ return XLSX.utils.decode_range(x); });
+  ws["!cols"]=[{wch:14},{wch:10},{wch:12},{wch:10},{wch:14},{wch:12},{wch:12},{wch:10}]; ws["!ref"]="A1:H19";
+  var __col="ABCDEFGH"; for(var rr=1;rr<=19;rr++){ for(var cc=0;cc<8;cc++){ var ad=__col[cc]+rr; if(!ws[ad]) ws[ad]=C("",{}); } }
+  ws["!rows"]=[]; for(var i=0;i<19;i++) ws["!rows"][i]={hpt:(i===0?30:22)};
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "변경점신고서");
   var safe=function(x){ return String(x||"").replace(/[\\\/:*?"<>|]/g,"").replace(/\s+/g,"").slice(0,20); };
-  XLSX.writeFile(wb, (isRev?"도면REV_":"변경점4M_")+safe(c.part||"")+"_"+safe(c.date||"")+".xlsx");
+  XLSX.writeFile(wb,(isRev?"도면REV_":"변경점4M_")+safe(c.part)+"_"+safe(c.date)+".xlsx");
 }
+
+// ── 목록 화면
 function renderChgPanel(){
   var panel=document.getElementById("qpanel-chg"); if(!panel) return;
-  if(!__chgData) __chgData=chgDefault_();
-  var list=__chgData.filter(function(c){
+  if(!__chgLoaded) chgEnsure_();
+  var all=__chgData||[], E=chgEsc_;
+  var stOf={}; all.forEach(function(c){ stOf[c.id]=chgStage_(c); });
+  var open=all.filter(function(c){ return !stOf[c.id].closed; });
+  var cntN=function(n){ return open.filter(function(c){ return stOf[c.id].n===n; }).length; };
+  var effIng=open.filter(function(c){ return stOf[c.id].n===6; }).length;
+  var mix=all.filter(function(c){ return chgIsRev_(c) && !stOf[c.id].closed && (!c.stockAction||c.stockAction==="구재고 소진"||c.stockAction==="선별 사용"); }).length;
+  var cat4={사람:0,설비:0,재료:0,방법:0,기타:0}; all.forEach(function(c){ if(!chgIsRev_(c)) cat4[chg4mOf_(c.cat)]++; });
+  var card=function(label,val,color,f){ return '<div class="chg-card" data-f="'+f+'" style="flex:1;min-width:96px;cursor:pointer;background:#fff;border:1px solid '+(chgStageFilter===f?color:"#E1E8F0")+';border-top:3px solid '+color+';border-radius:10px;padding:8px 10px;'+(chgStageFilter===f?"box-shadow:0 0 0 2px "+color+"33;":"")+'"><div style="font-size:11px;color:#5A6478;">'+label+'</div><div style="font-size:19px;font-weight:800;color:'+color+';">'+val+'</div></div>'; };
+  var cards='<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:6px;">'+card("진행중",open.length,"#1F2A44","open")+card("② 승인 대기",cntN(2),"#B45309","s2")+card("③ 통보·구재고 대기",cntN(3),"#B45309","s3")+card("④ 적용 대기",cntN(4),"#0B5CAB","s4")
+    +card("⑤ 초도품 대기",cntN(5),"#0B5CAB","s5")+card("⑥ 집중관리 중",effIng,"#0B5CAB","s6")+card("⑦ 문서·⑧ 종결 대기",cntN(7)+cntN(8),"#7A3E9A","s78")+card("종결",all.length-open.length,"#1E7A46","closed")+card("전체",all.length,"#5A6478","all")+'</div>';
+  var sub='<div style="font-size:12px;color:#5A6478;margin-bottom:8px;padding:6px 12px;background:#F4F8FD;border-radius:8px;">내부 4M: 사람 <b>'+cat4.사람+'</b> · 설비 <b>'+cat4.설비+'</b> · 재료 <b>'+cat4.재료+'</b> · 방법 <b>'+cat4.방법+'</b> · 기타 <b>'+cat4.기타+'</b> &nbsp;|&nbsp; 고객 REV <b>'+all.filter(chgIsRev_).length+'</b>'
+    +(mix?' &nbsp;|&nbsp; <span style="color:#8A1F1F;font-weight:800;">🔀 구/신 도면 혼입주의 '+mix+'건</span>':'')+'</div>';
+  var q=chgSearch.trim().toLowerCase();
+  var list=all.filter(function(c){ var st=stOf[c.id];
     if(chgFilter!=="all" && c.type!==chgFilter) return false;
-    if(!chgSearch.trim()) return true;
-    var q=chgSearch.trim().toLowerCase();
-    return ((c.part||"")+" "+(c.customer||"")+" "+(c.before||"")+" "+(c.after||"")+" "+(c.reason||"")).toLowerCase().indexOf(q)>=0;
-  });
-  // 미완료 알림(완료일 없음 or 초도품 진행/예정)
-  var open=__chgData.filter(function(c){ return !(c.doneDate&&c.doneDate.trim()) || c.firstArticle==="진행중" || c.firstArticle==="예정"; });
-  var alertHtml = open.length ? '<div style="background:#FFF7E6;border:1px solid #F0DCB4;border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:12.5px;color:#B45309;"><b>⏳ 미완료 변경점 '+open.length+'건</b> · 초도품 검증/완료 처리가 필요합니다.</div>' : '';
-  var revOpen=__chgData.filter(function(c){ return c.type==="고객REV" && (!c.stockAction || c.stockAction==="구재고 소진" || c.stockAction==="선별 사용") && (!c.doneDate||!c.doneDate.trim()); });
-  var revHtml = revOpen.length ? '<div style="background:#FDECEC;border:1px solid #E7C9C9;border-radius:10px;padding:9px 13px;margin-bottom:12px;font-size:12.5px;color:#8A1F1F;"><b>🔀 구/신 도면 혼입주의 '+revOpen.length+'건</b> · 구 Rev 재고 처리(소진·폐기·선별) 확인 필요.</div>' : '';
-
-  // 종합 요약 통계 (전체 기준, 필터 무관)
-  var all=__chgData||[];
-  var n4m=all.filter(function(c){return c.type==="내부4M";}).length;
-  var nrev=all.filter(function(c){return c.type==="고객REV";}).length;
-  var ndone=all.filter(function(c){return c.doneDate&&c.doneDate.trim();}).length;
-  var nopen=all.length-ndone;
-  var cat4m={사람:0,설비:0,재료:0,방법:0};
-  all.forEach(function(c){ if(c.type==="내부4M"&&cat4m.hasOwnProperty(c.cat)) cat4m[c.cat]++; });
-  var card=function(label,val,color,clickType){ return '<div class="chg-card" data-type="'+(clickType||"")+'" style="flex:1;min-width:110px;cursor:'+(clickType!==undefined?"pointer":"default")+';background:#fff;border:1px solid #E1E8F0;border-top:3px solid '+color+';border-radius:10px;padding:10px 12px;"><div style="font-size:11.5px;color:#5A6478;">'+label+'</div><div style="font-size:22px;font-weight:800;color:'+color+';">'+val+'</div></div>'; };
-  var summaryHtml='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">'+card("전체 변경점",all.length,"#1F2A44","all")+card("내부 4M",n4m,"#0B5CAB","내부4M")+card("고객 REV",nrev,"#8A1F1F","고객REV")+card("완료",ndone,"#1E7A46")+card("미완료",nopen,"#B45309")+'</div>';
-  summaryHtml+='<div style="font-size:12px;color:#5A6478;margin-bottom:10px;padding:6px 12px;background:#F4F8FD;border-radius:8px;">내부 4M 세부: 사람 <b>'+cat4m.사람+'</b> · 설비 <b>'+cat4m.설비+'</b> · 재료 <b>'+cat4m.재료+'</b> · 방법 <b>'+cat4m.방법+'</b> &nbsp;|&nbsp; <span style="color:#8A93A6;">카드를 누르면 해당 유형만 필터됩니다.</span></div>';
-  var rows=(all.length?all:[{type:"내부4M"}]).map(chgRowHtml_).join("");
-  var heads=["유형","발생일","도번/검사","고객","4M구분/Rev","등급","변경 전","변경 후","사유/적용일","통보/구재고","초도품","변경시작S/N","승인","완료일","삭제"];
-
+    var f=chgStageFilter; if(f==="open"&&st.closed) return false; if(f==="closed"&&!st.closed) return false;
+    if(/^s\d$/.test(f) && (st.closed||st.n!==Number(f.slice(1)))) return false; if(f==="s78" && (st.closed||(st.n!==7&&st.n!==8))) return false;
+    if(q && ((c.part||"")+" "+(c.customer||"")+" "+(c.before||"")+" "+(c.after||"")+" "+(c.reason||"")+" "+(c.cat||"")).toLowerCase().indexOf(q)<0) return false; return true; });
+  var th=function(h){ return '<th style="position:sticky;top:0;border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:6px;white-space:nowrap;">'+h+'</th>'; };
+  var td='style="border:1px solid #E1E8F0;padding:5px 6px;vertical-align:middle;"';
+  var body=list.length?list.map(function(c){ var st=stOf[c.id], isRev=chgIsRev_(c);
+    var what=isRev?("Rev "+E(c.oldRev||"")+" → "+E(c.newRev||"")):E(c.cat||"");
+    return '<tr style="cursor:pointer;" onclick="if(event.target.closest(\'button\'))return; chgOpen_(\''+E(c.id)+'\')">'
+      +'<td '+td+'><span style="background:'+st.bg+';color:'+st.color+';border-radius:6px;padding:2px 8px;font-weight:800;white-space:nowrap;font-size:11.5px;">'+E(st.label)+'</span>'+(st.miss&&st.miss.length&&st.closed?'<div style="font-size:10.5px;color:#C0392B;">누락 '+st.miss.map(function(n){return CHG_NUM[n];}).join("")+'</div>':'')+(c.legacy?'<div style="font-size:10px;color:#8A93A6;">이관</div>':'')+'</td>'
+      +'<td '+td+' align="center">'+chgGradeBadge_(chgGrade_(c))+'</td>'
+      +'<td '+td+' align="center" style="white-space:nowrap;">'+E(isRev?"고객REV":"내부4M")+'</td>'
+      +'<td '+td+' style="white-space:nowrap;">'+E(c.date)+'</td>'
+      +'<td '+td+'><b>'+E(c.part)+'</b>'+(c.customer?'<div style="font-size:11px;color:#8A93A6;">'+E(c.customer)+'</div>':'')+'</td>'
+      +'<td '+td+'>'+what+'<div style="font-size:11px;color:#5A6478;">'+E(c.before||"")+(c.before||c.after?" → ":"")+E(c.after||"")+'</div></td>'
+      +'<td '+td+' style="white-space:nowrap;">'+E(c.applyDate||"-")+(c.fromSn?'<div style="font-size:11px;color:#8A93A6;">S/N '+E(c.fromSn)+'~</div>':'')+'</td>'
+      +'<td '+td+' style="white-space:nowrap;">'+chgDotsHtml_(c)+'</td>'
+      +'<td '+td+' align="center" style="white-space:nowrap;"><button type="button" onclick="chgMakeReportXlsx_(__chgAll[\''+E(c.id)+'\'])" title="신고서 엑셀" style="border:none;background:#0B7A8A;color:#fff;border-radius:6px;padding:4px 7px;cursor:pointer;font-size:11px;">📄</button> '
+      +'<button type="button" onclick="chgDelete_(\''+E(c.id)+'\')" title="삭제" style="border:none;background:#F0F2F5;color:#8A1F1F;border-radius:6px;padding:4px 7px;cursor:pointer;font-size:11px;">✕</button></td></tr>'; }).join("")
+    : '<tr><td colspan="9" style="text-align:center;color:#B9C2D6;padding:18px;">'+(__chgData?"해당하는 변경점이 없습니다.":"불러오는 중…")+'</td></tr>';
   panel.innerHTML='<div class="table-wrap" style="padding:14px;">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">'
-    +  '<div style="font-weight:800;font-size:16px;color:#1F2A44;">🔄 변경점 관리 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 내부 4M · 고객 도면 REV</span></div>'
-    +  '<div><button type="button" id="chg-add" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 13px;font-weight:700;cursor:pointer;margin-right:6px;">➕ 변경점 추가</button>'
-    +  '<button type="button" id="chg-save" style="background:#1F2A44;color:#fff;border:none;border-radius:8px;padding:7px 13px;font-weight:700;cursor:pointer;">💾 저장</button></div>'
-    +'</div>'
-    +summaryHtml+alertHtml+revHtml
-    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">'
-    +  '<input type="text" id="chg-search" value="'+chgEsc_(chgSearch)+'" placeholder="🔎 도번/검사·고객·변경내용·사유 검색" style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #C9D3E0;border-radius:8px;">'
-    +  '<select id="chg-filter" style="padding:7px;border:1px solid #C9D3E0;border-radius:8px;"><option value="all"'+(chgFilter==="all"?" selected":"")+'>전체</option><option value="내부4M"'+(chgFilter==="내부4M"?" selected":"")+'>내부 4M</option><option value="고객REV"'+(chgFilter==="고객REV"?" selected":"")+'>고객 REV</option></select>'
-    +'</div>'
-    +'<div style="overflow:auto;max-height:560px;"><table id="chg-table" style="border-collapse:collapse;width:100%;font-size:12px;min-width:1100px;"><thead><tr>'
-    +  heads.map(function(h){ return '<th style="position:sticky;top:0;border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;padding:6px;white-space:nowrap;">'+h+'</th>'; }).join("")
-    +'</tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +'<div style="font-size:11.5px;color:#8A93A6;margin-top:8px;">※ 유형을 <b>고객REV</b>로 바꾸면 열이 <b>구→신 Rev · 적용일 · 구재고 처리</b>로 바뀝니다(혼입방지). 저장 후 다른 PC에서도 조회됩니다.</div>'
+    +  '<div style="font-weight:800;font-size:16px;color:#1F2A44;">🔄 변경점 관리 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 신고 → 승인 → 통보/구재고 → 적용 → 초도품 → 유효성 → 문서 → 종결</span></div>'
+    +  '<div><button type="button" onclick="chgOpen_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 13px;font-weight:700;cursor:pointer;margin-right:6px;">➕ 변경점 등록</button>'
+    +  '<button type="button" onclick="chgEnsure_(true)" title="시트에서 최신 내용 다시 불러오기" style="background:#fff;color:#1F2A44;border:1px solid #C9D3E0;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer;">🔄</button></div></div>'
+    +cards+sub
+    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'
+    +  '<input type="text" id="chg-search" value="'+E(chgSearch)+'" placeholder="🔎 도번/검사·고객·변경내용·사유 검색" style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #C9D3E0;border-radius:8px;">'
+    +  '<select id="chg-filter" style="padding:7px;border:1px solid #C9D3E0;border-radius:8px;"><option value="all"'+(chgFilter==="all"?" selected":"")+'>전체 유형</option><option value="내부4M"'+(chgFilter==="내부4M"?" selected":"")+'>내부 4M</option><option value="고객REV"'+(chgFilter==="고객REV"?" selected":"")+'>고객 REV</option></select></div>'
+    +'<div style="overflow:auto;max-height:560px;"><table style="border-collapse:collapse;width:100%;font-size:12px;min-width:980px;"><thead><tr>'
+    +['현재 단계','등급','유형','발생일','도번/검사 · 고객','변경 내용','적용일','진행 ①~⑧','']
+      .map(th).join("")+'</tr></thead><tbody>'+body+'</tbody></table></div>'
+    +'<div style="font-size:11.5px;color:#8A93A6;margin-top:8px;">행을 누르면 단계별 입력 창이 열립니다. 등급별 필수 단계만 진행하면 되며(회색 = 해당없음), ⑤ 초도품·⑥ 유효성은 검사일보 기록을 자동으로 찾아 제안합니다. 저장 위치: 구글시트 \''+CHG_TAB+'\' 탭'+(__chgSheetOk?'':' <span style="color:#B45309;">(시트 연결 확인 중 — 이 기기 캐시로 표시)</span>')+'</div>'
     +'</div>';
-
-  var sb=document.getElementById("chg-search"); if(sb) sb.addEventListener("input",function(){ chgSearch=this.value; chgApplyFilter_(); });
-  var ff=document.getElementById("chg-filter"); if(ff) ff.addEventListener("change",function(){ chgFilter=this.value; chgApplyFilter_(); });
-  document.getElementById("chg-save").addEventListener("click",function(){ chgCollect_(); renderChgPanel(); });
-  document.getElementById("chg-add").addEventListener("click",function(){ chgCollect_(); __chgData.push({type:"내부4M"}); chgFilter="all"; chgSearch=""; renderChgPanel(); });
-  panel.querySelectorAll(".chg-del").forEach(function(b){ b.addEventListener("click",function(){ var tr=b.closest("tr"); if(tr) tr.parentNode.removeChild(tr); chgCollect_(); renderChgPanel(); }); });
-  panel.querySelectorAll(".chg-card").forEach(function(cd){ var t=cd.getAttribute("data-type"); if(t==="") return; cd.addEventListener("click",function(){ chgFilter=t; var sel=document.getElementById("chg-filter"); if(sel) sel.value=t; chgApplyFilter_(); }); });
-  panel.querySelectorAll(".chg-rep").forEach(function(b){ b.addEventListener("click",function(){ var tr=b.closest("tr"); var o={}; ["type","date","part","customer","cat","before","after","oldRev","newRev","applyDate","stockAction","reason","firstArticle","notify","approve","doneDate"].forEach(function(k){ var el=tr.querySelector('[data-k="'+k+'"]'); o[k]=el?el.value:""; }); if(o.part||o.before||o.after||o.oldRev||o.newRev) chgMakeReportXlsx_(o); else alert("내용이 있는 행에서 발행하세요."); }); });
-  // 유형 변경 시 열 즉시 전환
-  panel.querySelectorAll('[data-k="type"]').forEach(function(sel){ sel.addEventListener("change",function(){ chgCollect_(); renderChgPanel(); }); });
-  chgApplyFilter_();
+  var sb=document.getElementById("chg-search"); if(sb) sb.addEventListener("input",function(){ chgSearch=this.value; var p=this.selectionStart; renderChgPanel(); var n=document.getElementById("chg-search"); if(n){ n.focus(); try{ n.setSelectionRange(p,p); }catch(_){} } });
+  var ff=document.getElementById("chg-filter"); if(ff) ff.addEventListener("change",function(){ chgFilter=this.value; renderChgPanel(); });
+  panel.querySelectorAll(".chg-card").forEach(function(cd){ cd.addEventListener("click",function(){ chgStageFilter=cd.getAttribute("data-f"); renderChgPanel(); }); });
 }
-(function(){
-  var apply=function(v){ if(Array.isArray(v)){ __chgData=v; if(document.getElementById("qpanel-chg")) renderChgPanel(); return true; } return false; };
-  try{ if(typeof qShareLoad_==="function"){ qShareLoad_("chgData", function(sv){ if(apply(sv)){ try{ if(typeof idbSet==="function") idbSet("chgData",sv); }catch(_){}; return; } try{ if(typeof idbGet==="function") idbGet("chgData").then(apply).catch(function(){}); }catch(_){} }); return; } }catch(_){}
-  try{ if(typeof idbGet==="function") idbGet("chgData").then(apply).catch(function(){}); }catch(_){}
-})();
 /* ==================== 🔔 아침 알림 팝업 (접속 시 1일 1회, 오늘 챙길 것 종합) ==================== */
 function qmsParseMonths_(cycle){ var m=String(cycle||"").match(/(\d+)/); return m?parseInt(m[1],10):0; }
 function qmsAddMonths_(dateStr, months){ var d=new Date(dateStr); if(isNaN(d.getTime())||!months) return null; d.setMonth(d.getMonth()+months); return d; }
@@ -10294,7 +10434,11 @@ function qmsMorningAlerts_(){
   try{ var nwC=(typeof ncrWaitCustomer_==="function")?ncrWaitCustomer_():0; if(nwC) items.push({icon:"📝",title:"A등급 NCR 대기 (고객)",count:nwC,color:"#7A3E9A",view:"nc"}); }catch(e){}
   try{ if(typeof ncData!=="undefined"&&Array.isArray(ncData)&&typeof ncJudge==="function"){ var ncOd=ncData.filter(function(r){ return !(typeof trashIsDeleted==="function"&&trashIsDeleted(r)) && ncJudge(r).overdue; }).length; if(ncOd) items.push({icon:"📣",title:"고객 클레임 지연 ("+NC_OVERDUE_DAYS+"일 초과 미종결)",count:ncOd,color:"#C0392B",view:"nc"}); } }catch(e){}
   try{ if(typeof __chgData!=="undefined"&&Array.isArray(__chgData)){
-    var op=__chgData.filter(function(c){return !(c.doneDate&&String(c.doneDate).trim());}); if(op.length) items.push({icon:"🔄",title:"미완료 변경점",count:op.length,color:"#B45309",qtab:"chg"});
+    var __cs={2:0,3:0,5:0,6:0}; __chgData.forEach(function(c){ var st=(typeof chgStage_==="function")?chgStage_(c):null; if(st&&!st.closed&&__cs.hasOwnProperty(st.n)) __cs[st.n]++; });
+    if(__cs[2]) items.push({icon:"🔄",title:"변경점 승인 대기",count:__cs[2],color:"#B45309",qtab:"chg"});
+    if(__cs[3]) items.push({icon:"🔄",title:"변경점 고객 통보·승인 / 구재고 처리 대기",count:__cs[3],color:"#B45309",qtab:"chg"});
+    if(__cs[5]) items.push({icon:"🔄",title:"변경점 초도품 검증 대기",count:__cs[5],color:"#0B5CAB",qtab:"chg"});
+    if(__cs[6]) items.push({icon:"🔍",title:"변경점 집중관리 중(유효성 확인)",count:__cs[6],color:"#0B5CAB",qtab:"chg"});
     var mix=__chgData.filter(function(c){return c.type==="고객REV"&&(!c.doneDate||!String(c.doneDate).trim())&&(!c.stockAction||c.stockAction==="구재고 소진"||c.stockAction==="선별 사용");}); if(mix.length) items.push({icon:"🔀",title:"구/신 도면 혼입주의",count:mix.length,color:"#8A1F1F",qtab:"chg"});
   } }catch(e){}
   try{ if(typeof __eduData!=="undefined"&&__eduData&&__eduData.certs){ var re=0; __eduData.certs.forEach(function(c){ if(!c.date) return; var per=Number(c.period)||1; var due=qmsAddMonths_(c.date,per*12); var dl=qmsDaysLeft_(due); if(dl!==null&&dl<=30) re++; }); if(re) items.push({icon:"👥",title:"자격 재인증 임박(30일)",count:re,color:"#0B5CAB",qtab:"edu"}); } }catch(e){}
@@ -19988,7 +20132,7 @@ function insNcHistoryPopup_(draw, sn){
   // 출하검사 게이트: 서버조회는 S/N이 있을 때만(도번만 입력한 단계에선 생략) → 서버 호출 절반
   if(insType==="shipping" && !sn){
     var __hd=insNcHistoryFor_(d);
-    if(__hd.length){ insNcRenderPopup_(d, __hd, []); } else { try{ insSetStatus("도번 확인 — S/N 입력 시 출하검사 판정"); }catch(e){} }
+    if(__hd.length || (typeof chgActiveFor_==="function" && chgActiveFor_(d).length)){ insNcRenderPopup_(d, __hd, []); } else { try{ insSetStatus("도번 확인 — S/N 입력 시 출하검사 판정"); }catch(e){} }
     return;
   }
   // 같은 도번+S/N 연속 트리거 방지(1.5초)
@@ -19997,12 +20141,13 @@ function insNcHistoryPopup_(draw, sn){
   var hits=insNcHistoryFor_(d);
    if(insType==="shipping"){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[], (g&&g.missingDetail)||[]); }); return; }
   if((insType==="measureS"||insType==="measureL") && sn){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[], (g&&g.missingDetail)||[]); }, ["bolt","led"]); return; }
-  if(!hits.length){ try{ insSetStatus("✔ "+d+" — 고객부적합 이력 없음"); }catch(e){} return; }
+  if(!hits.length && !(typeof chgActiveFor_==="function" && chgActiveFor_(d).length)){ try{ insSetStatus("✔ "+d+" — 고객부적합 이력 없음"); }catch(e){} return; }
   insNcRenderPopup_(d, hits, []);
 }
 function insNcRenderPopup_(d, hits, missing, missingDetail){
   hits=hits||[]; missing=missing||[]; missingDetail=missingDetail||[];
-  if(!hits.length && !missing.length){ try{ insSetStatus("✔ "+d+" — 이력/미검사 없음"); }catch(e){} return; }
+  var chgHits=(typeof chgActiveFor_==="function")?chgActiveFor_(d):[];   // 진행중 변경점(초도품·집중검사 안내)
+  if(!hits.length && !missing.length && !chgHits.length){ try{ insSetStatus("✔ "+d+" — 이력/미검사 없음"); }catch(e){} return; }
   var esc=(typeof insEsc==="function")?insEsc:function(x){return String(x==null?"":x);};
   var openCnt=hits.filter(function(r){ return !String(r.doneDate||"").trim(); }).length;
   // 미검사 항목 표시 — S/N 상세가 있으면 "항목(미완료 S/N: ...)" 형태로
@@ -20028,14 +20173,14 @@ function insNcRenderPopup_(d, hits, missing, missingDetail){
       +['발생일','부적합 내용'].map(function(h){ return '<th style="border:1px solid #E7C9C9;background:#FDECEC;color:#8A1F1F;padding:6px;white-space:nowrap;">'+h+'</th>'; }).join("")
       +'</tr></thead><tbody>'+trs+'</tbody></table></div>';
   }
-  var headTitle=(missing.length?'⛔ ':'⚠ ')+esc(d)+(hits.length?(' — 고객부적합 '+hits.length+'건'+(openCnt?(' (미완 '+openCnt+')'):'')):(missing.length?' — 출하 전 확인':''));
+  var headTitle=(missing.length?'⛔ ':'⚠ ')+esc(d)+(hits.length?(' — 고객부적합 '+hits.length+'건'+(openCnt?(' (미완 '+openCnt+')'):'')):(missing.length?' — 출하 전 확인':''))+(chgHits.length?(' · 🔄 변경점 '+chgHits.length+'건'):'');
   var ov=document.getElementById("insnch-ov");
   if(!ov){ ov=document.createElement("div"); ov.id="insnch-ov"; ov.style.cssText="position:fixed;inset:0;z-index:2147483200;background:rgba(15,23,42,0.5);display:flex;align-items:flex-start;justify-content:center;padding:40px 14px;"; ov.addEventListener("click",function(e){ if(e.target===ov) ov.style.display="none"; }); document.body.appendChild(ov); }
   ov.innerHTML='<div style="background:#fff;width:100%;max-width:760px;max-height:80vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 12px 50px rgba(0,0,0,0.4);overflow:hidden;">'
     +'<div style="padding:13px 16px;border-bottom:1px solid #E6EBF2;display:flex;justify-content:space-between;align-items:center;background:#FDF3F3;">'
     +  '<b style="font-size:15px;color:#8A1F1F;">'+headTitle+'</b>'
     +  '<button type="button" id="insnch-x" style="border:none;background:#fff;border:1px solid #E7C9C9;border-radius:9px;width:34px;height:34px;font-size:16px;cursor:pointer;">✕</button>'
-    +'</div>'+gateBanner+ncSection+'</div>';
+    +'</div>'+gateBanner+((typeof chgInsNoticeHtml_==="function")?chgInsNoticeHtml_(chgHits):"")+ncSection+'</div>';
   ov.style.display="flex";
   document.getElementById("insnch-x").addEventListener("click",function(){ ov.style.display="none"; });
 }
