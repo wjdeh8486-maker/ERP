@@ -2648,14 +2648,18 @@ function qmsSyncStore_(cfg){   // cfg: { tab, cols(열 정의, [_ts]/[_del] 포�
     var sheet=function(){ qmsRowRead_(cfg.tab, cfg.cols, function(sm){
       var push=[]; st.sheetOk=!!sm;
       if(sm){ Object.keys(sm).forEach(function(id){ if(!st.known[id] || tsOf(st.known[id])<=tsOf(sm[id])) st.known[id]=sm[id]; });
-        Object.keys(st.known).forEach(function(id){ if(!sm[id] || tsOf(st.known[id])>tsOf(sm[id])) push.push(st.known[id]); }); }
+        Object.keys(st.known).forEach(function(id){ if(!sm[id] || tsOf(st.known[id])>tsOf(sm[id])) push.push(st.known[id]); });
+        st.loaded=true; try{ cfg.apply(clone(active())); }catch(_){} }   // [속도] 시트 읽자마자 화면 반영(옛 데이터 이관을 기다리지 않음)
       var fin=function(list, delIds){ delIds=delIds||{};
         (list||[]).forEach(function(r){ if(!r||!r.id||st.known[r.id]||delIds[r.id]) return; var x=clone(r); x._ts=1; x._del=""; st.known[r.id]=x; push.push(x); });
         Object.keys(st.pending).forEach(function(id){ var p=st.pending[id]; if(!st.known[id] || tsOf(st.known[id])<tsOf(p)){ st.known[id]=p; push.push(p); } }); st.pending={};
         st.loaded=true; cache(); post(push); try{ cfg.apply(clone(active())); }catch(_){} };
-      try{ if(!st.legacyDone && cfg.legacy){ st.legacyDone=true; cfg.legacy(fin); } else fin([]); }catch(_){ fin([]); }
+      var legKey=cfg.idb+"__legacyDone";
+      var runLegacy=function(done){ if(done || st.legacyDone || !cfg.legacy){ fin([]); return; } st.legacyDone=true;
+        cfg.legacy(function(list, del){ fin(list, del); if(sm){ try{ if(typeof idbSet==="function") idbSet(legKey, 1); }catch(_){} } }); };   // 이관은 시트 연결 확인 후 기기별 1회
+      try{ if(typeof idbGet==="function") idbGet(legKey).then(function(v){ runLegacy(!!v); }).catch(function(){ runLegacy(false); }); else runLegacy(false); }catch(_){ runLegacy(false); }
     }, {json:true}); };
-    try{ if(typeof idbGet==="function"){ idbGet(cfg.idb).then(function(v){ if(v&&typeof v==="object") st.known=v; if(active().length){ try{ cfg.apply(clone(active())); }catch(_){} } sheet(); }).catch(sheet); } else sheet(); }catch(_){ sheet(); }
+    try{ if(typeof idbGet==="function"){ idbGet(cfg.idb).then(function(v){ if(v&&typeof v==="object"){ st.known=v; st.cached=true; } if(active().length){ try{ cfg.apply(clone(active())); }catch(_){} } sheet(); }).catch(sheet); } else sheet(); }catch(_){ sheet(); }
   };
   st.save=function(list){ var now=Date.now(), seen={}, changed=[];
     (list||[]).forEach(function(r){ if(!r||!r.id) return; seen[r.id]=1; var k=st.known[r.id];
@@ -8661,6 +8665,8 @@ function invRenderAging(){
     <td style="text-align:center;white-space:nowrap;">${reinspCell_(r.partNo, r.stock)}</td>
   </tr>`).join("");
   document.getElementById("inv-agingCount").textContent = rows.length;
+  try{ var cEl=document.getElementById("inv-agingCount"), ld=document.getElementById("inv-agingLoading"); if(!ld && cEl){ ld=document.createElement("span"); ld.id="inv-agingLoading"; ld.style.cssText="font-size:12px;color:#B45309;font-weight:700;margin-left:8px;"; cEl.parentNode.insertBefore(ld, cEl.nextSibling); }
+    if(ld) ld.textContent=(REINSP_STORE.loaded||REINSP_STORE.cached)?"":"재검사 이력 확인 중…(숫자가 줄어들 수 있음)"; }catch(_){}
   try{ renderReinspHist_(); }catch(_){}
   summary.style.display = "flex";
   empty.style.display = rows.length===0 ? "block" : "none";
@@ -10421,6 +10427,7 @@ var GOAL_STORE=qmsSyncStore_({ tab:"GOAL_Master", idb:"goalStore",
   apply:function(list){ __goalRecs=list; goalSyncTargets_(); if(document.getElementById("qpanel-goal")) renderGoalPanel(); } });
 function goalEnsure_(){ if(__goalLoaded) return; __goalLoaded=true; GOAL_STORE.load(); }
 (window.__afterEnter=window.__afterEnter||[]).push(function(){ goalEnsure_(); });
+(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ reinspEnsure_(); matinEnsure_(); holdEnsure_(); }catch(_){} });   // [속도] 재검사·원자재·출하정지 미리 불러오기
 function goalRec_(y,k){ var id=y+"|"+k; for(var i=0;i<__goalRecs.length;i++){ if(__goalRecs[i].id===id) return __goalRecs[i]; } return null; }
 function goalPolicy_(){ for(var i=0;i<__goalRecs.length;i++){ if(__goalRecs[i].id==="policy") return __goalRecs[i].text||""; } return ""; }
 function goalNum_(v){ if(v===""||v==null) return null; var n=Number(String(v).replace(/,/g,"")); return isNaN(n)?null:n; }
