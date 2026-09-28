@@ -20225,9 +20225,18 @@ function insPickSaveFolder(){
     alert("저장 폴더가 지정되었습니다: "+(h.name||"")+"\n앞으로 검사 일보 엑셀은 이 폴더에 저장됩니다.\n(권한 확인 창이 뜨면 허용을 눌러주세요.)");
   }).catch(function(){});
 }
+// [추가] 저장 결과 기록 — 자동 다운로드 결과에 "어디에 저장됐는지" 표시용
+var __insSaveLog=[];
+function insSaveLog_(name, where){ __insSaveLog.push({ name:name, where:where, dir:(insSaveDirHandle&&insSaveDirHandle.name)||"", t:Date.now() }); if(__insSaveLog.length>50) __insSaveLog.shift(); }
 function insWriteXlsx(wb, filename){
-  function dl(){ try{ XLSX.writeFile(wb, filename); }catch(e){} }
-  if(!insSaveDirHandle || !window.showDirectoryPicker){ dl(); return; }
+  function dl(){ try{ XLSX.writeFile(wb, filename); insSaveLog_(filename, "dl"); }catch(e){} }
+  if(!window.showDirectoryPicker){ dl(); return; }
+  // [수정] 시작할 때 저장 폴더 정보를 못 읽었으면(DB가 바빠 3초 안에 못 읽는 경우) 한 번 더 읽어 봄 → 조용히 다운로드 폴더로 새는 것 방지
+  if(!insSaveDirHandle){
+    if(typeof idbGet!=="function"){ dl(); return; }
+    idbGet("insSaveDir").then(function(h){ if(h && h.getFileHandle){ insSaveDirHandle=h; insWriteXlsx(wb, filename); } else dl(); }).catch(dl);
+    return;
+  }
   // [수정] 전에는 매번 requestPermission(버튼을 막 누른 순간에만 가능)을 불러, 자동 다운로드·"지금 받기"처럼
   //        시트를 읽은 뒤 저장하는 경우 권한 요청이 거절되고 조용히 다운로드 폴더로 저장됐음.
   //        → 이미 허용돼 있으면 바로 폴더에 저장, 아니면 [폴더에 저장] 버튼을 한 번 누르도록 보류(다운로드 폴더로 새지 않음)
@@ -20245,12 +20254,12 @@ function insDirWrite_(wb, filename){
   return insSaveDirHandle.getFileHandle(filename, {create:true})
     .then(function(fh){ return fh.createWritable(); })
     .then(function(w){ return Promise.resolve(w.write(buf)).then(function(){ return w.close(); }); })
-    .then(function(){ try{ insSetStatus("📁 폴더에 저장됨: "+filename); }catch(e){} });
+    .then(function(){ insSaveLog_(filename, "dir"); try{ insSetStatus("📁 폴더에 저장됨: "+filename); }catch(e){} });
 }
 // 폴더 권한을 기다리는 파일들 — 화면 오른쪽 아래 카드에서 한 번 누르면 모두 폴더에 저장
 var __insPend=[];
 function insPendAdd_(wb, filename){
-  __insPend.push({ wb:wb, name:filename });
+  __insPend.push({ wb:wb, name:filename }); insSaveLog_(filename, "pend");
   var el=document.getElementById("ins-pend-card");
   if(!el){ el=document.createElement("div"); el.id="ins-pend-card";
     el.style.cssText="position:fixed;right:18px;bottom:18px;z-index:100060;background:#fff;border:2px solid #5B3EAE;border-radius:14px;box-shadow:0 12px 36px rgba(0,0,0,.25);padding:14px 16px;max-width:380px;font-size:13.5px;color:#101828;";
@@ -20776,15 +20785,18 @@ function insAutoTry_(kind){
           if(c && c.state==="done"){ __insAuto.done[today+kind]=true; __insAuto.busy[kind]=false; return; }
           if(!c || c.state!=="claim"){ if(++tries<3){ check(); return; } __insAuto.busy[kind]=false; return; }   // 아직 저장 반영 전 → 조금 더 기다림
           if(c.tok!==tok){ __insAuto.busy[kind]=false; return; }   // 다른 PC가 담당
-          var target=insAutoTarget_();
-          insAutoRun_(kind, target, function(ok, msg){
-            if(ok && __insPend.length) msg=(msg||"")+" · 저장 폴더 권한 대기 — "+insAutoPcName_()+" 화면 오른쪽 아래 [폴더에 저장]";
+          var target=insAutoTarget_(), __t0=Date.now();
+          insAutoRun_(kind, target, function(ok, msg){ setTimeout(function(){
+            var lg=__insSaveLog.filter(function(x){ return x.t>=__t0; });
+            var nDir=lg.filter(function(x){ return x.where==="dir"; }).length, nPend=lg.filter(function(x){ return x.where==="pend"; }).length, nDl=lg.filter(function(x){ return x.where==="dl"; }).length;
+            var where=[]; if(nDir) where.push("저장 폴더 '"+(lg[0].dir||"")+"'에 "+nDir+"개"); if(nPend) where.push("폴더 권한 대기 "+nPend+"개 — "+insAutoPcName_()+" 화면 오른쪽 아래 [폴더에 저장]"); if(nDl) where.push("다운로드 폴더에 "+nDl+"개"+(insSaveDirHandle?"":" (이 PC는 저장 폴더 미지정)"));
+            if(where.length) msg=(msg||"")+" → "+where.join(" / ");
             st2[today]=st2[today]||{}; st2[today][kind]={ state:ok?"done":"fail", by:me, pc:insAutoPcName_(), ts:Date.now(), date:target, msg:msg||"" };
             insAutoSave_(st2, kind);
             if(ok) __insAuto.done[today+kind]=true;
             __insAuto.busy[kind]=false;
-            try{ insSetStatus("⏰ 자동 다운로드 ("+(kind==="excel"?"엑셀 4종":"붙여넣기용")+", "+target+") — "+(ok?"완료":"실패: "+msg)); }catch(_){}
-          });
+            try{ insSetStatus("⏰ 자동 다운로드 ("+(kind==="excel"?"엑셀 4종":"붙여넣기용")+", "+target+") — "+(ok?"완료":"실패")+(where.length?(" → "+where.join(" / ")):(ok?"":": "+msg))); }catch(_){}
+          }, 3000); });
         });
       }, 4000+Math.floor(Math.random()*4000));
     })();
@@ -20803,6 +20815,12 @@ function insAutoSaveCfg_(ex, ms, cb){
   ch.forEach(function(k){ delete __insAuto.done[today+k]; insAutoLoad_(function(st){ if(st[today]) delete st[today][k]; insAutoSave_(st, k); if(--left===0 && cb) cb(ch); }, k); });
 }
 // 설정·현황 창 (검사일보 ⚙ 더보기 → ⏰ 자동 다운로드)
+function insAutoDirPaint_(){
+  var el=document.getElementById("insauto-dir"); if(!el) return;
+  var show=function(h){ if(!h || !h.getFileHandle){ el.innerHTML='<span style="color:#B54708;">지정 안 됨 → 다운로드 폴더에 저장</span>'; return; }
+    Promise.resolve(h.queryPermission?h.queryPermission({mode:"readwrite"}):"granted").then(function(p){ el.innerHTML=String(h.name||"").replace(/</g,"&lt;")+(p==="granted"?' <span style="color:#15803D;">(허용됨 — 바로 저장)</span>':' <span style="color:#B54708;">(권한 확인 필요 — 받을 때 [폴더에 저장] 한 번)</span>'); }).catch(function(){ el.textContent=h.name||""; }); };
+  if(insSaveDirHandle) show(insSaveDirHandle); else if(typeof idbGet==="function") idbGet("insSaveDir").then(function(h){ if(h && h.getFileHandle) insSaveDirHandle=h; show(h); }); else show(null);
+}
 function insAutoPanel_(){
   if(!insAutoPanel_.__fresh){ insAutoPanel_.__fresh=true; insAutoCfgRefresh_(function(){ insAutoPanel_(); insAutoPanel_.__fresh=false; }); return; }
   var old=document.getElementById("insauto-ov"); if(old) old.remove();
@@ -20817,6 +20835,7 @@ function insAutoPanel_(){
     +'<div>· 대상 날짜: <b>직전 근무일</b> (오늘 기준 '+E(insAutoTarget_())+')</div>'
     +'<div style="color:#667085;font-size:12.5px;">켜진 PC 중 한 대가 받고, 받은 PC의 다운로드 폴더에 저장됩니다. 처음 한 번 "여러 파일 다운로드 허용"을 눌러 주세요.</div>'
     +'<div id="insauto-st" style="margin:12px 0;padding:10px 12px;background:#F5F7FA;border-radius:10px;">오늘 현황 불러오는 중…</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">이 PC 저장 폴더: <b id="insauto-dir">확인 중…</b><button type="button" data-x="pick" style="margin-left:auto;padding:5px 12px;border:1px solid #D0D5DD;border-radius:8px;background:#fff;cursor:pointer;font-weight:700;">📁 폴더 지정/변경</button></div>'
     +'<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="insauto-join" '+(insAutoOn_()?"checked":"")+'> 이 PC도 자동 다운로드에 참여</label>'
     +'<div style="display:flex;align-items:center;gap:8px;margin-top:8px;">이 PC 이름 <input id="insauto-pc" value="'+E(insAutoPcName_())+'" style="flex:1;padding:6px 10px;border:1px solid #D0D5DD;border-radius:8px;"></div>'
     +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;">'
@@ -20827,6 +20846,7 @@ function insAutoPanel_(){
     +'</div></div>';
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
     if(e.target===ov || x==="close"){ ov.remove(); return; }
+    if(x==="pick"){ try{ window.showDirectoryPicker({mode:"readwrite"}).then(function(h){ insSaveDirHandle=h; try{ idbSet("insSaveDir", h); }catch(_){} insAutoDirPaint_(); }).catch(function(){}); }catch(_){ alert("이 브라우저는 저장 폴더 지정을 지원하지 않습니다."); } return; }
     if(x==="save"){ try{ localStorage.setItem("insAutoJoin", document.getElementById("insauto-join").checked?"1":"0"); var nm=String(document.getElementById("insauto-pc").value||"").trim(); if(nm) localStorage.setItem("qmsPcName", nm); }catch(_){}
       var ex=String(document.getElementById("insauto-tex").value||"").slice(0,5), ms=String(document.getElementById("insauto-tms").value||"").slice(0,5);
       if(!insAutoHMok_(ex) || !insAutoHMok_(ms)){ alert("시각을 HH:MM 형식으로 입력하세요."); return; }
@@ -20836,8 +20856,9 @@ function insAutoPanel_(){
       insAutoRun_(k, insAutoTarget_(), function(ok,msg){ e.target.disabled=false; e.target.textContent=ok?"완료 ✓":"실패"; try{ insSetStatus("⏰ "+(ok?"받음: ":"실패: ")+msg); }catch(_){} }); }
   });
   document.body.appendChild(ov);
+  insAutoDirPaint_();
   insAutoLoad_(function(stE){ insAutoLoad_(function(stM){ var el=document.getElementById("insauto-st"); if(!el) return; var d={ excel:(stE[insAutoToday_()]||{}).excel, master:(stM[insAutoToday_()]||{}).master };
-    var line=function(k,lab){ var c=d[k]; if(!c) return "· "+lab+": 아직 안 받음"; var tm=c.ts?new Date(c.ts).toTimeString().slice(0,5):""; return "· "+lab+": "+(c.state==="done"?"✓ 완료":(c.state==="fail"?"⚠ 실패":"처리 중"))+" — "+E(c.pc||"")+" "+tm+(c.date?(" ("+E(c.date)+"분)"):"")+(c.msg&&(c.state!=="done"||/권한 대기/.test(c.msg))?(" · "+E(c.msg)):""); };
+    var line=function(k,lab){ var c=d[k]; if(!c) return "· "+lab+": 아직 안 받음"; var tm=c.ts?new Date(c.ts).toTimeString().slice(0,5):""; return "· "+lab+": "+(c.state==="done"?"✓ 완료":(c.state==="fail"?"⚠ 실패":"처리 중"))+" — "+E(c.pc||"")+" "+tm+(c.date?(" ("+E(c.date)+"분)"):"")+(c.msg&&(c.state!=="done"||/→/.test(c.msg))?(" · "+E(c.state==="done"?c.msg.slice(c.msg.indexOf("→")):c.msg)):""); };
     el.innerHTML="<b>오늘 현황</b><br>"+line("excel","엑셀 4종 ("+INS_AUTO_CFG.excel+")")+"<br>"+line("master","붙여넣기용 ("+INS_AUTO_CFG.master+")"); }, "master"); }, "excel");
 }
 if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", function(){ setTimeout(insAutoStart_, 3000); }); else setTimeout(insAutoStart_, 3000);
