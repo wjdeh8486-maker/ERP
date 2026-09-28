@@ -1416,6 +1416,9 @@
   #view-specdue .sd-bar{ position:relative; height:20px; background:#F2F4F7; border-radius:999px; overflow:hidden; }
   #view-specdue .sd-bar i{ position:absolute; left:0; top:0; bottom:0; background:#84ADFF; border-radius:999px; } #view-specdue .sd-bar span{ position:relative; display:block; text-align:center; font-size:11.5px; font-weight:700; line-height:20px; color:#1D2939; }
   #view-specdue .sd-chips{ display:flex; flex-wrap:wrap; gap:4px; } #view-specdue .sd-chip{ background:#EFF4FF; color:#1D4ED8; border-radius:8px; padding:2px 8px; font-size:12px; font-weight:600; } #view-specdue .sd-chip small{ color:#667085; font-weight:500; } #view-specdue .sd-chip.short{ background:#FEF3F2; color:#B42318; }
+  #view-specdue .sd-kind{ display:inline-block; font-size:11.5px; font-weight:700; border-radius:6px; padding:1px 7px; background:#F2F4F7; color:#475467; } #view-specdue .sd-kind.v{ background:#EFF4FF; color:#1D4ED8; }
+  #view-specdue .sd-tb tr.sd-hl td{ background:#FFF1D6 !important; }
+  .sd-mini{ cursor:pointer; } .sd-mini:hover{ background:#FEC84B; color:#7A2E0E; }
   #view-specdue .sd-warn{ background:#FEF3F2; color:#B42318; border:1px solid #FDA29B; border-radius:10px; padding:8px 12px; font-size:12.5px; font-weight:600; margin-bottom:8px; }
   #view-specdue .sd-lh{ display:flex; align-items:center; gap:10px; margin-bottom:10px; } #view-specdue .sd-lh h3{ margin:0; }
   #view-specdue .sd-cnt{ font-size:12px; font-weight:600; background:#EAECF0; color:#475467; border-radius:999px; padding:1px 9px; margin-left:4px; }
@@ -1431,6 +1434,19 @@
   .sd-pf{ display:flex; justify-content:flex-end; padding:0 18px 16px; } .sd-pf .sd-btn{ height:38px; padding:0 18px; border:0; border-radius:9px; background:#111827; color:#fff; font-weight:700; cursor:pointer; }
   .sd-mini{ display:inline-block; margin-left:4px; background:#FFF6E5; color:#B54708; border:1px solid #FEC84B; border-radius:999px; padding:0 7px; font-size:11px; font-weight:700; white-space:nowrap; }
   @media (max-width:1100px){ #view-specdue .sd-grid{ grid-template-columns:1fr; } #view-specdue .sd-kpis{ grid-template-columns:repeat(2,minmax(0,1fr)); } #view-specdue .sd-form{ grid-template-columns:1fr 1fr; } }
+  /* MAIN 관리번호 옆 ☆ (특별납기 등록) */
+  .sd-star{ border:0; background:transparent; color:#C9CED6; font-size:15px; line-height:1; padding:0 2px; margin-left:4px; cursor:pointer; vertical-align:middle; }
+  .sd-star:hover{ color:#F59E0B; } .sd-star.on{ color:#F59E0B; }
+  .sd-ainfo{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px 14px; background:#F9FAFB; border:1px solid #EAECF0; border-radius:10px; padding:10px 12px; margin-bottom:10px; }
+  .sd-ainfo div{ display:flex; flex-direction:column; min-width:0; } .sd-ainfo span{ font-size:11.5px; color:#667085; } .sd-ainfo b{ font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sd-ainfo input{ height:30px; border:1px solid #D0D5DD; border-radius:8px; padding:0 8px; }
+  .sd-aold{ background:#FFFCF5; border:1px solid #FEC84B; border-radius:10px; padding:8px 12px; margin-bottom:10px; font-size:12.5px; line-height:1.7; } .sd-aold .m{ color:#98A2B3; }
+  .sd-alab{ font-size:12.5px; color:#475467; margin-bottom:6px; }
+  .sd-ar{ display:grid; grid-template-columns:160px 90px 1fr 32px; gap:8px; margin-bottom:6px; }
+  .sd-ar input{ height:36px; border:1px solid #D0D5DD; border-radius:8px; padding:0 10px; font-size:13px; min-width:0; }
+  .sd-a-x{ border:0; background:#F2F4F7; color:#98A2B3; border-radius:8px; cursor:pointer; } .sd-a-x:hover{ color:#D92D20; }
+  .sd-afoot{ display:flex; align-items:center; gap:12px; margin-top:6px; } .sd-afoot .sd-btn{ height:34px; padding:0 12px; border:1px dashed #98A2B3; border-radius:8px; background:#fff; color:#344054; font-weight:600; cursor:pointer; }
+  .sd-afoot .m{ color:#667085; font-size:12.5px; } .sd-afoot .r{ color:#D92D20; }
 </style>
 </head>
 <body>
@@ -3764,7 +3780,7 @@ function qxV2Head_(){
 }
 // 표 다듬기: 숫자 칸 오른쪽, 긴 글자 칸 왼쪽, 첫 데이터 칸 굵게, 부족수량은 색 알약 — 표가 다시 그려질 때마다
 function qxV2Table_(tb){
-  if(!tb || !tb.tHead || !tb.tBodies[0] || tb.closest("#view-insrep")) return;
+  if(!tb || !tb.tHead || !tb.tBodies[0] || tb.closest("#view-insrep, #view-specdue, #view-qdash")) return;   // 자체 디자인 화면은 제외
   var rows=[].slice.call(tb.tBodies[0].rows).filter(function(r){ return r.cells.length>2 && !r.querySelector("td[colspan]"); });
   if(!rows.length) return;
   var hr=tb.tHead.rows[tb.tHead.rows.length-1]; if(!hr || hr.cells.length!==rows[0].cells.length) return;   // 머리글이 복잡한 표는 건드리지 않음
@@ -3779,7 +3795,7 @@ function qxV2Table_(tb){
     if(num){ th.classList.add("qx-n"); rows.forEach(function(r){ r.cells[c].classList.add("qx-n"); }); }
     else if(txt){ th.classList.add("qx-t"); rows.forEach(function(r){ r.cells[c].classList.add("qx-t"); }); }
     if(!keyDone && !num && /ORDER|관리번호|문서번호|도번|품번/.test(hTxt)){ keyDone=true; rows.forEach(function(r){ r.cells[c].classList.add("qx-k"); }); }
-    if(num && /^부족/.test(hTxt)){ rows.forEach(function(r){ var td=r.cells[c]; if(td.querySelector(".qx-pill")) return; var x=Number(String(td.textContent).replace(/,/g,""))||0; td.innerHTML='<span class="qx-pill '+(x>0?"bad":"ok")+'">'+(x>0?x.toLocaleString():"0")+'</span>'; }); }
+    if(num && /^부족/.test(hTxt)){ rows.forEach(function(r){ var td=r.cells[c]; if(td.querySelector(".qx-pill")) return; var x=Number(String(td.textContent).replace(/,/g,""))||0; td.innerHTML='<span class="qx-pill '+(x!==0?"bad":"ok")+'">'+x.toLocaleString()+'</span>'; }); }
   }
 }
 function qxV2Start_(){
@@ -4707,6 +4723,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     }
     if(target==="qdash" && typeof qdRender_==="function"){ qdRender_(); }   // 품질 대시보드
     if(target==="specdue" && typeof sdRender_==="function"){ sdRender_(); }   // 특별납기 관리
+    if(target==="main" && typeof sdMainBanner_==="function"){ try{ sdMainBanner_(); }catch(_){} }
     if(target==="insrep"){
       if(!window.__insrepInited){ window.__insrepInited = true; insInit(); }
       else { try{ if(typeof insRollDateToToday_==="function" && insRollDateToToday_()){ insSyncMetaInputs(); insSaveLocal(); } }catch(_){} }   // 켜 둔 채 날이 바뀐 경우
@@ -5119,11 +5136,11 @@ function mainRenderTable(data){
     const _reqChecked = (_reqDwg && typeof reqSelectedDwg!=='undefined' && reqSelectedDwg.has(_reqDwg)) ? ' checked' : '';
     return `<tr class="${rowClass}">
       <td class="req-col"><input type="checkbox" class="req-chk" data-dwg="${_reqDwg}" data-partname="${(r.partName||'').replace(/"/g,'&quot;')}" data-qty="${r.qty||''}"${_reqDwg?'':' disabled'}${_reqChecked}></td>
-      <td>${statusBadge(_status)}</td><td>${r.orderNo}</td><td>${r.customer}</td>
+      <td>${statusBadge(_status)}</td><td style="white-space:nowrap;">${r.orderNo}${(typeof sdStarBtn_==="function")?sdStarBtn_(r.orderNo):''}</td><td>${r.customer}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
       <td>${dwgLink(r.oldDrawingNo)}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
-      <td class="${overdue?'cell-overdue':''}">${r.dueDate||''}</td>
+      <td class="${overdue?'cell-overdue':''}">${r.dueDate||''}${(typeof sdTagFor_==="function")?sdTagFor_(r.orderNo):''}</td>
       <td>${r.shipDate||''}</td><td>${r.shipped||''}</td><td>${getCurrentProcess(r.orderNo)}</td>
       <td class="${wDeliver>0?'cell-wait-hi':''}">${wDeliver}</td>
       <td class="${wIncoming>0?'cell-wait-hi':''}">${wIncoming}</td>
@@ -11847,7 +11864,18 @@ function sdDow_(ymd){ return ["일","월","화","수","목","금","토"][new Dat
 function sdIsWork_(d){ var w=d.getDay(); return w!==0 && w!==6; }
 function sdPrevWork_(ymd){ var d=new Date(ymd+"T00:00:00"); do{ d.setDate(d.getDate()-1); }while(!sdIsWork_(d)); return sdYmd_(d); }
 function sdDrawOf_(ord){ try{ var o=String(ord||"").trim(); if(!o) return ""; var r=(mainData||[]).find(function(x){ return String(x.orderNo||"").trim()===o; }); return r?String(r.oldDrawingNo||r.partNo||"").trim():""; }catch(_){ return ""; } }
-function sdHold_(draw){ try{ var v=lookupWaitMap(visionWaitMap, { oldDrawingNo:draw, partNo:"" }); return v==null?0:(Number(v)||0); }catch(_){ return 0; } }
+// 보유(검사 대기) 기준: SHOWERHEAD 종류 = 비젼검사 대기 / 그 외 = 측정 + 출하(크린룸) 검사 대기
+function sdNameOf_(draw, ord){ try{ var md=mainData||[], o=String(ord||"").trim(), d=String(draw||"").trim(), r=null;
+  if(o) r=md.find(function(x){ return String(x.orderNo||"").trim()===o; });
+  if(!r && d) r=md.find(function(x){ return String(x.oldDrawingNo||"").trim()===d || String(x.partNo||"").trim()===d; });
+  return r?String(r.partName||""):""; }catch(_){ return ""; } }
+function sdIsVision_(name){ return /SHOWER\s*HEAD|샤워헤드/i.test(String(name||"")); }
+function sdHoldInfo_(draw, ord){
+  var nm=sdNameOf_(draw, ord), vis=sdIsVision_(nm), key={ oldDrawingNo:draw, partNo:"" }, q=0;
+  try{ if(vis){ q=Number(lookupWaitMap(visionWaitMap, key))||0; } else { q=(Number(lookupWaitMap(measureWaitMap, key))||0)+(Number(lookupWaitMap(cleanWaitMap, key))||0); } }catch(_){}
+  return { q:q, vision:vis, kind:vis?"비젼":"측정+출하", name:nm };
+}
+function sdHold_(draw){ return sdHoldInfo_(draw,"").q; }
 function sdLive_(){ return __sd.items.filter(function(x){ return !x.del; }); }
 /* ---------- 저장/불러오기 (병합) ---------- */
 function sdMerge_(a, b){ var m={}; (a||[]).concat(b||[]).forEach(function(x){ if(!x||!x.id) return; if(!m[x.id] || (x.ts||0)>(m[x.id].ts||0)) m[x.id]=x; }); return Object.keys(m).map(function(k){ return m[k]; }); }
@@ -11867,18 +11895,19 @@ function sdSave_(){
     try{ qSharePost_(qShareUrl_(), SD_KEY, JSON.stringify({ items:items, cap:__sd.cap, ts:Date.now() })); }catch(_){}
   });
 }
-function sdPut_(it){ it.ts=Date.now(); it.by=(typeof insAutoPcName_==="function")?insAutoPcName_():""; var i=__sd.items.findIndex(function(x){ return x.id===it.id; }); if(i>=0) __sd.items[i]=it; else __sd.items.push(it); }
+function sdPut_(it){ setTimeout(function(){ try{ sdMainBanner_(); }catch(_){} }, 50); it.ts=Date.now(); it.by=(typeof insAutoPcName_==="function")?insAutoPcName_():""; var i=__sd.items.findIndex(function(x){ return x.id===it.id; }); if(i>=0) __sd.items[i]=it; else __sd.items.push(it); }
 /* ---------- 계산 ---------- */
 function sdCompute_(){
   var today=sdYmd_(sdToday_()), cap=Math.max(1, Number(__sd.cap)||5);
   var open=sdLive_().filter(function(x){ return !x.done && x.avail; }).sort(function(a,b){ return a.avail<b.avail?-1:(a.avail>b.avail?1:(a.due||"").localeCompare(b.due||"")); });
   // 품번별 보유 차감
   var byDraw={};
-  open.forEach(function(x){ var k=x.draw||"(품번 없음)"; if(!byDraw[k]) byDraw[k]={ draw:k, hold:sdHold_(x.draw), need:0, run:null, shortFrom:"", lines:[] };
+  open.forEach(function(x){ var k=x.draw||"(품번 없음)"; if(!byDraw[k]){ var hi=sdHoldInfo_(x.draw, x.ord); byDraw[k]={ draw:k, hold:hi.q, kind:hi.kind, vision:hi.vision, name:hi.name, need:0, run:null, shortFrom:"", lines:[] }; } x._vision=byDraw[k].vision;
     var g=byDraw[k]; if(g.run===null) g.run=g.hold; var cov=Math.max(0, Math.min(x.qty, g.run)); g.run-=x.qty; x._short=x.qty-cov; if(x._short>0 && !g.shortFrom) g.shortFrom=x.avail; g.need+=x.qty; g.lines.push(x); });
   // 비젼검사 준비 일정: 출고 전날까지 끝나도록, 늦은 출고부터 거꾸로 1일 cap개 배정
   var used={}, plan={};
   open.slice().sort(function(a,b){ return a.avail<b.avail?1:(a.avail>b.avail?-1:0); }).forEach(function(x){
+    if(!x._vision){ x._alloc=[]; x._start=sdPrevWork_(x.avail); x._late=x._start<today; return; }   // 측정+출하 품목은 1일 한도 없이 출고 전날까지
     var d=sdPrevWork_(x.avail), rem=x.qty, guard=0; x._alloc=[];
     while(rem>0 && guard++<400){ var u=used[d]||0, take=Math.min(cap-u, rem); if(take>0){ used[d]=u+take; rem-=take; x._alloc.push([d,take]); (plan[d]=plan[d]||[]).push({ x:x, q:take }); } if(rem>0) d=sdPrevWork_(d); }
     x._start=x._alloc.length?x._alloc[x._alloc.length-1][0]:"";
@@ -11899,7 +11928,7 @@ function sdRender_(){
   var shortDraws=Object.keys(C.byDraw).filter(function(k){ return C.byDraw[k].shortFrom; });
   var h='';
   h+='<div class="sd-head"><div><div class="sd-crumb">현황 <span>›</span> 특별납기 관리</div><div class="sd-title">⭐ 특별납기 관리 <span class="sd-tag">중점</span></div>'
-    +'<div class="sd-sub">기준: <b>가능일자</b>(고객 약속일) · 보유 = 비젼검사 대기 · 비젼검사 1일 최대 <input id="sd-cap" type="number" min="1" max="50" value="'+C.cap+'"> 개 · 출고 전날까지 검사 완료 기준</div></div>'
+    +'<div class="sd-sub">기준: <b>가능일자</b>(고객 약속일) · 보유 = <b>SHOWERHEAD 종류는 비젼검사 대기</b>, 그 외는 측정+출하 검사 대기 · 비젼검사 1일 최대 <input id="sd-cap" type="number" min="1" max="50" value="'+C.cap+'"> 개 · 출고 전날까지 검사 완료 기준</div></div>'
     +'<div class="sd-act"><button type="button" class="sd-btn" data-a="paste">📋 엑셀 붙여넣기</button><button type="button" class="sd-btn" data-a="xls">⬇ 엑셀</button><button type="button" class="sd-btn" data-a="reload">⟳ 새로고침</button></div></div>';
   h+='<div class="sd-kpis">'
     +kpi("오늘 출고", C.todayShip.length+"건", "수량 "+sumQ(C.todayShip)+"개", C.todayShip.length?"warn":"")
@@ -11910,8 +11939,8 @@ function sdRender_(){
   // 품번별 요약
   var ks=Object.keys(C.byDraw).sort(function(a,b){ var A=C.byDraw[a], B=C.byDraw[b]; return (A.start||"9")<(B.start||"9")?-1:1; });
   h+='<div class="sd-grid"><section class="sd-card"><h3>품번별 보유·부족</h3>'
-    +(ks.length?'<table class="sd-tb"><thead><tr><th>품번</th><th class="n">보유(비젼)</th><th class="n">출고 합계</th><th class="n">부족</th><th>부족 시작</th><th>검사 시작</th></tr></thead><tbody>'
-    +ks.map(function(k){ var g=C.byDraw[k], diff=g.hold-g.need; return '<tr><td class="k">'+sdE_(k)+'</td><td class="n">'+g.hold+'</td><td class="n">'+g.need+'</td><td class="n"><span class="sd-pill '+(diff<0?"bad":"ok")+'">'+diff+'</span></td>'
+    +(ks.length?'<table class="sd-tb"><thead><tr><th>품번</th><th>보유 기준</th><th class="n">보유</th><th class="n">출고 합계</th><th class="n">부족</th><th>부족 시작</th><th>검사 시작</th></tr></thead><tbody>'
+    +ks.map(function(k){ var g=C.byDraw[k], diff=g.hold-g.need; return '<tr><td class="k" title="'+sdE_(g.name||"")+'">'+sdE_(k)+'</td><td><span class="sd-kind'+(g.vision?' v':'')+'">'+g.kind+'</span></td><td class="n">'+g.hold+'</td><td class="n">'+g.need+'</td><td class="n"><span class="sd-pill '+(diff<0?"bad":"ok")+'">'+diff+'</span></td>'
       +'<td>'+(g.shortFrom?'<b class="r">'+sdMD_(g.shortFrom)+'('+sdDow_(g.shortFrom)+')부터</b>':'<span class="m">-</span>')+'</td><td>'+(g.start?('<b class="'+(g.late?"r":"")+'">'+sdMD_(g.start)+'('+sdDow_(g.start)+')'+(g.late?' 늦음':'')+'</b>'):'-')+'</td></tr>'; }).join("")+'</tbody></table>':'<div class="sd-empty">등록된 미완료 항목이 없습니다</div>')
     +'</section>';
   // 비젼검사 준비 일정 (밀린 것 + 오늘부터 10근무일)
@@ -11921,7 +11950,7 @@ function sdRender_(){
     return '<div class="sd-day'+(ds===today?" today":"")+(lateFlag?" late":"")+'"><div class="sd-dd">'+(lateFlag?"밀림 ":"")+sdMD_(ds)+'<small>('+sdDow_(ds)+')</small></div>'
       +'<div class="sd-bar"><i style="width:'+Math.min(100,Math.round(tot/C.cap*100))+'%"></i><span>'+tot+' / '+C.cap+'</span></div>'
       +'<div class="sd-chips">'+(list.length?list.map(function(p){ return '<span class="sd-chip'+(p.x._short>0?' short':'')+'"'+(p.x._short>0?' title="비젼 보유가 부족한 줄 — 제품 입고(생산) 먼저 필요"':'')+'>'+sdE_(p.x.draw)+' ×'+p.q+(p.x._short>0?' ⚠':'')+' <small>→ '+sdMD_(p.x.avail)+' 출고</small></span>'; }).join(""):'<span class="m">-</span>')+'</div></div>'; };
-  h+='<section class="sd-card"><h3>비젼검사 준비 일정 <small>1일 '+C.cap+'개 · 출고 전날까지</small></h3>'
+  h+='<section class="sd-card"><h3>비젼검사 준비 일정 <small>SHOWERHEAD 종류 · 1일 '+C.cap+'개 · 출고 전날까지</small></h3>'
     +(past.length?'<div class="sd-warn">⚠ 이미 지난 날짜에 배정된 검사 '+C.lateInsp+'개 — 지금 시작해도 일정이 빠듯합니다. 가능일자 조정 또는 추가 인원이 필요합니다.</div>':'')
     +past.map(function(ds){ return dayRow(ds,true); }).join("")+days.map(function(ds){ return dayRow(ds,false); }).join("")+'</section></div>';
   // 출고 일정
@@ -11998,9 +12027,29 @@ function sdExcel_(){
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "특별납기");
   XLSX.writeFile(wb, "특별납기관리_"+C.today+".xlsx");
 }
-/* 다른 화면 연동: 관리번호/품번의 가능일자 표시 (품질 대시보드 표 등) */
+/* 다른 화면 연동: 관리번호/품번의 가능일자 표시 (MAIN·품질 대시보드 표) — 누르면 특별납기로 이동 */
+function sdGo_(ord){
+  var n=document.querySelector('.nav-item[data-view="specdue"]'); if(n) n.click();
+  if(!ord) return;
+  setTimeout(function(){ var hit=null; document.querySelectorAll("#sd-root .sd-tb tbody tr").forEach(function(tr){ var k=tr.querySelector("td.k"); if(k && k.textContent.trim()===ord){ tr.classList.add("sd-hl"); if(!hit) hit=tr; } }); if(hit) hit.scrollIntoView({ block:"center", behavior:"smooth" }); }, 350);
+}
+// MAIN 위 안내줄: 특별납기 오늘·지연·검사 필요 → 누르면 이동
+function sdMainBanner_(){
+  var v=document.getElementById("view-main"); if(!v) return;
+  var b=document.getElementById("main-sdBanner");
+  if(!b){ b=document.createElement("div"); b.id="main-sdBanner"; b.title="특별납기 관리로 이동"; b.onclick=function(){ sdGo_(""); };
+    b.style.cssText="display:none;background:#FFF8E6;border:1px solid #FEC84B;border-radius:12px;padding:10px 16px;margin-bottom:12px;cursor:pointer;font-size:13px;";
+    var hb=document.getElementById("main-holdBanner"); if(hb && hb.parentNode) hb.parentNode.insertBefore(b, hb.nextSibling); else v.insertBefore(b, v.firstChild); }
+  if(!__sd.items.length || !sdLive_().some(function(x){ return !x.done; })){ b.style.display="none"; return; }
+  var C=sdCompute_(), sq=function(a){ return a.reduce(function(s,x){ return s+x.qty; },0); }, shortN=Object.keys(C.byDraw).filter(function(k){ return C.byDraw[k].shortFrom; }).length;
+  var part=function(t,n,red){ return '<span style="margin-right:14px;'+(red?'color:#B42318;':'')+'">'+t+' <b>'+n+'</b></span>'; };
+  var next=C.open.filter(function(x){ return x.avail>C.today; })[0];
+  b.innerHTML='<b style="color:#B54708;margin-right:12px;">⭐ 특별납기</b>'+part("오늘 출고", C.todayShip.length+"건("+sq(C.todayShip)+"개)", false)+part("가능일 지남", C.overdue.length+"건", C.overdue.length>0)+part("오늘 비젼검사", (C.todayInsp+C.lateInsp)+"개", C.lateInsp>0)+part("보유 부족", shortN+"품번", shortN>0)
+    +(next?'<span style="color:#667085;">다음 출고 '+sdMD_(next.avail)+' '+sdE_(next.draw)+' ×'+next.qty+'</span>':'')+'<span style="float:right;font-weight:700;color:#B54708;">관리 ▸</span>';
+  b.style.display="block";
+}
 function sdTagFor_(ord){ if(!__sd.items.length) return ""; var o=String(ord||"").trim(); var l=sdLive_().filter(function(x){ return !x.done && x.ord===o; }); if(!l.length) return "";
-  return ' <span class="sd-mini" title="특별납기 — 가능일자(고객 약속일)">⭐ 가능 '+l.map(function(x){ return sdMD_(x.avail)+"·"+x.qty+"EA"; }).join(", ")+'</span>'; }
+  return ' <span class="sd-mini" title="특별납기 — 가능일자(고객 약속일). 누르면 특별납기 관리로 이동" onclick="event.stopPropagation();sdGo_(\''+sdE_(o).replace(/'/g,"")+'\')">⭐ 가능 '+l.map(function(x){ return sdMD_(x.avail)+"·"+x.qty+"EA"; }).join(", ")+'</span>'; }
 // 아침 '오늘 챙길 것' + 품질 대시보드 중요 알림에 추가 (원래 함수를 감싸서 맨 앞에)
 (function(){ if(typeof qmsMorningAlerts_!=="function") return; var orig=qmsMorningAlerts_;
   qmsMorningAlerts_=function(){ var items=[]; try{ items=orig()||[]; }catch(_){}
@@ -12009,7 +12058,64 @@ function sdTagFor_(ord){ if(!__sd.items.length) return ""; var o=String(ord||"")
       if(C.todayShip.length) items.unshift({ icon:"⭐", title:"특별납기 오늘 출고", count:C.todayShip.length, color:"#B54708", view:"specdue" });
       if(C.todayInsp+C.lateInsp>0) items.push({ icon:"⭐", title:"특별납기 오늘 비젼검사 "+(C.todayInsp+C.lateInsp)+"개", count:"준비", color:(C.lateInsp?"#C0392B":"#0E7490"), view:"specdue" }); } }catch(_){}
     return items; }; })();
-setTimeout(function(){ try{ sdLoad_(function(){}); }catch(_){} }, 4000);   // 시작 시 한 번 불러와 알림에 반영
+setTimeout(function(){ try{ sdLoad_(function(){ sdMainBanner_(); }); }catch(_){} }, 4000);   // 시작 시 한 번 불러와 알림·MAIN 안내줄에 반영
+/* ===== [추가] MAIN 표에서 바로 특별납기 등록 — 관리번호 옆 ☆ 누르면 등록 창 (품번·납기·수량 자동, 가능일자만 입력, 분할 가능) ===== */
+function sdStarBtn_(ord){
+  var o=String(ord||"").trim(); if(!o) return "";
+  var on=(typeof __sd!=="undefined") && sdLive_().some(function(x){ return x.ord===o && !x.done; });
+  return '<button type="button" class="sd-star'+(on?' on':'')+'" title="'+(on?'특별납기 등록됨 — 눌러서 수정·분할 추가':'특별납기로 등록 (가능일자 입력)')+'" onclick="event.stopPropagation();sdAddPop_(\''+o.replace(/'/g,"")+'\')">'+(on?'★':'☆')+'</button>';
+}
+function sdAddPop_(ord){
+  var o=String(ord||"").trim(), md=(typeof mainData!=="undefined"&&mainData)||[];
+  var r=md.find(function(x){ return String(x.orderNo||"").trim()===o; })||{};
+  var draw=String(r.oldDrawingNo||r.partNo||"").trim(), due=sdParseDate_(r.dueDate)||"", oq=Number(r.qty)||0;
+  var mine=sdLive_().filter(function(x){ return x.ord===o; }).sort(function(a,b){ return (a.avail||"")<(b.avail||"")?-1:1; });
+  var openQ=mine.filter(function(x){ return !x.done; }).reduce(function(s,x){ return s+x.qty; },0), doneQ=mine.filter(function(x){ return x.done; }).reduce(function(s,x){ return s+x.qty; },0);
+  var old=document.querySelector(".sd-ov"); if(old) old.remove();
+  var ov=document.createElement("div"); ov.className="sd-ov";
+  var lineRow=function(q){ return '<div class="sd-ar"><input type="date" class="sd-a-av" title="가능일자 (고객 약속일)"><input type="number" class="sd-a-q" min="1" value="'+(q>0?q:"")+'" placeholder="수량"><input class="sd-a-n" placeholder="비고 (예: '+oq+'EA 중 '+(q>0?q:"")+'EA)"><button type="button" class="sd-a-x" title="이 줄 빼기">✕</button></div>'; };
+  var rest=Math.max(0, oq-openQ-doneQ);
+  ov.innerHTML='<div class="sd-pop"><div class="sd-ph"><b>⭐ 특별납기 등록</b><button type="button" data-x="close">닫기 ✕</button></div><div class="sd-pb">'
+    +'<div class="sd-ainfo"><div><span>관리번호</span><b>'+sdE_(o)+'</b></div><div><span>품번</span><b>'+sdE_(draw||"-")+'</b></div><div><span>품명</span><b>'+sdE_(r.partName||"-")+'</b></div><div><span>고객사</span><b>'+sdE_(r.customer||"-")+'</b></div><div><span>주문수량</span><b>'+oq+'</b></div>'
+    +'<div><span>납기일자</span><input type="date" id="sd-a-due" value="'+due+'"></div></div>'
+    +(mine.length?'<div class="sd-aold"><b>이미 등록된 줄</b>'+mine.map(function(x){ return '<div>'+(x.done?'✓ ':'· ')+'가능 <b>'+sdMD_(x.avail)+'</b> · '+x.qty+'개'+(x.note?' · '+sdE_(x.note):'')+(x.done?' (완료)':'')+'</div>'; }).join("")+'<div class="m">수정·삭제는 특별납기 화면에서 합니다.</div></div>':'')
+    +'<div class="sd-alab">가능일자(고객 약속일)와 수량 — 나눠서 나가면 <b>＋ 분할 추가</b></div><div id="sd-a-lines">'+lineRow(rest||oq)+'</div>'
+    +'<div class="sd-afoot"><button type="button" class="sd-btn" data-x="more">＋ 분할 추가</button><span id="sd-a-sum" class="m"></span></div>'
+    +'</div><div class="sd-pf"><button type="button" class="sd-btn" data-x="go" style="background:#fff;color:#344054;border:1px solid #D0D5DD;margin-right:8px;">특별납기 화면 열기</button><button type="button" class="sd-btn" data-x="ok">등록</button></div></div>';
+  document.body.appendChild(ov);
+  var box=ov.querySelector("#sd-a-lines");
+  var sum=function(){ var t=0; box.querySelectorAll(".sd-a-q").forEach(function(i){ t+=Number(i.value)||0; }); var all=t+openQ+doneQ, el=ov.querySelector("#sd-a-sum");
+    el.innerHTML='이번 등록 <b>'+t+'</b>개'+(openQ||doneQ?' + 기존 '+(openQ+doneQ)+'개':'')+' / 주문 '+oq+'개'+(oq && all>oq?' <b class="r">· 주문수량 초과</b>':''); };
+  ov.addEventListener("input", sum);
+  ov.addEventListener("click", function(e){ var t=e.target, x=t.getAttribute && t.getAttribute("data-x");
+    if(t.classList && t.classList.contains("sd-a-x")){ if(box.children.length>1) t.parentNode.remove(); sum(); return; }
+    if(e.target===ov || x==="close"){ ov.remove(); return; }
+    if(x==="more"){ box.insertAdjacentHTML("beforeend", lineRow(0)); sum(); return; }
+    if(x==="go"){ ov.remove(); sdGo_(o); return; }
+    if(x==="ok"){
+      var d2=sdParseDate_(ov.querySelector("#sd-a-due").value)||due, adds=[], bad=false;
+      box.querySelectorAll(".sd-ar").forEach(function(row){ var av=sdParseDate_(row.querySelector(".sd-a-av").value), q=Number(row.querySelector(".sd-a-q").value)||0, n=String(row.querySelector(".sd-a-n").value||"").trim();
+        if(!av && !q) return; if(!av || q<=0){ bad=true; return; } adds.push({ av:av, q:q, n:n }); });
+      if(bad){ alert("각 줄에 가능일자와 수량을 모두 입력하세요."); return; }
+      if(!adds.length){ alert("가능일자와 수량을 입력하세요."); return; }
+      if(!draw){ alert("이 관리번호의 품번을 MAIN 데이터에서 찾지 못했습니다. 특별납기 화면에서 품번을 직접 입력해 주세요."); return; }
+      adds.forEach(function(a){ sdPut_({ id:"sd"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), ord:o, draw:draw, due:d2||a.av, avail:a.av, qty:a.q, note:a.n, done:false }); });
+      sdSave_(); ov.remove(); sdRefreshMainRow_(o);
+      try{ if(typeof showToast==="function") showToast("⭐ 특별납기 등록: "+o+" ("+adds.length+"줄)"); }catch(_){}
+    } });
+  sum();
+  setTimeout(function(){ var f=box.querySelector(".sd-a-av"); if(f) f.focus(); }, 50);
+}
+// 등록 후 MAIN 표의 해당 행만 갱신 (☆→★, 최종납기 옆 ⭐ 가능일자)
+function sdRefreshMainRow_(ord){
+  document.querySelectorAll("#main-tableBody button.sd-star").forEach(function(b){
+    if((b.getAttribute("onclick")||"").indexOf("'"+ord+"'")<0) return;
+    var tr=b.closest("tr"); b.outerHTML=sdStarBtn_(ord);
+    if(tr){ var m=tr.querySelector(".sd-mini"); var tag=sdTagFor_(ord);
+      if(m) m.outerHTML=tag.trim(); else { var dueTd=[].slice.call(tr.cells).find(function(td){ return /^\d{4}-\d{2}-\d{2}/.test((td.textContent||"").trim()); }); if(dueTd) dueTd.insertAdjacentHTML("beforeend", tag); } }
+  });
+  try{ sdMainBanner_(); }catch(_){}
+}
 function qmsMorningBindBadge_(){ var b=document.getElementById("app-version"); if(b && !b.__bound){ b.__bound=true; b.addEventListener("click",function(){ qmsShowMorning_(true); }); } }
 function qmsLoadUnresolvedShared_(cb){
   try{
