@@ -7162,6 +7162,12 @@ function dispatchLabelsByOutNo_(outNoStr){
   if(!orders.length){ alert("출고NO에서 관리번호를 찾지 못했습니다: "+outNoStr); return; }
   var all=dispatchBuildRows_("", "", orders.join(","), (typeof __dispatchShip!=="undefined")?__dispatchShip:[]);
   var byOrder={}; all.forEach(function(r){ byOrder[r.orderNo]=r; });
+  // [수정] 검수로 잡힌 PROJECT는 분출LIST에서 빠지므로(dispatchInspProjSet_), 없는 ORDER는 검수LIST에서 찾아 보충
+  var __miss0=orders.filter(function(o){ return !byOrder[o]; });
+  if(__miss0.length && typeof insplistBuildRows_==="function"){
+    try{ insplistBuildRows_(__miss0.join(","), (typeof __insplistShip!=="undefined")?__insplistShip:[]).forEach(function(r){
+      var o=String(r.orderNo||"").trim(); if(__miss0.indexOf(o)>=0 && !byOrder[o]) byOrder[o]={ po:r.po||"", partNo:r.partNo, orderNo:o, name:r.name, project:r.project, due:r.due, oldDraw:r.oldDraw, qty:r.qty, __src:"검수" }; }); }catch(_){}
+  }
   var rows=orders.map(function(o){ return byOrder[o]; }).filter(Boolean);
   var missing=orders.filter(function(o){ return !byOrder[o]; });
   if(!rows.length){ alert("분출LIST에서 일치하는 관리번호를 찾지 못했습니다: "+missing.join(", ")+"\n(MAIN 대시보드를 한 번 열어 데이터를 불러왔는지 확인하세요)"); return; }
@@ -7174,11 +7180,11 @@ function dispatchLabelSelectPopup_(rows, missing){
     return '<label style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #EEF1F6;cursor:pointer;">'
       +'<input type="checkbox" class="dlbl-chk" data-i="'+i+'" checked style="width:16px;height:16px;cursor:pointer;flex:0 0 auto;">'
       +'<span style="flex:0 0 84px;font-weight:800;color:#1F2A44;font-size:13px;">'+E(r.orderNo)+'</span>'
-      +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333;font-size:12.5px;">'+E(r.name||"")+'</span>'
+      +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333;font-size:12.5px;">'+(r.__src?'<span style="background:#EFF4FF;color:#1D4ED8;border:1px solid #B2CCFF;border-radius:5px;padding:0 5px;font-size:11px;font-weight:700;margin-right:5px;">검수</span>':'')+E(r.name||"")+'</span>'
       +'<span style="flex:0 0 44px;text-align:right;color:#5A6478;font-size:12.5px;">'+(Number(r.qty)||0)+'개</span>'
       +'</label>';
   }).join("");
-  var missHtml=(missing&&missing.length)?('<div style="padding:8px 12px;background:#FFF3E6;color:#B45309;font-size:11.5px;border-top:1px solid #F0C48A;">⚠ 분출LIST에 없어 인쇄 대상에서 빠졌습니다: '+missing.map(E).join(", ")+'</div>'):'';
+  var missHtml=(missing&&missing.length)?('<div style="padding:8px 12px;background:#FFF3E6;color:#B45309;font-size:11.5px;border-top:1px solid #F0C48A;">⚠ 분출LIST·검수LIST에 없어 인쇄 대상에서 빠졌습니다: '+missing.map(E).join(", ")+'</div>'):'';
   var html='<div id="dlbl-ov" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100060;display:flex;align-items:center;justify-content:center;padding:16px;">'
     +'<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;max-height:80vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
     +'<div style="background:#1F2A44;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:2;">'
@@ -19255,8 +19261,9 @@ function insInit(){
   var __oc=document.getElementById("insrep-outClear"); if(__oc) __oc.addEventListener("click",function(){ insOutSearch=""; var e=document.getElementById("insrep-outSearch"); if(e) e.value=""; insRender(); });
   bind("insrep-outLabelAllBtn","click",function(){
     if(insType!=="shipping"){ alert("출하검사에서만 사용할 수 있습니다."); return; }
-    var vals=(insState[insType]&&insState[insType].rows||[]).map(function(r){ return String(r.outNo||"").trim(); }).filter(Boolean);
-    if(!vals.length){ alert("입력된 출고NO가 없습니다."); return; }
+    // [수정] 버튼 설명대로 "현재 화면에 표시된 행"의 출고NO만 모음 (전에는 날짜 필터와 무관하게 전체 행을 모아 다른 날 출고NO가 섞였음)
+    var vals=Array.prototype.slice.call(document.querySelectorAll('#view-insrep input[data-key="outNo"]')).filter(function(i){ return i.offsetParent!==null; }).map(function(i){ return String(i.value||"").trim(); }).filter(Boolean);
+    if(!vals.length){ alert("화면에 표시된 행 중 출고NO가 입력된 행이 없습니다."); return; }
     if(typeof dispatchLabelsByOutNo_==="function") dispatchLabelsByOutNo_(vals.join(","));
   });
   bind("insrep-cloudSaveBtn","click",insCloudSave);
