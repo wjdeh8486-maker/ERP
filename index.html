@@ -5261,6 +5261,14 @@ function insplistExpandOutNo_(s){                  // 출고No 분할+연도 정
   });
   return out;
 }
+// [수정] 완료수량 날짜 기준 — 재고 출고는 "어제까지", 출하검사일보는 "오늘"만 센다.
+//   (출하검사한 제품은 다음 날 재고관리에 관리번호로 출고 기록이 올라오므로, 과거 검사일보는 재고 쪽에서 이미 셈 → 중복 방지)
+function insplistYmd_(v){ if(v instanceof Date && !isNaN(v)) return v.getFullYear()+"-"+String(v.getMonth()+1).padStart(2,"0")+"-"+String(v.getDate()).padStart(2,"0");
+  var m=String(v==null?"":v).trim().match(/^(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/); return m?(m[1]+"-"+String(m[2]).padStart(2,"0")+"-"+String(m[3]).padStart(2,"0")):""; }
+function insplistToday_(){ return (typeof qmsToday_==="function")?qmsToday_():insplistYmd_(new Date()); }
+function insplistStockCountable_(r){ var d=insplistYmd_(r&&r.outDate); return !d || d<insplistToday_(); }   // 출고일 없으면 기존처럼 셈
+function insplistShipIsToday_(r){ return insplistYmd_(r&&r.insDate)===insplistToday_(); }
+function insplistTodayShip_(rows){ return (rows||[]).filter(insplistShipIsToday_); }
 function insplistShipAlloc_(shipRows, qtyOf){     // 출하검사 검사수를 출고No 순서대로 각 ORDER 수량만큼 순차 배분
   var alloc={};
   (shipRows||[]).forEach(function(r){
@@ -5338,7 +5346,7 @@ function insplistBuildRows_(q, shipRows){
   if(typeof window!=="undefined") window.__insplistTooMany=__tooMany;
   // 출하검사 검사수를 순차 배분(앞 ORDER부터 수량만큼) — 전체 MAIN 수량 기준
   var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
-  var shipAlloc=insplistShipAlloc_(shipRows, function(o){ return qtyMap[o]||0; });
+  var shipAlloc=insplistShipAlloc_(insplistTodayShip_(shipRows), function(o){ return qtyMap[o]||0; });   // [수정] 오늘 검사분만
   return matched.map(function(m){
     var orderNo=String(m.orderNo||"").trim();
     var qty=Number(m.qty)||0;
@@ -5347,12 +5355,14 @@ function insplistBuildRows_(q, shipRows){
     // 완료 = 재고 출고수량(관리번호 매칭) + 출하검사 검사수(출고No 매칭). S/N도 재고 매칭
 var stockOut=0;
 var sns=[];
+var __stSn={}, __shSn={};   // [수정] 재고출고 S/N · 출하검사 S/N 따로 모아 겹치는 수량(같은 제품) 중복 계산 방지
 
 // 재고 S/N
 iv.forEach(function(r){
   if(String(r.ctrlNo||"").trim()===orderNo){
 
-    stockOut += Number(r.outQty)||0;
+    var __cnt=insplistStockCountable_(r);   // [수정] 어제까지 출고분만 완료에 반영
+    if(__cnt) stockOut += Number(r.outQty)||0;
 
     if(r.sn){
       String(r.sn)
@@ -5369,7 +5379,7 @@ iv.forEach(function(r){
 
           if(nums){
             nums.forEach(function(n){
-              sns.push(n);
+              sns.push(n); if(__cnt) __stSn[n]=true;
             });
           }
 
@@ -5385,6 +5395,7 @@ iv.forEach(function(r){
   var outNos = insplistExpandOutNo_(r.outNo);
 
   if(outNos.indexOf(orderNo) >= 0){
+  var __tdy=insplistShipIsToday_(r);
 if(r.sn){
   String(r.sn)
     .split(/[,\n\/]+/)
@@ -5401,7 +5412,7 @@ if(r.sn){
 
           if(n === "10768") return;
 
-          sns.push(n);
+          sns.push(n); if(__tdy) __shSn[n]=true;
 
         });
       }
@@ -5418,7 +5429,10 @@ if(r.sn){
 sns = Array.from(new Set(sns));
     // 완료 = 재고 출고수량 + 출하검사 순차배분(앞 ORDER부터 수량만큼 채우고 남은 건 다음 ORDER로)
     var shipDone=shipAlloc[orderNo]||0;
-    var done=Math.min(qty, stockOut + shipDone);     // 완료는 수량이 상한(중복 방지)
+    // [수정] 재고로 입고→관리번호로 출고한 제품을 출하검사일보에도 같은 출고No로 적으면 두 번 세어짐(예: 3개인데 4개 완료)
+    //        → 두 곳에 같은 S/N이 있으면 그 개수만큼 출하검사 쪽에서 뺌. S/N이 없으면 기존과 같음
+    var __dupSn=Object.keys(__shSn).filter(function(n){ return __stSn[n]; }).length;
+    var done=Math.min(qty, stockOut + Math.max(0, shipDone - __dupSn));     // 완료는 수량이 상한
     var lack=Math.max(0, qty-done);                  // 부족 = 수량 − 완료 (0 이상)
     var partNo=String(m.partNo||"").trim();
     var stockQty=insplistStockQty_(partNo, m.oldDrawingNo);          // 보유재고 (품번+도번)
@@ -6860,7 +6874,7 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
   if(typeof window!=="undefined") window.__dispatchTooMany=__tooMany;
 
   var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
-  var shipAlloc=insplistShipAlloc_(shipRows, function(o){ return qtyMap[o]||0; });
+  var shipAlloc=insplistShipAlloc_(insplistTodayShip_(shipRows), function(o){ return qtyMap[o]||0; });   // [수정] 오늘 검사분만
 
   return matched.map(function(m){
     var orderNo=String(m.orderNo||"").trim();
@@ -6868,23 +6882,27 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
     var name=m.partName||"";
     var project=m.vendor||"";
     var stockOut=0, sns=[];
+    var __stSn={}, __shSn={};   // [수정] 검수LIST와 동일 — 같은 S/N 중복 계산 방지
     // 재고 S/N (관리번호=orderNo 매칭)
     iv.forEach(function(r){
       if(String(r.ctrlNo||"").trim()===orderNo){
-        stockOut += Number(r.outQty)||0;
-        if(r.sn){ String(r.sn).split(/[,\n\/]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){ sn=sn.replace(/^10768-/,""); var nums=sn.match(/\d+/g); if(nums) nums.forEach(function(n){ sns.push(n); }); }); }
+        var __cnt=insplistStockCountable_(r);   // [수정] 어제까지 출고분만
+        if(__cnt) stockOut += Number(r.outQty)||0;
+        if(r.sn){ String(r.sn).split(/[,\n\/]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){ sn=sn.replace(/^10768-/,""); var nums=sn.match(/\d+/g); if(nums) nums.forEach(function(n){ sns.push(n); if(__cnt) __stSn[n]=true; }); }); }
       }
     });
     // 출하검사일보 S/N
     (shipRows||[]).forEach(function(r){
       var outNos=insplistExpandOutNo_(r.outNo);
+      var __tdy=insplistShipIsToday_(r);
       if(outNos.indexOf(orderNo)>=0 && r.sn){
-        String(r.sn).split(/[,\n\/]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){ sn=sn.replace(/^10768-/,""); var nums=sn.match(/\d+/g); if(nums) nums.forEach(function(n){ if(n==="10768") return; sns.push(n); }); });
+        String(r.sn).split(/[,\n\/]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){ sn=sn.replace(/^10768-/,""); var nums=sn.match(/\d+/g); if(nums) nums.forEach(function(n){ if(n==="10768") return; sns.push(n); if(__tdy) __shSn[n]=true; }); });
       }
     });
     sns=Array.from(new Set(sns));
     var shipDone=shipAlloc[orderNo]||0;
-    var done=Math.min(qty, stockOut+shipDone);
+    var __dupSn=Object.keys(__shSn).filter(function(n){ return __stSn[n]; }).length;
+    var done=Math.min(qty, stockOut+Math.max(0, shipDone-__dupSn));
     var lack=Math.max(0, qty-done);
     var partNo=String(m.partNo||"").trim();
     var stockQty=insplistStockQty_(partNo, m.oldDrawingNo);
@@ -7259,7 +7277,9 @@ function dispatchDispatchShare_(){
       body:JSON.stringify({mode:"writeDispatch", rows:rows, orders:orders, by:by})}).catch(function(){});
     try{
       if(typeof __clientId!=="undefined"){
-        var a={ proc:"납기분출", draw:"", qty:rows.length, types:"__DISPATCH__", by:__clientId, extra:{ orders:orders } };
+        var __ex={ orders:orders }, __xr=rows.map(function(r){ return [r.orderNo||"", r.project||"", r.oldDraw||"", r.name||"", Number(r.qty)||0, r.sn||""]; });
+        if(JSON.stringify(__xr).length<40000) __ex.rows=__xr;   // [수정] 분출한 내용 그대로 알림에 실어 보냄 (시트 칸 한도 안에서)
+        var a={ proc:"납기분출", draw:"", qty:rows.length, types:"__DISPATCH__", by:__clientId, extra:__ex };
         fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
           body:JSON.stringify({mode:"writeNcAlert", alerts:[a]})}).catch(function(){});
       }
@@ -21607,10 +21627,33 @@ function stockUseNotifShow_(a, label){ var __lbl=label||"재고분출";
   var kill=function(){ if(card.parentNode) card.parentNode.removeChild(card); };
   card.querySelector(".su-notif-close").addEventListener("click", kill);
   card.querySelector(".su-notif-excel").addEventListener("click", function(){
+    // [수정] 납기분출 알림은 재고사용내역이 아니라 분출 내용으로 엑셀 (전에는 재고사용내역을 찾다 못 찾으면 "최근분"이 나와 내용이 달랐음)
+    if(__lbl==="납기분출"){ dispatchNotifExcel_(a); return; }
     insplistStockUseExcelByOrders_(orders);   // 서버에서 해당 ORDER 내역 조회 후 엑셀
   });
   wrap.appendChild(card);
   try{ if(typeof qmsAlertSound_==="function") qmsAlertSound_("stock"); else if(typeof scanBeep==="function") scanBeep(); }catch(e){}
+}
+// 납기분출 알림 수신자 엑셀: 알림에 실린 분출 내용(ORDER·PROJECT·도번·품명·수량·S/N) 그대로.
+//   옛 알림처럼 내용이 없으면 MAIN 데이터에서 ORDER로 찾아 채움(S/N 빈칸). 엉뚱한 "최근분"으로 대신하지 않음.
+function dispatchNotifExcel_(a){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
+  var ex=(a&&a.extra)||{}, orders=ex.orders||[], rows=[];
+  if(Array.isArray(ex.rows) && ex.rows.length){
+    rows=ex.rows.map(function(x){ return { orderNo:x[0], project:x[1], oldDraw:x[2], name:x[3], qty:x[4], sn:x[5] }; });
+  } else {
+    var md=(typeof mainData!=="undefined"&&mainData)?mainData:[], by={};
+    md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o && !by[o]) by[o]=r; });
+    rows=orders.map(function(o){ var m=by[String(o).trim()]||{}; return { orderNo:o, project:m.vendor||"", oldDraw:m.oldDrawingNo||"", name:m.partName||"", qty:Number(m.qty)||0, sn:"" }; });
+  }
+  if(!rows.length){ alert("납기분출 내역이 없습니다."); return; }
+  var aoa=[["ORDER NO.","PROJECT NO.","기존도번","품명","수량","S/N"]];
+  rows.forEach(function(r){ aoa.push([ r.orderNo||"", r.project||"", r.oldDraw||"", r.name||"", Number(r.qty||0), r.sn||"" ]); });
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=[{wch:12},{wch:16},{wch:14},{wch:26},{wch:6},{wch:24}];
+  if(typeof insplistStyleSheet_==="function") insplistStyleSheet_(ws, aoa, rows, -1);
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "납기분출");
+  XLSX.writeFile(wb, "납기분출_"+new Date().toISOString().slice(0,10)+".xlsx");
 }
 // 수신자 엑셀: 서버 재고사용내역에서 해당 ORDER만 뽑아 다운로드 (검수LIST 엑셀과 동일 디자인)
 function insplistStockUseExcelByOrders_(orders){
