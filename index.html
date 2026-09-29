@@ -1464,10 +1464,14 @@
   #view-specdue .sd-ctw{ overflow-x:auto; }
   #view-specdue .sd-ctb{ width:100%; border-collapse:collapse; table-layout:fixed; min-width:900px; }
   #view-specdue .sd-ctb th{ font-size:12px; color:#667085; font-weight:600; padding:6px; background:#F9FAFB; border:1px solid #EAECF0; }
-  #view-specdue .sd-ctb th:last-child{ width:92px; } #view-specdue .sd-ctb th.we{ color:#98A2B3; }
+  #view-specdue .sd-ctb th:last-child{ width:92px; }
+  #view-specdue .sd-ctb th.sun, #view-specdue .sd-ctb td.sun .sd-cd > span{ color:#D92D20; } #view-specdue .sd-ctb th.sat, #view-specdue .sd-ctb td.sat .sd-cd > span{ color:#1D4ED8; }
+  #view-specdue .sd-ctb td.sun, #view-specdue .sd-ctb td.sat{ background:#FCFCFD; }
+  #view-specdue .sd-hol{ font-size:10px; font-weight:700; color:#D92D20; margin-left:4px; }
+  #view-specdue .sd-cnav button.pr{ background:#111827; color:#fff; border-color:#111827; }
   #view-specdue .sd-ctb td{ vertical-align:top; border:1px solid #EAECF0; padding:5px 6px; height:96px; background:#fff; }
   #view-specdue .sd-ctb td.out{ background:#FAFAFB; } #view-specdue .sd-ctb td.out > *{ opacity:.35; }
-  #view-specdue .sd-ctb td.we{ background:#FBFBFC; }
+
   #view-specdue .sd-ctb td.today{ box-shadow:inset 0 0 0 2px #2563EB; }
   #view-specdue .sd-cd{ display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:700; color:#475467; margin-bottom:3px; }
   #view-specdue .sd-ci{ font-size:10.5px; font-weight:700; color:#1D4ED8; background:#EFF4FF; border-radius:6px; padding:0 5px; }
@@ -5751,7 +5755,7 @@ function qmsUpStLoad_(cb){
   var done=function(v){ __qmsUpSt.data=(v && typeof v==="object")?v:{}; __qmsUpSt.at=Date.now(); var l=__qmsUpSt.cbs||[]; __qmsUpSt.cbs=null; l.forEach(function(f){ try{ f(__qmsUpSt.data); }catch(_){} }); };
   try{ if(typeof qShareLoad_==="function") qShareLoad_("uploadStatus", done); else done(null); }catch(_){ done(null); }
 }
-function qmsPrevBizDay_(){ var d=new Date(); d.setHours(0,0,0,0); do{ d.setDate(d.getDate()-1); }while(d.getDay()===0 || d.getDay()===6); return insplistYmd_(d); }
+function qmsPrevBizDay_(){ var d=new Date(); d.setHours(0,0,0,0); do{ d.setDate(d.getDate()-1); }while(!(typeof qmsIsWorkday_==="function"?qmsIsWorkday_(d):(d.getDay()!==0&&d.getDay()!==6))); return insplistYmd_(d); }   // 주말·공휴일 건너뜀
 function qmsParseDt_(s){ var m=String(s||"").match(/(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/); return m?new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0)):null; }
 function qmsStockFresh_(){
   var st=__qmsUpSt.data, it=st && st.items && st.items["제품입출고현황"], prevBiz=qmsPrevBizDay_();
@@ -11877,6 +11881,23 @@ function qdRender_(){
    · 준비 일정 = 비젼검사 1일 최대 N개(기본 5)로, 출고 전날까지 끝나도록 거꾸로 배정 → 품번별 "검사 시작일"
    · 저장: 공유 칸 "specialDue" (저장 직전 서버본과 병합 — 여러 PC에서 동시에 고쳐도 안 지워짐)
    · 알림: 아침 '오늘 챙길 것'·품질 대시보드 중요 알림에 오늘 출고·지연·오늘 검사 필요 표시 */
+// ===== [추가] 대한민국 공휴일(대체공휴일 포함) 2026~2027 — 달력 빨간 날·근무일 계산(검사 일정·자동 다운로드·재고 최신 여부)에 사용
+//   출처: 관공서의 공휴일에 관한 규정 / 월력요항. 임시공휴일이 새로 지정되면 여기 한 줄 추가
+function qmsHolidayName_(ymd){
+  var H=qmsHolidayName_.__h;
+  if(!H) H=qmsHolidayName_.__h={
+    "2026-01-01":"신정","2026-02-16":"설날 연휴","2026-02-17":"설날","2026-02-18":"설날 연휴","2026-03-01":"삼일절","2026-03-02":"대체공휴일",
+    "2026-05-01":"노동절","2026-05-05":"어린이날","2026-05-24":"부처님오신날","2026-05-25":"대체공휴일","2026-06-03":"지방선거","2026-06-06":"현충일",
+    "2026-07-17":"제헌절","2026-08-15":"광복절","2026-08-17":"대체공휴일","2026-09-24":"추석 연휴","2026-09-25":"추석","2026-09-26":"추석 연휴",
+    "2026-10-03":"개천절","2026-10-05":"대체공휴일","2026-10-09":"한글날","2026-12-25":"성탄절",
+    "2027-01-01":"신정","2027-02-06":"설날 연휴","2027-02-07":"설날","2027-02-08":"설날 연휴","2027-02-09":"대체공휴일","2027-03-01":"삼일절",
+    "2027-05-01":"노동절","2027-05-03":"대체공휴일","2027-05-05":"어린이날","2027-05-13":"부처님오신날","2027-06-06":"현충일",
+    "2027-07-17":"제헌절","2027-07-19":"대체공휴일","2027-08-15":"광복절","2027-08-16":"대체공휴일","2027-09-14":"추석 연휴","2027-09-15":"추석","2027-09-16":"추석 연휴",
+    "2027-10-03":"개천절","2027-10-04":"대체공휴일","2027-10-09":"한글날","2027-10-11":"대체공휴일","2027-12-25":"성탄절","2027-12-27":"대체공휴일"
+  };
+  return H[String(ymd||"").slice(0,10)]||"";
+}
+function qmsIsWorkday_(d){ var w=d.getDay(); if(w===0||w===6) return false; var ymd=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); return !qmsHolidayName_(ymd); }
 var SD_KEY="specialDue";
 var __sd={ items:[], cap:5, loaded:false, filter:"open" };
 function sdE_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
@@ -11893,7 +11914,7 @@ function sdParseDate_(v){
 }
 function sdMD_(ymd){ return ymd?(ymd.slice(5,7)+"/"+ymd.slice(8,10)):""; }
 function sdDow_(ymd){ return ["일","월","화","수","목","금","토"][new Date(ymd+"T00:00:00").getDay()]; }
-function sdIsWork_(d){ var w=d.getDay(); return w!==0 && w!==6; }
+function sdIsWork_(d){ return qmsIsWorkday_(d); }   // 주말·공휴일 제외
 function sdPrevWork_(ymd){ var d=new Date(ymd+"T00:00:00"); do{ d.setDate(d.getDate()-1); }while(!sdIsWork_(d)); return sdYmd_(d); }
 function sdDrawOf_(ord){ try{ var o=String(ord||"").trim(); if(!o) return ""; var r=(mainData||[]).find(function(x){ return String(x.orderNo||"").trim()===o; }); return r?String(r.oldDrawingNo||r.partNo||"").trim():""; }catch(_){ return ""; } }
 // 보유(검사 대기) 기준: SHOWERHEAD 종류 = 비젼검사 대기 / 그 외 = 측정 + 출하(크린룸) 검사 대기
@@ -12012,9 +12033,9 @@ function sdCalHtml_(C){
   // 날짜별 검사 필요 수량: 비젼 = 배정 일정, 그 외 = 출고 전날
   var insp={}; Object.keys(C.used||{}).forEach(function(d){ insp[d]=(insp[d]||0)+C.used[d]; });
   C.open.forEach(function(x){ if(!x._vision && x._insp>0 && x._start) insp[x._start]=(insp[x._start]||0)+x._insp; });
-  // 달력 칸 (월요일 시작)
-  var start=new Date(first); start.setDate(first.getDate()-((first.getDay()+6)%7));
-  var end=new Date(last); end.setDate(last.getDate()+(6-((last.getDay()+6)%7)));
+  // 달력 칸 (일요일 시작)
+  var start=new Date(first); start.setDate(first.getDate()-first.getDay());
+  var end=new Date(last); end.setDate(last.getDate()+(6-last.getDay()));
   var mShip=0, mInsp=0, mShort=0, weeks=[], cur=new Date(start);
   while(cur<=end){ var wk=[]; for(var i=0;i<7;i++){ wk.push(sdYmd_(cur)); cur.setDate(cur.getDate()+1); } weeks.push(wk); }
   var cell=function(ds){
@@ -12023,7 +12044,8 @@ function sdCalHtml_(C){
     var iq=insp[ds]||0;
     var chips=ks.map(function(k){ var g=sh[k], allDone=g.done>=g.q;
       return '<div class="sd-cchip'+(allDone?' done':(g.short>0?' short':(g.late?' late':'')))+'" title="'+sdE_(k+" — "+g.ords.join(", ")+(g.short>0?" · 부족 "+g.short:""))+'">'+sdE_(k)+' <b>('+g.q+')</b>'+(g.short>0&&!allDone?' ⚠':'')+'</div>'; }).join("");
-    return '<td class="'+(inM?'':'out ')+(ds===today?'today ':'')+(dow===0||dow===6?'we ':'')+'"><div class="sd-cd"><span>'+(+ds.slice(8))+'</span>'
+    var hol=qmsHolidayName_(ds);
+    return '<td class="'+(inM?'':'out ')+(ds===today?'today ':'')+(dow===0||hol?'sun ':(dow===6?'sat ':''))+'"><div class="sd-cd"><span>'+(+ds.slice(8))+(hol?'<small class="sd-hol">'+sdE_(hol)+'</small>':'')+'</span>'
       +(iq?'<span class="sd-ci'+(C.cap && (C.used[ds]||0)>C.cap?' over':'')+(ds<today?' past':'')+'" title="이날 검사해야 할 수량">검사 '+iq+'</span>':'')+'</div>'
       +chips+(sq?'<div class="sd-csum">출고 '+sq+'개</div>':'')+'</td>';
   };
@@ -12033,9 +12055,46 @@ function sdCalHtml_(C){
     return '<tr>'+wk.map(cell).join("")+'<td class="sd-cw"><div>출고 <b>'+ws+'</b></div><div>검사 <b>'+wi+'</b></div>'+(wsh?'<div class="r">부족 <b>'+wsh+'</b></div>':'')+'</td></tr>'; }).join("");
   var pm=new Date(y,m-1,1), nm=new Date(y,m+1,1), f=function(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); };
   return '<section class="sd-card sd-cal"><div class="sd-lh"><h3>출고 달력 <small>가능일자 기준 · 품번(수량) · 검사 = 그날 해야 할 검사 수량</small></h3>'
-    +'<span class="sd-cnav"><button type="button" data-cal="'+f(pm)+'">‹</button><b>'+y+'년 '+(m+1)+'월</b><button type="button" data-cal="'+f(nm)+'">›</button><button type="button" data-cal="'+today.slice(0,7)+'" class="t">이번 달</button></span></div>'
+    +'<span class="sd-cnav"><button type="button" data-cal="'+f(pm)+'">‹</button><b>'+y+'년 '+(m+1)+'월</b><button type="button" data-cal="'+f(nm)+'">›</button><button type="button" data-cal="'+today.slice(0,7)+'" class="t">이번 달</button><button type="button" data-a="calprint" class="t pr">🖨 인쇄</button></span></div>'
     +'<div class="sd-msum">이달 합계 · 출고 <b>'+mShip+'</b>개 · 검사 필요 <b>'+mInsp+'</b>개'+(mShort?' · <span class="r">부족 <b>'+mShort+'</b>개</span>':'')+' <span class="m">(비젼 1일 최대 '+C.cap+'개)</span></div>'
-    +'<div class="sd-ctw"><table class="sd-ctb"><thead><tr><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th class="we">토</th><th class="we">일</th><th>주 합계</th></tr></thead><tbody>'+rows+'</tbody></table></div></section>';
+    +'<div class="sd-ctw"><table class="sd-ctb"><thead><tr><th class="sun">일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th class="sat">토</th><th>주 합계</th></tr></thead><tbody>'+rows+'</tbody></table></div></section>';
+}
+/* ---------- [추가] 출고 달력 인쇄 (배포용) — 화면 달력 그대로 A4 가로 1장/월 ---------- */
+function sdCalPrint_(){
+  var C=sdCompute_(), cur=__sd.calMonth||C.today.slice(0,7);
+  var two=confirm("다음 달 달력도 함께 인쇄할까요?\n\n확인 = "+cur.replace("-","년 ")+"월 + 다음 달 (2장)\n취소 = "+cur.replace("-","년 ")+"월만 (1장)");
+  var months=[cur]; if(two){ var d=new Date(+cur.slice(0,4), +cur.slice(5,7), 1); months.push(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")); }
+  var keep=__sd.calMonth, pages=months.map(function(ym){ __sd.calMonth=ym; var tmp=document.createElement("div"); tmp.innerHTML=sdCalHtml_(C);
+    var nav=tmp.querySelector(".sd-cnav"); if(nav) nav.remove();
+    var y=+ym.slice(0,4), m=+ym.slice(5,7);
+    return '<div class="pg"><div class="ph"><div><div class="pt">⭐ 특별납기 출고 달력 — '+y+'년 '+m+'월</div><div class="ps">기준: 가능일자(고객 약속일) · 품번(수량) · 검사 = 그날 해야 할 검사 수량 (SHOWERHEAD 비젼 1일 최대 '+C.cap+'개)</div></div>'
+      +'<div class="pm">출력 '+new Date().toLocaleString("ko-KR")+'<br>NTL 품질팀</div></div>'
+      +tmp.querySelector(".sd-msum").outerHTML+tmp.querySelector(".sd-ctw").innerHTML
+      +'<div class="lg"><span class="c n"></span>출고 예정 <span class="c s"></span>보유 부족(⚠) <span class="c d"></span>완료 <span class="h">빨간 날짜 = 일요일·공휴일</span></div></div>'; }).join("");
+  __sd.calMonth=keep;
+  var css='@page{ size:A4 landscape; margin:9mm; } *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
+    +'body{ margin:0; font-family:"Pretendard Variable","Pretendard","맑은 고딕","Malgun Gothic",sans-serif; color:#101828; }'
+    +'.pg{ page-break-after:always; } .pg:last-child{ page-break-after:auto; }'
+    +'.ph{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:6px; } .pt{ font-size:20px; font-weight:800; } .ps{ font-size:11px; color:#475467; margin-top:2px; } .pm{ font-size:10.5px; color:#667085; text-align:right; }'
+    +'.sd-msum{ font-size:12px; background:#F2F4F7; border-radius:6px; padding:5px 10px; margin-bottom:6px; } .r{ color:#D92D20; } .m{ color:#98A2B3; }'
+    +'.sd-ctb{ width:100%; border-collapse:collapse; table-layout:fixed; } .sd-ctb th{ font-size:11px; font-weight:700; padding:4px; background:#F2F4F7; border:1px solid #98A2B3; }'
+    +'.sd-ctb th.sun{ color:#D92D20; } .sd-ctb th.sat{ color:#1D4ED8; } .sd-ctb th:last-child{ width:74px; }'
+    +'.sd-ctb td{ vertical-align:top; border:1px solid #98A2B3; padding:3px 4px; height:'+(two?"26mm":"28mm")+'; }'
+    +'.sd-ctb td.out > *{ opacity:.3; } .sd-ctb td.today{ outline:2px solid #2563EB; outline-offset:-2px; }'
+    +'.sd-ctb td.sun .sd-cd > span{ color:#D92D20; } .sd-ctb td.sat .sd-cd > span{ color:#1D4ED8; } .sd-hol{ font-size:8.5px; font-weight:700; color:#D92D20; margin-left:3px; }'
+    +'.sd-cd{ display:flex; justify-content:space-between; font-size:11px; font-weight:800; margin-bottom:2px; } .sd-ci{ font-size:8.5px; font-weight:700; color:#1D4ED8; border:1px solid #84ADFF; border-radius:4px; padding:0 3px; } .sd-ci.over{ color:#B42318; border-color:#FDA29B; }'
+    +'.sd-cchip{ font-size:9.5px; line-height:1.3; background:#FFF6E5; border-left:3px solid #F79009; border-radius:3px; padding:1px 3px; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }'
+    +'.sd-cchip.short, .sd-cchip.late{ background:#FEF3F2; border-left-color:#D92D20; } .sd-cchip.done{ background:#F2F4F7; border-left-color:#98A2B3; color:#98A2B3; text-decoration:line-through; }'
+    +'.sd-csum{ font-size:8.5px; color:#667085; text-align:right; } .sd-cw{ background:#F9FAFB; font-size:10px; text-align:right; line-height:1.6; }'
+    +'.lg{ font-size:10px; color:#475467; margin-top:5px; display:flex; align-items:center; gap:6px; } .lg .c{ display:inline-block; width:12px; height:10px; border-radius:2px; margin-left:8px; } .lg .n{ background:#FFF6E5; border-left:3px solid #F79009; } .lg .s{ background:#FEF3F2; border-left:3px solid #D92D20; } .lg .d{ background:#F2F4F7; border-left:3px solid #98A2B3; } .lg .h{ margin-left:12px; color:#D92D20; }';
+  var html='<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>특별납기 출고 달력</title>'
+    +'<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"><style>'+css+'</style></head><body>'+pages+'</body></html>';
+  var ifr=document.getElementById("sd-print-frame"); if(ifr) ifr.remove();
+  ifr=document.createElement("iframe"); ifr.id="sd-print-frame"; ifr.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  document.body.appendChild(ifr);
+  var doc=ifr.contentWindow.document; doc.open(); doc.write(html); doc.close();
+  setTimeout(function(){ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){ alert("인쇄 창을 열지 못했습니다: "+e.message); } }, 700);   // 글꼴 로딩 잠깐 대기
+  window.__sdLastPrintHtml=html;
 }
 /* ---------- 화면 ---------- */
 function sdRender_(){
@@ -12101,6 +12160,7 @@ function sdClick_(e){
   if(!a) return; var k=a.getAttribute("data-a");
   if(k==="reload"){ __sd.loaded=false; sdRender_(); return; }
   if(k==="resave"){ sdSave_(); return; }
+  if(k==="calprint"){ sdCalPrint_(); return; }
   if(k==="xls") return sdExcel_();
   if(k==="paste") return sdPastePop_();
   if(k==="add"){
@@ -21365,7 +21425,7 @@ function insAutoRun_(kind, date, cb){
 // 시각이 됐으면 담당 PC 정하기 → 실행
 function insAutoTry_(kind){
   if(!insAutoOn_()) return;
-  var d=new Date(); if(d.getDay()===0 || d.getDay()===6) return;
+  var d=new Date(); if(typeof qmsIsWorkday_==="function" ? !qmsIsWorkday_(d) : (d.getDay()===0 || d.getDay()===6)) return;   // 주말·공휴일엔 자동 다운로드 안 함
   var today=insAutoToday_(); if(insAutoHM_()<INS_AUTO_CFG[kind]) return;
   if(__insAuto.busy[kind] || __insAuto.done[today+kind]) return;
   if(!(typeof qShareUrl_==="function" && qShareUrl_())) return;
