@@ -1497,6 +1497,15 @@
   html.theme-new body .view:not(#view-insrep) table thead th:last-child, html.theme-new body .view:not(#view-insrep) table tbody tr:nth-child(n) > td:last-child{ border-right:0 !important; }
   #view-specdue .sd-tb th, #view-specdue .sd-dtb th{ border-right:1px solid #EAECF0; } #view-specdue .sd-tb td, #view-specdue .sd-dtb td{ border-right:1px solid #F0F2F5; }
   #view-specdue .sd-tb th:last-child, #view-specdue .sd-tb td:last-child, #view-specdue .sd-dtb th:last-child, #view-specdue .sd-dtb td:last-child{ border-right:0; }
+  /* [수정] 모바일에서 ⚙더보기·⋯ 메뉴가 화면 왼쪽 밖으로 나가 안 보이던 문제 → 화면 아래에서 올라오는 목록으로 표시 */
+  @media (max-width:860px){
+    .ins-dd-menu.open, .qm-dd.open > .qm-dd-menu, html.qx-lay .qx-more.open .qx-more-menu{
+      position:fixed !important; left:10px !important; right:10px !important; top:auto !important; bottom:10px !important;
+      width:auto !important; min-width:0 !important; max-height:72vh !important; overflow-y:auto !important; -webkit-overflow-scrolling:touch;
+      z-index:100090 !important; border-radius:14px !important; box-shadow:0 -10px 34px rgba(16,24,40,.28) !important; padding:8px !important; }
+    body:has(.ins-dd-menu.open) #notice-btn, body:has(.ins-dd-menu.open) #app-version, body:has(.qm-dd.open) #notice-btn, body:has(.qm-dd.open) #app-version, body:has(.qx-more.open) #notice-btn, body:has(.qx-more.open) #app-version{ display:none !important; }   /* 메뉴 열린 동안 공지·버전 배지 숨김(겹침 방지) */
+    .ins-dd-menu.open button, .ins-dd-menu.open a, .qm-dd.open > .qm-dd-menu button, html.qx-lay .qx-more.open .qx-more-menu button{ width:100% !important; min-height:44px !important; justify-content:flex-start !important; text-align:left !important; font-size:15px !important; }
+  }
 </style>
 </head>
 <body>
@@ -22653,7 +22662,7 @@ function saveNotifShow_(a){
   try{ if(typeof qmsAlertSound_==="function") qmsAlertSound_("save"); else if(typeof scanBeep==="function") scanBeep(); }catch(e){}
   setTimeout(kill, 8000);
 }
-function ncAlertBroadcastType(t){
+function ncAlertBroadcastType(t, force){   // force=true: [부적합 알림 보내기]로 직접 보낼 때 — 같은 날 이미 보낸 부적합이어도 다시 알림
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return;
   if(t==="processin") return;
   var rows=(insState[t]&&insState[t].rows)||[];
@@ -22667,7 +22676,7 @@ function ncAlertBroadcastType(t){
     var draw=String((r&&r.draw)||"").trim(); if(!draw) return;
     var __rd=String((r&&r.insDate)||"").trim();
     if(__today && __rd && __rd.slice(0,10)!==__today) return;   // 해당 날짜(오늘)만 알림 — 과거 미조치 재알림 방지
-    alerts.push({ proc:proc, draw:draw, qty:d.qty, types:d.types, by:by });
+    alerts.push({ proc:proc, draw:draw, qty:d.qty, types:d.types, by:by, force:!!force });
   });
   if(!alerts.length) return;
   fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
@@ -22686,7 +22695,9 @@ function ncAlertPoll(){
       // 접속 시점의 기존 알림은 팝업 없이 확인 처리 (과거 발생분·조치완료분이 쏟아지지 않게)
       // [수정] 기준 시각을 "서버 시각"으로 맞춤 — 전에는 이 PC 시계(Date.now)로 시작해서, PC 시계가 서버보다 빠르면
       //        그 차이만큼 새 알림(부적합 등)이 "이미 본 것"으로 걸러져 이 PC에만 안 뜨는 문제가 있었음
-      var srvMax=0; sorted.forEach(function(a){ __ncAlertSeen[a.id]=1; var ts=Number(a.ts||0)||0; if(ts>srvMax) srvMax=ts; });
+      var srvMax=0, recent=[]; sorted.forEach(function(a){ __ncAlertSeen[a.id]=1; var ts=Number(a.ts||0)||0; if(ts>srvMax) srvMax=ts; if(ts && Date.now()-ts<10*60000 && a.types!=="__SAVE__") recent.push(a); });
+      // [추가] 방금(10분 이내) 온 알림은 접속 직후에도 보여줌 — 모바일을 알림 직후에 열었을 때 놓치지 않게
+      recent.slice(-3).forEach(function(a){ try{ ncAlertShow(a); }catch(_){} });
       __ncAlertInit=true;
       try{ localStorage.setItem(NCALERT_LS_TS, String(srvMax)); }catch(e){}
       return;
@@ -22836,8 +22847,8 @@ function ncAlertSendCurrent(){
   rows.forEach(function(r){ if(insRowDefect_(t,r) && String((r&&r.draw)||"").trim() && String((r&&r.actDate)||"").trim()===""){ var __rd=String((r&&r.insDate)||"").trim(); if(!(__today2 && __rd && __rd.slice(0,10)!==__today2)) cnt++; } });
   if(!cnt){ insSetStatus("전송할 부적합이 없습니다."); alert("현재 일보에 부적합(수량>0)이 없습니다."); return; }
   if(!confirm("현재 ["+insTypeLabel(t)+"] 일보의 부적합 "+cnt+"건을 전체 사용자에게 알릴까요?")) return;
-  ncAlertBroadcastType(t);
-  insSetStatus("🔔 부적합 알림 전송됨 ("+cnt+"건)");
+  ncAlertBroadcastType(t, true);   // [수정] 직접 보내기는 강제 재전송 (전에는 공유저장 때 이미 보낸 부적합이면 서버에서 중복으로 버려져 아무 데도 안 떴음)
+  insSetStatus("🔔 부적합 알림 전송됨 ("+cnt+"건) — 다른 PC·모바일은 화면이 켜져 있으면 20초 안에 뜹니다");
 }
 function ncAlertInit(){
   if(__ncAlertStarted) return; __ncAlertStarted=true;
