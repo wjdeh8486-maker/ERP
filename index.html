@@ -494,6 +494,8 @@
   .quick-links a.ql-hole{background:#5E3333;border-color:#5E3333;}
   .quick-links a.ql-hole:hover{background:#4F2B2B;}
   .quick-links a.ql-temp{background:#1F5E6B;border-color:#1F5E6B;}
+
+  .quick-links a.ql-doc{background:#4A3B7A;border-color:#4A3B7A;}
   .quick-links a.ql-temp:hover{background:#184C57;}
   .quick-links a.ql-checklist{background:#33475E;border-color:#33475E;}
   .quick-links a.ql-checklist:hover{background:#2B3C4F;}
@@ -1761,6 +1763,8 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
       <div class="quick-links">
         <a href="https://wjdeh8486-maker.github.io/hole/" target="_blank" rel="noopener" class="ql-hole">🔍 HOLE체크</a>
         <a href="https://wjdeh8486-maker.github.io/Temperature-and-Humidity/" target="_blank" rel="noopener" class="ql-temp" title="온습도 관리 (새 탭)">🌡️ 온습도</a>
+
+        <a href="#" class="ql-doc" onclick="event.preventDefault();qdocHub_();" title="SCAR·8D·월간 보고서·HOLD 해제·장기재고·교정 계획·PCN 초안">📄 문서 초안</a>
         <a href="https://wjdeh8486-maker.github.io/daysheet/" target="_blank" rel="noopener" class="ql-checklist" id="ql-checklistLink" onclick="return todoOpenInline(event);" title="이 프로그램 안에서 바로 열기 (Ctrl+클릭은 새 탭)">📋 체크리스트</a>
         <a href="https://wjdeh8486-maker.github.io/calendar/" target="_blank" rel="noopener" class="ql-calendar">🗓️ 일정 달력</a>
         <a href="https://wjdeh8486-maker.github.io/NTL/" target="_blank" rel="noopener" class="ql-homepage">🏢 회사 홈페이지</a>
@@ -5952,9 +5956,12 @@ function ncrBtnCell_(r, key, meta){
   __ncrMeta[key]=meta||{ src:"내부", draw:r.draw, sn:r.sn||"", date:r.insDate||r.date||"", types:r.types||"", proc:r.label||"", qty:r.qty||"", act:r.act||"" };
   var has=ncrHasKey_(key), done=ncrDoneKey_(key); var isA=(typeof ncGradeOfTypes_==="function" && ncGradeOfTypes_(r.types)==="A"); var k=ncrEscAttr_(key);
   var lbl, bg; if(done){ lbl="\u2705 NCR"; bg="#1E7A46"; } else if(isA){ lbl=has?"\u26A0 NCR 작성중":"\u26A0 NCR 필수"; bg="#C0392B"; } else if(has){ lbl="\uD83D\uDCDD NCR 작성중"; bg="#B45309"; } else { lbl="\uD83D\uDCDD NCR"; bg="#8A1F1F"; }   // A등급(크리티컬)은 NCR 없으면 미완결
-  return '<button type="button" title="'+(isA&&!done?"A등급(크리티컬)은 NCR(원인+재발방지) 작성해야 종결":"")+'" onclick="ncrOpen_(\''+k+'\')" style="background:'+bg+';color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">'+lbl+'</button>'; }
+  var __m=__ncrMeta[key]||{};
+  return '<button type="button" title="'+(isA&&!done?"A등급(크리티컬)은 NCR(원인+재발방지) 작성해야 종결":"")+'" onclick="ncrOpen_(\''+k+'\')" style="background:'+bg+';color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">'+lbl+'</button>'
+    +(/수입/.test(String(__m.proc||""))?' <button type="button" title="거래처 시정요구서(SCAR) 초안" onclick="qdocScarByKey_(\''+k+'\')" style="background:#4A3B7A;color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">📨 SCAR</button>':'')
+    +(__m.src==="고객"?' <button type="button" title="고객 클레임 대책서(8D) 초안" onclick="qdoc8dByKey_(\''+k+'\')" style="background:#4A3B7A;color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">📄 8D</button>':''); }
 // 고객부적합 행 → NCR (키: 일자|고객|도번)
-function ncrBtnCellCust_(r){ if(!r) return ""; var key=ncrCustKey_(r);
+function ncrBtnCellCust_(r){ if(!r) return ""; var key=ncrCustKey_(r); __qd8dRows[key]=r;
   return ncrBtnCell_({ draw:r.partNo, types:r.content }, key, { src:"고객", draw:r.partNo||"", sn:"", customer:r.customer||"", date:r.date||"", types:r.content||"" }); }
 /* ===== [추가] NCR 자동 초안 — 부적합 유형·공정·검사일보 조치내용·과거 이력으로 빈 칸을 미리 채움 (반드시 검토 후 저장) ===== */
 
@@ -6035,6 +6042,452 @@ function ncrFillDraft_(key){
   var b=document.getElementById("ncr-draft-note"); if(b) b.innerHTML="🤖 빈 칸 "+n+"개를 자동 초안으로 채웠습니다 — <b>실제 상황에 맞게 고친 뒤 저장</b>하세요. (노란 칸 = 초안)";
 
 }
+
+/* ==================== 📄 문서 초안 (IATF 16949 기준 표준 양식) ====================
+
+   · SCAR(거래처 시정요구서) · 8D(고객 클레임 대책서) · 월간 품질 보고서 · HOLD 해제 보고서
+
+   · 장기재고 재검사 판정서 · 계측기 교정 계획표 · PCN(공정변경 통보·승인 요청서)
+
+   · QMS 데이터로 채운 A4 문서를 화면에서 바로 고치고(노란 칸) 인쇄/PDF 저장 — 서버에 따로 저장하지 않음 */
+
+var QDOC_CSS='.qd-doc{font-family:"Pretendard Variable","Pretendard","맑은 고딕","Malgun Gothic",sans-serif;color:#101828;font-size:12.5px;line-height:1.55}'
+
+ +'.qd-doc h1{font-size:20px;margin:0 0 2px;text-align:center;letter-spacing:1px}.qd-doc .sub{text-align:center;color:#475467;font-size:11.5px;margin-bottom:10px}'
+
+ +'.qd-doc table{width:100%;border-collapse:collapse;margin:6px 0 10px}.qd-doc th,.qd-doc td{border:1px solid #667085;padding:5px 7px;vertical-align:top;text-align:left}'
+
+ +'.qd-doc th{background:#EEF1F5;font-weight:700;white-space:nowrap}.qd-doc .n{text-align:right}.qd-doc .c{text-align:center}'
+
+ +'.qd-doc h2{font-size:13.5px;margin:12px 0 4px;padding:4px 8px;background:#1F2A44;color:#fff;border-radius:3px}'
+
+ +'.qd-doc .ed{background:#FFFBEA;outline:none;min-height:18px;white-space:pre-wrap}.qd-doc .ed:focus{background:#FFF3C4}'
+
+ +'.qd-doc .sign td{height:48px;text-align:center;vertical-align:bottom;color:#98A2B3;font-size:11px}.qd-doc .r{color:#D92D20;font-weight:700}.qd-doc .m{color:#667085}'
+
+ +'.qd-doc .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 10px}.qd-doc .kpi div{border:1px solid #98A2B3;border-radius:6px;padding:6px 8px}.qd-doc .kpi b{display:block;font-size:17px}';
+
+function qdE2_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function qdEd_(t){ return '<div class="ed" contenteditable="true">'+qdE2_(t)+'</div>'; }
+
+function qdToday2_(){ return (typeof qmsToday_==="function")?qmsToday_():new Date().toISOString().slice(0,10); }
+
+function qdAddWork_(ymd, n){ var d=new Date(ymd+"T00:00:00"); while(n>0){ d.setDate(d.getDate()+1); if(typeof qmsIsWorkday_==="function"?qmsIsWorkday_(d):(d.getDay()%6!==0)) n--; } return d.toISOString().slice(0,10); }
+
+function qdName_(draw){ try{ var k=String(draw||"").trim().toUpperCase(), r=(mainData||[]).find(function(x){ return String(x.oldDrawingNo||"").trim().toUpperCase()===k || String(x.partNo||"").trim().toUpperCase()===k; }); return r?String(r.partName||""):""; }catch(_){ return ""; } }
+
+function qdHead_(title, docNo, extra){ return '<h1>'+qdE2_(title)+'</h1><div class="sub">㈜엔티엘 품질팀 · 문서번호 '+qdE2_(docNo)+' · 작성일 '+qdToday2_()+(extra?(' · '+extra):'')+'</div>'; }
+
+function qdSign_(cols){ cols=cols||["작성","검토","승인"]; return '<table class="sign"><tr>'+cols.map(function(c){ return '<th class="c">'+c+'</th>'; }).join("")+'</tr><tr>'+cols.map(function(){ return '<td>(서명)</td>'; }).join("")+'</tr></table>'; }
+
+function qdocOpen_(title, html){
+
+  var old=document.getElementById("qdoc-ov"); if(old) old.remove();
+
+  var ov=document.createElement("div"); ov.id="qdoc-ov"; ov.style.cssText="position:fixed;inset:0;z-index:100075;background:rgba(16,24,40,.55);display:flex;flex-direction:column;align-items:center;overflow:auto;padding:16px 8px;";
+
+  ov.innerHTML='<style>'+QDOC_CSS+'</style><div style="position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:center;background:#1F2A44;color:#fff;border-radius:12px;padding:10px 14px;width:min(820px,100%);box-sizing:border-box;margin-bottom:10px;">'
+
+    +'<b style="flex:1;">📄 '+qdE2_(title)+' <span style="font-weight:500;font-size:12px;opacity:.8;">— 노란 칸은 바로 고칠 수 있습니다</span></b>'
+
+    +'<button type="button" data-x="print" style="background:#fff;color:#1F2A44;border:0;border-radius:8px;padding:7px 14px;font-weight:800;cursor:pointer;">🖨 인쇄 / PDF</button>'
+
+    +'<button type="button" data-x="close" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:8px;padding:7px 12px;cursor:pointer;">닫기 ✕</button></div>'
+
+    +'<div id="qdoc-page" class="qd-doc" style="background:#fff;width:min(820px,100%);box-sizing:border-box;padding:28px 30px;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.25);">'+html+'</div>';
+
+  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x"); if(x==="close" || e.target===ov){ ov.remove(); } else if(x==="print"){ qdocPrint_(title); } });
+
+  document.body.appendChild(ov);
+
+}
+
+function qdocPrint_(title){
+
+  var pg=document.getElementById("qdoc-page"); if(!pg) return;
+
+  var body=pg.innerHTML.replace(/ contenteditable="true"/g,"");
+
+  var html='<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>'+qdE2_(title)+'</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"><style>@page{size:A4;margin:12mm}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}body{margin:0}'+QDOC_CSS+'.qd-doc .ed{background:transparent!important}tr,table.sign{page-break-inside:avoid}</style></head><body><div class="qd-doc">'+body+'</div></body></html>';
+
+  var f=document.getElementById("qdoc-print-frame"); if(f) f.remove();
+
+  f=document.createElement("iframe"); f.id="qdoc-print-frame"; f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;"; document.body.appendChild(f);
+
+  var d=f.contentWindow.document; d.open(); d.write(html); d.close(); window.__qdocLastHtml=html;
+
+  setTimeout(function(){ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ alert("인쇄 창을 열지 못했습니다: "+e.message); } }, 700);
+
+}
+
+// 목록에서 고르기
+
+function qdocPick_(title, items, onPick, emptyMsg){
+
+  var old=document.getElementById("qdoc-pick"); if(old) old.remove();
+
+  var ov=document.createElement("div"); ov.id="qdoc-pick"; ov.style.cssText="position:fixed;inset:0;z-index:100076;background:rgba(16,24,40,.45);display:flex;align-items:center;justify-content:center;padding:12px;";
+
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;width:min(560px,100%);max-height:84vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.3);font-size:13.5px;">'
+
+    +'<div style="padding:13px 16px;background:#1F2A44;color:#fff;font-weight:800;display:flex;align-items:center;">'+qdE2_(title)+'<button type="button" data-x="close" style="margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:8px;padding:4px 10px;cursor:pointer;">닫기</button></div>'
+
+    +'<div style="padding:8px 12px;border-bottom:1px solid #EAECF0;"><input id="qdoc-pick-q" placeholder="검색 (도번·거래처·고객·내용)" style="width:100%;height:36px;border:1px solid #D0D5DD;border-radius:8px;padding:0 10px;box-sizing:border-box;"></div>'
+
+    +'<div id="qdoc-pick-list" style="overflow:auto;"></div></div>';
+
+  document.body.appendChild(ov);
+
+  var list=ov.querySelector("#qdoc-pick-list"), q=ov.querySelector("#qdoc-pick-q");
+
+  var paint=function(){ var k=String(q.value||"").trim().toLowerCase(), f=items.filter(function(it){ return !k || (it.label+" "+(it.sub||"")).toLowerCase().indexOf(k)>=0; });
+
+    list.innerHTML=f.length?f.slice(0,200).map(function(it,i){ return '<div data-i="'+items.indexOf(it)+'" style="padding:9px 14px;border-bottom:1px solid #F2F4F7;cursor:pointer;"><b>'+qdE2_(it.label)+'</b><div style="color:#667085;font-size:12px;">'+qdE2_(it.sub||"")+'</div></div>'; }).join(""):'<div style="padding:24px;text-align:center;color:#98A2B3;">'+qdE2_(emptyMsg||"항목이 없습니다")+'</div>'; };
+
+  q.addEventListener("input", paint); paint();
+
+  ov.addEventListener("click", function(e){ if(e.target===ov || (e.target.getAttribute&&e.target.getAttribute("data-x")==="close")){ ov.remove(); return; } var row=e.target.closest("[data-i]"); if(row){ ov.remove(); onPick(items[+row.getAttribute("data-i")]); } });
+
+  setTimeout(function(){ q.focus(); }, 50);
+
+}
+
+// 문서 초안 모음 (품질 대시보드 [📄 문서 초안])
+
+var QDOC_LIST=[
+
+  { t:"거래처 시정요구서 (SCAR)", s:"수입검사 부적합 → 거래처에 원인·대책 요구", f:function(){ qdocScarPick_(); } },
+
+  { t:"고객 클레임 대책서 (8D)", s:"고객부적합 → D1~D8 대책서", f:function(){ qdoc8dPick_(); } },
+
+  { t:"월간 품질 보고서", s:"검사 실적·부적합·ppm·클레임·NCR 현황", f:function(){ qdocMonthPick_(); } },
+
+  { t:"출하정지(HOLD) 해제 보고서", s:"정지 사유·선별 결과·해제 근거", f:function(){ qdocHoldPick_(); } },
+
+  { t:"장기재고 재검사 판정서", s:"150일 이상 보유 재고 목록 + 판정 칸", f:function(){ qdocAged_(); } },
+
+  { t:"계측기 교정 계획표", s:"다음 달(또는 선택 월) 교정 도래·초과 목록", f:function(){ qdocInstrPick_(); } },
+
+  { t:"PCN (공정변경 통보·승인 요청서)", s:"공장 이전 — 고객별 해당 품목·검증 계획", f:function(){ qdocPcnPick_(); } }
+
+];
+
+function qdocHub_(){ qdocPick_("📄 문서 초안 — 만들 문서를 고르세요", QDOC_LIST.map(function(d){ return { label:d.t, sub:d.s, d:d }; }), function(it){ it.d.f(); }); }
+
+/* ---------- 1. SCAR ---------- */
+
+function qdocIncomingDefects_(){
+
+  var out=[], seen={}; var add=function(rows){ (rows||[]).forEach(function(r){ var d=insRowDefect_("incoming", r); if(!d) return; var k=[r.insDate,r.draw,r.sn,d.types].join("|"); if(seen[k]) return; seen[k]=1; out.push({ r:r, d:d }); }); };
+
+  try{ add(insUnrRows_("incoming", true)); }catch(_){} try{ add(insState.incoming.rows); }catch(_){}
+
+  return out.sort(function(a,b){ return String(b.r.insDate).localeCompare(String(a.r.insDate)); });
+
+}
+
+function qdocScarPick_(){ var L=qdocIncomingDefects_(); qdocPick_("SCAR — 수입검사 부적합 선택", L.map(function(x){ return { label:x.r.insDate+" · "+x.r.draw+" · "+(x.r.vendor||"거래처 미기재"), sub:x.d.types+" · "+x.d.qty+"개"+(x.r.sn?" · S/N "+x.r.sn:""), x:x }; }), function(it){ qdocScar_(it.x.r, it.x.d); }, "수입검사 부적합 기록이 없습니다 (검사일보에 불러온 최근 30일 + 미처리 기준)"); }
+
+function qdocScar_(r, d){
+
+  d=d||insRowDefect_("incoming", r)||{ types:"", qty:0 }; var today=qdToday2_(), no="SCAR-"+today.replace(/-/g,"")+"-"+String(r.draw||"").replace(/[^A-Za-z0-9]/g,"").slice(-6);
+
+  var nk=(typeof ncrKey_==="function")?ncrKey_({ draw:r.draw, sn:r.sn, insDate:r.insDate, types:d.types }):"", nd=(__ncrDetail&&__ncrDetail[nk])||{};
+
+  var h=qdHead_("거래처 시정조치 요구서 (SCAR)", no)
+
+   +'<table><tr><th>수신 (거래처)</th><td>'+qdEd_(r.vendor||"")+'</td><th>발신</th><td>㈜엔티엘 품질팀</td></tr>'
+
+   +'<tr><th>발행일</th><td>'+today+'</td><th>회신 요구일</th><td class="r">'+qdEd_(qdAddWork_(today,7))+'</td></tr></table>'
+
+   +'<h2>1. 부적합 내용</h2><table><tr><th>도번</th><td>'+qdE2_(r.draw)+'</td><th>품명</th><td>'+qdEd_(qdName_(r.draw))+'</td></tr>'
+
+   +'<tr><th>입고(검사)일</th><td>'+qdE2_(r.insDate)+'</td><th>S/N · LOT</th><td>'+qdEd_(r.sn||"")+'</td></tr>'
+
+   +'<tr><th>검사 수량</th><td>'+qdE2_(r.insCnt||"")+'</td><th>부적합 수량</th><td class="r">'+qdE2_(d.qty)+' ('+(Number(r.insCnt)?Math.round(d.qty/Number(r.insCnt)*1000)/10+"%":"-")+')</td></tr>'
+
+   +'<tr><th>부적합 유형</th><td colspan="3">'+qdEd_(d.types)+'</td></tr>'
+
+   +'<tr><th>상세 내용</th><td colspan="3">'+qdEd_((r.note?r.note+"\n":"")+(r.act?"당사 조치: "+r.act:"")+"\n(사진 첨부)")+'</td></tr>'
+
+   +'<tr><th>당사 처리</th><td colspan="3">'+qdEd_(nd.temp||"해당 LOT 격리 및 전수 선별, 부적합품 반품 예정")+'</td></tr></table>'
+
+   +'<h2>2. 요구 사항 (회신 요구일까지 아래 항목을 작성해 회신 바랍니다)</h2>'
+
+   +'<table><tr><th style="width:26%">① 임시조치 (D3)</th><td>'+qdEd_("귀사 보유 재고·공정 중 제품 선별 결과, 대체품 납품 일정")+'</td></tr>'
+
+   +'<tr><th>② 발생 원인 (D4)</th><td>'+qdEd_("")+'</td></tr><tr><th>③ 유출 원인</th><td>'+qdEd_("")+'</td></tr>'
+
+   +'<tr><th>④ 시정 조치 (D5·D6)</th><td>'+qdEd_("")+'</td></tr><tr><th>⑤ 재발 방지 (D7)</th><td>'+qdEd_("작업표준·검사기준 개정 내용 및 교육 기록 첨부")+'</td></tr>'
+
+   +'<tr><th>⑥ 효과 확인</th><td>'+qdEd_("시정 후 3 LOT 동일 부적합 0건 확인 결과")+'</td></tr></table>'
+
+   +'<div class="m">※ 회신 시 근거 자료(사진·측정 데이터·개정 문서)를 첨부해 주십시오. 기한 내 미회신 시 입고 검사가 강화될 수 있습니다.</div>'
+
+   +qdSign_(["발행 (품질팀)","승인","거래처 확인"]);
+
+  qdocOpen_("SCAR — "+r.draw, h);
+
+}
+
+/* ---------- 2. 8D ---------- */
+
+function qdocNcList_(){ var L=[]; try{ L=(ncData||[]).filter(function(r){ return !(typeof trashIsDeleted==="function" && trashIsDeleted(r)); }); }catch(_){} return L.slice().sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); }); }
+
+function qdoc8dPick_(){
+
+  var go=function(){ var L=qdocNcList_(); qdocPick_("8D — 고객부적합 선택", L.map(function(r){ var j=(typeof ncJudge==="function")?ncJudge(r):{ stage:{ label:"" } }; return { label:String(r.date||"").slice(0,10)+" · "+(r.customer||"")+" · "+(r.partNo||""), sub:String(r.content||"").slice(0,60)+" · "+j.stage.label, r:r }; }), function(it){ qdoc8d_(it.r); }, "고객부적합 기록이 없습니다"); };
+
+  if(!(ncData||[]).length && typeof ncLoadFromSheet==="function"){ try{ ncLoadFromSheet(false); }catch(_){} setTimeout(go, 3000); } else go();
+
+}
+
+function qdocShipHist_(draw){ var k=String(draw||"").trim().toUpperCase(), out=[], seen={}; var add=function(rows){ (rows||[]).forEach(function(r){ if(String(r.draw||"").trim().toUpperCase()!==k) return; var s=r.insDate+"|"+r.sn; if(seen[s]) return; seen[s]=1; out.push(r); }); };
+
+  try{ add(insUnrRows_("shipping", true)); }catch(_){} try{ add(insState.shipping.rows); }catch(_){} return out.sort(function(a,b){ return String(b.insDate).localeCompare(String(a.insDate)); }).slice(0,8); }
+
+function qdoc8d_(r){
+
+  var today=qdToday2_(), key=(typeof ncrCustKey_==="function")?ncrCustKey_(r):"", nd=(__ncrDetail&&__ncrDetail[key])||{};
+
+  if(!nd.cause && typeof ncrDraft_==="function") nd=Object.assign(ncrDraft_({ src:"고객", draw:r.partNo, types:r.content, date:r.date, customer:r.customer, qty:r.qty }), nd);
+
+  var sh=qdocShipHist_(r.partNo), no="8D-"+String(r.date||today).replace(/[^0-9]/g,"").slice(0,8)+"-"+String(r.partNo||"").replace(/[^A-Za-z0-9]/g,"").slice(-6);
+
+  var h=qdHead_("고객 클레임 대책서 (8D Report)", no, "고객 "+qdE2_(r.customer||""))
+
+   +'<h2>D0 · 개요</h2><table><tr><th>고객</th><td>'+qdE2_(r.customer||"")+'</td><th>접수일</th><td>'+qdE2_(String(r.date||"").slice(0,10))+'</td></tr>'
+
+   +'<tr><th>도번</th><td>'+qdE2_(r.partNo||"")+'</td><th>품명</th><td>'+qdEd_(r.partName||qdName_(r.partNo))+'</td></tr>'
+
+   +'<tr><th>수량</th><td>'+qdEd_(r.qty||"")+'</td><th>발견</th><td>'+qdEd_(r.finder||"")+'</td></tr></table>'
+
+   +'<h2>D1 · 팀 구성</h2><table><tr><th>팀장</th><td>'+qdEd_("품질팀장")+'</td><th>팀원</th><td>'+qdEd_("품질 / 생산 / 영업 담당")+'</td></tr></table>'
+
+   +'<h2>D2 · 문제 기술 (5W2H)</h2><table><tr><td>'+qdEd_(r.content||"")+'</td></tr></table>'
+
+   +'<h2>D3 · 임시조치 (봉쇄)</h2><table><tr><td>'+qdEd_([r.treatment||"", nd.temp||""].filter(Boolean).join("\n"))+'</td></tr></table>'
+
+   +(sh.length?'<table><tr><th>최근 출하 이력 (선별 대상)</th><th>출하검사일</th><th>S/N</th><th>출고No</th></tr>'+sh.map(function(x){ return '<tr><td>'+qdE2_(x.draw)+'</td><td>'+qdE2_(x.insDate)+'</td><td>'+qdE2_(x.sn||"")+'</td><td>'+qdE2_(x.outNo||"")+'</td></tr>'; }).join("")+'</table>':'')
+
+   +'<h2>D4 · 근본 원인</h2><table><tr><th style="width:22%">발생 원인</th><td>'+qdEd_(nd.cause||"")+'</td></tr><tr><th>유출 원인</th><td>'+qdEd_(nd.escape||"")+'</td></tr><tr><th>5Why</th><td>'+qdEd_(nd.why||"")+'</td></tr></table>'
+
+   +'<h2>D5 · 영구 시정조치 선정 / D6 · 실행 및 검증</h2><table><tr><th style="width:22%">시정 조치</th><td>'+qdEd_(nd.corrective||"")+'</td></tr><tr><th>완료일</th><td>'+qdEd_(String(r.doneDate||"").slice(0,10))+'</td></tr><tr><th>효과 확인</th><td>'+qdEd_(nd.effect||r.validation||"")+'</td></tr></table>'
+
+   +'<h2>D7 · 재발 방지 · 수평전개</h2><table><tr><th style="width:22%">재발 방지</th><td>'+qdEd_(nd.preventive||"")+'</td></tr><tr><th>수평전개·문서개정</th><td>'+qdEd_(nd.horiz||"")+'</td></tr></table>'
+
+   +'<h2>D8 · 종결 및 팀 치하</h2><table><tr><th style="width:22%">종결일</th><td>'+qdEd_(String(r.reportDate||"").slice(0,10))+'</td></tr><tr><th>고객 승인</th><td>'+qdEd_(r.validation||"")+'</td></tr></table>'
+
+   +qdSign_();
+
+  qdocOpen_("8D — "+(r.partNo||""), h);
+
+}
+
+/* ---------- 3. 월간 품질 보고서 ---------- */
+
+function qdocMonthPick_(){ var t=new Date(), ms=[]; for(var i=0;i<6;i++){ var d=new Date(t.getFullYear(), t.getMonth()-i, 1); ms.push(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")); }
+
+  qdocPick_("월간 품질 보고서 — 월 선택", ms.map(function(m){ return { label:m.replace("-","년 ")+"월", sub:"검사일보 전체를 시트에서 읽어 집계합니다", m:m }; }), function(it){ qdocMonth_(it.m); }); }
+
+function qdocMonth_(ym){
+
+  qdocOpen_("월간 품질 보고서", '<div style="padding:40px;text-align:center;color:#667085;">검사일보를 불러오는 중…</div>');
+
+  var T=["incoming","measureS","measureL","shipping"], got={}, left=T.length;
+
+  T.forEach(function(t){ try{ insReadTypeFromSheet_(t, function(res){ got[t]=(res&&(res.all||res.filtered))||((insState[t]&&insState[t].rows)||[]); if(--left===0) build(); }); }catch(_){ got[t]=(insState[t]&&insState[t].rows)||[]; if(--left===0) build(); } });
+
+  function build(){
+
+    var prev=(function(){ var d=new Date(+ym.slice(0,4), +ym.slice(5,7)-2, 1); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); })();
+
+    var stat=function(m){ var o={ tot:{ c:0, b:0 }, by:{}, types:{}, draws:{} }; T.forEach(function(t){ var s={ c:0, b:0 };
+
+      (got[t]||[]).forEach(function(r){ if(String(r.insDate||"").slice(0,7)!==m) return; var c=Number(r.insCnt)||0; s.c+=c; var d=insRowDefect_(t,r); if(d){ s.b+=d.qty; String(d.types).split(/,\s*/).forEach(function(x){ var n=x.replace(/\s*\d+$/,"").trim(); if(n) o.types[n]=(o.types[n]||0)+(Number((x.match(/(\d+)$/)||[])[1])||1); }); var k=String(r.draw||"").trim(); if(k) o.draws[k]=(o.draws[k]||0)+d.qty; } });
+
+      o.by[t]=s; o.tot.c+=s.c; o.tot.b+=s.b; }); return o; };
+
+    var A=stat(ym), B=stat(prev), ppm=function(s){ return s.c?Math.round(s.b/s.c*1e6):0; };
+
+    var top=function(obj){ return Object.keys(obj).sort(function(a,b){ return obj[b]-obj[a]; }).slice(0,5); };
+
+    var nc=qdocNcList_().filter(function(r){ return String(r.date||"").slice(0,7)===ym; });
+
+    var ncrN=0, ncrDone=0; try{ Object.keys(__ncrDetail||{}).forEach(function(k){ var d=__ncrDetail[k]; if(String(d.date||"").slice(0,7)!==ym) return; ncrN++; if((d.cause||d.why)&&d.preventive) ncrDone++; }); }catch(_){}
+
+    var holds=[]; try{ holds=(__holdLog||[]).filter(function(h){ return String(h.holdDate||"").slice(0,7)===ym && String(h._del||"")!=="1"; }); }catch(_){}
+
+    var lab={ incoming:"수입검사", measureS:"측정 소형", measureL:"측정 대형", shipping:"출하검사" };
+
+    var h=qdHead_(ym.replace("-","년 ")+"월 품질 보고서", "QR-"+ym.replace("-",""))
+
+     +'<div class="kpi"><div>총 검사수<b>'+A.tot.c.toLocaleString()+'</b></div><div>부적합 수량<b class="r">'+A.tot.b.toLocaleString()+'</b></div><div>부적합률 (ppm)<b>'+ppm(A.tot).toLocaleString()+'</b><span class="m">전월 '+ppm(B.tot).toLocaleString()+'</span></div><div>고객 클레임<b class="r">'+nc.length+'건</b></div></div>'
+
+     +'<h2>1. 공정별 검사 실적</h2><table><tr><th>구분</th><th class="n">검사수</th><th class="n">부적합</th><th class="n">ppm</th><th class="n">전월 ppm</th><th class="n">증감</th></tr>'
+
+     +T.map(function(t){ var a=A.by[t], b=B.by[t], pa=ppm(a), pb=ppm(b); return '<tr><td>'+lab[t]+'</td><td class="n">'+a.c.toLocaleString()+'</td><td class="n">'+a.b+'</td><td class="n">'+pa.toLocaleString()+'</td><td class="n">'+pb.toLocaleString()+'</td><td class="n '+(pa>pb?"r":"")+'">'+(pa>pb?"▲ ":pa<pb?"▼ ":"")+Math.abs(pa-pb).toLocaleString()+'</td></tr>'; }).join("")+'</table>'
+
+     +'<h2>2. 부적합 유형 TOP 5 / 도번 TOP 5</h2><table><tr><th>유형</th><th class="n">수량</th><th>도번</th><th class="n">수량</th></tr>'
+
+     +[0,1,2,3,4].map(function(i){ var ty=top(A.types)[i], dr=top(A.draws)[i]; return '<tr><td>'+qdE2_(ty||"")+'</td><td class="n">'+(ty?A.types[ty]:"")+'</td><td>'+qdE2_(dr||"")+'</td><td class="n">'+(dr?A.draws[dr]:"")+'</td></tr>'; }).join("")+'</table>'
+
+     +'<h2>3. 고객 클레임 ('+nc.length+'건)</h2><table><tr><th>접수일</th><th>고객</th><th>도번</th><th>내용</th><th>상태</th></tr>'
+
+     +(nc.length?nc.map(function(r){ var j=(typeof ncJudge==="function")?ncJudge(r):{ stage:{ label:"" } }; return '<tr><td>'+qdE2_(String(r.date||"").slice(0,10))+'</td><td>'+qdE2_(r.customer||"")+'</td><td>'+qdE2_(r.partNo||"")+'</td><td>'+qdE2_(String(r.content||"").slice(0,60))+'</td><td>'+qdE2_(j.stage.label)+'</td></tr>'; }).join(""):'<tr><td colspan="5" class="c m">없음</td></tr>')+'</table>'
+
+     +'<h2>4. NCR · 출하정지</h2><table><tr><th>NCR 작성</th><td>'+ncrN+'건 (원인·재발방지 완료 '+ncrDone+'건'+(ncrN?", "+Math.round(ncrDone/ncrN*100)+"%":"")+')</td><th>출하정지(HOLD)</th><td>'+holds.length+'건</td></tr></table>'
+
+     +'<h2>5. 종합 평가 및 다음 달 중점 과제</h2><table><tr><td>'+qdEd_("· 이달 평가: \n· 주요 부적합 대책: \n· 다음 달 중점 과제: ")+'</td></tr></table>'+qdSign_();
+
+    var pg=document.getElementById("qdoc-page"); if(pg) pg.innerHTML=h;
+
+  }
+
+}
+
+/* ---------- 4. HOLD 해제 보고서 ---------- */
+
+function qdocHoldPick_(){ var L=[]; try{ L=(__holdLog||[]).filter(function(h){ return String(h._del||"")!=="1"; }).slice().sort(function(a,b){ return String(b.holdDate).localeCompare(String(a.holdDate)); }); }catch(_){}
+
+  qdocPick_("HOLD 해제 보고서 — 출하정지 건 선택", L.map(function(h){ return { label:String(h.holdDate||"").slice(0,10)+" · "+(h.target||"")+" · "+(h.status||""), sub:(h.reason||"")+(h.qty?" · "+h.qty+"개":""), h:h }; }), function(it){ qdocHold_(it.h); }, "출하정지 기록이 없습니다"); }
+
+function qdocHold_(hd){
+
+  var k=String(hd.target||"").trim().toUpperCase(), re=[]; try{ ["shipping","incoming","measureS","measureL"].forEach(function(t){ (insUnrRows_(t,true)||[]).concat((insState[t]&&insState[t].rows)||[]).forEach(function(r){ if(String(r.insDate||"")>=String(hd.holdDate||"").slice(0,10) && (String(r.draw||"").trim().toUpperCase()===k || String(r.outNo||"").indexOf(hd.target)>=0)) re.push({ t:t, r:r }); }); }); }catch(_){}
+
+  var seen={}; re=re.filter(function(x){ var s=x.t+x.r.insDate+x.r.sn+x.r.draw; if(seen[s]) return false; seen[s]=1; return true; });
+
+  var sumC=0, sumG=0; re.forEach(function(x){ sumC+=Number(x.r.insCnt)||0; sumG+=Number(x.r.goodCnt)||0; });
+
+  var h=qdHead_("출하정지(HOLD) 해제 보고서", "HR-"+String(hd.holdDate||"").replace(/[^0-9]/g,"").slice(0,8)+"-"+String(hd.target||"").replace(/[^A-Za-z0-9]/g,"").slice(-6))
+
+   +'<h2>1. 출하정지 내용</h2><table><tr><th>대상</th><td>'+qdE2_(hd.target||"")+'</td><th>범위</th><td>'+qdE2_(hd.scope||"")+'</td></tr><tr><th>S/N</th><td>'+qdE2_(hd.sn||"")+'</td><th>수량</th><td>'+qdE2_(hd.qty||"")+'</td></tr>'
+
+   +'<tr><th>정지일</th><td>'+qdE2_(String(hd.holdDate||"").slice(0,10))+'</td><th>정지 담당</th><td>'+qdE2_((hd.by||"")+" "+(hd.side||""))+'</td></tr><tr><th>정지 사유</th><td colspan="3">'+qdEd_(hd.reason||"")+'</td></tr></table>'
+
+   +'<h2>2. 선별·재검사 결과</h2>'+(re.length?'<table><tr><th>검사</th><th>검사일</th><th>도번</th><th>S/N</th><th class="n">검사수</th><th class="n">양품수</th></tr>'+re.map(function(x){ return '<tr><td>'+insTypeLabel(x.t)+'</td><td>'+qdE2_(x.r.insDate)+'</td><td>'+qdE2_(x.r.draw)+'</td><td>'+qdE2_(x.r.sn||"")+'</td><td class="n">'+qdE2_(x.r.insCnt||"")+'</td><td class="n">'+qdE2_(x.r.goodCnt||"")+'</td></tr>'; }).join("")+'<tr><th colspan="4">합계</th><th class="n">'+sumC+'</th><th class="n">'+sumG+'</th></tr></table>':'<table><tr><td>'+qdEd_("선별 결과 기입 (검사일보에 정지일 이후 해당 도번 검사 기록이 없습니다)")+'</td></tr></table>')
+
+   +'<h2>3. 해제 판정</h2><table><tr><th>해제일</th><td>'+qdEd_(String(hd.releaseDate||"").slice(0,10))+'</td><th>해제 담당</th><td>'+qdEd_((hd.releaseBy||"")+" "+(hd.releaseSide||""))+'</td></tr>'
+
+   +'<tr><th>해제 근거</th><td colspan="3">'+qdEd_(hd.releaseNote||"선별 결과 전량 양품 확인 / 원인 조치 완료 확인")+'</td></tr><tr><th>부적합품 처리</th><td colspan="3">'+qdEd_("재작업 / 폐기 / 특채 — 수량 기입")+'</td></tr></table>'+qdSign_();
+
+  qdocOpen_("HOLD 해제 보고서 — "+(hd.target||""), h);
+
+}
+
+/* ---------- 5. 장기재고 재검사 판정서 ---------- */
+
+function qdocAged_(){
+
+  var pinfo={}; try{ pinfo=invGetPartInfo_()||{}; }catch(_){}
+
+  var last={}; try{ (invData||[]).forEach(function(r){ var k=(typeof invKey_==="function")?invKey_(r.partNo):String(r.partNo||"").trim(); var d=String(r.inDate||"").slice(0,10); if(d && (!last[k]||d>last[k])) last[k]=d; }); }catch(_){}
+
+  var today=new Date(qdToday2_()+"T00:00:00"), rows=[];
+
+  Object.keys(pinfo).forEach(function(k){ var p=pinfo[k], st=Number(p.stock)||0, d=last[k]; if(st<=0 || !d) return; var days=Math.round((today-new Date(d+"T00:00:00"))/86400000); if(days<150) return;
+
+    var rl=""; try{ if(typeof reinspList_==="function"){ var l=(reinspList_(k)||[]).filter(function(x){ return x&&x.date; }).sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); }); if(l.length) rl=l[0].date+" "+(l[0].result||""); } }catch(_){}
+
+    rows.push({ k:k, st:st, loc:p.loc||"", d:d, days:days, rl:rl }); });
+
+  rows.sort(function(a,b){ return b.days-a.days; });
+
+  var h=qdHead_("장기재고 재검사 판정서", "AR-"+qdToday2_().replace(/-/g,""), "기준: 최종 입고 후 150일 이상")
+
+   +'<table><tr><th class="c">No</th><th>품번</th><th>품명</th><th class="n">보유</th><th>위치</th><th>최종 입고</th><th class="n">경과일</th><th>최근 재검사</th><th>판정</th><th>비고</th></tr>'
+
+   +(rows.length?rows.map(function(r,i){ return '<tr><td class="c">'+(i+1)+'</td><td>'+qdE2_(r.k)+'</td><td>'+qdE2_(qdName_(r.k))+'</td><td class="n">'+r.st+'</td><td>'+qdE2_(r.loc)+'</td><td>'+r.d+'</td><td class="n '+(r.days>=365?"r":"")+'">'+r.days+'</td><td>'+qdE2_(r.rl||"-")+'</td><td>'+qdEd_("합격 / 불합격 / 폐기")+'</td><td>'+qdEd_("")+'</td></tr>'; }).join(""):'<tr><td colspan="10" class="c m">150일 이상 보유 재고가 없습니다 (입출고·재고 데이터 기준)</td></tr>')+'</table>'
+
+   +'<div class="m">판정 기준: 외관(녹·오염·찍힘), 포장 상태, 필요 시 치수 재측정. 불합격품은 부적합 처리(재작업/폐기) 후 기록.</div>'+qdSign_(["검사","검토","승인"]);
+
+  qdocOpen_("장기재고 재검사 판정서 ("+rows.length+"품목)", h);
+
+}
+
+/* ---------- 6. 계측기 교정 계획표 ---------- */
+
+function qdocInstrPick_(){
+
+  var go=function(){ var t=new Date(), ms=[]; for(var i=0;i<4;i++){ var d=new Date(t.getFullYear(), t.getMonth()+i, 1); ms.push(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")); }
+
+    qdocPick_("계측기 교정 계획표 — 월 선택", ms.map(function(m,i){ return { label:m.replace("-","년 ")+"월"+(i===1?" (다음 달)":i===0?" (이번 달)":""), sub:"그 달 교정 도래 + 이미 지난(초과) 계측기", m:m }; }), function(it){ qdocInstr_(it.m); }); };
+
+  if(!(instrData||[]).length && typeof instrLoadFromSheet==="function"){ try{ instrLoadFromSheet(false); }catch(_){} setTimeout(go, 3000); } else go();
+
+}
+
+function qdocInstr_(ym){
+
+  var today=qdToday2_(), rows=[]; try{ (instrData||[]).forEach(function(r){ if(/폐기|사용중지|사용 중지/.test(String(r.status||""))) return; var nx=(typeof instrNextCal==="function")?instrNextCal(r.lastCal, r.cycle):""; if(!nx) return; if(nx.slice(0,7)===ym || nx<today) rows.push({ r:r, nx:nx, over:nx<today }); }); }catch(_){}
+
+  rows.sort(function(a,b){ return a.nx<b.nx?-1:1; });
+
+  var h=qdHead_(ym.replace("-","년 ")+"월 계측기 교정 계획표", "CP-"+ym.replace("-",""))
+
+   +'<table><tr><th class="c">No</th><th>관리번호</th><th>명칭</th><th>위치</th><th>최근 교정</th><th class="n">주기(월)</th><th>차기 교정</th><th>교정 구분</th><th>실시일</th><th>결과</th></tr>'
+
+   +(rows.length?rows.map(function(x,i){ var r=x.r; return '<tr><td class="c">'+(i+1)+'</td><td>'+qdE2_(r.no||"")+'</td><td>'+qdE2_(r.name||"")+'</td><td>'+qdE2_(r.location||"")+'</td><td>'+qdE2_(r.lastCal||"")+'</td><td class="n">'+qdE2_(r.cycle||"")+'</td><td class="'+(x.over?"r":"")+'">'+x.nx+(x.over?" (초과)":"")+'</td><td>'+qdEd_("자체 / 외주")+'</td><td>'+qdEd_("")+'</td><td>'+qdEd_("")+'</td></tr>'; }).join(""):'<tr><td colspan="10" class="c m">해당 월 교정 도래 계측기가 없습니다</td></tr>')+'</table>'
+
+   +'<div class="m">※ 교정 초과 계측기는 즉시 사용 중지 표시 후 교정 — 초과 기간 중 측정한 제품의 영향 평가 필요 (IATF 16949 7.1.5.2.1)</div>'+qdSign_(["작성","검토","승인"]);
+
+  qdocOpen_("계측기 교정 계획표 "+ym, h);
+
+}
+
+/* ---------- 7. PCN ---------- */
+
+function qdocPcnPick_(){ var c={}; try{ (mainData||[]).forEach(function(r){ var k=String(r.customer||"").trim(); if(k) c[k]=(c[k]||0)+1; }); }catch(_){}
+
+  qdocPick_("PCN — 고객 선택", Object.keys(c).sort(function(a,b){ return c[b]-c[a]; }).map(function(k){ return { label:k, sub:"MAIN 주문 "+c[k]+"건", k:k }; }), function(it){ qdocPcn_(it.k); }, "MAIN 데이터가 아직 없습니다"); }
+
+function qdocPcn_(cust){
+
+  var items={}, cut=new Date(); cut.setMonth(cut.getMonth()-12); var cs=cut.toISOString().slice(0,10);
+
+  try{ (mainData||[]).forEach(function(r){ if(String(r.customer||"").trim()!==cust) return; var d=String(r.dueDate||""); if(d && d<cs && String(r.shipped||"")==="납품완료") return; var k=String(r.oldDrawingNo||r.partNo||"").trim(); if(!k) return; var it=items[k]=items[k]||{ k:k, pn:r.partNo||"", nm:r.partName||"", n:0 }; it.n++; }); }catch(_){}
+
+  var L=Object.keys(items).sort().map(function(k){ return items[k]; });
+
+  var h=qdHead_("공정 변경 통보 및 승인 요청서 (PCN)", "PCN-"+qdToday2_().replace(/-/g,"").slice(0,6)+"-"+String(cust).slice(0,6), "수신 "+qdE2_(cust))
+
+   +'<table><tr><th>수신</th><td>'+qdE2_(cust)+' 품질 담당자 귀하</td><th>발신</th><td>㈜엔티엘 품질팀</td></tr><tr><th>변경 구분 (4M)</th><td colspan="3">'+qdEd_("□ Man  ■ Machine(설비 위치)  ■ Method(검사 환경)  □ Material  ■ 제조·검사 장소 변경")+'</td></tr></table>'
+
+   +'<h2>1. 변경 내용</h2><table><tr><th style="width:22%">변경 전</th><td>'+qdEd_("현 공장: 부품 가공설비 및 검사설비 운영 (현 검사실)")+'</td></tr>'
+
+   +'<tr><th>변경 후</th><td>'+qdEd_("공장 확장 이전\n· 부품 생산 가공설비 → 기존 검사실 공간으로 이전\n· 검사설비 → 신규 공장으로 이전 (검사 환경 변경)\n· 이전 공간은 바닥·내부 공사 완료 후 설비 이동")+'</td></tr>'
+
+   +'<tr><th>변경 사유</th><td>'+qdEd_("생산 능력 확장 및 검사 환경 개선")+'</td></tr><tr><th>적용 예정일</th><td>'+qdEd_("2026년 말 (공사 완료 후 설비 이동, 확정 일정 별도 통보)")+'</td></tr></table>'
+
+   +'<h2>2. 해당 품목 ('+L.length+'개)</h2><table><tr><th class="c">No</th><th>도번</th><th>품번</th><th>품명</th></tr>'+(L.length?L.map(function(it,i){ return '<tr><td class="c">'+(i+1)+'</td><td>'+qdE2_(it.k)+'</td><td>'+qdE2_(it.pn)+'</td><td>'+qdE2_(it.nm)+'</td></tr>'; }).join(""):'<tr><td colspan="4" class="c m">최근 12개월 주문 품목 없음</td></tr>')+'</table>'
+
+   +'<h2>3. 품질 영향 평가</h2><table><tr><th>평가 항목</th><th>예상 영향</th><th>검증 방법</th></tr>'
+
+   +[["치수·기하공차","영향 없음 예상 (설비·프로그램 동일)","이전 후 초물 전 치수 측정, 연속 3 LOT 측정 데이터 제출"],["외관","영향 없음 예상","초물 외관 검사, 한도견본 재확인"],["검사 신뢰성","검사 환경 변경","측정기 재교정·MSA(Gage R&R) 재실시, 검사실 온습도·청정도 기록"],["청정도·포장","영향 없음 예상","포장실·크린룸 환경 확인, 출하 포장 상태 확인"]].map(function(x){ return '<tr><td>'+x[0]+'</td><td>'+qdEd_(x[1])+'</td><td>'+qdEd_(x[2])+'</td></tr>'; }).join("")+'</table>'
+
+   +'<h2>4. 검증 계획 및 일정</h2><table><tr><td>'+qdEd_("① 설비 이전·설치 후 설비 점검 및 가공 조건 확인\n② 계측기 재교정 및 MSA 재실시\n③ 초물 검사(전 치수) 및 결과 제출\n④ 초기 유동관리: 이전 후 3 LOT 전수 검사 강화\n⑤ 고객 승인 후 양산 적용")+'</td></tr></table>'
+
+   +'<h2>5. 요청 사항</h2><table><tr><td>'+qdEd_("상기 변경에 대하여 검토 후 승인하여 주시기 바랍니다. 추가 요구 자료(PPAP 제출 수준 등)가 있으면 회신 부탁드립니다.")+'</td></tr></table>'
+
+   +'<table><tr><th>첨부</th><td>'+qdEd_("공장 배치도(변경 전/후), 이전 일정표, 검증 계획서")+'</td></tr></table>'+qdSign_(["작성","승인","고객 승인"]);
+
+  qdocOpen_("PCN — "+cust, h);
+
+}
+
+// 행에서 바로: SCAR(수입검사 부적합) / 8D(고객부적합)
+
+function qdocScarByKey_(key){ var m=__ncrMeta[key]||{}, k=String(m.draw||"").trim().toUpperCase(), hit=null;
+
+  qdocIncomingDefects_().some(function(x){ if(String(x.r.draw||"").trim().toUpperCase()===k && String(x.r.insDate)===String(m.date) && String(x.r.sn||"")===String(m.sn||"")){ hit=x; return true; } return false; });
+
+  if(hit) qdocScar_(hit.r, hit.d); else qdocScar_({ draw:m.draw, sn:m.sn, insDate:m.date, insCnt:"", vendor:"", note:"", act:m.act||"" }, { types:m.types, qty:m.qty||"" }); }
+
+var __qd8dRows={};
+
+function qdoc8dByKey_(key){ var r=__qd8dRows[key]; if(r) qdoc8d_(r); }
 
 function ncrOpen_(key){
   var d=ncrUpgrade_(key, __ncrDetail[key])||{}; var m=__ncrMeta[key]||{}; d=ncrFillFromKey_(key, Object.assign({}, m, d));
@@ -11956,7 +12409,7 @@ function qdRender_(){
   if(!host.__built){ host.__built=true;
     host.innerHTML=
       '<div class="qd-head"><div><div class="qd-crumb">MAIN <span>›</span> 품질 대시보드</div><div class="qd-title">품질 대시보드</div><div class="qd-sub" id="qd-sub"></div></div>'
-      +'<div class="qd-hact"><button type="button" class="qd-btn" id="qd-refresh"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>새로고침</button></div></div>'
+      +'<div class="qd-hact"><button type="button" class="qd-btn" onclick="qdocHub_()" title="SCAR·8D·월간 보고서·HOLD 해제·장기재고·교정 계획·PCN 초안">📄 문서 초안</button><button type="button" class="qd-btn" id="qd-refresh"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>새로고침</button></div></div>'
       +'<div class="qd-kpis" id="qd-kpi"></div>'
       +'<div class="qd-grid">'
       +  '<section class="qd-card qd-c-line"><div class="qd-ch"><h3>최근 7일 검사 현황</h3><span class="qd-chs">검사수(개)</span></div><div id="qd-line"></div></section>'
