@@ -1416,6 +1416,11 @@
   #view-specdue .sd-bar{ position:relative; height:20px; background:#F2F4F7; border-radius:999px; overflow:hidden; }
   #view-specdue .sd-bar i{ position:absolute; left:0; top:0; bottom:0; background:#84ADFF; border-radius:999px; } #view-specdue .sd-bar span{ position:relative; display:block; text-align:center; font-size:11.5px; font-weight:700; line-height:20px; color:#1D2939; }
   #view-specdue .sd-chips{ display:flex; flex-wrap:wrap; gap:4px; } #view-specdue .sd-chip{ background:#EFF4FF; color:#1D4ED8; border-radius:8px; padding:2px 8px; font-size:12px; font-weight:600; } #view-specdue .sd-chip small{ color:#667085; font-weight:500; } #view-specdue .sd-chip.short{ background:#FEF3F2; color:#B42318; }
+  #view-specdue .sd-savest{ align-self:center; font-size:12.5px; color:#667085; margin-right:4px; white-space:nowrap; }
+  #view-specdue .sd-savest.ok{ color:#039855; font-weight:600; } #view-specdue .sd-savest.ing{ color:#B54708; }
+  #view-specdue .sd-savest.bad{ color:#B42318; font-weight:700; background:#FEF3F2; border:1px solid #FDA29B; border-radius:8px; padding:4px 8px; }
+  #view-specdue .sd-savest button{ margin-left:6px; border:0; background:#D92D20; color:#fff; border-radius:6px; padding:3px 8px; font-weight:700; cursor:pointer; }
+  #view-specdue .sd-auto{ font-size:11px; color:#039855; font-weight:700; }
   #view-specdue .sd-kind{ display:inline-block; font-size:11.5px; font-weight:700; border-radius:6px; padding:1px 7px; background:#F2F4F7; color:#475467; } #view-specdue .sd-kind.v{ background:#EFF4FF; color:#1D4ED8; }
   #view-specdue .sd-tb tr.sd-hl td{ background:#FFF1D6 !important; }
   .sd-mini{ cursor:pointer; } .sd-mini:hover{ background:#FEC84B; color:#7A2E0E; }
@@ -11876,6 +11881,12 @@ function sdHoldInfo_(draw, ord){
   return { q:q, vision:vis, kind:vis?"비젼":"측정+출하", name:nm };
 }
 function sdHold_(draw){ return sdHoldInfo_(draw,"").q; }
+// [추가] 관리번호가 MAIN에서 "납품완료"면 자동 완료 (수동 체크와 함께 사용)
+var __sdShip={ ref:null, len:-1, map:{} };
+function sdAutoDone_(ord){ var o=String(ord||"").trim(); if(!o) return false;
+  try{ var md=(typeof mainData!=="undefined"&&mainData)||[]; if(__sdShip.ref!==md || __sdShip.len!==md.length){ var m={}; md.forEach(function(r){ var k=String(r.orderNo||"").trim(); if(k && String(r.shipped||"").trim()==="납품완료") m[k]=true; }); __sdShip={ ref:md, len:md.length, map:m }; }
+    return !!__sdShip.map[o]; }catch(_){ return false; } }
+function sdDone_(x){ return !!(x && (x.done || sdAutoDone_(x.ord))); }
 function sdLive_(){ return __sd.items.filter(function(x){ return !x.del; }); }
 /* ---------- 저장/불러오기 (병합) ---------- */
 function sdMerge_(a, b){ var m={}; (a||[]).concat(b||[]).forEach(function(x){ if(!x||!x.id) return; if(!m[x.id] || (x.ts||0)>(m[x.id].ts||0)) m[x.id]=x; }); return Object.keys(m).map(function(k){ return m[k]; }); }
@@ -11885,21 +11896,41 @@ function sdLoad_(cb){
   qShareLoad_(SD_KEY, function(v){ if(v && Array.isArray(v.items)){ __sd.items=sdMerge_(__sd.items, v.items); if(v.cap) __sd.cap=v.cap; } __sd.loaded=true; sdCache_(); cb&&cb(); });
 }
 function sdCache_(){ try{ localStorage.setItem("sdCache", JSON.stringify({ items:__sd.items, cap:__sd.cap })); }catch(_){} }
+// 저장은 등록·완료·삭제 때 자동. 저장 후 서버에서 다시 읽어 "정말 올라갔는지" 확인 → 상태 표시(✓ 공유 저장됨 / ⚠ 저장 안 됨 [다시 저장])
 function sdSave_(){
-  sdCache_();
-  if(typeof qShareLoad_!=="function" || typeof qShareUrl_!=="function") return;
+  __sd.dirty=true; __sd.saveSt="saving"; sdSavePaint_(); sdCache_();
+  if(typeof qShareLoad_!=="function" || typeof qShareUrl_!=="function" || !qShareUrl_()){ __sd.saveSt="fail"; sdSavePaint_(); return; }
   qShareLoad_(SD_KEY, function(v){
     var items=sdMerge_(v && Array.isArray(v.items)?v.items:[], __sd.items);
     var cut=Date.now()-60*86400000; items=items.filter(function(x){ return !(x.del && (x.ts||0)<cut); });   // 60일 지난 삭제 표시는 정리
     __sd.items=items; sdCache_();
+    var mine=items.map(function(x){ return x.id+"|"+(x.ts||0); });
     try{ qSharePost_(qShareUrl_(), SD_KEY, JSON.stringify({ items:items, cap:__sd.cap, ts:Date.now() })); }catch(_){}
+    var tries=0; (function verify(){ setTimeout(function(){ qShareLoad_(SD_KEY, function(v2){
+      var got={}; ((v2&&v2.items)||[]).forEach(function(x){ got[x.id+"|"+(x.ts||0)]=true; });
+      if(mine.every(function(k){ return got[k]; })){ __sd.dirty=false; __sd.saveSt="ok"; __sd.savedAt=new Date(); sdSavePaint_(); return; }
+      if(++tries<3){ verify(); return; }
+      __sd.saveSt="fail"; sdSavePaint_(); }); }, 2500); })();
   });
 }
+function sdSavePaint_(){
+  var el=document.getElementById("sd-savest"); if(!el) return;
+  var st=__sd.saveSt||"";
+  if(st==="saving"){ el.className="sd-savest ing"; el.innerHTML="⏳ 공유 저장 중…"; }
+  else if(st==="ok"){ el.className="sd-savest ok"; el.innerHTML="✓ 공유 저장됨 "+(__sd.savedAt?__sd.savedAt.toTimeString().slice(0,5):""); }
+  else if(st==="fail"){ el.className="sd-savest bad"; el.innerHTML='⚠ 저장 확인 안 됨 — 이 PC에만 있음 <button type="button" data-a="resave">다시 저장</button>'; }
+  else { el.className="sd-savest"; el.innerHTML="자동 저장 · 모든 PC 공유"; }
+}
+// 켜 둔 PC도 5분마다 목록을 다시 읽어 MAIN 안내줄·★·알림을 최신으로 (입력 중이면 화면은 다시 그리지 않음)
+setInterval(function(){ try{ if(__sd.dirty) return; sdLoad_(function(){ try{ sdMainBanner_(); }catch(_){}
+  var v=document.getElementById("view-specdue"), a=document.activeElement;
+  if(v && v.classList.contains("active") && !(a && v.contains(a) && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) && !document.querySelector(".sd-ov")) sdRender_(); }); }catch(_){} }, 5*60000);
+window.addEventListener("beforeunload", function(e){ if(__sd && __sd.dirty && __sd.saveSt==="fail"){ e.preventDefault(); e.returnValue="특별납기 변경이 아직 공유 저장되지 않았습니다."; return e.returnValue; } });
 function sdPut_(it){ setTimeout(function(){ try{ sdMainBanner_(); }catch(_){} }, 50); it.ts=Date.now(); it.by=(typeof insAutoPcName_==="function")?insAutoPcName_():""; var i=__sd.items.findIndex(function(x){ return x.id===it.id; }); if(i>=0) __sd.items[i]=it; else __sd.items.push(it); }
 /* ---------- 계산 ---------- */
 function sdCompute_(){
   var today=sdYmd_(sdToday_()), cap=Math.max(1, Number(__sd.cap)||5);
-  var open=sdLive_().filter(function(x){ return !x.done && x.avail; }).sort(function(a,b){ return a.avail<b.avail?-1:(a.avail>b.avail?1:(a.due||"").localeCompare(b.due||"")); });
+  var open=sdLive_().filter(function(x){ return !sdDone_(x) && x.avail; }).sort(function(a,b){ return a.avail<b.avail?-1:(a.avail>b.avail?1:(a.due||"").localeCompare(b.due||"")); });
   // 품번별 보유 차감
   var byDraw={};
   open.forEach(function(x){ var k=x.draw||"(품번 없음)"; if(!byDraw[k]){ var hi=sdHoldInfo_(x.draw, x.ord); byDraw[k]={ draw:k, hold:hi.q, kind:hi.kind, vision:hi.vision, name:hi.name, need:0, run:null, shortFrom:"", lines:[] }; } x._vision=byDraw[k].vision;
@@ -11929,7 +11960,7 @@ function sdRender_(){
   var h='';
   h+='<div class="sd-head"><div><div class="sd-crumb">현황 <span>›</span> 특별납기 관리</div><div class="sd-title">⭐ 특별납기 관리 <span class="sd-tag">중점</span></div>'
     +'<div class="sd-sub">기준: <b>가능일자</b>(고객 약속일) · 보유 = <b>SHOWERHEAD 종류는 비젼검사 대기</b>, 그 외는 측정+출하 검사 대기 · 비젼검사 1일 최대 <input id="sd-cap" type="number" min="1" max="50" value="'+C.cap+'"> 개 · 출고 전날까지 검사 완료 기준</div></div>'
-    +'<div class="sd-act"><button type="button" class="sd-btn" data-a="paste">📋 엑셀 붙여넣기</button><button type="button" class="sd-btn" data-a="xls">⬇ 엑셀</button><button type="button" class="sd-btn" data-a="reload">⟳ 새로고침</button></div></div>';
+    +'<div class="sd-act"><span id="sd-savest" class="sd-savest"></span><button type="button" class="sd-btn" data-a="paste">📋 엑셀 붙여넣기</button><button type="button" class="sd-btn" data-a="xls">⬇ 엑셀</button><button type="button" class="sd-btn" data-a="reload">⟳ 새로고침</button></div></div>';
   h+='<div class="sd-kpis">'
     +kpi("오늘 출고", C.todayShip.length+"건", "수량 "+sumQ(C.todayShip)+"개", C.todayShip.length?"warn":"")
     +kpi("가능일 지남 (미완료)", C.overdue.length+"건", "수량 "+sumQ(C.overdue)+"개", C.overdue.length?"bad":"")
@@ -11955,19 +11986,19 @@ function sdRender_(){
     +past.map(function(ds){ return dayRow(ds,true); }).join("")+days.map(function(ds){ return dayRow(ds,false); }).join("")+'</section></div>';
   // 출고 일정
   var all=sdLive_().slice().sort(function(a,b){ return (a.avail||"9")<(b.avail||"9")?-1:((a.avail||"9")>(b.avail||"9")?1:(a.draw||"").localeCompare(b.draw||"")); });
-  var rows=all.filter(function(x){ return __sd.filter==="all" || !x.done; });
+  var rows=all.filter(function(x){ return __sd.filter==="all" || !sdDone_(x); });
   h+='<section class="sd-card"><div class="sd-lh"><h3>출고 일정 <span class="sd-cnt">'+rows.length+'</span></h3>'
     +'<span class="sd-seg"><button type="button" data-f="open" class="'+(__sd.filter==="open"?"on":"")+'">미완료</button><button type="button" data-f="all" class="'+(__sd.filter==="all"?"on":"")+'">전체</button></span></div>'
     +'<div class="sd-form"><input id="sd-f-ord" placeholder="관리번호 (예: 26-402-3)"><input id="sd-f-draw" placeholder="품번 (비우면 관리번호로 자동)"><input id="sd-f-due" type="date" title="납기일자"><input id="sd-f-avail" type="date" title="가능일자"><input id="sd-f-qty" type="number" min="1" placeholder="수량"><input id="sd-f-note" placeholder="비고 (예: 22EA 중 10EA)"><button type="button" class="sd-btn pri" data-a="add">＋ 추가</button></div>'
     +'<div class="sd-tw"><table class="sd-tb"><thead><tr><th>상태</th><th>관리번호</th><th>품번</th><th>납기일자</th><th>가능일자</th><th class="n">수량</th><th>비고</th><th>검사 시작</th><th>완료</th><th></th></tr></thead><tbody>'
     +(rows.length?rows.map(function(x){ var st, cls;
-        if(x.done){ st="완료"; cls="done"; } else if(x.avail<today){ st="지연"; cls="bad"; } else if(x.avail===today){ st="오늘"; cls="warn"; } else { var n=Math.round((new Date(x.avail+"T00:00:00")-new Date(today+"T00:00:00"))/86400000); st="D-"+n; cls=n<=3?"soon":""; }
+        if(sdDone_(x)){ st=(x.done?"완료":"납품완료"); cls="done"; } else if(x.avail<today){ st="지연"; cls="bad"; } else if(x.avail===today){ st="오늘"; cls="warn"; } else { var n=Math.round((new Date(x.avail+"T00:00:00")-new Date(today+"T00:00:00"))/86400000); st="D-"+n; cls=n<=3?"soon":""; }
         return '<tr class="'+cls+'"><td><span class="sd-st '+cls+'">'+st+'</span></td><td class="k">'+sdE_(x.ord||"-")+'</td><td>'+sdE_(x.draw)+'</td><td class="m">'+sdMD_(x.due)+'</td><td><b>'+sdMD_(x.avail)+'</b> <small class="m">('+(x.avail?sdDow_(x.avail):"")+')</small></td>'
-          +'<td class="n"><b>'+x.qty+'</b>'+(!x.done && x._short>0?' <span class="sd-pill bad" title="보유(비젼) 부족">부족 '+x._short+'</span>':'')+'</td><td class="m">'+sdE_(x.note||"")+'</td>'
-          +'<td>'+(x.done?'<span class="m">-</span>':(x._start?'<span class="'+(x._late?"r":"")+'">'+sdMD_(x._start)+(x._late?' 늦음':'')+'</span>':'-'))+'</td>'
-          +'<td><input type="checkbox" data-done="'+sdE_(x.id)+'" '+(x.done?"checked":"")+' title="출고 완료"></td><td><button type="button" class="sd-x" data-del="'+sdE_(x.id)+'" title="삭제">✕</button></td></tr>'; }).join(""):'<tr><td colspan="10" class="sd-empty">항목이 없습니다. 위 칸에 입력하거나 [📋 엑셀 붙여넣기]로 등록하세요.</td></tr>')
+          +'<td class="n"><b>'+x.qty+'</b>'+(!sdDone_(x) && x._short>0?' <span class="sd-pill bad" title="보유(비젼) 부족">부족 '+x._short+'</span>':'')+'</td><td class="m">'+sdE_(x.note||"")+'</td>'
+          +'<td>'+(sdDone_(x)?'<span class="m">-</span>':(x._start?'<span class="'+(x._late?"r":"")+'">'+sdMD_(x._start)+(x._late?' 늦음':'')+'</span>':'-'))+'</td>'
+          +'<td><input type="checkbox" data-done="'+sdE_(x.id)+'" '+(sdDone_(x)?"checked":"")+(!x.done && sdAutoDone_(x.ord)?' disabled title="MAIN에서 납품완료 → 자동 완료"':' title="출고 완료"')+'>'+(!x.done && sdAutoDone_(x.ord)?' <small class="sd-auto">자동</small>':'')+'</td><td><button type="button" class="sd-x" data-del="'+sdE_(x.id)+'" title="삭제">✕</button></td></tr>'; }).join(""):'<tr><td colspan="10" class="sd-empty">항목이 없습니다. 위 칸에 입력하거나 [📋 엑셀 붙여넣기]로 등록하세요.</td></tr>')
     +'</tbody></table></div></section>';
-  root.innerHTML=h;
+  root.innerHTML=h; sdSavePaint_();
   if(!root.__bound){ root.__bound=true; root.addEventListener("click", sdClick_); root.addEventListener("change", sdChange_); }
 }
 function sdClick_(e){
@@ -11976,6 +12007,7 @@ function sdClick_(e){
   if(del){ var it=__sd.items.find(function(x){ return x.id===del.getAttribute("data-del"); }); if(it && confirm((it.ord||it.draw)+" ("+sdMD_(it.avail)+" "+it.qty+"개) 항목을 삭제할까요?")){ var c=Object.assign({}, it, { del:true }); sdPut_(c); sdSave_(); sdRender_(); } return; }
   if(!a) return; var k=a.getAttribute("data-a");
   if(k==="reload"){ __sd.loaded=false; sdRender_(); return; }
+  if(k==="resave"){ sdSave_(); return; }
   if(k==="xls") return sdExcel_();
   if(k==="paste") return sdPastePop_();
   if(k==="add"){
@@ -12023,7 +12055,7 @@ function sdPastePop_(){
 function sdExcel_(){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
   var C=sdCompute_(), aoa=[["상태","관리번호","품번","납기일자","가능일자","수량","부족","비고","검사 시작","완료일시"]];
-  sdLive_().slice().sort(function(a,b){ return (a.avail||"")<(b.avail||"")?-1:1; }).forEach(function(x){ aoa.push([x.done?"완료":(x.avail<C.today?"지연":(x.avail===C.today?"오늘":"")), x.ord||"", x.draw, x.due, x.avail, x.qty, x.done?0:(x._short||0), x.note||"", x.done?"":(x._start||""), x.doneAt||""]); });
+  sdLive_().slice().sort(function(a,b){ return (a.avail||"")<(b.avail||"")?-1:1; }).forEach(function(x){ aoa.push([sdDone_(x)?"완료":(x.avail<C.today?"지연":(x.avail===C.today?"오늘":"")), x.ord||"", x.draw, x.due, x.avail, x.qty, sdDone_(x)?0:(x._short||0), x.note||"", sdDone_(x)?"":(x._start||""), x.doneAt||""]); });
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "특별납기");
   XLSX.writeFile(wb, "특별납기관리_"+C.today+".xlsx");
 }
@@ -12040,7 +12072,7 @@ function sdMainBanner_(){
   if(!b){ b=document.createElement("div"); b.id="main-sdBanner"; b.title="특별납기 관리로 이동"; b.onclick=function(){ sdGo_(""); };
     b.style.cssText="display:none;background:#FFF8E6;border:1px solid #FEC84B;border-radius:12px;padding:10px 16px;margin-bottom:12px;cursor:pointer;font-size:13px;";
     var hb=document.getElementById("main-holdBanner"); if(hb && hb.parentNode) hb.parentNode.insertBefore(b, hb.nextSibling); else v.insertBefore(b, v.firstChild); }
-  if(!__sd.items.length || !sdLive_().some(function(x){ return !x.done; })){ b.style.display="none"; return; }
+  if(!__sd.items.length || !sdLive_().some(function(x){ return !sdDone_(x); })){ b.style.display="none"; return; }
   var C=sdCompute_(), sq=function(a){ return a.reduce(function(s,x){ return s+x.qty; },0); }, shortN=Object.keys(C.byDraw).filter(function(k){ return C.byDraw[k].shortFrom; }).length;
   var part=function(t,n,red){ return '<span style="margin-right:14px;'+(red?'color:#B42318;':'')+'">'+t+' <b>'+n+'</b></span>'; };
   var next=C.open.filter(function(x){ return x.avail>C.today; })[0];
@@ -12048,7 +12080,7 @@ function sdMainBanner_(){
     +(next?'<span style="color:#667085;">다음 출고 '+sdMD_(next.avail)+' '+sdE_(next.draw)+' ×'+next.qty+'</span>':'')+'<span style="float:right;font-weight:700;color:#B54708;">관리 ▸</span>';
   b.style.display="block";
 }
-function sdTagFor_(ord){ if(!__sd.items.length) return ""; var o=String(ord||"").trim(); var l=sdLive_().filter(function(x){ return !x.done && x.ord===o; }); if(!l.length) return "";
+function sdTagFor_(ord){ if(!__sd.items.length) return ""; var o=String(ord||"").trim(); var l=sdLive_().filter(function(x){ return !sdDone_(x) && x.ord===o; }); if(!l.length) return "";
   return ' <span class="sd-mini" title="특별납기 — 가능일자(고객 약속일). 누르면 특별납기 관리로 이동" onclick="event.stopPropagation();sdGo_(\''+sdE_(o).replace(/'/g,"")+'\')">⭐ 가능 '+l.map(function(x){ return sdMD_(x.avail)+"·"+x.qty+"EA"; }).join(", ")+'</span>'; }
 // 아침 '오늘 챙길 것' + 품질 대시보드 중요 알림에 추가 (원래 함수를 감싸서 맨 앞에)
 (function(){ if(typeof qmsMorningAlerts_!=="function") return; var orig=qmsMorningAlerts_;
@@ -12062,7 +12094,7 @@ setTimeout(function(){ try{ sdLoad_(function(){ sdMainBanner_(); }); }catch(_){}
 /* ===== [추가] MAIN 표에서 바로 특별납기 등록 — 관리번호 옆 ☆ 누르면 등록 창 (품번·납기·수량 자동, 가능일자만 입력, 분할 가능) ===== */
 function sdStarBtn_(ord){
   var o=String(ord||"").trim(); if(!o) return "";
-  var on=(typeof __sd!=="undefined") && sdLive_().some(function(x){ return x.ord===o && !x.done; });
+  var on=(typeof __sd!=="undefined") && sdLive_().some(function(x){ return x.ord===o && !sdDone_(x); });
   return '<button type="button" class="sd-star'+(on?' on':'')+'" title="'+(on?'특별납기 등록됨 — 눌러서 수정·분할 추가':'특별납기로 등록 (가능일자 입력)')+'" onclick="event.stopPropagation();sdAddPop_(\''+o.replace(/'/g,"")+'\')">'+(on?'★':'☆')+'</button>';
 }
 function sdAddPop_(ord){
@@ -12070,7 +12102,7 @@ function sdAddPop_(ord){
   var r=md.find(function(x){ return String(x.orderNo||"").trim()===o; })||{};
   var draw=String(r.oldDrawingNo||r.partNo||"").trim(), due=sdParseDate_(r.dueDate)||"", oq=Number(r.qty)||0;
   var mine=sdLive_().filter(function(x){ return x.ord===o; }).sort(function(a,b){ return (a.avail||"")<(b.avail||"")?-1:1; });
-  var openQ=mine.filter(function(x){ return !x.done; }).reduce(function(s,x){ return s+x.qty; },0), doneQ=mine.filter(function(x){ return x.done; }).reduce(function(s,x){ return s+x.qty; },0);
+  var openQ=mine.filter(function(x){ return !sdDone_(x); }).reduce(function(s,x){ return s+x.qty; },0), doneQ=mine.filter(function(x){ return sdDone_(x); }).reduce(function(s,x){ return s+x.qty; },0);
   var old=document.querySelector(".sd-ov"); if(old) old.remove();
   var ov=document.createElement("div"); ov.className="sd-ov";
   var lineRow=function(q){ return '<div class="sd-ar"><input type="date" class="sd-a-av" title="가능일자 (고객 약속일)"><input type="number" class="sd-a-q" min="1" value="'+(q>0?q:"")+'" placeholder="수량"><input class="sd-a-n" placeholder="비고 (예: '+oq+'EA 중 '+(q>0?q:"")+'EA)"><button type="button" class="sd-a-x" title="이 줄 빼기">✕</button></div>'; };
@@ -12078,7 +12110,7 @@ function sdAddPop_(ord){
   ov.innerHTML='<div class="sd-pop"><div class="sd-ph"><b>⭐ 특별납기 등록</b><button type="button" data-x="close">닫기 ✕</button></div><div class="sd-pb">'
     +'<div class="sd-ainfo"><div><span>관리번호</span><b>'+sdE_(o)+'</b></div><div><span>품번</span><b>'+sdE_(draw||"-")+'</b></div><div><span>품명</span><b>'+sdE_(r.partName||"-")+'</b></div><div><span>고객사</span><b>'+sdE_(r.customer||"-")+'</b></div><div><span>주문수량</span><b>'+oq+'</b></div>'
     +'<div><span>납기일자</span><input type="date" id="sd-a-due" value="'+due+'"></div></div>'
-    +(mine.length?'<div class="sd-aold"><b>이미 등록된 줄</b>'+mine.map(function(x){ return '<div>'+(x.done?'✓ ':'· ')+'가능 <b>'+sdMD_(x.avail)+'</b> · '+x.qty+'개'+(x.note?' · '+sdE_(x.note):'')+(x.done?' (완료)':'')+'</div>'; }).join("")+'<div class="m">수정·삭제는 특별납기 화면에서 합니다.</div></div>':'')
+    +(mine.length?'<div class="sd-aold"><b>이미 등록된 줄</b>'+mine.map(function(x){ return '<div>'+(sdDone_(x)?'✓ ':'· ')+'가능 <b>'+sdMD_(x.avail)+'</b> · '+x.qty+'개'+(x.note?' · '+sdE_(x.note):'')+(sdDone_(x)?' (완료)':'')+'</div>'; }).join("")+'<div class="m">수정·삭제는 특별납기 화면에서 합니다.</div></div>':'')
     +'<div class="sd-alab">가능일자(고객 약속일)와 수량 — 나눠서 나가면 <b>＋ 분할 추가</b></div><div id="sd-a-lines">'+lineRow(rest||oq)+'</div>'
     +'<div class="sd-afoot"><button type="button" class="sd-btn" data-x="more">＋ 분할 추가</button><span id="sd-a-sum" class="m"></span></div>'
     +'</div><div class="sd-pf"><button type="button" class="sd-btn" data-x="go" style="background:#fff;color:#344054;border:1px solid #D0D5DD;margin-right:8px;">특별납기 화면 열기</button><button type="button" class="sd-btn" data-x="ok">등록</button></div></div>';
