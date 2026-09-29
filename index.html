@@ -1420,6 +1420,8 @@
   #view-specdue .sd-savest.ok{ color:#039855; font-weight:600; } #view-specdue .sd-savest.ing{ color:#B54708; }
   #view-specdue .sd-savest.bad{ color:#B42318; font-weight:700; background:#FEF3F2; border:1px solid #FDA29B; border-radius:8px; padding:4px 8px; }
   #view-specdue .sd-savest button{ margin-left:6px; border:0; background:#D92D20; color:#fff; border-radius:6px; padding:3px 8px; font-weight:700; cursor:pointer; }
+  #view-specdue .sd-actual{ font-size:12.5px; color:#475467; background:#F9FAFB; border-radius:8px; padding:6px 10px; margin:-4px 0 8px; } #view-specdue .sd-actual.m{ color:#98A2B3; }
+  #view-specdue .sd-ready{ display:inline-block; font-size:11.5px; font-weight:700; color:#039855; background:#ECFDF3; border-radius:6px; padding:1px 7px; }
   #view-specdue .sd-auto{ font-size:11px; color:#039855; font-weight:700; }
   #view-specdue .sd-kind{ display:inline-block; font-size:11.5px; font-weight:700; border-radius:6px; padding:1px 7px; background:#F2F4F7; color:#475467; } #view-specdue .sd-kind.v{ background:#EFF4FF; color:#1D4ED8; }
   #view-specdue .sd-tb tr.sd-hl td{ background:#FFF1D6 !important; }
@@ -11875,10 +11877,14 @@ function sdNameOf_(draw, ord){ try{ var md=mainData||[], o=String(ord||"").trim(
   if(!r && d) r=md.find(function(x){ return String(x.oldDrawingNo||"").trim()===d || String(x.partNo||"").trim()===d; });
   return r?String(r.partName||""):""; }catch(_){ return ""; } }
 function sdIsVision_(name){ return /SHOWER\s*HEAD|샤워헤드/i.test(String(name||"")); }
+// [수정] 보유 = 검사 대기 + 재고(검사 끝나 출고만 남은 것). 검사를 끝내면 대기→재고로 옮겨갈 뿐 보유는 그대로
+//        (전에는 대기만 세서, 검사할수록 보유가 줄어 "부족"이 늘어 보였음)
+function sdStockOf_(draw){ try{ if(typeof buildInvStockMap==="function") buildInvStockMap(); var k=(typeof invKey_==="function")?invKey_(draw):String(draw||"").trim(); var v=(invStockMap||{})[k]; return Math.max(0, Number(v)||0); }catch(_){ return 0; } }
 function sdHoldInfo_(draw, ord){
-  var nm=sdNameOf_(draw, ord), vis=sdIsVision_(nm), key={ oldDrawingNo:draw, partNo:"" }, q=0;
-  try{ if(vis){ q=Number(lookupWaitMap(visionWaitMap, key))||0; } else { q=(Number(lookupWaitMap(measureWaitMap, key))||0)+(Number(lookupWaitMap(cleanWaitMap, key))||0); } }catch(_){}
-  return { q:q, vision:vis, kind:vis?"비젼":"측정+출하", name:nm };
+  var nm=sdNameOf_(draw, ord), vis=sdIsVision_(nm), key={ oldDrawingNo:draw, partNo:"" }, w=0;
+  try{ if(vis){ w=Number(lookupWaitMap(visionWaitMap, key))||0; } else { w=(Number(lookupWaitMap(measureWaitMap, key))||0)+(Number(lookupWaitMap(cleanWaitMap, key))||0); } }catch(_){}
+  var st=sdStockOf_(draw);
+  return { q:w+st, wait:w, stock:st, vision:vis, kind:vis?"비젼":"측정+출하", name:nm };
 }
 function sdHold_(draw){ return sdHoldInfo_(draw,"").q; }
 // [추가] 관리번호가 MAIN에서 "납품완료"면 자동 완료 (수동 체크와 함께 사용)
@@ -11933,13 +11939,16 @@ function sdCompute_(){
   var open=sdLive_().filter(function(x){ return !sdDone_(x) && x.avail; }).sort(function(a,b){ return a.avail<b.avail?-1:(a.avail>b.avail?1:(a.due||"").localeCompare(b.due||"")); });
   // 품번별 보유 차감
   var byDraw={};
-  open.forEach(function(x){ var k=x.draw||"(품번 없음)"; if(!byDraw[k]){ var hi=sdHoldInfo_(x.draw, x.ord); byDraw[k]={ draw:k, hold:hi.q, kind:hi.kind, vision:hi.vision, name:hi.name, need:0, run:null, shortFrom:"", lines:[] }; } x._vision=byDraw[k].vision;
-    var g=byDraw[k]; if(g.run===null) g.run=g.hold; var cov=Math.max(0, Math.min(x.qty, g.run)); g.run-=x.qty; x._short=x.qty-cov; if(x._short>0 && !g.shortFrom) g.shortFrom=x.avail; g.need+=x.qty; g.lines.push(x); });
+  open.forEach(function(x){ var k=x.draw||"(품번 없음)"; if(!byDraw[k]){ var hi=sdHoldInfo_(x.draw, x.ord); byDraw[k]={ draw:k, hold:hi.q, wait:hi.wait, stock:hi.stock, kind:hi.kind, vision:hi.vision, name:hi.name, need:0, runS:hi.stock, runW:hi.wait, shortFrom:"", lines:[] }; } x._vision=byDraw[k].vision;
+    var g=byDraw[k], fs=Math.min(x.qty, g.runS); g.runS-=fs; var rest=x.qty-fs, fw=Math.min(rest, g.runW); g.runW-=fw;
+    x._ready=fs; x._fromWait=fw; x._short=rest-fw; x._insp=x.qty-fs;   // 검사 필요 = 재고로 못 채운 수량
+    if(x._short>0 && !g.shortFrom) g.shortFrom=x.avail; g.need+=x.qty; g.lines.push(x); });
   // 비젼검사 준비 일정: 출고 전날까지 끝나도록, 늦은 출고부터 거꾸로 1일 cap개 배정
   var used={}, plan={};
   open.slice().sort(function(a,b){ return a.avail<b.avail?1:(a.avail>b.avail?-1:0); }).forEach(function(x){
+    if(!(x._insp>0)){ x._alloc=[]; x._start=""; x._late=false; return; }   // 재고로 다 채움 → 검사 필요 없음(준비완료)
     if(!x._vision){ x._alloc=[]; x._start=sdPrevWork_(x.avail); x._late=x._start<today; return; }   // 측정+출하 품목은 1일 한도 없이 출고 전날까지
-    var d=sdPrevWork_(x.avail), rem=x.qty, guard=0; x._alloc=[];
+    var d=sdPrevWork_(x.avail), rem=x._insp, guard=0; x._alloc=[];
     while(rem>0 && guard++<400){ var u=used[d]||0, take=Math.min(cap-u, rem); if(take>0){ used[d]=u+take; rem-=take; x._alloc.push([d,take]); (plan[d]=plan[d]||[]).push({ x:x, q:take }); } if(rem>0) d=sdPrevWork_(d); }
     x._start=x._alloc.length?x._alloc[x._alloc.length-1][0]:"";
     x._late=!!(x._start && x._start<today);
@@ -11949,17 +11958,36 @@ function sdCompute_(){
   var lateInsp=Object.keys(plan).filter(function(d){ return d<today; }).reduce(function(s,d){ return s+plan[d].reduce(function(a,p){ return a+p.q; },0); },0);
   return { today:today, cap:cap, open:open, byDraw:byDraw, plan:plan, used:used, todayShip:todayShip, overdue:overdue, lateInsp:lateInsp, todayInsp:(used[today]||0) };
 }
+/* ---------- 비젼검사 실적(추정): 매일 비젼 대기 수량을 기록 → 전날 대비 줄어든 수 = 그날 검사 완료 ---------- */
+var __sdVis={ snap:null, tried:"" };
+function sdVisSync_(){
+  var today=sdYmd_(sdToday_()); if(__sdVis.tried===today) return; 
+  try{ if(!visionWaitMap || !Object.keys(visionWaitMap).length) return; }catch(_){ return; }   // 비젼 데이터가 아직 안 들어옴
+  var draws={}; sdLive_().forEach(function(x){ if(x.draw && sdIsVision_(sdNameOf_(x.draw, x.ord))) draws[x.draw]=true; });
+  var cur={}; Object.keys(draws).forEach(function(d){ cur[d]=Number(lookupWaitMap(visionWaitMap, { oldDrawingNo:d, partNo:"" }))||0; });
+  if(!Object.keys(cur).length) return;
+  __sdVis.tried=today;
+  qShareLoad_("sdVisionSnap", function(v){ var o=(v && typeof v==="object" && !Array.isArray(v))?v:{};
+    if(!o[today]){ o[today]=cur; var ds=Object.keys(o).sort(); while(ds.length>40) delete o[ds.shift()]; try{ qSharePost_(qShareUrl_(), "sdVisionSnap", JSON.stringify(o)); }catch(_){} }
+    __sdVis.snap=o; var v2=document.getElementById("view-specdue"); if(v2 && v2.classList.contains("active")) sdRender_(); });
+}
+function sdVisDone_(){   // [{d, n}] 최근 날짜별 완료(추정)
+  var o=__sdVis.snap; if(!o) return []; var ds=Object.keys(o).sort(), out=[];
+  for(var i=1;i<ds.length;i++){ var a=o[ds[i-1]], b=o[ds[i]], n=0; Object.keys(a).forEach(function(k){ if(k in b) n+=Math.max(0,(Number(a[k])||0)-(Number(b[k])||0)); }); out.push({ d:ds[i], n:n }); }
+  return out.slice(-5).reverse();
+}
 /* ---------- 화면 ---------- */
 function sdRender_(){
   var root=document.getElementById("sd-root"); if(!root) return;
   if(!__sd.loaded){ root.innerHTML='<div class="sd-empty">불러오는 중…</div>'; sdLoad_(sdRender_); return; }
+  try{ sdVisSync_(); }catch(_){}
   var C=sdCompute_(), today=C.today;
   var kpi=function(t,v,sub,cls){ return '<div class="sd-kpi '+(cls||"")+'"><div class="sd-kl">'+t+'</div><div class="sd-kn">'+v+'</div><div class="sd-ks">'+sub+'</div></div>'; };
   var sumQ=function(a){ return a.reduce(function(s,x){ return s+x.qty; },0); };
   var shortDraws=Object.keys(C.byDraw).filter(function(k){ return C.byDraw[k].shortFrom; });
   var h='';
   h+='<div class="sd-head"><div><div class="sd-crumb">현황 <span>›</span> 특별납기 관리</div><div class="sd-title">⭐ 특별납기 관리 <span class="sd-tag">중점</span></div>'
-    +'<div class="sd-sub">기준: <b>가능일자</b>(고객 약속일) · 보유 = <b>SHOWERHEAD 종류는 비젼검사 대기</b>, 그 외는 측정+출하 검사 대기 · 비젼검사 1일 최대 <input id="sd-cap" type="number" min="1" max="50" value="'+C.cap+'"> 개 · 출고 전날까지 검사 완료 기준</div></div>'
+    +'<div class="sd-sub">기준: <b>가능일자</b>(고객 약속일) · 보유 = <b>재고(검사 끝남)</b> + 검사 대기 (SHOWERHEAD 종류는 비젼, 그 외 측정+출하) · 재고부터 먼저 배정 · 비젼검사 1일 최대 <input id="sd-cap" type="number" min="1" max="50" value="'+C.cap+'"> 개 · 출고 전날까지 검사 완료 기준</div></div>'
     +'<div class="sd-act"><span id="sd-savest" class="sd-savest"></span><button type="button" class="sd-btn" data-a="paste">📋 엑셀 붙여넣기</button><button type="button" class="sd-btn" data-a="xls">⬇ 엑셀</button><button type="button" class="sd-btn" data-a="reload">⟳ 새로고침</button></div></div>';
   h+='<div class="sd-kpis">'
     +kpi("오늘 출고", C.todayShip.length+"건", "수량 "+sumQ(C.todayShip)+"개", C.todayShip.length?"warn":"")
@@ -11970,8 +11998,8 @@ function sdRender_(){
   // 품번별 요약
   var ks=Object.keys(C.byDraw).sort(function(a,b){ var A=C.byDraw[a], B=C.byDraw[b]; return (A.start||"9")<(B.start||"9")?-1:1; });
   h+='<div class="sd-grid"><section class="sd-card"><h3>품번별 보유·부족</h3>'
-    +(ks.length?'<table class="sd-tb"><thead><tr><th>품번</th><th>보유 기준</th><th class="n">보유</th><th class="n">출고 합계</th><th class="n">부족</th><th>부족 시작</th><th>검사 시작</th></tr></thead><tbody>'
-    +ks.map(function(k){ var g=C.byDraw[k], diff=g.hold-g.need; return '<tr><td class="k" title="'+sdE_(g.name||"")+'">'+sdE_(k)+'</td><td><span class="sd-kind'+(g.vision?' v':'')+'">'+g.kind+'</span></td><td class="n">'+g.hold+'</td><td class="n">'+g.need+'</td><td class="n"><span class="sd-pill '+(diff<0?"bad":"ok")+'">'+diff+'</span></td>'
+    +(ks.length?'<table class="sd-tb"><thead><tr><th>품번</th><th>검사</th><th class="n" title="검사 끝나 출고만 남은 수량">재고</th><th class="n" title="아직 검사 전">검사대기</th><th class="n">보유 합계</th><th class="n">출고 합계</th><th class="n">부족</th><th>부족 시작</th><th>검사 시작</th></tr></thead><tbody>'
+    +ks.map(function(k){ var g=C.byDraw[k], diff=g.hold-g.need; return '<tr><td class="k" title="'+sdE_(g.name||"")+'">'+sdE_(k)+'</td><td><span class="sd-kind'+(g.vision?' v':'')+'">'+g.kind+'</span></td><td class="n">'+g.stock+'</td><td class="n">'+g.wait+'</td><td class="n"><b>'+g.hold+'</b></td><td class="n">'+g.need+'</td><td class="n"><span class="sd-pill '+(diff<0?"bad":"ok")+'">'+diff+'</span></td>'
       +'<td>'+(g.shortFrom?'<b class="r">'+sdMD_(g.shortFrom)+'('+sdDow_(g.shortFrom)+')부터</b>':'<span class="m">-</span>')+'</td><td>'+(g.start?('<b class="'+(g.late?"r":"")+'">'+sdMD_(g.start)+'('+sdDow_(g.start)+')'+(g.late?' 늦음':'')+'</b>'):'-')+'</td></tr>'; }).join("")+'</tbody></table>':'<div class="sd-empty">등록된 미완료 항목이 없습니다</div>')
     +'</section>';
   // 비젼검사 준비 일정 (밀린 것 + 오늘부터 10근무일)
@@ -11981,7 +12009,8 @@ function sdRender_(){
     return '<div class="sd-day'+(ds===today?" today":"")+(lateFlag?" late":"")+'"><div class="sd-dd">'+(lateFlag?"밀림 ":"")+sdMD_(ds)+'<small>('+sdDow_(ds)+')</small></div>'
       +'<div class="sd-bar"><i style="width:'+Math.min(100,Math.round(tot/C.cap*100))+'%"></i><span>'+tot+' / '+C.cap+'</span></div>'
       +'<div class="sd-chips">'+(list.length?list.map(function(p){ return '<span class="sd-chip'+(p.x._short>0?' short':'')+'"'+(p.x._short>0?' title="비젼 보유가 부족한 줄 — 제품 입고(생산) 먼저 필요"':'')+'>'+sdE_(p.x.draw)+' ×'+p.q+(p.x._short>0?' ⚠':'')+' <small>→ '+sdMD_(p.x.avail)+' 출고</small></span>'; }).join(""):'<span class="m">-</span>')+'</div></div>'; };
-  h+='<section class="sd-card"><h3>비젼검사 준비 일정 <small>SHOWERHEAD 종류 · 1일 '+C.cap+'개 · 출고 전날까지</small></h3>'
+  h+='<section class="sd-card"><h3>비젼검사 준비 일정 <small>SHOWERHEAD 종류 · 1일 '+C.cap+'개 · 출고 전날까지 · 재고분 제외</small></h3>'
+    +(function(){ var a=sdVisDone_(); return a.length?'<div class="sd-actual">비젼 완료(추정, 대기 감소분): '+a.map(function(r){ return sdMD_(r.d)+' <b>'+r.n+'</b>개'+(r.n<C.cap?'':''); }).join(' · ')+'</div>':'<div class="sd-actual m">비젼 완료 실적은 내일부터 표시됩니다 (매일 대기 수량을 기록해 전날과 비교)</div>'; })()
     +(past.length?'<div class="sd-warn">⚠ 이미 지난 날짜에 배정된 검사 '+C.lateInsp+'개 — 지금 시작해도 일정이 빠듯합니다. 가능일자 조정 또는 추가 인원이 필요합니다.</div>':'')
     +past.map(function(ds){ return dayRow(ds,true); }).join("")+days.map(function(ds){ return dayRow(ds,false); }).join("")+'</section></div>';
   // 출고 일정
@@ -11995,7 +12024,7 @@ function sdRender_(){
         if(sdDone_(x)){ st=(x.done?"완료":"납품완료"); cls="done"; } else if(x.avail<today){ st="지연"; cls="bad"; } else if(x.avail===today){ st="오늘"; cls="warn"; } else { var n=Math.round((new Date(x.avail+"T00:00:00")-new Date(today+"T00:00:00"))/86400000); st="D-"+n; cls=n<=3?"soon":""; }
         return '<tr class="'+cls+'"><td><span class="sd-st '+cls+'">'+st+'</span></td><td class="k">'+sdE_(x.ord||"-")+'</td><td>'+sdE_(x.draw)+'</td><td class="m">'+sdMD_(x.due)+'</td><td><b>'+sdMD_(x.avail)+'</b> <small class="m">('+(x.avail?sdDow_(x.avail):"")+')</small></td>'
           +'<td class="n"><b>'+x.qty+'</b>'+(!sdDone_(x) && x._short>0?' <span class="sd-pill bad" title="보유(비젼) 부족">부족 '+x._short+'</span>':'')+'</td><td class="m">'+sdE_(x.note||"")+'</td>'
-          +'<td>'+(sdDone_(x)?'<span class="m">-</span>':(x._start?'<span class="'+(x._late?"r":"")+'">'+sdMD_(x._start)+(x._late?' 늦음':'')+'</span>':'-'))+'</td>'
+          +'<td>'+(sdDone_(x)?'<span class="m">-</span>':(x._start?'<span class="'+(x._late?"r":"")+'">'+sdMD_(x._start)+(x._late?' 늦음':'')+'</span>'+(x._ready>0?' <small class="m">(재고 '+x._ready+')</small>':''):(x._ready>=x.qty?'<span class="sd-ready">준비완료</span>':'-')))+'</td>'
           +'<td><input type="checkbox" data-done="'+sdE_(x.id)+'" '+(sdDone_(x)?"checked":"")+(!x.done && sdAutoDone_(x.ord)?' disabled title="MAIN에서 납품완료 → 자동 완료"':' title="출고 완료"')+'>'+(!x.done && sdAutoDone_(x.ord)?' <small class="sd-auto">자동</small>':'')+'</td><td><button type="button" class="sd-x" data-del="'+sdE_(x.id)+'" title="삭제">✕</button></td></tr>'; }).join(""):'<tr><td colspan="10" class="sd-empty">항목이 없습니다. 위 칸에 입력하거나 [📋 엑셀 붙여넣기]로 등록하세요.</td></tr>')
     +'</tbody></table></div></section>';
   root.innerHTML=h; sdSavePaint_();
@@ -12090,7 +12119,7 @@ function sdTagFor_(ord){ if(!__sd.items.length) return ""; var o=String(ord||"")
       if(C.todayShip.length) items.unshift({ icon:"⭐", title:"특별납기 오늘 출고", count:C.todayShip.length, color:"#B54708", view:"specdue" });
       if(C.todayInsp+C.lateInsp>0) items.push({ icon:"⭐", title:"특별납기 오늘 비젼검사 "+(C.todayInsp+C.lateInsp)+"개", count:"준비", color:(C.lateInsp?"#C0392B":"#0E7490"), view:"specdue" }); } }catch(_){}
     return items; }; })();
-setTimeout(function(){ try{ sdLoad_(function(){ sdMainBanner_(); }); }catch(_){} }, 4000);   // 시작 시 한 번 불러와 알림·MAIN 안내줄에 반영
+setTimeout(function(){ try{ sdLoad_(function(){ sdMainBanner_(); setTimeout(function(){ try{ sdVisSync_(); }catch(_){} }, 20000); }); }catch(_){} }, 4000);   // 시작 시 한 번 불러와 알림·MAIN 안내줄에 반영
 /* ===== [추가] MAIN 표에서 바로 특별납기 등록 — 관리번호 옆 ☆ 누르면 등록 창 (품번·납기·수량 자동, 가능일자만 입력, 분할 가능) ===== */
 function sdStarBtn_(ord){
   var o=String(ord||"").trim(); if(!o) return "";
