@@ -1464,7 +1464,7 @@
   #view-specdue .sd-ctw{ overflow-x:auto; }
   #view-specdue .sd-ctb{ width:100%; border-collapse:collapse; table-layout:fixed; min-width:900px; }
   #view-specdue .sd-ctb th{ font-size:12px; color:#667085; font-weight:600; padding:6px; background:#F9FAFB; border:1px solid #EAECF0; }
-  #view-specdue .sd-ctb th:last-child{ width:92px; }
+  #view-specdue .sd-ctb th:last-child{ width:112px; }
   #view-specdue .sd-ctb th.sun, #view-specdue .sd-ctb td.sun .sd-cd > span{ color:#D92D20; } #view-specdue .sd-ctb th.sat, #view-specdue .sd-ctb td.sat .sd-cd > span{ color:#1D4ED8; }
   #view-specdue .sd-ctb td.sun, #view-specdue .sd-ctb td.sat{ background:#FCFCFD; }
   #view-specdue .sd-hol{ font-size:10px; font-weight:700; color:#D92D20; margin-left:4px; }
@@ -12052,11 +12052,11 @@ function sdCalHtml_(C){
   var rows=weeks.map(function(wk){ var ws=0, wi=0, wsh=0;
     wk.forEach(function(ds){ if(ds.slice(0,7)!==ym) return; var sh=ship[ds]||{}; Object.keys(sh).forEach(function(k){ ws+=sh[k].q; wsh+=(sh[k].done>=sh[k].q?0:sh[k].short); }); wi+=insp[ds]||0; });
     mShip+=ws; mInsp+=wi; mShort+=wsh;
-    return '<tr>'+wk.map(cell).join("")+'<td class="sd-cw"><div>출고 <b>'+ws+'</b></div><div>검사 <b>'+wi+'</b></div>'+(wsh?'<div class="r">부족 <b>'+wsh+'</b></div>':'')+'</td></tr>'; }).join("");
+    return '<tr>'+wk.map(cell).join("")+'<td class="sd-cw"><div>출고 예정 <b>'+ws+'</b>개</div><div>검사할 수량 <b>'+wi+'</b>개</div>'+(wsh?'<div class="r">생산 필요 <b>'+wsh+'</b>개</div>':'')+'</td></tr>'; }).join("");
   var pm=new Date(y,m-1,1), nm=new Date(y,m+1,1), f=function(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); };
-  return '<section class="sd-card sd-cal"><div class="sd-lh"><h3>출고 달력 <small>가능일자 기준 · 품번(수량) · 검사 = 그날 해야 할 검사 수량</small></h3>'
+  return '<section class="sd-card sd-cal"><div class="sd-lh"><h3>출고 달력 <small>가능일자 기준 · 품번(수량) · 검사 N = 그날 해야 할 검사 수량 · 생산 필요 = 재고+검사대기로 못 채우는 수량</small></h3>'
     +'<span class="sd-cnav"><button type="button" data-cal="'+f(pm)+'">‹</button><b>'+y+'년 '+(m+1)+'월</b><button type="button" data-cal="'+f(nm)+'">›</button><button type="button" data-cal="'+today.slice(0,7)+'" class="t">이번 달</button><button type="button" data-a="calprint" class="t pr">🖨 인쇄</button></span></div>'
-    +'<div class="sd-msum">이달 합계 · 출고 <b>'+mShip+'</b>개 · 검사 필요 <b>'+mInsp+'</b>개'+(mShort?' · <span class="r">부족 <b>'+mShort+'</b>개</span>':'')+' <span class="m">(비젼 1일 최대 '+C.cap+'개)</span></div>'
+    +'<div class="sd-msum">이달 합계 · 출고 예정 <b>'+mShip+'</b>개 · 검사할 수량 <b>'+mInsp+'</b>개'+(mShort?' · <span class="r">생산 필요 <b>'+mShort+'</b>개</span>':'')+' <span class="m">(비젼 1일 최대 '+C.cap+'개 · 검사는 출고 전날까지 미리)</span></div>'
     +'<div class="sd-ctw"><table class="sd-ctb"><thead><tr><th class="sun">일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th class="sat">토</th><th>주 합계</th></tr></thead><tbody>'+rows+'</tbody></table></div></section>';
 }
 /* ---------- [추가] 출고 달력 인쇄 (배포용) — 화면 달력 그대로 A4 가로 1장/월 ---------- */
@@ -12070,7 +12070,8 @@ function sdCalPrint_(){
     return '<div class="pg"><div class="ph"><div><div class="pt">⭐ 특별납기 출고 달력 — '+y+'년 '+m+'월</div><div class="ps">기준: 가능일자(고객 약속일) · 품번(수량) · 검사 = 그날 해야 할 검사 수량 (SHOWERHEAD 비젼 1일 최대 '+C.cap+'개)</div></div>'
       +'<div class="pm">출력 '+new Date().toLocaleString("ko-KR")+'<br>NTL 품질팀</div></div>'
       +tmp.querySelector(".sd-msum").outerHTML+tmp.querySelector(".sd-ctw").innerHTML
-      +'<div class="lg"><span class="c n"></span>출고 예정 <span class="c s"></span>보유 부족(⚠) <span class="c d"></span>완료 <span class="h">빨간 날짜 = 일요일·공휴일</span></div></div>'; }).join("");
+      +'<div class="lg"><span class="c n"></span>출고 예정 <span class="c s"></span>생산 필요(⚠ 재고+검사대기 부족) <span class="c d"></span>완료 <span class="h">빨간 날짜 = 일요일·공휴일</span></div>'
+      +'<div class="lg2">· <b>출고 예정</b>: 그 주 가능일자 출고 수량 · <b>검사할 수량</b>: 그 주에 해야 할 검사(출고 <b>전날까지 미리</b> 하므로 다음 주 출고분이 포함될 수 있음) · <b>생산 필요</b>: 재고+검사대기로 못 채워 생산 입고가 먼저 필요한 수량</div></div>'; }).join("");
   __sd.calMonth=keep;
   var css='@page{ size:A4 landscape; margin:9mm; } *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
     +'body{ margin:0; font-family:"Pretendard Variable","Pretendard","맑은 고딕","Malgun Gothic",sans-serif; color:#101828; }'
@@ -12078,7 +12079,7 @@ function sdCalPrint_(){
     +'.ph{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:6px; } .pt{ font-size:20px; font-weight:800; } .ps{ font-size:11px; color:#475467; margin-top:2px; } .pm{ font-size:10.5px; color:#667085; text-align:right; }'
     +'.sd-msum{ font-size:12px; background:#F2F4F7; border-radius:6px; padding:5px 10px; margin-bottom:6px; } .r{ color:#D92D20; } .m{ color:#98A2B3; }'
     +'.sd-ctb{ width:100%; border-collapse:collapse; table-layout:fixed; } .sd-ctb th{ font-size:11px; font-weight:700; padding:4px; background:#F2F4F7; border:1px solid #98A2B3; }'
-    +'.sd-ctb th.sun{ color:#D92D20; } .sd-ctb th.sat{ color:#1D4ED8; } .sd-ctb th:last-child{ width:74px; }'
+    +'.sd-ctb th.sun{ color:#D92D20; } .sd-ctb th.sat{ color:#1D4ED8; } .sd-ctb th:last-child{ width:92px; }'
     +'.sd-ctb td{ vertical-align:top; border:1px solid #98A2B3; padding:3px 4px; height:'+(two?"26mm":"28mm")+'; }'
     +'.sd-ctb td.out > *{ opacity:.3; } .sd-ctb td.today{ outline:2px solid #2563EB; outline-offset:-2px; }'
     +'.sd-ctb td.sun .sd-cd > span{ color:#D92D20; } .sd-ctb td.sat .sd-cd > span{ color:#1D4ED8; } .sd-hol{ font-size:8.5px; font-weight:700; color:#D92D20; margin-left:3px; }'
@@ -12086,7 +12087,7 @@ function sdCalPrint_(){
     +'.sd-cchip{ font-size:9.5px; line-height:1.3; background:#FFF6E5; border-left:3px solid #F79009; border-radius:3px; padding:1px 3px; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }'
     +'.sd-cchip.short, .sd-cchip.late{ background:#FEF3F2; border-left-color:#D92D20; } .sd-cchip.done{ background:#F2F4F7; border-left-color:#98A2B3; color:#98A2B3; text-decoration:line-through; }'
     +'.sd-csum{ font-size:8.5px; color:#667085; text-align:right; } .sd-cw{ background:#F9FAFB; font-size:10px; text-align:right; line-height:1.6; }'
-    +'.lg{ font-size:10px; color:#475467; margin-top:5px; display:flex; align-items:center; gap:6px; } .lg .c{ display:inline-block; width:12px; height:10px; border-radius:2px; margin-left:8px; } .lg .n{ background:#FFF6E5; border-left:3px solid #F79009; } .lg .s{ background:#FEF3F2; border-left:3px solid #D92D20; } .lg .d{ background:#F2F4F7; border-left:3px solid #98A2B3; } .lg .h{ margin-left:12px; color:#D92D20; }';
+    +'.lg{ font-size:10px; color:#475467; margin-top:5px; display:flex; align-items:center; gap:6px; } .lg .c{ display:inline-block; width:12px; height:10px; border-radius:2px; margin-left:8px; } .lg .n{ background:#FFF6E5; border-left:3px solid #F79009; } .lg .s{ background:#FEF3F2; border-left:3px solid #D92D20; } .lg .d{ background:#F2F4F7; border-left:3px solid #98A2B3; } .lg .h{ margin-left:12px; color:#D92D20; } .lg2{ font-size:9.5px; color:#475467; margin-top:3px; }';
   var html='<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>특별납기 출고 달력</title>'
     +'<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"><style>'+css+'</style></head><body>'+pages+'</body></html>';
   var ifr=document.getElementById("sd-print-frame"); if(ifr) ifr.remove();
