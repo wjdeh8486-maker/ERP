@@ -1454,6 +1454,31 @@
   .sd-a-x{ border:0; background:#F2F4F7; color:#98A2B3; border-radius:8px; cursor:pointer; } .sd-a-x:hover{ color:#D92D20; }
   .sd-afoot{ display:flex; align-items:center; gap:12px; margin-top:6px; } .sd-afoot .sd-btn{ height:34px; padding:0 12px; border:1px dashed #98A2B3; border-radius:8px; background:#fff; color:#344054; font-weight:600; cursor:pointer; }
   .sd-afoot .m{ color:#667085; font-size:12.5px; } .sd-afoot .r{ color:#D92D20; }
+  /* 특별납기 출고 달력 */
+  #view-specdue .sd-cal{ margin-bottom:14px; }
+  #view-specdue .sd-cnav{ margin-left:auto; display:inline-flex; align-items:center; gap:6px; }
+  #view-specdue .sd-cnav b{ font-size:15px; min-width:92px; text-align:center; }
+  #view-specdue .sd-cnav button{ height:30px; min-width:30px; border:1px solid #E4E7EC; background:#fff; border-radius:8px; cursor:pointer; font-weight:700; color:#344054; }
+  #view-specdue .sd-cnav button.t{ padding:0 10px; font-size:12px; }
+  #view-specdue .sd-msum{ font-size:13px; color:#344054; background:#F9FAFB; border-radius:8px; padding:7px 12px; margin-bottom:8px; }
+  #view-specdue .sd-ctw{ overflow-x:auto; }
+  #view-specdue .sd-ctb{ width:100%; border-collapse:collapse; table-layout:fixed; min-width:900px; }
+  #view-specdue .sd-ctb th{ font-size:12px; color:#667085; font-weight:600; padding:6px; background:#F9FAFB; border:1px solid #EAECF0; }
+  #view-specdue .sd-ctb th:last-child{ width:92px; } #view-specdue .sd-ctb th.we{ color:#98A2B3; }
+  #view-specdue .sd-ctb td{ vertical-align:top; border:1px solid #EAECF0; padding:5px 6px; height:96px; background:#fff; }
+  #view-specdue .sd-ctb td.out{ background:#FAFAFB; } #view-specdue .sd-ctb td.out > *{ opacity:.35; }
+  #view-specdue .sd-ctb td.we{ background:#FBFBFC; }
+  #view-specdue .sd-ctb td.today{ box-shadow:inset 0 0 0 2px #2563EB; }
+  #view-specdue .sd-cd{ display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:700; color:#475467; margin-bottom:3px; }
+  #view-specdue .sd-ci{ font-size:10.5px; font-weight:700; color:#1D4ED8; background:#EFF4FF; border-radius:6px; padding:0 5px; }
+  #view-specdue .sd-ci.over{ color:#B42318; background:#FEF3F2; } #view-specdue .sd-ci.past{ opacity:.6; }
+  #view-specdue .sd-cchip{ font-size:11.5px; line-height:1.35; color:#101828; background:#FFF6E5; border-left:3px solid #F79009; border-radius:5px; padding:2px 5px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #view-specdue .sd-cchip b{ font-weight:700; }
+  #view-specdue .sd-cchip.short{ background:#FEF3F2; border-left-color:#D92D20; } #view-specdue .sd-cchip.late{ background:#FEF3F2; border-left-color:#B42318; }
+  #view-specdue .sd-cchip.done{ background:#F2F4F7; border-left-color:#98A2B3; color:#98A2B3; text-decoration:line-through; }
+  #view-specdue .sd-csum{ font-size:10.5px; color:#667085; text-align:right; margin-top:3px; }
+  #view-specdue .sd-cw{ background:#F9FAFB !important; font-size:12px; color:#475467; line-height:1.7; text-align:right; }
+  #view-specdue .sd-cw b{ color:#101828; }
 </style>
 </head>
 <body>
@@ -11976,6 +12001,42 @@ function sdVisDone_(){   // [{d, n}] 최근 날짜별 완료(추정)
   for(var i=1;i<ds.length;i++){ var a=o[ds[i-1]], b=o[ds[i]], n=0; Object.keys(a).forEach(function(k){ if(k in b) n+=Math.max(0,(Number(a[k])||0)-(Number(b[k])||0)); }); out.push({ d:ds[i], n:n }); }
   return out.slice(-5).reverse();
 }
+/* ---------- [추가] 출고 달력: 가능일자에 "품번(수량)", 날짜별 검사 수량, 주·월 합계 ---------- */
+function sdCalHtml_(C){
+  var today=C.today, ym=__sd.calMonth||today.slice(0,7);
+  var y=+ym.slice(0,4), m=+ym.slice(5,7)-1, first=new Date(y,m,1), last=new Date(y,m+1,0);
+  // 날짜별 출고(가능일자) — 완료 포함(흐리게), 품번별로 합침
+  var ship={}; sdLive_().forEach(function(x){ if(!x.avail || x.avail.slice(0,7)!==ym) return; var d=x.avail, k=x.draw||"-";
+    ship[d]=ship[d]||{}; var g=ship[d][k]=ship[d][k]||{ q:0, done:0, short:0, late:false, ords:[] };
+    g.q+=x.qty; if(sdDone_(x)) g.done+=x.qty; else { g.short+=(x._short||0); if(x._late) g.late=true; } g.ords.push((x.ord||"-")+" "+x.qty+"개"+(sdDone_(x)?"(완료)":"")); });
+  // 날짜별 검사 필요 수량: 비젼 = 배정 일정, 그 외 = 출고 전날
+  var insp={}; Object.keys(C.used||{}).forEach(function(d){ insp[d]=(insp[d]||0)+C.used[d]; });
+  C.open.forEach(function(x){ if(!x._vision && x._insp>0 && x._start) insp[x._start]=(insp[x._start]||0)+x._insp; });
+  // 달력 칸 (월요일 시작)
+  var start=new Date(first); start.setDate(first.getDate()-((first.getDay()+6)%7));
+  var end=new Date(last); end.setDate(last.getDate()+(6-((last.getDay()+6)%7)));
+  var mShip=0, mInsp=0, mShort=0, weeks=[], cur=new Date(start);
+  while(cur<=end){ var wk=[]; for(var i=0;i<7;i++){ wk.push(sdYmd_(cur)); cur.setDate(cur.getDate()+1); } weeks.push(wk); }
+  var cell=function(ds){
+    var inM=ds.slice(0,7)===ym, dow=new Date(ds+"T00:00:00").getDay(), sh=ship[ds]||{}, ks=Object.keys(sh).sort();
+    var sq=0, open=0; ks.forEach(function(k){ sq+=sh[k].q; open+=sh[k].q-sh[k].done; });
+    var iq=insp[ds]||0;
+    var chips=ks.map(function(k){ var g=sh[k], allDone=g.done>=g.q;
+      return '<div class="sd-cchip'+(allDone?' done':(g.short>0?' short':(g.late?' late':'')))+'" title="'+sdE_(k+" — "+g.ords.join(", ")+(g.short>0?" · 부족 "+g.short:""))+'">'+sdE_(k)+' <b>('+g.q+')</b>'+(g.short>0&&!allDone?' ⚠':'')+'</div>'; }).join("");
+    return '<td class="'+(inM?'':'out ')+(ds===today?'today ':'')+(dow===0||dow===6?'we ':'')+'"><div class="sd-cd"><span>'+(+ds.slice(8))+'</span>'
+      +(iq?'<span class="sd-ci'+(C.cap && (C.used[ds]||0)>C.cap?' over':'')+(ds<today?' past':'')+'" title="이날 검사해야 할 수량">검사 '+iq+'</span>':'')+'</div>'
+      +chips+(sq?'<div class="sd-csum">출고 '+sq+'개</div>':'')+'</td>';
+  };
+  var rows=weeks.map(function(wk){ var ws=0, wi=0, wsh=0;
+    wk.forEach(function(ds){ if(ds.slice(0,7)!==ym) return; var sh=ship[ds]||{}; Object.keys(sh).forEach(function(k){ ws+=sh[k].q; wsh+=(sh[k].done>=sh[k].q?0:sh[k].short); }); wi+=insp[ds]||0; });
+    mShip+=ws; mInsp+=wi; mShort+=wsh;
+    return '<tr>'+wk.map(cell).join("")+'<td class="sd-cw"><div>출고 <b>'+ws+'</b></div><div>검사 <b>'+wi+'</b></div>'+(wsh?'<div class="r">부족 <b>'+wsh+'</b></div>':'')+'</td></tr>'; }).join("");
+  var pm=new Date(y,m-1,1), nm=new Date(y,m+1,1), f=function(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); };
+  return '<section class="sd-card sd-cal"><div class="sd-lh"><h3>출고 달력 <small>가능일자 기준 · 품번(수량) · 검사 = 그날 해야 할 검사 수량</small></h3>'
+    +'<span class="sd-cnav"><button type="button" data-cal="'+f(pm)+'">‹</button><b>'+y+'년 '+(m+1)+'월</b><button type="button" data-cal="'+f(nm)+'">›</button><button type="button" data-cal="'+today.slice(0,7)+'" class="t">이번 달</button></span></div>'
+    +'<div class="sd-msum">이달 합계 · 출고 <b>'+mShip+'</b>개 · 검사 필요 <b>'+mInsp+'</b>개'+(mShort?' · <span class="r">부족 <b>'+mShort+'</b>개</span>':'')+' <span class="m">(비젼 1일 최대 '+C.cap+'개)</span></div>'
+    +'<div class="sd-ctw"><table class="sd-ctb"><thead><tr><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th class="we">토</th><th class="we">일</th><th>주 합계</th></tr></thead><tbody>'+rows+'</tbody></table></div></section>';
+}
 /* ---------- 화면 ---------- */
 function sdRender_(){
   var root=document.getElementById("sd-root"); if(!root) return;
@@ -12013,6 +12074,8 @@ function sdRender_(){
     +(function(){ var a=sdVisDone_(); return a.length?'<div class="sd-actual">비젼 완료(추정, 대기 감소분): '+a.map(function(r){ return sdMD_(r.d)+' <b>'+r.n+'</b>개'+(r.n<C.cap?'':''); }).join(' · ')+'</div>':'<div class="sd-actual m">비젼 완료 실적은 내일부터 표시됩니다 (매일 대기 수량을 기록해 전날과 비교)</div>'; })()
     +(past.length?'<div class="sd-warn">⚠ 이미 지난 날짜에 배정된 검사 '+C.lateInsp+'개 — 지금 시작해도 일정이 빠듯합니다. 가능일자 조정 또는 추가 인원이 필요합니다.</div>':'')
     +past.map(function(ds){ return dayRow(ds,true); }).join("")+days.map(function(ds){ return dayRow(ds,false); }).join("")+'</section></div>';
+  // [추가] 출고 달력 — 가능일자에 품번(수량), 날짜별 검사 필요 수량, 주별 합계
+  h+=sdCalHtml_(C);
   // 출고 일정
   var all=sdLive_().slice().sort(function(a,b){ return (a.avail||"9")<(b.avail||"9")?-1:((a.avail||"9")>(b.avail||"9")?1:(a.draw||"").localeCompare(b.draw||"")); });
   var rows=all.filter(function(x){ return __sd.filter==="all" || !sdDone_(x); });
@@ -12032,6 +12095,7 @@ function sdRender_(){
 }
 function sdClick_(e){
   var t=e.target, a=t.closest("[data-a]"), f=t.closest("[data-f]"), del=t.closest("[data-del]");
+  var cal=t.closest("[data-cal]"); if(cal){ __sd.calMonth=cal.getAttribute("data-cal"); sdRender_(); return; }
   if(f){ __sd.filter=f.getAttribute("data-f"); sdRender_(); return; }
   if(del){ var it=__sd.items.find(function(x){ return x.id===del.getAttribute("data-del"); }); if(it && confirm((it.ord||it.draw)+" ("+sdMD_(it.avail)+" "+it.qty+"개) 항목을 삭제할까요?")){ var c=Object.assign({}, it, { del:true }); sdPut_(c); sdSave_(); sdRender_(); } return; }
   if(!a) return; var k=a.getAttribute("data-a");
