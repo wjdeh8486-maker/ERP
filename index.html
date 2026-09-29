@@ -5949,13 +5949,93 @@ function ncrEnsure_(onDone){
 }
 function ncrBtnCell_(r, key, meta){
   key=key||ncrKey_(r);
-  __ncrMeta[key]=meta||{ src:"내부", draw:r.draw, sn:r.sn||"", date:r.insDate||r.date||"", types:r.types||"" };
+  __ncrMeta[key]=meta||{ src:"내부", draw:r.draw, sn:r.sn||"", date:r.insDate||r.date||"", types:r.types||"", proc:r.label||"", qty:r.qty||"", act:r.act||"" };
   var has=ncrHasKey_(key), done=ncrDoneKey_(key); var isA=(typeof ncGradeOfTypes_==="function" && ncGradeOfTypes_(r.types)==="A"); var k=ncrEscAttr_(key);
   var lbl, bg; if(done){ lbl="\u2705 NCR"; bg="#1E7A46"; } else if(isA){ lbl=has?"\u26A0 NCR 작성중":"\u26A0 NCR 필수"; bg="#C0392B"; } else if(has){ lbl="\uD83D\uDCDD NCR 작성중"; bg="#B45309"; } else { lbl="\uD83D\uDCDD NCR"; bg="#8A1F1F"; }   // A등급(크리티컬)은 NCR 없으면 미완결
   return '<button type="button" title="'+(isA&&!done?"A등급(크리티컬)은 NCR(원인+재발방지) 작성해야 종결":"")+'" onclick="ncrOpen_(\''+k+'\')" style="background:'+bg+';color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">'+lbl+'</button>'; }
 // 고객부적합 행 → NCR (키: 일자|고객|도번)
 function ncrBtnCellCust_(r){ if(!r) return ""; var key=ncrCustKey_(r);
   return ncrBtnCell_({ draw:r.partNo, types:r.content }, key, { src:"고객", draw:r.partNo||"", sn:"", customer:r.customer||"", date:r.date||"", types:r.content||"" }); }
+/* ===== [추가] NCR 자동 초안 — 부적합 유형·공정·검사일보 조치내용·과거 이력으로 빈 칸을 미리 채움 (반드시 검토 후 저장) ===== */
+
+var NCR_TPL={
+
+  "기스":{ cause:"가공·취급 중 공구/지그 접촉 또는 적재·운반 시 제품 간 접촉으로 표면 긁힘 발생 추정", escape:"외관검사 조명·각도 기준 미흡 또는 샘플링 검사로 전수 확인 누락", corrective:"해당 LOT 전수 외관 재검사, 부적합품 격리 후 재작업(연마)/폐기 판정", preventive:"제품 간 간지·전용 트레이 적용, 운반·적재 방법 표준화, 외관 한도견본 게시 및 작업자 교육" },
+
+  "찍힘":{ cause:"가공 후 취급 부주의(낙하·충돌) 또는 적재 시 압흔 발생 추정", escape:"찍힘 판정 기준(깊이·크기) 불명확, 취급 후 최종 외관검사 누락", corrective:"해당 LOT 전수 선별, 찍힘품 격리 후 재작업 가능 여부 판정", preventive:"완충재·칸막이 트레이 적용, 1회 적재 수량 제한, 찍힘 한도견본 제정 및 교육" },
+
+  "얼룩":{ cause:"세척 불량·절삭유 잔류·건조 불충분 또는 맨손 취급(지문)으로 오염 발생 추정", escape:"세척 후 외관 확인 기준 미흡, 조명 아래 확인 누락", corrective:"해당 LOT 재세척·건조 후 전수 외관 재검사", preventive:"세척 조건(세척액 교체 주기·건조 시간) 표준화, 장갑 착용 의무화, 세척 후 체크시트 운영" },
+
+  "치수":{ cause:"공구 마모·보정 누락 또는 가공 조건(프로그램·소재) 변경 영향 추정", escape:"초·중·종물 측정 누락 또는 측정 주기 부족", corrective:"해당 LOT 전수 측정, 공구 교체·보정 후 재가공/폐기 판정", preventive:"공구 수명 관리 기준 설정, 초·중·종물 측정 체크시트 운영, 가공 조건 변경 시 초물 승인 절차" },
+
+  "버":{ cause:"디버링 공정 누락 또는 공구 마모로 버 발생 추정", escape:"버 확인 항목이 검사 기준서에 미반영", corrective:"해당 LOT 전수 디버링 후 재검사", preventive:"디버링 작업표준 보완, 검사 기준서에 버 확인 항목 추가" },
+
+  "누락":{ cause:"공정(TAP·PIN 압입 등) 누락 — 작업 순서 확인 미흡 추정", escape:"공정 완료 확인(체크) 절차 부재", corrective:"해당 LOT 전수 확인 후 누락 공정 추가 작업", preventive:"공정 체크시트·도면 필수공정 표시, QMS TAP/PIN 자동 알림 활용" },
+
+  "녹":{ cause:"방청 처리 미흡 또는 보관 환경(온습도) 영향 추정", escape:"보관 중 상태 점검 누락", corrective:"녹 제거 가능 여부 판정 후 재처리/폐기, 동일 보관품 전수 확인", preventive:"방청 처리 기준·보관 환경(온습도) 관리 강화, 장기재고 정기 점검" }
+
+};
+
+var NCR_KEYS=[ [/기스|스크래치|긁힘/, "기스"], [/찍힘|타흔|덴트|눌림/, "찍힘"], [/얼룩|오염|이물|지문|변색/, "얼룩"], [/치수|공차|기능|측정|NG|규격/i, "치수"], [/버\b|버\s|burr|BURR|날카/, "버"], [/누락|미가공|TAP|탭|PIN|핀/i, "누락"], [/녹|부식/, "녹"] ];
+
+function ncrDraft_(d){
+
+  d=d||{}; var types=String(d.types||""), cust=(d.src==="고객"), proc=String(d.proc||"");
+
+  var keys=[]; NCR_KEYS.forEach(function(k){ if(k[0].test(types) && keys.indexOf(k[1])<0) keys.push(k[1]); });
+
+  var pick=function(f){ var a=keys.map(function(k){ return NCR_TPL[k][f]; }); return a.length?a.join("\n"):""; };
+
+  var draw=String(d.draw||""), sn=d.sn?(" S/N "+d.sn):"", lot="도번 "+draw+sn+(d.qty?(" · 부적합 "+d.qty+"개"):"");
+
+  // 과거 같은 도번 부적합 이력
+
+  var hist=[]; try{ var nd=ncrNorm_(draw); (typeof insClosedList_==="function"?insClosedList_(true):[]).forEach(function(c){ if(ncrNorm_(c.draw)===nd && !(String(c.insDate)===String(d.date) && String(c.types)===types)) hist.push(c); }); }catch(_){}
+
+  hist.sort(function(a,b){ return String(b.insDate).localeCompare(String(a.insDate)); });
+
+  var histTxt=hist.length?("과거 동일 도번 부적합 "+hist.length+"건 (최근: "+hist.slice(0,3).map(function(c){ return String(c.insDate).slice(5)+" "+c.types; }).join(", ")+")"):"과거 동일 도번 부적합 이력 없음";
+
+  var incoming=/수입/.test(proc);
+
+  var o={};
+
+  o.temp=(cust?"고객 보유·운송 중 제품 확인 및 교체/선별 협의\n":"")+lot+" 격리 및 부적합 표시\n동일 도번 사내 재고·공정 중 제품 전수 선별"+(cust?"":"\n출하분 영향 여부 확인 (필요 시 출하정지 HOLD 등록)");
+
+  o.cause=pick("cause")||("["+types+"] 발생 원인 조사 필요 — 4M(사람·설비·방법·자재) 관점으로 확인");
+
+  if(incoming) o.cause="외주/구매처 공정에서 발생 추정 — 거래처 원인 분석 요청\n"+o.cause;
+
+  o.escape=cust?("출하검사에서 미검출 — "+(pick("escape")||"검사 기준·방법 재확인 필요")):(incoming?"거래처 출하검사 미흡 (수입검사에서 검출)":(pick("escape")||"검사 단계에서 걸러지지 못한 이유 확인 필요"));
+
+  o.why="1) 왜 발생했나? → \n2) 왜 그 조건이 생겼나? → \n3) 왜 관리되지 않았나? → \n4) \n5) \n※ "+histTxt;
+
+  o.corrective=(d.act?("검사일보 조치: "+d.act+"\n"):"")+(pick("corrective")||"해당 LOT 전수 선별 및 부적합품 재작업/폐기 판정");
+
+  if(incoming) o.corrective+="\n거래처 시정조치 요구서(SCAR) 발행";
+
+  o.preventive=pick("preventive")||"작업표준·검사기준서 보완 및 관련 작업자 교육";
+
+  o.horiz="동일 도번 다른 LOT·재고 확인, 유사 형상/같은 계열 도번 적용 검토\n관련 문서 개정: (작업표준 / 검사기준서 번호 기입)\n"+histTxt;
+
+  o.effect="시정 후 연속 3 LOT 동일 부적합 0건 확인 (확인일:        , 확인자:        )";
+
+  return o;
+
+}
+
+var NCR_DRAFT_FIELDS=[["temp","ncr-temp"],["cause","ncr-cause"],["escape","ncr-escape"],["why","ncr-why"],["corrective","ncr-corrective"],["preventive","ncr-preventive"],["horiz","ncr-horiz"],["effect","ncr-effect"]];
+
+function ncrFillDraft_(key){
+
+  var d=ncrFillFromKey_(key, Object.assign({}, __ncrMeta[key]||{}, __ncrDetail[key]||{})), dr=ncrDraft_(d), n=0;
+
+  NCR_DRAFT_FIELDS.forEach(function(f){ var el=document.getElementById(f[1]); if(el && !String(el.value||"").trim() && dr[f[0]]){ el.value=dr[f[0]]; el.style.background="#FFFCF0"; n++; } });
+
+  var b=document.getElementById("ncr-draft-note"); if(b) b.innerHTML="🤖 빈 칸 "+n+"개를 자동 초안으로 채웠습니다 — <b>실제 상황에 맞게 고친 뒤 저장</b>하세요. (노란 칸 = 초안)";
+
+}
+
 function ncrOpen_(key){
   var d=ncrUpgrade_(key, __ncrDetail[key])||{}; var m=__ncrMeta[key]||{}; d=ncrFillFromKey_(key, Object.assign({}, m, d));
   __ncrOpenTs=Number(d.ts)||0;
@@ -5968,6 +6048,7 @@ function ncrOpen_(key){
     +'<div style="background:'+(d.src==="고객"?"#7A3E9A":"#8A1F1F")+';color:#fff;padding:13px 18px;font-weight:800;position:sticky;top:0;z-index:1;">\uD83D\uDCDD NCR 부적합 보고서 ('+E(d.src||"내부")+') · '+E(d.draw)
     +'<div style="font-weight:400;font-size:12px;opacity:.9;margin-top:2px;">'+E(d.types)+(sub?(" · "+E(sub)):"")+'</div></div>'
     +'<div style="padding:16px;display:flex;flex-direction:column;gap:11px;">'
+    +'<div style="display:flex;align-items:center;gap:8px;background:#FFF8E6;border:1px solid #FEC84B;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#7A4A00;"><span id="ncr-draft-note" style="flex:1;">🤖 부적합 유형·공정·과거 이력으로 <b>초안</b>을 채울 수 있습니다.</span><button type="button" onclick="ncrFillDraft_(\''+ncrEscAttr_(key)+'\')" style="background:#B54708;color:#fff;border:none;border-radius:7px;padding:6px 10px;font-weight:700;cursor:pointer;white-space:nowrap;">✍ 빈 칸 초안 채우기</button></div>'
     + ta("ncr-temp","⓪ 임시조치 (격리·선별·재고/출하분 확인·HOLD)", d.temp,2)
     + ta("ncr-cause","① 발생 원인 (왜 발생?)", d.cause,2)
     + ta("ncr-escape","② 유출 원인 (왜 걸러지지 못했나?)", d.escape,2)
@@ -5986,6 +6067,7 @@ function ncrOpen_(key){
   var old=document.getElementById("ncr-ov"); if(old) old.remove();
   var w=document.createElement("div"); w.innerHTML=html; document.body.appendChild(w.firstChild);
   var ov=document.getElementById("ncr-ov"); if(ov) ov.addEventListener("click",function(e){ if(e.target===ov) ov.remove(); });
+  if(!ncrHasKey_(key) && !String((__ncrDetail[key]||{}).temp||"").trim()) ncrFillDraft_(key);   // [추가] 처음 여는 NCR은 초안 자동 채움
 }
 function ncrCommit_(key){
   var g=function(id){ return String((document.getElementById(id)||{}).value||"").trim(); };
