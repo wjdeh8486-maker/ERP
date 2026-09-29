@@ -5558,7 +5558,7 @@ function insplistYmd_(v){ if(v instanceof Date && !isNaN(v)) return v.getFullYea
 function insplistToday_(){ return (typeof qmsToday_==="function")?qmsToday_():insplistYmd_(new Date()); }
 function insplistStockCountable_(r){ var d=insplistYmd_(r&&r.outDate); return !d || d<insplistToday_(); }   // 출고일 없으면 기존처럼 셈
 function insplistShipIsToday_(r){ return insplistYmd_(r&&r.insDate)===insplistToday_(); }
-function insplistTodayShip_(rows){ return (rows||[]).filter(insplistShipIsToday_); }
+function insplistTodayShip_(rows){ return (rows||[]).filter(function(r){ return insplistShipIsToday_(r) && !(typeof insIsReinsp_==="function" && insIsReinsp_(r)); }); }   // 재검사 행은 완료수량에서 제외
 function insplistShipAlloc_(shipRows, qtyOf){     // 출하검사 검사수를 출고No 순서대로 각 ORDER 수량만큼 순차 배분
   var alloc={};
   (shipRows||[]).forEach(function(r){
@@ -20179,6 +20179,10 @@ function insInit(){
   var __ts=document.getElementById("insrep-typeSel");
   if(__ts) __ts.addEventListener("change",function(){ insType=this.value; insShowAllRows=false; insSyncMetaInputs(); insRender(); insSaveLocal(); try{ insSheetAutoLoad_(insType); }catch(_){} });
   var __ic=document.getElementById("insrep-content"); if(__ic) __ic.addEventListener("change",function(e){ var t=e.target; if(!t||!t.getAttribute) return; var key=t.getAttribute("data-key"); if(key!=="draw"&&key!=="sn") return; window.__insDupDirty=Date.now(); var ri=t.getAttribute("data-ri"); var dEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="draw"]'); var sEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="sn"]'); var dv=dEl?String(dEl.value||"").trim():""; var sv=sEl?String(sEl.value||"").trim():""; if(dv){ clearTimeout(window.__insHistTimer); window.__insHistTimer=setTimeout(function(){ insNcHistoryPopup_(dv, sv); }, 600); } });
+  // [추가] 출하검사: 입력한 도번+S/N이 이미 출하검사된 적 있으면 "재입고품인가요?" 물어보고, 예 → 비고에 '재검사' 자동 기록
+  if(__ic && !__ic.__reinspAsk){ __ic.__reinspAsk=true; __ic.addEventListener("change", function(e){ try{
+    if(insType!=="shipping") return; var t=e.target; if(!t||!t.getAttribute) return; var key=t.getAttribute("data-key"); if(key!=="draw"&&key!=="sn") return;
+    var ri=+t.getAttribute("data-ri"); setTimeout(function(){ insReinspAsk_(ri); }, 250); }catch(_){} }); }
   var __gc=document.getElementById("insrep-content"); if(__gc) __gc.addEventListener("keydown", insGridKeydown_);
   document.querySelectorAll("#topbar-insrep .ins-dd-btn").forEach(function(btn){ btn.addEventListener("click", function(e){ e.stopPropagation(); var id=btn.getAttribute("data-menu"); var menu=document.getElementById(id); var open=menu&&menu.classList.contains("open"); document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); if(menu&&!open) menu.classList.add("open"); }); });
   document.addEventListener("click", function(e){ if(e.target && e.target.closest && e.target.closest("#topbar-insrep .ins-dd")) return; document.querySelectorAll("#topbar-insrep .ins-dd-menu.open").forEach(function(m){ m.classList.remove("open"); }); });
@@ -20208,6 +20212,7 @@ function insRender(){
   var __dupBanner=(window.__insDupBanner&&window.__insDupBanner[insType])||[];
   var __dupSnSet={}; __dupBanner.forEach(function(d){ __dupSnSet[insNormDraw_(d.draw)+"|"+d.sn]=1; });
   var __rowIsDup=function(r){
+    if(insIsReinsp_(r)) return false;
     var dw=(typeof insNormDraw_==="function")?insNormDraw_(r.draw):String(r.draw||"").trim();
     if(!dw) return false;
     var sns=(typeof insSnFull_==="function")?insSnFull_(r.sn):[];
@@ -20223,7 +20228,7 @@ function insRender(){
     if(Object.keys(__qtyMap).length){
       var __demand={};
       rows.forEach(function(r, ri){
-        var cnt=Number(r.insCnt)||0; if(cnt<=0) return;
+        var cnt=Number(r.insCnt)||0; if(cnt<=0 || insIsReinsp_(r)) return;   // 재검사 행은 이미 납품한 수량 → 초과 계산 제외
         var orders=(typeof insplistExpandOutNo_==="function")?insplistExpandOutNo_(r.outNo):[String(r.outNo||"").trim()];
         orders=orders.map(function(x){ return String(x||"").trim().toUpperCase(); }).filter(Boolean);
         if(!orders.length) return;
@@ -20358,8 +20363,9 @@ function insRender(){
     var __over=(insType==="shipping" && __rowOutOver[ri]);
     var __tapPin=__tapPinNeed[ri];
     var __trStyle=__over?' style="background:#FFE1C2;" title="⚠ 출고NO 중복/초과 — 같은 출고NO의 검사수 합이 주문수량을 초과했습니다"'
-      :(__dup?' style="background:#FFEDED;" title="⚠ 같은 도번+S/N이 다른 행에도 있습니다 — 검사종합 이동 전 중복을 확인하세요"'
-      :(__tapPin?' style="background:#FFF6D8;" title="⚠ 이 도번은 '+(__tapPinType==="tap"?"TAP(공정검사)":"PIN 압입")+' 대상인데 아직 체크하지 않았습니다"':''));
+      :(__dup?' style="background:#FFEDED;" title="⚠ 같은 도번+S/N이 다른 행에도 있습니다 — 재입고 후 다시 검사한 것이면 비고에 \'재검사\'라고 적으세요"'
+      :(insIsReinsp_(row)?' style="background:#F4F0FF;" title="🔁 재검사 행 — 같은 S/N 중복·출고NO 초과·완료수량 계산에서 제외"'
+      :(__tapPin?' style="background:#FFF6D8;" title="⚠ 이 도번은 '+(__tapPinType==="tap"?"TAP(공정검사)":"PIN 압입")+' 대상인데 아직 체크하지 않았습니다"':'')));
     body+='<tr id="insrep-tr-'+ri+'"'+__trStyle+'>'+tds+'</tr>';
   });  
   if(!body){ body='<tr><td colspan="'+(leaves.length+1)+'" style="padding:20px;text-align:center;color:#8A93A6;">해당 날짜에 행이 없습니다.</td></tr>'; }
@@ -20367,7 +20373,7 @@ function insRender(){
     '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px;">'
     + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">'+insEsc(cfg.title)+'</div>'
     + '<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">도번을 입력/스캔하면 자동으로 채워지고, 각 칸은 직접 수정할 수 있습니다. 체크박스는 엑셀에서 ■/□ 로 나옵니다.</div>'
-    + (__dupBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#C0392B;font-weight:700;font-size:13px;">⚠ 중복 입력 '+__dupBanner.length+'건 — 같은 도번+S/N이 여러 행에 있습니다. 검사종합 이동 전 확인해 중복을 제거하세요.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__dupBanner.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #E4B4B4;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.draw)+'</b> <span style="color:#8A93A6;">/</span> <b style="color:#C0392B;">'+insEsc(d.sn)+'</b></span>'; }).join("")+(__dupBanner.length>20?'<span style="color:#8A1F1F;font-size:12px;align-self:center;">… 외 '+(__dupBanner.length-20)+'건</span>':'')+'</div></div>'):'')
+    + (__dupBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#C0392B;font-weight:700;font-size:13px;">⚠ 중복 입력 '+__dupBanner.length+'건 — 같은 도번+S/N이 여러 행에 있습니다. (납품 후 재입고해 다시 검사한 것이면 그 행 비고에 <b>재검사</b>라고 적으면 중복에서 빠집니다) 검사종합 이동 전 확인해 중복을 제거하세요.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__dupBanner.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #E4B4B4;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.draw)+'</b> <span style="color:#8A93A6;">/</span> <b style="color:#C0392B;">'+insEsc(d.sn)+'</b></span>'; }).join("")+(__dupBanner.length>20?'<span style="color:#8A1F1F;font-size:12px;align-self:center;">… 외 '+(__dupBanner.length-20)+'건</span>':'')+'</div></div>'):'')
     + (__outNoOverList.length?('<div style="background:#FFF3E6;border:1px solid #F0C48A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">\u26A0 출고NO 중복/초과 '+__outNoOverList.length+'건 — 개별 출고NO(주문)의 배분 합계가 주문수량을 넘었습니다. (콤마·슬래시로 묶인 출고NO는 개별 주문으로 분해해 계산 · MAIN 수량 기준)<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__outNoOverList.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #F0C48A;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.outNo)+'</b> <span style="color:#8A93A6;">합</span> <b style="color:#B45309;">'+d.sum+'</b> &gt; 수량 '+d.qty+'</span>'; }).join("")+(__outNoOverList.length>20?'<span style="color:#8A5A00;font-size:12px;align-self:center;">… 외 '+(__outNoOverList.length-20)+'건</span>':'')+'</div></div>'):'')
     + (__tapPinBanner.length?('<div style="background:#FFF8E1;border:1px solid #F0D9A0;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#8A5A00;font-weight:700;font-size:13px;">⚠ '+(__tapPinType==="tap"?"TAP(공정검사)":"PIN 압입")+' 미체크 '+__tapPinBanner.length+'건 — 아래 도번을 누르면 해당 행(노란색)으로 이동합니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__tapPinBanner.slice(0,30).map(function(d){ return '<span onclick="insTapPinScrollTo_('+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #F0D9A0;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;color:#8A5A00;">'+insEsc(d.draw)+' ▸</span>'; }).join("")+(__tapPinBanner.length>30?'<span style="color:#8A5A00;font-size:12px;align-self:center;">… 외 '+(__tapPinBanner.length-30)+'건</span>':'')+'</div></div>'):'')
     + (__capped
@@ -22912,7 +22918,7 @@ function insCloudDupCheck_(localRows, cloudRows){
   var localIds={}; (localRows||[]).forEach(function(r){ if(r&&r._id) localIds[r._id]=1; });
   var past={};
   (cloudRows||[]).forEach(function(r){
-    if(!r) return;
+    if(!r || insIsReinsp_(r)) return;
     if(r._id && localIds[r._id]) return;
     if(r._id && insDeletedIds[r._id]) return;
     var dw=insNormDraw_(r.draw); if(!dw) return;
@@ -22923,7 +22929,7 @@ function insCloudDupCheck_(localRows, cloudRows){
   // ② 지금 입력분이 과거와 (분할유형이면 항목 겹침) 중복이면 경고
   var out=[], seen={};
   (localRows||[]).forEach(function(r){
-    if(!r) return;
+    if(!r || insIsReinsp_(r)) return;   // 재검사 행은 과거와 같은 S/N이어도 정상
     var dw=insNormDraw_(r.draw); if(!dw) return;
     var curDate=String(r.insDate||"").trim()||"(당일)";
     var curItems=isSplit?insItemsForType_(insType, r):null;
@@ -23113,13 +23119,48 @@ function insItemsForType_(typeKey, r){
   if(typeKey==="incoming") return insIncomingItems_(r);
   return null;   // 출하검사는 분할 없음
 }
+// [추가] 재검사 행: 비고에 "재검사"(또는 "재입고")라고 적은 행 — 납품 후 부적합으로 재입고된 제품을 다시 검사한 기록
+//        같은 도번+S/N이 이미 있어도 중복으로 보지 않고, 출고NO 초과·완료수량 계산에서도 빼서 두 번 세지 않음
+function insIsReinsp_(r){ return !!(r && /재검사|재입고/.test(String(r.note||""))); }
+// [추가] 재입고품 확인: 같은 도번+S/N의 과거 출하검사 기록을 찾아 안내 → "예"면 비고에 재검사
+function insReinspPast_(row){
+  var dw=insNormDraw_(row.draw), sns=(typeof insSnFull_==="function")?insSnFull_(row.sn):[]; if(!dw || !sns.length) return [];
+  var pool=[], seen={}; var add=function(list){ (list||[]).forEach(function(r){ if(!r || r===row || (r._id && r._id===row._id)) return; var k=r._id||(r.insDate+"|"+r.sn+"|"+r.draw); if(seen[k]) return; seen[k]=1; pool.push(r); }); };
+  add(insState.shipping && insState.shipping.rows);
+  try{ if(typeof insUnresolvedSrc!=="undefined" && insUnresolvedSrc && insUnresolvedSrc.shipping) add(insUnresolvedSrc.shipping.rows); }catch(_){}
+  var hit=[]; pool.forEach(function(r){ if(insIsReinsp_(r) && false) return; if(insNormDraw_(r.draw)!==dw) return; var s2=insSnFull_(r.sn); var common=sns.filter(function(x){ return s2.indexOf(x)>=0; }); if(common.length) hit.push({ date:String(r.insDate||"").trim(), outNo:String(r.outNo||"").trim(), sns:common, re:insIsReinsp_(r) }); });
+  return hit.sort(function(a,b){ return a.date<b.date?-1:1; });
+}
+function insReinspAsk_(ri){
+  var rows=insState.shipping && insState.shipping.rows; var row=rows && rows[ri]; if(!row || insIsReinsp_(row)) return;
+  var hit=insReinspPast_(row); if(!hit.length) return;
+  window.__insReinspAsked=window.__insReinspAsked||{}; var akey=(row._id||ri)+"|"+insNormDraw_(row.draw)+"|"+String(row.sn||"").trim(); if(window.__insReinspAsked[akey]) return; window.__insReinspAsked[akey]=1;
+  var E=function(v){ return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;"); };
+  var old=document.getElementById("ins-reinsp-ov"); if(old) old.remove();
+  var ov=document.createElement("div"); ov.id="ins-reinsp-ov"; ov.style.cssText="position:fixed;inset:0;z-index:100080;background:rgba(16,24,40,.45);display:flex;align-items:center;justify-content:center;";
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;width:min(480px,94vw);box-shadow:0 12px 40px rgba(0,0,0,.3);overflow:hidden;font-size:14px;color:#101828;">'
+    +'<div style="padding:14px 18px;background:#5B3EAE;color:#fff;font-weight:800;">🔁 재입고품인가요?</div><div style="padding:16px 18px;line-height:1.6;">'
+    +'<b>'+E(row.draw)+'</b> · S/N <b>'+E(hit[0].sns.join(", "))+'</b> 은(는) 이미 출하검사한 기록이 있습니다.'
+    +'<div style="margin:8px 0;padding:8px 12px;background:#F9FAFB;border-radius:8px;font-size:13px;">'+hit.slice(0,4).map(function(h){ return '· '+E(h.date||"날짜 없음")+(h.outNo?' · 출고No '+E(h.outNo):'')+(h.re?' · (재검사)':''); }).join('<br>')+'</div>'
+    +'납품 후 부적합 등으로 <b>재입고되어 다시 검사하는 제품</b>이면 [예]를 누르세요. 비고에 <b>재검사</b>가 기록되어 중복에서 빠집니다.<br><span style="color:#667085;font-size:12.5px;">잘못 입력한 것이면 [아니요]를 누르고 도번·S/N을 확인하세요.</span></div>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;padding:0 18px 16px;"><button type="button" data-x="no" style="padding:9px 16px;border:1px solid #D0D5DD;border-radius:9px;background:#fff;font-weight:700;cursor:pointer;">아니요, 확인할게요</button>'
+    +'<button type="button" data-x="yes" style="padding:9px 16px;border:0;border-radius:9px;background:#5B3EAE;color:#fff;font-weight:700;cursor:pointer;">예, 재검사로 기록</button></div></div>';
+  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
+    if(x==="no" || e.target===ov){ ov.remove(); return; }
+    if(x==="yes"){ var cur=String(row.note||"").trim(); row.note=cur?("재검사 "+cur):"재검사";
+      var inp=document.querySelector('#insrep-content [data-ri="'+ri+'"][data-key="note"]'); if(inp) inp.value=row.note;
+      window.__insDupDirty=Date.now();
+      try{ insSaveLocal(); }catch(_){} ov.remove(); try{ insRender(); }catch(_){}
+      try{ insSetStatus("🔁 재검사로 기록했습니다 — "+row.draw+" S/N "+hit[0].sns.join(", ")); }catch(_){} } });
+  document.body.appendChild(ov);
+}
 // 행 목록에서 중복 상세 [{sn, draw, dates:[...]}]
 // 측정실(measureS/L)은 "같은 S/N + 검사항목 겹침"일 때만 중복 (날짜만 다르고 항목 다르면 정상 분할)
 function insDupListInRows_(rows, typeKey){
   var isSplit=(typeKey==="measureS"||typeKey==="measureL"||typeKey==="incoming");   // 분할검사 인정 유형
   var map={};   // 도번|sn → {draw, sn, entries:[{date, items[]}]}
   (rows||[]).forEach(function(r){
-    if(!r) return;
+    if(!r || insIsReinsp_(r)) return;   // 재검사 행은 중복 아님
     var dw=insNormDraw_(r.draw); if(!dw) return;
     var dt=String(r.insDate||"").trim()||"(날짜없음)";
     var items=isSplit?insItemsForType_(typeKey, r):null;
