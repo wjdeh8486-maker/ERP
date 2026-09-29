@@ -1483,6 +1483,18 @@
   #view-specdue .sd-csum{ font-size:10.5px; color:#667085; text-align:right; margin-top:3px; }
   #view-specdue .sd-cw{ background:#F9FAFB !important; font-size:12px; color:#475467; line-height:1.7; text-align:right; }
   #view-specdue .sd-cw b{ color:#101828; }
+  #view-specdue .sd-dsum{ margin-top:14px; } #view-specdue .sd-dsum h4{ margin:0 0 8px; font-size:14px; font-weight:700; } #view-specdue .sd-dsum h4 small{ font-size:12px; color:#98A2B3; font-weight:500; margin-left:6px; }
+  #view-specdue .sd-dtb{ width:100%; border-collapse:collapse; font-size:13px; }
+  #view-specdue .sd-dtb th{ background:#F9FAFB; color:#667085; font-size:12px; font-weight:600; padding:8px 10px; border-bottom:1px solid #EAECF0; text-align:left; } #view-specdue .sd-dtb th small{ font-weight:500; color:#98A2B3; }
+  #view-specdue .sd-dtb td{ padding:8px 10px; border-bottom:1px solid #F2F4F7; } #view-specdue .sd-dtb .n{ text-align:right; font-variant-numeric:tabular-nums; }
+  #view-specdue .sd-dtb .z{ color:#D0D5DD; } #view-specdue .sd-dtb .k{ font-weight:600; } #view-specdue .sd-dtb .t{ font-weight:700; background:#FFFCF5; }
+  #view-specdue .sd-dtb tfoot td{ font-weight:700; background:#F9FAFB; border-top:1px solid #EAECF0; }
+  /* [추가] 표 세로 구분선 — 가로선보다 연하게(칸 구분만 되도록, 엑셀처럼 진하지 않게) */
+  html.theme-new body .view:not(#view-insrep) table thead th{ border-right:1px solid #EAECF0 !important; }
+  html.theme-new body .view:not(#view-insrep) table tbody tr:nth-child(n) > td{ border-right:1px solid #F0F2F5 !important; }
+  html.theme-new body .view:not(#view-insrep) table thead th:last-child, html.theme-new body .view:not(#view-insrep) table tbody tr:nth-child(n) > td:last-child{ border-right:0 !important; }
+  #view-specdue .sd-tb th, #view-specdue .sd-dtb th{ border-right:1px solid #EAECF0; } #view-specdue .sd-tb td, #view-specdue .sd-dtb td{ border-right:1px solid #F0F2F5; }
+  #view-specdue .sd-tb th:last-child, #view-specdue .sd-tb td:last-child, #view-specdue .sd-dtb th:last-child, #view-specdue .sd-dtb td:last-child{ border-right:0; }
 </style>
 </head>
 <body>
@@ -11804,7 +11816,7 @@ function qdRenderTable_(){
   if(!list.length){ el.innerHTML='<div class="qd-empty">해당 항목이 없습니다</div>'; return; }
   var dd=function(due){ var a=new Date(due+"T00:00:00"), n=Math.round((a-W.today)/86400000); return n<0?'<span class="qd-bd bad">D+'+(-n)+'</span>':(n===0?'<span class="qd-bd warn">오늘</span>':'<span class="qd-dday">D-'+n+'</span>'); };
   var body=list.slice(0,MAXR).map(function(x,i){ var r=x.r, c=QD_ST[x.st]||["#F2F4F7","#344054"];
-    return '<tr'+(x.late?' class="late"':'')+'><td>'+(i+1)+'</td><td>'+qdE_(r.orderNo)+'</td><td>'+qdE_(r.customer)+'</td><td class="qd-lk" data-draw="'+qdE_(r.oldDrawingNo)+'" title="품목이력 보기">'+qdE_(r.oldDrawingNo)+'</td><td class="qd-nm">'+qdE_(r.partName)+'</td><td>'+x.qty.toLocaleString()+'</td>'
+    return '<tr'+(x.late?' class="late"':'')+'><td>'+(i+1)+'</td><td>'+qdE_(r.orderNo)+'</td><td>'+qdE_(r.customer)+'</td><td class="qd-lk" data-draw="'+qdE_(r.oldDrawingNo)+'" title="도면 열기 (새 탭)">'+qdE_(r.oldDrawingNo)+'</td><td class="qd-nm">'+qdE_(r.partName)+'</td><td>'+x.qty.toLocaleString()+'</td>'
       +'<td><span class="qd-bd" style="background:'+c[0]+';color:'+c[1]+';border-color:'+c[1]+'40;">'+qdE_(x.st)+'</span></td><td>'+(x.ship?'<b style="color:#0E7490;">'+x.shipQty.toLocaleString()+'</b>':'-')+'</td><td class="qd-due">'+qdE_(x.due)+(typeof sdTagFor_==="function"?sdTagFor_(r.orderNo):"")+'</td><td>'+dd(x.due)+'</td></tr>'; }).join("");
   el.innerHTML='<div class="qd-twrap"><table class="qd-tb"><thead><tr><th>No</th><th>ORDER NO.</th><th>고객사</th><th>도번</th><th>품명</th><th>수량</th><th>제품상태</th><th>출하검사대기</th><th>최종납기</th><th>D-day</th></tr></thead><tbody>'+body+'</tbody></table></div>'
     +(list.length>MAXR?'<div class="qd-note">처음 '+MAXR+'건만 표시 · 전체는 [엑셀]로 받으세요</div>':'');
@@ -11849,7 +11861,7 @@ function qdRender_(){
       var al=t.closest(".qd-al"); if(al){ var it=(__qd.alerts||[])[Number(al.getAttribute("data-i"))]; if(it) qdGo_(it); return; }
       var qk=t.closest(".qd-qk"); if(qk){ var q=QD_QUICK[Number(qk.getAttribute("data-i"))]; qdGo_(q.qt?{qtab:q.qt}:{view:q.v}); return; }
       var mo=t.closest(".qd-more"); if(mo){ qdGo_({view:mo.getAttribute("data-v")}); return; }
-      var lk=t.closest(".qd-lk"); if(lk){ var dr=lk.getAttribute("data-draw"); if(dr && typeof ihOpen_==="function") ihOpen_(dr); return; }
+      var lk=t.closest(".qd-lk"); if(lk){ var dr=lk.getAttribute("data-draw"); if(dr && typeof openDrawing==="function") openDrawing(dr); return; }   // [수정] 품목이력 → 도면 열기
     });
     document.getElementById("qd-refresh").onclick=function(){ try{ insUnresolvedSrc=null; }catch(_){} __qd.snapTried=false; qdRender_(); };
     document.getElementById("qd-filter").onchange=function(){ __qd.filter=this.value; qdRenderKpi_(); qdRenderTable_(); };
@@ -11899,7 +11911,7 @@ function qmsHolidayName_(ymd){
 }
 function qmsIsWorkday_(d){ var w=d.getDay(); if(w===0||w===6) return false; var ymd=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); return !qmsHolidayName_(ymd); }
 var SD_KEY="specialDue";
-var __sd={ items:[], cap:5, loaded:false, filter:"open" };
+var __sd={ items:[], cap:5, loaded:false, filter:"all" };   // 출고 일정: 처음엔 전체
 function sdE_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function sdYmd_(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function sdToday_(){ var d=new Date(); d.setHours(0,0,0,0); return d; }
@@ -12057,7 +12069,27 @@ function sdCalHtml_(C){
   return '<section class="sd-card sd-cal"><div class="sd-lh"><h3>출고 달력 <small>가능일자 기준 · 품번(수량) · 검사 N = 그날 해야 할 검사 수량 · 생산 필요 = 재고+검사대기로 못 채우는 수량</small></h3>'
     +'<span class="sd-cnav"><button type="button" data-cal="'+f(pm)+'">‹</button><b>'+y+'년 '+(m+1)+'월</b><button type="button" data-cal="'+f(nm)+'">›</button><button type="button" data-cal="'+today.slice(0,7)+'" class="t">이번 달</button><button type="button" data-a="calprint" class="t pr">🖨 인쇄</button></span></div>'
     +'<div class="sd-msum">이달 합계 · 출고 예정 <b>'+mShip+'</b>개 · 검사할 수량 <b>'+mInsp+'</b>개'+(mShort?' · <span class="r">생산 필요 <b>'+mShort+'</b>개</span>':'')+' <span class="m">(비젼 1일 최대 '+C.cap+'개 · 검사는 출고 전날까지 미리)</span></div>'
-    +'<div class="sd-ctw"><table class="sd-ctb"><thead><tr><th class="sun">일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th class="sat">토</th><th>주 합계</th></tr></thead><tbody>'+rows+'</tbody></table></div></section>';
+    +'<div class="sd-ctw"><table class="sd-ctb"><thead><tr><th class="sun">일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th class="sat">토</th><th>주 합계</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+sdDrawSumHtml_(C, ym, weeks)+'</section>';
+}
+/* ---------- [추가] 달력 아래: 품번별 이달 필요 수량 (주별 출고 · 합계 · 검사할 수량 · 현재 보유 · 생산 필요 · 부족 시작) ---------- */
+function sdDrawSumHtml_(C, ym, weeks){
+  var wk=weeks.map(function(w){ var inM=w.filter(function(d){ return d.slice(0,7)===ym; }); return inM.length?{ a:inM[0], b:inM[inM.length-1], days:inM }:null; }).filter(Boolean);
+  var D={}, get=function(k){ return D[k]=D[k]||{ w:wk.map(function(){ return 0; }), tot:0, insp:0, short:0, first:"" }; };
+  sdLive_().forEach(function(x){ if(!x.avail || x.avail.slice(0,7)!==ym || sdDone_(x)) return; var g=get(x.draw||"-");
+    wk.forEach(function(w,i){ if(x.avail>=w.a && x.avail<=w.b) g.w[i]+=x.qty; }); g.tot+=x.qty; g.short+=(x._short||0); if(!g.first || x.avail<g.first) g.first=x.avail; });
+  Object.keys(C.plan||{}).forEach(function(d){ if(d.slice(0,7)!==ym) return; C.plan[d].forEach(function(p){ get(p.x.draw||"-").insp+=p.q; }); });
+  C.open.forEach(function(x){ if(!x._vision && x._insp>0 && x._start && x._start.slice(0,7)===ym) get(x.draw||"-").insp+=x._insp; });
+  var ks=Object.keys(D).filter(function(k){ return D[k].tot||D[k].insp; }).sort(function(a,b){ return (D[a].first||"9")<(D[b].first||"9")?-1:1; });
+  if(!ks.length) return '<div class="sd-dsum"><h4>품번별 이달 필요 수량</h4><div class="sd-empty">이달 출고 예정이 없습니다</div></div>';
+  var colT=wk.map(function(){ return 0; }), T={ tot:0, insp:0, short:0 };
+  var body=ks.map(function(k){ var g=D[k], b=C.byDraw[k]||{}; g.w.forEach(function(v,i){ colT[i]+=v; }); T.tot+=g.tot; T.insp+=g.insp; T.short+=g.short;
+    return '<tr><td class="k">'+sdE_(k)+'</td>'+g.w.map(function(v){ return '<td class="n'+(v?'':' z')+'">'+(v||'·')+'</td>'; }).join("")
+      +'<td class="n t">'+g.tot+'</td><td class="n">'+(g.insp||'·')+'</td><td class="n">'+(b.stock!=null?b.stock:'-')+' / '+(b.wait!=null?b.wait:'-')+'</td>'
+      +'<td class="n'+(g.short?' r':'')+'">'+(g.short||'·')+'</td><td>'+(b.shortFrom?'<span class="r">'+sdMD_(b.shortFrom)+'</span>':'-')+'</td></tr>'; }).join("");
+  return '<div class="sd-dsum"><h4>품번별 이달 필요 수량 <small>미완료 기준 · 주는 일~토</small></h4><table class="sd-dtb"><thead><tr><th>품번</th>'
+    +wk.map(function(w,i){ return '<th class="n">'+(i+1)+'주<br><small>'+sdMD_(w.a)+'~'+sdMD_(w.b)+'</small></th>'; }).join("")
+    +'<th class="n">이달 출고</th><th class="n">검사할 수량</th><th class="n" title="현재 재고(검사 끝남) / 검사대기">보유<br><small>재고 / 대기</small></th><th class="n">생산 필요</th><th>부족 시작</th></tr></thead><tbody>'+body+'</tbody>'
+    +'<tfoot><tr><td>합계</td>'+colT.map(function(v){ return '<td class="n">'+v+'</td>'; }).join("")+'<td class="n t">'+T.tot+'</td><td class="n">'+T.insp+'</td><td></td><td class="n'+(T.short?' r':'')+'">'+T.short+'</td><td></td></tr></tfoot></table></div>';
 }
 /* ---------- [추가] 출고 달력 인쇄 (배포용) — 화면 달력 그대로 A4 가로 1장/월 ---------- */
 function sdCalPrint_(){
@@ -12069,7 +12101,7 @@ function sdCalPrint_(){
     var y=+ym.slice(0,4), m=+ym.slice(5,7);
     return '<div class="pg"><div class="ph"><div><div class="pt">⭐ 특별납기 출고 달력 — '+y+'년 '+m+'월</div><div class="ps">기준: 가능일자(고객 약속일) · 품번(수량) · 검사 = 그날 해야 할 검사 수량 (SHOWERHEAD 비젼 1일 최대 '+C.cap+'개)</div></div>'
       +'<div class="pm">출력 '+new Date().toLocaleString("ko-KR")+'<br>NTL 품질팀</div></div>'
-      +tmp.querySelector(".sd-msum").outerHTML+tmp.querySelector(".sd-ctw").innerHTML
+      +tmp.querySelector(".sd-msum").outerHTML+tmp.querySelector(".sd-ctw").innerHTML+(tmp.querySelector(".sd-dsum")?tmp.querySelector(".sd-dsum").outerHTML:"")
       +'<div class="lg"><span class="c n"></span>출고 예정 <span class="c s"></span>생산 필요(⚠ 재고+검사대기 부족) <span class="c d"></span>완료 <span class="h">빨간 날짜 = 일요일·공휴일</span></div>'
       +'<div class="lg2">· <b>출고 예정</b>: 그 주 가능일자 출고 수량 · <b>검사할 수량</b>: 그 주에 해야 할 검사(출고 <b>전날까지 미리</b> 하므로 다음 주 출고분이 포함될 수 있음) · <b>생산 필요</b>: 재고+검사대기로 못 채워 생산 입고가 먼저 필요한 수량</div></div>'; }).join("");
   __sd.calMonth=keep;
@@ -12080,7 +12112,10 @@ function sdCalPrint_(){
     +'.sd-msum{ font-size:12px; background:#F2F4F7; border-radius:6px; padding:5px 10px; margin-bottom:6px; } .r{ color:#D92D20; } .m{ color:#98A2B3; }'
     +'.sd-ctb{ width:100%; border-collapse:collapse; table-layout:fixed; } .sd-ctb th{ font-size:11px; font-weight:700; padding:4px; background:#F2F4F7; border:1px solid #98A2B3; }'
     +'.sd-ctb th.sun{ color:#D92D20; } .sd-ctb th.sat{ color:#1D4ED8; } .sd-ctb th:last-child{ width:92px; }'
-    +'.sd-ctb td{ vertical-align:top; border:1px solid #98A2B3; padding:3px 4px; height:'+(two?"26mm":"28mm")+'; }'
+    +'.sd-ctb td{ vertical-align:top; border:1px solid #98A2B3; padding:2px 4px; height:19mm; }'
+    +'.sd-dsum{ margin-top:5px; page-break-inside:avoid; } .sd-dsum h4{ margin:0 0 3px; font-size:11.5px; } .sd-dsum h4 small{ font-weight:500; color:#667085; font-size:9.5px; }'
+    +'.sd-dtb{ width:100%; border-collapse:collapse; font-size:10px; } .sd-dtb th, .sd-dtb td{ border:1px solid #98A2B3; padding:2px 5px; } .sd-dtb th{ background:#F2F4F7; font-weight:700; } .sd-dtb th small{ font-weight:500; color:#667085; }'
+    +'.sd-dtb .n{ text-align:right; } .sd-dtb .z{ color:#C0C5CE; } .sd-dtb .k{ font-weight:700; } .sd-dtb .t{ font-weight:800; background:#FFF6E5; } .sd-dtb tfoot td{ font-weight:800; background:#F9FAFB; }'
     +'.sd-ctb td.out > *{ opacity:.3; } .sd-ctb td.today{ outline:2px solid #2563EB; outline-offset:-2px; }'
     +'.sd-ctb td.sun .sd-cd > span{ color:#D92D20; } .sd-ctb td.sat .sd-cd > span{ color:#1D4ED8; } .sd-hol{ font-size:8.5px; font-weight:700; color:#D92D20; margin-left:3px; }'
     +'.sd-cd{ display:flex; justify-content:space-between; font-size:11px; font-weight:800; margin-bottom:2px; } .sd-ci{ font-size:8.5px; font-weight:700; color:#1D4ED8; border:1px solid #84ADFF; border-radius:4px; padding:0 3px; } .sd-ci.over{ color:#B42318; border-color:#FDA29B; }'
@@ -12140,7 +12175,7 @@ function sdRender_(){
   var all=sdLive_().slice().sort(function(a,b){ return (a.avail||"9")<(b.avail||"9")?-1:((a.avail||"9")>(b.avail||"9")?1:(a.draw||"").localeCompare(b.draw||"")); });
   var rows=all.filter(function(x){ return __sd.filter==="all" || !sdDone_(x); });
   h+='<section class="sd-card"><div class="sd-lh"><h3>출고 일정 <span class="sd-cnt">'+rows.length+'</span></h3>'
-    +'<span class="sd-seg"><button type="button" data-f="open" class="'+(__sd.filter==="open"?"on":"")+'">미완료</button><button type="button" data-f="all" class="'+(__sd.filter==="all"?"on":"")+'">전체</button></span></div>'
+    +'<span class="sd-seg"><button type="button" data-f="all" class="'+(__sd.filter==="all"?"on":"")+'">전체</button><button type="button" data-f="open" class="'+(__sd.filter==="open"?"on":"")+'">미완료</button></span></div>'
     +'<div class="sd-form"><input id="sd-f-ord" placeholder="관리번호 (예: 26-402-3)"><input id="sd-f-draw" placeholder="품번 (비우면 관리번호로 자동)"><input id="sd-f-due" type="date" title="납기일자"><input id="sd-f-avail" type="date" title="가능일자"><input id="sd-f-qty" type="number" min="1" placeholder="수량"><input id="sd-f-note" placeholder="비고 (예: 22EA 중 10EA)"><button type="button" class="sd-btn pri" data-a="add">＋ 추가</button></div>'
     +'<div class="sd-tw"><table class="sd-tb"><thead><tr><th>상태</th><th>관리번호</th><th>품번</th><th>납기일자</th><th>가능일자</th><th class="n">수량</th><th>비고</th><th>검사 시작</th><th>완료</th><th></th></tr></thead><tbody>'
     +(rows.length?rows.map(function(x){ var st, cls;
