@@ -1564,6 +1564,15 @@
   .chat-toast{ width:300px; background:#fff; border-left:4px solid #2563EB; border-radius:10px; box-shadow:0 10px 30px rgba(16,24,40,.22); padding:10px 12px; font-size:13px; cursor:pointer; transition:opacity .4s, transform .4s; font-family:"Pretendard Variable","맑은 고딕",sans-serif; }
   .chat-toast div{ color:#475467; margin-top:3px; } .chat-toast.out{ opacity:0; transform:translateX(20px); }
   @media (max-width:860px){ #chat-fab{ right:12px; bottom:12px; width:48px; height:48px; } #chat-panel{ right:0; bottom:0; width:100vw; height:100vh; border-radius:0; } #chat-toasts{ right:8px; bottom:70px; } .chat-toast{ width:calc(100vw - 16px); } }
+  .chat-cl{ display:none; }
+  @media (max-width:860px){
+    #chat-panel{ height:100vh; height:100dvh; }
+    .chat-h{ padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px; gap:10px; }
+    .chat-h button{ min-width:46px; height:46px; font-size:20px; border-radius:10px; }
+    .chat-h button[data-c="close"]{ background:#D92D20; font-weight:800; padding:0 14px; box-shadow:0 0 0 2px rgba(255,255,255,.55); }
+    .chat-h button[data-c="close"] .chat-cl{ display:inline; font-size:15px; margin-left:4px; }
+    .chat-inbar{ padding-bottom:calc(10px + env(safe-area-inset-bottom,0px)); }
+  }
 </style>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -12862,13 +12871,15 @@ function chatToast_(m){
 }
 function chatOpen_(room){
   __chat.open=true; var p=document.getElementById("chat-panel"); p.classList.add("open");
+  if(!__chat.hist){ try{ history.pushState({ qmsChat:1 }, "", location.href); __chat.hist=true; }catch(_){} }   /* 폰 뒤로가기 = 채팅 닫기(페이지 이탈·재로딩 방지) */
   if(!__chat.me){ chatSetup_(); return; }
   __chat.room=room||null; chatPaint_(); chatPoll_(); chatSchedule_();
 }
-function chatClose_(){ __chat.open=false; var p=document.getElementById("chat-panel"); if(p) p.classList.remove("open"); chatSchedule_(); }
+function chatClose_(fromPop){ __chat.open=false; var p=document.getElementById("chat-panel"); if(p) p.classList.remove("open"); chatSchedule_();
+  if(__chat.hist){ __chat.hist=false; if(fromPop!==true){ try{ history.back(); }catch(_){} } } }
 function chatSetup_(){
   var p=document.getElementById("chat-panel"), me=__chat.me||{};
-  p.innerHTML='<div class="chat-h"><b>💬 채팅 시작</b><button type="button" data-c="close">✕</button></div><div class="chat-setup">'
+  p.innerHTML='<div class="chat-h"><b>💬 채팅 시작</b><button type="button" data-c="close">✕<span class="chat-cl"> 닫기</span></button></div><div class="chat-setup">'
     +'<div>처음 한 번만 입력합니다. 다른 사람에게 이 이름으로 보입니다.</div><label>이름<input id="chat-nm" maxlength="20" placeholder="예: 이정도" value="'+chatE_(me.name||"")+'"></label>'
     +'<label>팀<select id="chat-tm">'+CHAT_TEAMS.map(function(t){ return '<option'+(me.team===t?' selected':'')+'>'+t+'</option>'; }).join("")+'</select></label>'
     +'<button type="button" data-c="save" class="chat-pri">시작하기</button><div class="chat-note">※ 사내 간이 채팅입니다. 비밀번호·개인정보 같은 민감한 내용은 보내지 마세요.</div></div>';
@@ -12881,7 +12892,7 @@ function chatPaint_(){
   if(!__chat.room){
     var online=function(u){ return Date.now()-u.seen<3*60000; };
     var users=__chat.users.filter(function(u){ return u.name!==me.name; }).sort(function(a,b){ return (online(b)-online(a)) || a.name.localeCompare(b.name); });
-    p.innerHTML='<div class="chat-h"><b>💬 채팅</b><span class="chat-me">'+chatE_(me.name)+' · '+chatE_(me.team)+'</span><button type="button" data-c="setup" title="이름·팀 변경">⚙</button><button type="button" data-c="close">✕</button></div>'
+    p.innerHTML='<div class="chat-h"><b>💬 채팅</b><span class="chat-me">'+chatE_(me.name)+' · '+chatE_(me.team)+'</span><button type="button" data-c="setup" title="이름·팀 변경">⚙</button><button type="button" data-c="close">✕<span class="chat-cl"> 닫기</span></button></div>'
       +'<div class="chat-list"><div class="chat-sec">채널</div>'+chatRooms_().filter(function(r){ return r.room.indexOf("team:")===0; }).map(function(r){ return chatRow_(r.room); }).join("")
       +'<div class="chat-sec">1:1 대화</div>'+(chatRooms_().filter(function(r){ return r.room.indexOf("dm:")===0; }).map(function(r){ return chatRow_(r.room); }).join("")||'<div class="chat-empty">아래에서 사람을 골라 대화를 시작하세요</div>')
       +'<div class="chat-sec">사람 ('+users.length+')</div>'+(users.map(function(u){ return '<div class="chat-row" data-dm="'+chatE_(u.name)+'"><span class="chat-dot'+(online(u)?' on':'')+'"></span><b>'+chatE_(u.name)+'</b><span class="chat-sub">'+chatE_(u.team)+'</span></div>'; }).join("")||'<div class="chat-empty">아직 다른 사용자가 없습니다</div>')+'</div>';
@@ -12890,7 +12901,7 @@ function chatPaint_(){
   var room=__chat.room, list=__chat.msgs.filter(function(m){ return m.room===room; }).concat(__chat.pending.filter(function(x){ return x.room===room; })).sort(function(a,b){ return a.ts-b.ts; });
   var day="", html=list.map(function(m){ var d=new Date(m.ts), ds=d.toLocaleDateString("ko-KR"), mine=(m.from===me.name), sep=""; if(ds!==day){ day=ds; sep='<div class="chat-day">'+ds+'</div>'; }
     return sep+'<div class="chat-m'+(mine?' mine':'')+(m.pend?' pend':'')+'">'+(mine?'':'<div class="chat-from">'+chatE_(m.from)+'</div>')+(m.file?chatFileHtml_(m.file, mine):'')+(m.text?'<div class="chat-b">'+chatE_(m.text).replace(/\n/g,"<br>")+'</div>':'')+'<div class="chat-t">'+(m.fail?'<span class="chat-fail">전송 실패</span>':m.pend?'보내는 중…':d.toTimeString().slice(0,5))+'</div></div>'; }).join("");
-  p.innerHTML='<div class="chat-h"><button type="button" data-c="back" title="목록">‹</button><b>'+chatE_(chatRoomName_(room))+'</b><button type="button" data-c="close">✕</button></div>'
+  p.innerHTML='<div class="chat-h"><button type="button" data-c="back" title="목록">‹</button><b>'+chatE_(chatRoomName_(room))+'</b><button type="button" data-c="close">✕<span class="chat-cl"> 닫기</span></button></div>'
     +'<div class="chat-msgs">'+(html||'<div class="chat-empty">첫 메시지를 보내 보세요</div>')+'</div>'
     +'<div class="chat-inbar"><button type="button" data-c="attach" class="chat-att" title="사진·PDF·엑셀 첨부 (10MB 이하) — 끌어 놓기·붙여넣기(Ctrl+V)도 됩니다">📎</button><input type="file" id="chat-file" multiple accept="image/*,.pdf,.xls,.xlsx,.xlsm,.csv,.doc,.docx,.hwp,.hwpx,.ppt,.pptx,.zip,.txt" style="display:none"><textarea id="chat-in" rows="1" placeholder="메시지 입력 (Enter 보내기 · Shift+Enter 줄바꿈)"></textarea><button type="button" data-c="send" class="chat-pri">보내기</button></div>';
   var nb=p.querySelector(".chat-msgs"); if(!keepScroll) nb.scrollTop=nb.scrollHeight; else if(box) nb.scrollTop=box.scrollTop;
@@ -12904,6 +12915,10 @@ function chatInit_(){
   var f=document.createElement("button"); f.type="button"; f.id="chat-fab"; f.title="팀·1:1 채팅"; f.innerHTML='💬<span id="chat-badge"></span>';
   f.onclick=function(){ if(__chat.open) chatClose_(); else chatOpen_(__chat.room); }; document.body.appendChild(f);
   var p=document.createElement("div"); p.id="chat-panel"; document.body.appendChild(p);
+  window.addEventListener("popstate", function(){ if(!__chat.open) return;
+    if(__chat.room && __chat.me){ __chat.room=null; chatPaint_(); try{ history.pushState({ qmsChat:1 }, "", location.href); __chat.hist=true; }catch(_){} }   /* 대화방에서 뒤로 = 목록 */
+    else chatClose_(true);   /* 목록에서 뒤로 = 채팅 닫기 */
+  });
   p.addEventListener("click", function(e){ var t=e.target, c=t.getAttribute && t.getAttribute("data-c");
     if(c==="close"){ chatClose_(); return; } if(c==="back"){ __chat.room=null; chatPaint_(); return; } if(c==="setup"){ chatSetup_(); return; }
     if(c==="save"){ var nm=String(document.getElementById("chat-nm").value||"").trim(), tm=document.getElementById("chat-tm").value; if(!nm){ alert("이름을 입력하세요."); return; }
