@@ -22502,7 +22502,16 @@ function insTapAlertPopup_(msg){
 // [추가] TAP/PIN 미체크 배너의 도번을 누르면 해당 행(표에서 노란색으로 표시됨)으로 스크롤 + 테두리 깜빡임
 function insTapPinScrollTo_(ri){
   try{
-    var tr=document.getElementById("insrep-tr-"+ri); if(!tr) return;
+    var tr=document.getElementById("insrep-tr-"+ri);
+    if(!tr){   // 배너는 전체 날짜 기준인데 표는 선택한 날짜(기본 오늘)·최근 N행만 그림 → 안 그려진 행이면 필터를 풀어 다시 그린 뒤 이동
+      var __st=insState[insType], __row=(__st&&__st.rows)?__st.rows[ri]:null; if(!__row) return;
+      insDrawSearch=""; insOutSearch=""; __insMatFilter="전체";
+      var __d=String(__row.insDate||__row.actDate||"").trim();
+      insDayFilter=__d||"all"; insShowAllRows=false; insRender();          // 1차: 그 행의 날짜만
+      tr=document.getElementById("insrep-tr-"+ri);
+      if(!tr){ insDayFilter="all"; insShowAllRows=true; insRender(); tr=document.getElementById("insrep-tr-"+ri); }   // 2차: 전체 날짜·전체 행
+      if(!tr) return;
+    }
     tr.scrollIntoView({behavior:"smooth", block:"center"});
     tr.style.transition="box-shadow .25s";
     var __n=0, __flash=function(){ tr.style.boxShadow=(__n%2===0)?"inset 0 0 0 3px #C0392B":"none"; __n++; if(__n<6) setTimeout(__flash,220); else tr.style.boxShadow=""; };
