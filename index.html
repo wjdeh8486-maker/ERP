@@ -227,6 +227,29 @@
   .stat-card.dwg input{flex:1;min-width:0;padding:7px 10px;font-size:14px;border:1px solid var(--border);border-radius:6px;}
   .stat-card.dwg a#main-dwgBtn{display:inline-flex;align-items:center;padding:7px 12px;font-size:13px;font-weight:600;border-radius:6px;background:var(--navy);color:#fff;text-decoration:none;white-space:nowrap;cursor:pointer;}
   .stat-card.dwg a#main-dwgBtn:hover{opacity:.88;}
+  /* ── 진행률 카드 wrapper (PC 모양은 그대로) ── */
+  .prog-row{display:flex;align-items:center;gap:10px;}
+  .prog-row .progress-bar-track{flex:1;margin-top:0;}
+  .dwg-side{display:none;}
+  /* ── 모바일·태블릿(≤1024px, html.dwg-compact): 도면 조회를 생산 진행률 카드 안으로 · PC는 위의 기존 그대로 ── */
+  html.dwg-compact .stat-card.dwg{display:none !important;}
+  html.dwg-compact .stat-card.progress{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:10px 26px;}   /* theme-new 의 세로배치 덮어쓰기 */
+  html.dwg-compact .stat-card.progress .prog-main{flex:0 0 auto;}
+  html.dwg-compact .prog-row .progress-bar-track{flex:0 0 170px;}
+  html.dwg-compact .dwg-side{display:block;flex:1 1 300px;min-width:0;padding-left:24px;border-left:1px dashed var(--border);}
+  html.dwg-compact .dwg-mini{display:flex;align-items:center;flex-wrap:wrap;gap:6px;}
+  .dwg-mini-lb{font-size:12px;font-weight:700;color:var(--navy);white-space:nowrap;}
+  html.dwg-compact .dwg-mini input{width:132px;flex:0 0 auto;min-width:0;padding:5px 8px;font-size:13px;border:1px solid var(--border);border-radius:6px;}
+  html.dwg-compact .dwg-mini a#main-dwgBtn{display:inline-flex;align-items:center;padding:5px 10px;font-size:12px;font-weight:600;border-radius:6px;background:var(--navy);color:#fff;text-decoration:none;white-space:nowrap;cursor:pointer;}
+  html.dwg-compact .dwg-mini a#main-dwgBtn:hover{opacity:.88;}
+  .dwg-mini-note{font-size:10.5px;color:var(--text-mute);margin-top:4px;}
+  @media (max-width:860px){
+    html.dwg-compact .prog-main{width:100%;}
+    html.dwg-compact .prog-row .progress-bar-track{flex:1 1 auto;}
+    html.dwg-compact .dwg-side{flex:1 1 100%;padding-left:0;border-left:0;border-top:1px dashed var(--border);padding-top:8px;}
+    html.dwg-compact .dwg-mini input{min-height:40px;font-size:15px;}
+    html.dwg-compact .dwg-mini a#main-dwgBtn{min-height:40px;padding:0 14px;}
+  }
   /* 테이블 도번 링크: 화면에서는 클릭 가능, 인쇄 시 일반 텍스트 */
   a.dwg-a{color:#1a4fbd;text-decoration:underline;text-underline-offset:2px;cursor:pointer;}
   a.dwg-a:hover{color:#2f6fed;}
@@ -2023,19 +2046,25 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         <div class="stat-card done"><div class="label">완료</div><div class="value" id="main-statDone">0</div></div>
         <div class="stat-card overdue"><div class="label">지연</div><div class="value" id="main-statOverdue">0</div></div>
         <div class="stat-card progress" id="main-progressCard">
-          <div class="label">생산 진행률(%) <span id="main-progressDetail" style="font-size:11px;color:var(--text-mute);font-weight:400;"></span></div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <div class="value" id="main-statProgress" style="flex:none;">0%</div>
-            <div class="progress-bar-track" style="flex:1;margin-top:0;"><div class="progress-bar-fill" id="main-progressFill" style="width:0%"></div></div>
+          <div class="prog-main">
+            <div class="label">생산 진행률(%) <span id="main-progressDetail" style="font-size:11px;color:var(--text-mute);font-weight:400;"></span></div>
+            <div class="prog-row">
+              <div class="value" id="main-statProgress" style="flex:none;">0%</div>
+              <div class="progress-bar-track"><div class="progress-bar-fill" id="main-progressFill" style="width:0%"></div></div>
+            </div>
+          </div>
+          <div class="dwg-side" id="dwg-side">
+            <div class="dwg-mini" id="dwg-mini"><span class="dwg-mini-lb">📄 도면 조회</span></div>
+            <div class="dwg-mini-note" id="dwg-mini-note">사내 네트워크(Wi-Fi)에서만 조회됩니다 · </div>
           </div>
         </div>
         <div class="stat-card dwg">
-          <div class="label">도면 조회 <span id="dwg-status" style="font-size:11px;font-weight:400;margin-left:4px;"></span></div>
-          <div style="display:flex;gap:6px;margin-top:6px;">
+          <div class="label" id="dwg-orig-label">도면 조회 <span id="dwg-status" style="font-size:11px;font-weight:400;margin-left:4px;"></span></div>
+          <div id="dwg-orig-row" style="display:flex;gap:6px;margin-top:6px;">
             <input type="text" id="main-dwgSearch" placeholder="도번 입력 후 Enter" autocomplete="off">
             <a id="main-dwgBtn" href="#" role="button">PDF 확인</a>
           </div>
-          <div style="font-size:11px;color:var(--text-mute);margin-top:5px;">사내 네트워크(Wi-Fi)에서만 조회됩니다 · <a id="dwg-helpLink" href="#" target="_blank" rel="noopener" style="color:var(--text-mute);text-decoration:underline;">사용안내</a></div>
+          <div id="dwg-orig-note" style="font-size:11px;color:var(--text-mute);margin-top:5px;">사내 네트워크(Wi-Fi)에서만 조회됩니다 · <a id="dwg-helpLink" href="#" target="_blank" rel="noopener" style="color:var(--text-mute);text-decoration:underline;">사용안내</a></div>
         </div>
       </div>
       <div id="main-searchGroupSlotBottom" style="margin:-6px 0 12px;"></div>
@@ -25007,5 +25036,26 @@ function reqClearAll(){
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
 <div id="app-version" title="오늘 챙길 것 보기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.1 🔔</div>
+<script>
+/* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
+   같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
+(function(){
+  var DWG_COMPACT_MQ = "(max-width:1024px)";
+  function $(id){ return document.getElementById(id); }
+  function apply(compact){
+    var inp=$("main-dwgSearch"), btn=$("main-dwgBtn"), st=$("dwg-status"), help=$("dwg-helpLink");
+    var mini=$("dwg-mini"), miniNote=$("dwg-mini-note"), oLabel=$("dwg-orig-label"), oRow=$("dwg-orig-row"), oNote=$("dwg-orig-note");
+    if(!inp||!btn||!st||!help||!mini||!miniNote||!oLabel||!oRow||!oNote) return;
+    document.documentElement.classList.toggle("dwg-compact", !!compact);
+    if(compact){ mini.appendChild(inp); mini.appendChild(btn); mini.appendChild(st); miniNote.appendChild(help); inp.placeholder="도번 입력"; }
+    else{ oRow.appendChild(inp); oRow.appendChild(btn); oLabel.appendChild(st); oNote.appendChild(help); inp.placeholder="도번 입력 후 Enter"; }
+  }
+  if(!window.matchMedia){ return; }
+  var mq=window.matchMedia(DWG_COMPACT_MQ);
+  apply(mq.matches);
+  var on=function(e){ apply(e.matches); };
+  try{ mq.addEventListener("change", on); }catch(_){ try{ mq.addListener(on); }catch(__){} }
+})();
+</script>
 </body>
 </html>
