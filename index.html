@@ -1645,6 +1645,7 @@
   .mt-l{ display:flex; flex-direction:column; gap:4px; font-size:12.5px; font-weight:700; color:#344054; margin-top:8px; } .mt-l textarea{ border:1px solid #D0D5DD; border-radius:10px; padding:8px 10px; font:inherit; font-size:13.5px; font-weight:400; resize:vertical; }
   .mt-form textarea{ height:auto !important; min-height:64px; margin-top:0 !important; }   /* 붙여넣기 창의 textarea 높이(200px) 규칙이 적용되지 않게 */
   .mt-edit input{ width:100%; } .mt-hist{ margin-top:10px; font-size:12px; color:#667085; } .mt-hist summary{ cursor:pointer; color:#1D4ED8; }
+  .fchip{ display:inline-flex; align-items:center; gap:2px; } .fchip-x{ border:0; background:#F2F4F7; color:#98A2B3; border-radius:6px; width:22px; height:22px; cursor:pointer; font-size:12px; line-height:1; } .fchip-x:hover{ background:#FEE4E2; color:#B42318; }
 </style>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -13061,7 +13062,7 @@ if(document.readyState==="loading") document.addEventListener("DOMContentLoaded"
 var SDL_KEY="specialDueLog", SDL_KINDS=["고객 요청","일정 변경","영업 전달","근거 메모"];
 var __sdl={ list:[], loaded:false, filter:{ q:"", kind:"", who:"", days:"30" } };
 function sdWho_(){ try{ var c=JSON.parse(localStorage.getItem("qmsChatMe")||"null"); if(c && c.name) return c.name+(c.team?(" ("+c.team+")"):""); }catch(_){} return (typeof insAutoPcName_==="function")?insAutoPcName_():"알 수 없음"; }
-function sdlMerge_(a,b){ var m={}; (a||[]).concat(b||[]).forEach(function(x){ if(x && x.id) m[x.id]=x; }); return Object.keys(m).map(function(k){ return m[k]; }).sort(function(x,y){ return x.ts-y.ts; }); }
+function sdlMerge_(a,b){ var m={}; (a||[]).concat(b||[]).forEach(function(x){ if(!x || !x.id) return; var p=m[x.id]; if(!p || (x.upd||0)>=(p.upd||0)) m[x.id]=x; }); return Object.keys(m).map(function(k){ return m[k]; }).sort(function(x,y){ return x.ts-y.ts; }); }
 function sdlLoad_(cb){
   try{ var c=JSON.parse(localStorage.getItem("sdlCache")||"null"); if(c && Array.isArray(c)) __sdl.list=sdlMerge_(__sdl.list, c); }catch(_){}
   if(typeof qShareLoad_!=="function"){ __sdl.loaded=true; cb&&cb(); return; }
@@ -13105,6 +13106,9 @@ function sdUploadFile_(file, cb){
     rd.readAsDataURL(f); };
   if(typeof chatShrinkImg_==="function") chatShrinkImg_(file, go); else go(file);
 }
+// [추가] 첨부 삭제: 칩 옆 ✕ → 기록에서 빼고, QMS가 올린 드라이브 파일은 휴지통으로(복구 가능)
+function qmsFileChipX_(f, attr){ return '<span class="fchip">'+sdlFileHtml_(f)+'<button type="button" class="fchip-x" '+attr+' title="이 첨부 삭제">✕</button></span>'; }
+function qmsFileTrash_(f){ try{ var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url || !f || !f.id) return; fetch(url,{ method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:JSON.stringify({ mode:"fileTrash", id:f.id }) }); }catch(_){} }
 function sdlFileHtml_(f){ var ic=(typeof chatFileIcon_==="function")?chatFileIcon_(f):"📎"; return '<a href="'+sdE_(f.url)+'" target="_blank" rel="noopener" class="sdl-file">'+ic+' '+sdE_(f.name||"파일")+'</a>'; }
 function sdlKindCls_(k){ return { "등록":"reg", "일정 변경":"chg", "완료":"done", "완료 취소":"chg", "삭제":"del", "고객 요청":"cust", "영업 전달":"sales", "근거 메모":"memo" }[k]||"memo"; }
 function sdlRow_(e, showItem){
@@ -13112,7 +13116,7 @@ function sdlRow_(e, showItem){
   return '<div class="sdl-row"><div class="sdl-when">'+when+'</div><div class="sdl-body"><div><span class="sdl-kind '+sdlKindCls_(e.kind)+'">'+sdE_(e.kind)+'</span> <b>'+sdE_(e.by)+'</b>'
     +(showItem?(' · <a href="#" class="sdl-item" data-sid="'+sdE_(e.sid)+'">'+sdE_(e.ord||"-")+' / '+sdE_(e.draw||"")+'</a>'):'')+'</div>'
     +(e.text?'<div class="sdl-text">'+sdE_(e.text).replace(/\n/g,"<br>")+'</div>':'')+(e.reason?'<div class="sdl-text"><span class="m">사유:</span> '+sdE_(e.reason).replace(/\n/g,"<br>")+'</div>':'')
-    +((e.files||[]).length?'<div class="sdl-files">'+e.files.map(sdlFileHtml_).join("")+'</div>':'')+'</div></div>';
+    +((e.files||[]).length?'<div class="sdl-files">'+e.files.map(function(f,i){ return showItem?sdlFileHtml_(f):qmsFileChipX_(f,'data-fdel="'+sdE_(e.id)+'|'+i+'"'); }).join("")+'</div>':'')+'</div></div>';
 }
 // 한 줄(출고 일정)의 이력 창 — 보기 + 근거·요청 추가 + 일정 변경(사유 필수)
 function sdlPop_(sid){
@@ -13133,6 +13137,11 @@ function sdlPop_(sid){
   kindSel.addEventListener("change", function(){ chg.style.display=(kindSel.value==="일정 변경")?"inline-flex":"none"; });
   ov.querySelector("#sdl-files").addEventListener("change", function(e){ files=files.concat([].slice.call(e.target.files||[])); fl.textContent=files.map(function(f){ return f.name; }).join(", "); e.target.value=""; });
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
+    var fd=e.target.getAttribute && e.target.getAttribute("data-fdel");
+    if(fd){ var pp=fd.split("|"), en=__sdl.list.find(function(z){ return z.id===pp[0]; }), fi=+pp[1], ff=en && (en.files||[])[fi]; if(!ff) return;
+      if(!confirm("첨부 '"+ff.name+"'을(를) 삭제할까요?\n(드라이브 파일은 휴지통으로 이동 — 30일 안에 복구 가능)")) return;
+      en.files=en.files.filter(function(_,k){ return k!==fi; }); en.upd=Date.now(); qmsFileTrash_(ff);
+      sdlAdd_({ sid:en.sid, ord:en.ord, draw:en.draw, kind:"근거 메모", text:"첨부 삭제: "+ff.name }); ov.remove(); sdRender_(); sdlPop_(sid); return; }
     if(e.target===ov || x==="close"){ ov.remove(); return; }
     if(x==="file"){ ov.querySelector("#sdl-files").click(); return; }
     if(x==="save"){
@@ -13257,8 +13266,10 @@ function dclDetect_(){
   }catch(_){}
 }
 setInterval(dclDetect_, 60000); setTimeout(function(){ dclLoad_(function(){}); dclDetect_(); }, 8000);
-function dclGroups_(list){ var g={}; list.forEach(function(x){ var k=(x.proj||x.ord.replace(/-\d+$/,""))+"|"+x.day; (g[k]=g[k]||{ key:k, proj:x.proj||x.ord.replace(/-\d+$/,""), cust:x.cust, day:x.day, items:[] }).items.push(x); });
-  return Object.keys(g).map(function(k){ return g[k]; }).sort(function(a,b){ return a.day<b.day?1:(a.day>b.day?-1:0); }); }
+// [수정] 묶음 기준 = 관리번호 앞자리(예: 26-401) — PROJECT NO.(JB0150311-BJM/HHM/JEBI…)가 달라도 한 관리번호면 한 프로젝트
+function dclPrefix_(ord){ var o=String(ord||"").trim(), m=o.match(/^(.+)-\d+$/); return m?m[1]:o; }
+function dclGroups_(list){ var g={}; list.forEach(function(x){ var pf=dclPrefix_(x.ord), k=pf+"|"+x.day, G=(g[k]=g[k]||{ key:k, proj:pf, cust:x.cust, day:x.day, items:[], pnos:{} }); G.items.push(x); if(x.proj) G.pnos[x.proj]=(G.pnos[x.proj]||0)+1; });
+  return Object.keys(g).map(function(k){ var G=g[k]; G.pnoList=Object.keys(G.pnos).sort(); return G; }).sort(function(a,b){ return a.day<b.day?1:(a.day>b.day?-1:0); }); }
 function dclFor_(ord){ return __dcl.list.filter(function(x){ return x.ord===ord; }); }
 function dclShift_(x){ var a=new Date(x.from+"T00:00:00"), b=new Date(x.to+"T00:00:00"), n=Math.round((b-a)/86400000); return (n>0?"+":"")+n+"일"; }
 function dclRender_(){
@@ -13268,20 +13279,20 @@ function dclRender_(){
   var hidN=0;
   var L=__dcl.list.filter(function(x){ if(!f.shipped && dclShipped_(x.ord)){ hidN++; return false; } if(cut && x.ts<cut) return false; if(q && (x.ord+" "+x.proj+" "+x.cust+" "+x.draw+" "+x.name).toUpperCase().indexOf(q)<0) return false; if(f.st==="none" && x.reason) return false; if(f.st==="done" && !x.reason) return false; return true; });
   var G=dclGroups_(L), noR=G.filter(function(g){ return g.items.some(function(x){ return !x.reason; }); }).length;
-  root.innerHTML='<div class="sd-head"><div><div class="sd-crumb">특별납기 <span>›</span> 최종납기 변경</div><div class="sd-title">📆 최종납기 변경 이력</div><div class="sd-sub">MAIN(ERP 업로드)에서 최종납기가 바뀐 주문을 자동으로 찾아 프로젝트별로 묶습니다. 왜 바뀌었는지 <b>근거</b>를 입력해 두세요.</div></div>'
+  root.innerHTML='<div class="sd-head"><div><div class="sd-crumb">특별납기 <span>›</span> 최종납기 변경</div><div class="sd-title">📆 최종납기 변경 이력</div><div class="sd-sub">MAIN(ERP 업로드)에서 최종납기가 바뀐 주문을 자동으로 찾아 관리번호(프로젝트)별로 묶습니다. 왜 바뀌었는지 <b>근거</b>를 입력해 두세요.</div></div>'
     +'<div class="sd-act"><button type="button" class="sd-btn" data-a="dclxls">⬇ 엑셀</button><button type="button" class="sd-btn" data-a="dclreload">⟳ 새로고침</button></div></div>'
-    +'<div class="sd-card"><div class="sdl-filters"><input id="dcl-q" placeholder="프로젝트·관리번호·고객·도번 검색" value="'+sdE_(f.q)+'"><select id="dcl-st"><option value="">전체</option><option value="none"'+(f.st==="none"?" selected":"")+'>근거 미입력</option><option value="done"'+(f.st==="done"?" selected":"")+'>근거 입력됨</option></select>'
+    +'<div class="sd-card"><div class="sdl-filters"><input id="dcl-q" placeholder="관리번호·PROJECT NO.·고객·도번 검색" value="'+sdE_(f.q)+'"><select id="dcl-st"><option value="">전체</option><option value="none"'+(f.st==="none"?" selected":"")+'>근거 미입력</option><option value="done"'+(f.st==="done"?" selected":"")+'>근거 입력됨</option></select>'
     +'<select id="dcl-d">'+[["30","최근 30일"],["60","최근 60일"],["180","최근 180일"],["","전체 기간"]].map(function(d){ return '<option value="'+d[0]+'"'+(f.days===d[0]?' selected':'')+'>'+d[1]+'</option>'; }).join("")+'</select>'
     +'<label style="font-size:13px;white-space:nowrap;"><input type="checkbox" id="dcl-ship"'+(f.shipped?' checked':'')+'> 납품완료 포함</label>'
     +'<span class="sd-cnt">'+G.length+'묶음 · '+L.length+'건</span>'+(noR?'<span class="dcl-warn">근거 미입력 '+noR+'묶음</span>':'')+(!f.shipped && hidN?'<span class="m" style="font-size:12px;">납품완료 '+hidN+'건 숨김</span>':'')+'</div>'
     +(G.length?G.map(function(g){ var need=g.items.filter(function(x){ return !x.reason; }).length, r0=(g.items.find(function(x){ return x.reason; })||{}).reason;
         var shifts={}; g.items.forEach(function(x){ var k=dclShift_(x), o=shifts[k]=shifts[k]||{ n:0, f0:x.from, f1:x.from, t0:x.to, t1:x.to }; o.n++; if(x.from<o.f0) o.f0=x.from; if(x.from>o.f1) o.f1=x.from; if(x.to<o.t0) o.t0=x.to; if(x.to>o.t1) o.t1=x.to; });   // 변동 일수별로 묶어 표시
-        return '<div class="dcl-g'+(need?' need':'')+'"><div class="dcl-gh"><b>'+sdE_(g.proj||"-")+'</b><span class="m">'+sdE_(g.cust||"")+'</span><span class="m">'+sdMD_(g.day)+' 감지 · '+g.items.length+'건</span><span style="flex:1"></span>'
+        return '<div class="dcl-g'+(need?' need':'')+'"><div class="dcl-gh"><b>'+sdE_(g.proj||"-")+'</b><span class="m">'+sdE_(g.cust||"")+'</span>'+(g.pnoList.length?'<span class="m" title="'+sdE_(g.pnoList.join(", "))+'">'+sdE_(g.pnoList.slice(0,3).join(" · "))+(g.pnoList.length>3?(' 외 '+(g.pnoList.length-3)):'')+'</span>':'')+'<span class="m">'+sdMD_(g.day)+' 감지 · '+g.items.length+'건</span><span style="flex:1"></span>'
           +(need?'<span class="dcl-no">근거 미입력 '+need+'건</span>':'<span class="dcl-ok">근거 입력됨</span>')+'<button type="button" class="sd-btn" data-dcl="'+sdE_(g.key)+'">'+(need?'근거 입력':'근거 보기·수정')+'</button></div>'
           +'<div class="dcl-sh">'+Object.keys(shifts).map(function(k){ var o=shifts[k], rg=function(a,b){ return a===b?sdMD_(a):(sdMD_(a)+"~"+sdMD_(b)); }; return '<span class="dcl-chip"><b>'+sdE_(k)+'</b> '+o.n+'건 · '+rg(o.f0,o.f1)+' → '+rg(o.t0,o.t1)+'</span>'; }).join("")+'</div>'
           +(r0?'<div class="dcl-r"><span class="sdl-kind chg">'+sdE_(r0.kind)+'</span> '+sdE_(r0.text).replace(/\n/g,"<br>")+' <span class="m">— '+sdE_(r0.by)+' · '+sdE_(String(r0.at||"").slice(5,16))+'</span>'+((r0.files||[]).length?'<div class="sdl-files">'+r0.files.map(sdlFileHtml_).join("")+'</div>':'')+'</div>':'')
-          +'<details class="dcl-det"><summary>주문 '+g.items.length+'건 보기</summary><table class="sd-tb"><thead><tr><th>관리번호</th><th>도번</th><th>품명</th><th>최종납기 (전 → 후)</th><th>근거</th></tr></thead><tbody>'
-          +g.items.map(function(x){ return '<tr'+(dclShipped_(x.ord)?' style="opacity:.55;"':'')+'><td class="k">'+sdE_(x.ord)+(dclShipped_(x.ord)?' <span class="sdl-kind done">납품완료</span>':'')+'</td><td>'+sdE_(x.draw)+'</td><td>'+sdE_(x.name)+'</td><td>'+sdE_(x.from)+' → <b>'+sdE_(x.to)+'</b> <span class="m">('+dclShift_(x)+')</span></td><td>'+(x.reason?sdE_(x.reason.kind):'<span class="dcl-no">미입력</span>')+'</td></tr>'; }).join("")+'</tbody></table></details></div>'; }).join("")
+          +'<details class="dcl-det"><summary>주문 '+g.items.length+'건 보기</summary><table class="sd-tb"><thead><tr><th>관리번호</th><th>PROJECT NO.</th><th>도번</th><th>품명</th><th>최종납기 (전 → 후)</th><th>근거</th></tr></thead><tbody>'
+          +g.items.map(function(x){ return '<tr'+(dclShipped_(x.ord)?' style="opacity:.55;"':'')+'><td class="k">'+sdE_(x.ord)+(dclShipped_(x.ord)?' <span class="sdl-kind done">납품완료</span>':'')+'</td><td>'+sdE_(x.proj||"")+'</td><td>'+sdE_(x.draw)+'</td><td>'+sdE_(x.name)+'</td><td>'+sdE_(x.from)+' → <b>'+sdE_(x.to)+'</b> <span class="m">('+dclShift_(x)+')</span></td><td>'+(x.reason?sdE_(x.reason.kind):'<span class="dcl-no">미입력</span>')+'</td></tr>'; }).join("")+'</tbody></table></details></div>'; }).join("")
       :'<div class="sd-empty">감지된 최종납기 변경이 없습니다. (이 기능을 넣은 뒤부터 감지됩니다)</div>')+'</div>';
   if(!root.__bound){ root.__bound=true;
     root.addEventListener("click", function(e){ var b=e.target.closest("[data-dcl]"), a=e.target.closest("[data-a]"); if(b){ dclReasonPop_(b.getAttribute("data-dcl")); return; } if(!a) return; var k=a.getAttribute("data-a"); if(k==="dclreload"){ __dcl.loaded=false; dclRender_(); } if(k==="dclxls") dclExcel_(); });
@@ -13293,20 +13304,23 @@ function dclReasonPop_(key){
   var g=dclGroups_(__dcl.list).find(function(x){ return x.key===key; }); if(!g) return; var r0=(g.items.find(function(x){ return x.reason; })||{}).reason||{};
   var old=document.querySelector(".sd-ov"); if(old) old.remove(); var ov=document.createElement("div"); ov.className="sd-ov";
   ov.innerHTML='<div class="sd-pop" style="width:min(600px,96vw);"><div class="sd-ph"><b>📆 최종납기 변경 근거</b><button type="button" data-x="close">닫기 ✕</button></div><div class="sd-pb">'
-    +'<div><b>'+sdE_(g.proj)+'</b> · '+sdE_(g.cust||"")+' · '+sdMD_(g.day)+' 감지 · 주문 '+g.items.length+'건</div>'
+    +'<div><b>'+sdE_(g.proj)+'</b> · '+sdE_(g.cust||"")+(g.pnoList.length?(' · '+sdE_(g.pnoList.join(", "))):'')+' · '+sdMD_(g.day)+' 감지 · 주문 '+g.items.length+'건</div>'
     +'<div class="sdl-fr" style="margin-top:10px;"><select id="dcl-kind">'+DCL_REASONS.map(function(k){ return '<option'+(r0.kind===k?' selected':'')+'>'+k+'</option>'; }).join("")+'</select><span class="m">변경 원인</span></div>'
     +'<textarea id="dcl-text" rows="4" style="width:100%;margin-top:8px;border:1px solid #D0D5DD;border-radius:10px;padding:8px 10px;font:inherit;font-size:13.5px;" placeholder="예: 가공 설비 고장으로 생산 2주 지연 — 생산팀 박OO 09/29 회의, 고객 통보 완료(영업 김OO 09/30 메일)">'+sdE_(r0.text||"")+'</textarea>'
-    +((r0.files||[]).length?'<div class="sdl-files">'+r0.files.map(sdlFileHtml_).join("")+'</div>':'')
+    +'<div class="sdl-files" id="dcl-old">'+((r0.files||[]).map(function(f,i){ return qmsFileChipX_(f,'data-dfdel="'+i+'"'); }).join(""))+'</div>'
     +'<div class="sdl-fr" style="margin-top:6px;"><button type="button" class="sd-btn" data-x="file">📎 근거 첨부 (회의록·메일·공문)</button><input type="file" id="dcl-files" multiple style="display:none"><span id="dcl-flist" class="m"></span></div>'
     +'<div class="m" style="font-size:12px;margin-top:6px;">이 묶음의 주문 '+g.items.length+'건 모두에 같은 근거가 기록됩니다 · 작성자: '+sdE_(sdWho_())+'</div></div>'
     +'<div class="sd-pf"><button type="button" class="sd-btn pri" data-x="save">근거 저장</button></div></div>';
-  document.body.appendChild(ov); var files=[];
+  document.body.appendChild(ov); var files=[], keep=(r0.files||[]).slice(), removed=[];
+  ov.addEventListener("click", function(e){ var di=e.target.getAttribute && e.target.getAttribute("data-dfdel"); if(di==null) return; var ff=keep[+di]; if(!ff) return;
+    if(!confirm("첨부 '"+ff.name+"'을(를) 삭제할까요? ([근거 저장]을 눌러야 반영)")) return; removed.push(ff); keep[+di]=null;
+    e.target.closest(".fchip").remove(); }, true);
   ov.addEventListener("change", function(e){ if(e.target.id==="dcl-files"){ files=files.concat([].slice.call(e.target.files||[])); ov.querySelector("#dcl-flist").textContent=files.map(function(f){ return f.name; }).join(", "); e.target.value=""; } });
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
     if(e.target===ov || x==="close"){ ov.remove(); return; } if(x==="file"){ ov.querySelector("#dcl-files").click(); return; }
     if(x==="save"){ var text=String(ov.querySelector("#dcl-text").value||"").trim(), kind=ov.querySelector("#dcl-kind").value; if(!text){ alert("변경 근거를 적어 주세요."); return; }
-      var btn=e.target; btn.disabled=true; btn.textContent=files.length?"첨부 올리는 중…":"저장 중…"; var up=(r0.files||[]).slice(), left=files.length;
-      var go=function(){ var rs={ kind:kind, text:text, files:up, by:sdWho_(), at:new Date().toLocaleString("sv-SE").slice(0,16) }, now=Date.now();
+      var btn=e.target; btn.disabled=true; btn.textContent=files.length?"첨부 올리는 중…":"저장 중…"; var up=keep.filter(Boolean), left=files.length;
+      var go=function(){ removed.forEach(qmsFileTrash_); var rs={ kind:kind, text:text, files:up, by:sdWho_(), at:new Date().toLocaleString("sv-SE").slice(0,16) }, now=Date.now();
         g.items.forEach(function(it){ var t=__dcl.list.find(function(z){ return z.id===it.id; }); if(t){ t.reason=rs; t.rts=now; } });
         // 특별납기에 등록된 같은 관리번호가 있으면 그 이력에도 남김
         try{ var ords={}; g.items.forEach(function(it){ ords[it.ord]=it; }); (__sd.items||[]).forEach(function(s){ var it=ords[s.ord]; if(it && !s.del) sdlAdd_({ sid:s.id, ord:s.ord, draw:s.draw, kind:"근거 메모", text:"[최종납기 변경 "+sdMD_(it.from)+"→"+sdMD_(it.to)+"] "+kind+" — "+text, files:up }); }); }catch(_){}
@@ -13320,7 +13334,7 @@ function dclExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러�
 // MAIN 표: 최종납기 옆 ↻ (변경 감지됨) — 누르면 근거
 function dclTag_(ord){ if(!__dcl.list.length || dclShipped_(ord)) return ""; var L=dclFor_(String(ord||"").trim()); if(!L.length) return ""; var x=L[L.length-1];
   return ' <span class="dcl-tag'+(x.reason?'':' need')+'" title="최종납기 변경 '+sdE_(x.from)+' → '+sdE_(x.to)+(x.reason?(' · 근거: '+sdE_(x.reason.kind)+' — '+sdE_(x.reason.text)):' · 근거 미입력')+' (누르면 근거 입력)" onclick="event.stopPropagation();dclGoOrd_(\''+sdE_(x.ord).replace(/'/g,"")+'\')">↻'+(x.reason?'':'!')+'</span>'; }
-function dclGoOrd_(ord){ var L=dclFor_(ord); if(!L.length) return; var x=L[L.length-1]; var key=(x.proj||x.ord.replace(/-\d+$/,""))+"|"+x.day; dclReasonPop_(key); }
+function dclGoOrd_(ord){ var L=dclFor_(ord); if(!L.length) return; var x=L[L.length-1]; var key=dclPrefix_(x.ord)+"|"+x.day; dclReasonPop_(key); }
 // 알림: 근거 미입력 묶음
 (function(){ if(typeof qmsMorningAlerts_!=="function") return; var orig=qmsMorningAlerts_;
   qmsMorningAlerts_=function(){ var items=[]; try{ items=orig()||[]; }catch(_){} try{ var n=dclGroups_(__dcl.list.filter(function(x){ return !x.reason && Date.now()-x.ts<60*86400000 && !dclShipped_(x.ord); })).length; if(n) items.push({ icon:"📆", title:"최종납기 변경 근거 미입력", count:n+"묶음", color:"#B54708", view:"duechg" }); }catch(_){} return items; }; })();
@@ -13393,11 +13407,13 @@ function mtEdit_(id){
     +ta("mt-basis","근거",r.basis,"예: 가공 설비 고장(09/28) — 생산팀 복구 예정 10/05 / 고객 09/30 메일 동의",3)
     +'<div class="mt-l">조치 항목 <span class="m">— 누가 · 무엇을 · 언제까지</span></div><table class="mt-tb mt-edit"><thead><tr><th>조치 내용</th><th>담당</th><th>기한</th><th>상태</th><th></th></tr></thead><tbody id="mt-acts">'+((r.actions||[]).length?r.actions.map(actRow).join(""):actRow())+'</tbody></table>'
     +'<button type="button" class="sd-btn" data-x="addact" style="margin-top:6px;">＋ 조치 추가</button>'
-    +'<div class="mt-l" style="margin-top:10px;">첨부</div><div class="sdl-files" id="mt-flist">'+(r.files||[]).map(sdlFileHtml_).join("")+'</div>'
+    +'<div class="mt-l" style="margin-top:10px;">첨부</div><div class="sdl-files" id="mt-flist">'+(r.files||[]).map(function(f,i){ return qmsFileChipX_(f,'data-mfdel="'+i+'"'); }).join("")+'</div>'
     +'<div class="sdl-fr" style="margin-top:6px;"><button type="button" class="sd-btn" data-x="file">📎 파일 첨부 (회의 자료·메일·사진)</button><input type="file" id="mt-files" multiple style="display:none"><span id="mt-newf" class="m"></span></div>'
     +(isNew?'':'<details class="mt-hist"><summary>작성·수정 이력 ('+((r.hist||[]).length+1)+')</summary><div>'+sdE_(new Date(r.at||0).toLocaleString("ko-KR"))+' · '+sdE_(r.by||"")+' · 작성</div>'+(r.hist||[]).map(function(h){ return '<div>'+sdE_(new Date(h.at).toLocaleString("ko-KR"))+' · '+sdE_(h.by)+' · '+sdE_(h.what)+'</div>'; }).join("")+'</details>')
     +'</div><div class="sd-pf" style="gap:8px;">'+(isNew?'':'<button type="button" class="sd-btn" data-x="del" style="color:#B42318;margin-right:auto;">삭제</button><button type="button" class="sd-btn" data-x="print">🖨 인쇄·PDF</button>')+'<button type="button" class="sd-btn pri" data-x="save">저장</button></div></div>';
-  document.body.appendChild(ov); var nf=[];
+  document.body.appendChild(ov); var nf=[], keepF=(r.files||[]).slice(), remF=[];
+  ov.addEventListener("click", function(e){ var di=e.target.getAttribute && e.target.getAttribute("data-mfdel"); if(di==null) return; e.stopPropagation(); var ff=keepF[+di]; if(!ff) return;
+    if(!confirm("첨부 '"+ff.name+"'을(를) 삭제할까요? ([저장]을 눌러야 반영)")) return; remF.push(ff); keepF[+di]=null; e.target.closest(".fchip").remove(); }, true);
   ov.addEventListener("change", function(e){ if(e.target.id==="mt-files"){ nf=nf.concat([].slice.call(e.target.files||[])); ov.querySelector("#mt-newf").textContent=nf.map(function(f){ return f.name; }).join(", "); e.target.value=""; } });
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
     if(e.target.getAttribute && e.target.getAttribute("data-rm")){ e.target.closest("tr").remove(); return; }
@@ -13414,8 +13430,9 @@ function mtEdit_(id){
         return { id:tr.getAttribute("data-aid"), t:tr.querySelector(".a-t").value.trim(), owner:tr.querySelector(".a-o").value.trim(), due:sdParseDate_(tr.querySelector(".a-d").value)||"", st:st, doneAt:(st==="완료"?(prev.doneAt||mtToday_()):"") }; }).filter(function(a){ return a.t; });
       var changed=[]; if(!isNew){ var lab={ type:"종류", date:"날짜", title:"제목", cust:"고객", proj:"프로젝트", ords:"관련 번호", attendees:"참석자", content:"논의 내용", decision:"결정 사항", basis:"근거" };
         Object.keys(lab).forEach(function(k){ if(String(r[k]||"")!==String(n[k]||"")) changed.push(lab[k]); }); if(JSON.stringify(r.actions||[])!==JSON.stringify(n.actions)) changed.push("조치 항목"); }
-      var btn=e.target; btn.disabled=true; btn.textContent=nf.length?"첨부 올리는 중…":"저장 중…"; var up=(r.files||[]).slice(), left=nf.length;
-      var go=function(){ if(nf.length) changed.push("첨부 +"+nf.length); Object.assign(r, n); r.files=up;
+      if(remF.length && !isNew) changed.push("첨부 삭제 "+remF.map(function(f){ return f.name; }).join(", "));
+      var btn=e.target; btn.disabled=true; btn.textContent=nf.length?"첨부 올리는 중…":"저장 중…"; var up=keepF.filter(Boolean), left=nf.length;
+      var go=function(){ remF.forEach(qmsFileTrash_); if(nf.length) changed.push("첨부 +"+nf.length); Object.assign(r, n); r.files=up;
         if(isNew){ r.at=Date.now(); r.by=sdWho_(); r.upd=r.at; r.updBy=r.by; r.hist=[]; __mt.list.push(r); } else if(changed.length) mtTouch_(r, "수정: "+changed.join(", ")); else { ov.remove(); return; }
         mtSave_(); ov.remove(); mtRender_(); try{ if(typeof showToast==="function") showToast("📝 저장했습니다 — 모든 PC에 공유됩니다"); }catch(_){} };
       if(!left) go(); else nf.forEach(function(f){ sdUploadFile_(f, function(info){ if(info) up.push(info); if(--left===0) go(); }); }); } });
@@ -13493,7 +13510,7 @@ function mainBulkPop_(pre){
         sdSave_();
         // 회의·변경 기록 1건
         try{ var first=sel[0].r, proj=String(first.vendor||""), q=String(ov.querySelector("#mb-q").value||"").trim();
-          __mt.list.push({ id:"M"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), type:"일정 변경", date:mtToday_(), title:(proj||q)+" 일정 변경 ("+sel.length+"건, "+kind+")", cust:String(first.customer||""), proj:proj, ords:sel.map(function(x){ return x.ord; }).join(", "),
+          __mt.list.push({ id:"M"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), type:"일정 변경", date:mtToday_(), title:(typeof dclPrefix_==="function"?dclPrefix_(sel[0].ord):(proj||q))+" 일정 변경 ("+sel.length+"건, "+kind+")", cust:String(first.customer||""), proj:proj, ords:sel.map(function(x){ return x.ord; }).join(", "),
             attendees:"", content:"MAIN 일괄 일정 변경 — "+(mode==="to"?("새 일정 "+to):((days>0?"+":"")+days+"일 이동"))+"\n"+lines.join("\n"), decision:"특별납기 가능일 변경 "+nUpd+"줄, 신규 등록 "+nReg+"건", basis:kind+" — "+why, actions:[], files:up, by:sdWho_(), at:Date.now(), upd:Date.now(), updBy:sdWho_(), hist:[] });
           mtSave_(); }catch(_){}
         ov.remove(); try{ if(typeof sdRefreshMainRow_==="function") sel.forEach(function(x){ sdRefreshMainRow_(x.ord); }); }catch(_){}
