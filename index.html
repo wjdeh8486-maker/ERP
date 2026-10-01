@@ -21423,7 +21423,9 @@ function insRender(){
     // [추가] 기능검사 미완료(측정실) / 출하 전 미검사(출하검사) — 행 표시·배너
     var __fnMiss={}, __fnBanner=[], __gateBanner=[];
     try{
-      if(insType==="measureS" || insType==="measureL"){ __fnMiss=insFnMissingRows_(rows); Object.keys(__fnMiss).forEach(function(ri){ __fnBanner.push({ draw:rows[ri].draw, ri:+ri, miss:__fnMiss[ri] }); }); }
+      if(insType==="measureS" || insType==="measureL"){
+        if(!window.__fnLogKick && typeof insGateLoadLogs_==="function" && (Date.now()-((INS_GATE_LOGS&&INS_GATE_LOGS.t)||0))>600000){ window.__fnLogKick=true; insGateLoadLogs_(function(){ window.__fnLogKick=false; try{ if(insType==="measureS"||insType==="measureL") insRender(); }catch(_){} }); }
+        __fnMiss=insFnMissingRows_(rows); Object.keys(__fnMiss).forEach(function(ri){ __fnBanner.push({ draw:rows[ri].draw, ri:+ri, miss:__fnMiss[ri] }); }); }
       if(insType==="shipping"){ rows.forEach(function(r, ri){ var m=insGateMissFor_(r); if(m) __gateBanner.push({ draw:r.draw, sn:r.sn, ri:ri, miss:m }); }); setTimeout(function(){ try{ insShipGateScan_(rows); }catch(_){} }, 1500); }
     }catch(_){}
     // 2행 헤더
@@ -21540,7 +21542,7 @@ function insRender(){
     + (__dupBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#C0392B;font-weight:700;font-size:13px;">⚠ 중복 입력 '+__dupBanner.length+'건 — 같은 도번+S/N이 여러 행에 있습니다. (납품 후 재입고해 다시 검사한 것이면 그 행 비고에 <b>재검사</b>라고 적으면 중복에서 빠집니다) 검사종합 이동 전 확인해 중복을 제거하세요.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__dupBanner.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #E4B4B4;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.draw)+'</b> <span style="color:#8A93A6;">/</span> <b style="color:#C0392B;">'+insEsc(d.sn)+'</b></span>'; }).join("")+(__dupBanner.length>20?'<span style="color:#8A1F1F;font-size:12px;align-self:center;">… 외 '+(__dupBanner.length-20)+'건</span>':'')+'</div></div>'):'')
     + (__outNoOverList.length?('<div style="background:#FFF3E6;border:1px solid #F0C48A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">\u26A0 출고NO 중복/초과 '+__outNoOverList.length+'건 — 개별 출고NO(주문)의 배분 합계가 주문수량을 넘었습니다. (콤마·슬래시로 묶인 출고NO는 개별 주문으로 분해해 계산 · MAIN 수량 기준)<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__outNoOverList.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #F0C48A;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.outNo)+'</b> <span style="color:#8A93A6;">합</span> <b style="color:#B45309;">'+d.sum+'</b> &gt; 수량 '+d.qty+'</span>'; }).join("")+(__outNoOverList.length>20?'<span style="color:#8A5A00;font-size:12px;align-self:center;">… 외 '+(__outNoOverList.length-20)+'건</span>':'')+'</div></div>'):'')
     + (__gateBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B42318;font-weight:700;font-size:13px;">⛔ 출하 전 미검사 '+__gateBanner.length+'건 — 필수검사(치수·기능 등)가 끝나지 않은 제품입니다. 도번을 누르면 해당 행(빨간색)으로 이동합니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__gateBanner.slice(0,30).map(function(d){ return '<span onclick="insTapPinScrollTo_('+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #E4B4B4;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;">'+insEsc(d.draw)+(d.sn?' <span style="font-weight:400;">'+insEsc(String(d.sn).slice(0,20))+'</span>':'')+' · '+insEsc(d.miss.join(","))+'</span>'; }).join("")+'</div></div>'):'')
-    + (__fnBanner.length?('<div style="background:#FFF3E6;border:1px solid #F5C08A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">⚠ 기능검사 미완료 '+__fnBanner.length+'건 — 필수검사 정의에서 기능검사(LEAK·FLOW·가압·진공) 대상인데 체크가 없습니다. 도번을 누르면 해당 행(주황색)으로 이동합니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__fnBanner.slice(0,30).map(function(d){ return '<span onclick="insTapPinScrollTo_('+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #F5C08A;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;">'+insEsc(d.draw)+' · '+insEsc(d.miss.join(","))+'</span>'; }).join("")+'</div></div>'):'')
+    + (__fnBanner.length?('<div style="background:#FFF3E6;border:1px solid #F5C08A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">⚠ 기능검사 미완료 '+__fnBanner.length+'건 — 필수검사 정의에서 기능검사(LEAK·FLOW·가압·진공) 대상인데 소형·대형 어디에도 체크가 없습니다. 도번을 누르면 해당 행(주황색)으로 이동합니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__fnBanner.slice(0,30).map(function(d){ return '<span onclick="insTapPinScrollTo_('+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #F5C08A;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;">'+insEsc(d.draw)+' · '+insEsc(d.miss.join(","))+'</span>'; }).join("")+'</div></div>'):'')
     + (__tapPinBanner.length?('<div style="background:#FFF8E1;border:1px solid #F0D9A0;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#8A5A00;font-weight:700;font-size:13px;">⚠ '+(__tapPinType==="tap"?"TAP(공정검사)":"PIN 압입")+' 미체크 '+__tapPinBanner.length+'건 — 아래 도번을 누르면 해당 행(노란색)으로 이동합니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__tapPinBanner.slice(0,30).map(function(d){ return '<span onclick="insTapPinScrollTo_('+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #F0D9A0;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;color:#8A5A00;">'+insEsc(d.draw)+' ▸</span>'; }).join("")+(__tapPinBanner.length>30?'<span style="color:#8A5A00;font-size:12px;align-self:center;">… 외 '+(__tapPinBanner.length-30)+'건</span>':'')+'</div></div>'):'')
     + (__capped
         ? '<div style="background:#EAF3FF;border:1px solid #BBD6F5;border-radius:9px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:#1F4E79;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'
@@ -22864,6 +22866,7 @@ function insSnTail_(s){ s=String(s==null?"":s).trim(); if(!s) return ""; var p=s
 function insSnSet_(field){
   var set={}, f=String(field==null?"":field);
   f.split(/[,\/\n]+/).forEach(function(tok){ tok=tok.trim(); if(!tok) return;
+    if(/^[A-Fa-f][1-4]$/.test(tok) || /재고/.test(tok)) return;   // [수정] 재고 위치(D3 등)·'재고사용' 표시는 S/N 아님
     if(tok.indexOf("~")>=0){ var mm=tok.split("~"), a=Number(insSnTail_(mm[0])), b=Number(insSnTail_(mm[1]));
       if(isFinite(a)&&isFinite(b)&&b>=a&&(b-a)<10000){ for(var i=a;i<=b;i++) set[String(i)]=true; return; } }
     var t=insSnTail_(tok); if(t) set[t]=true;
@@ -23019,8 +23022,14 @@ function insFnNeed_(draw){
   return Object.keys(INS_FN_MAP).filter(function(k){ return row[k]==="Y"; });
 }
 function insFnMissingRows_(rows){   // → {ri:[라벨...]}
+  // [수정] 측정실 소형·대형을 합쳐서 판정 — 치수는 소형, 기능(LEAK 등)은 대형에서 하는 경우처럼 나뉘어 있어도 완료로 봄
+  //        현재 화면 행 + 소형·대형 양쪽 행(이 PC) + 오늘 공유 검사일보(소형·대형)
   var out={}, done={};
-  rows.forEach(function(r){ var d=insNormDraw_(r.draw); if(!d) return; Object.keys(INS_FN_MAP).forEach(function(k){ if(r[INS_FN_MAP[k]]) (done[d]=done[d]||{})[k]=1; }); });
+  var mark=function(r){ var d=insNormDraw_(r && r.draw); if(!d) return; Object.keys(INS_FN_MAP).forEach(function(k){ if(r[INS_FN_MAP[k]]) (done[d]=done[d]||{})[k]=1; }); };
+  rows.forEach(mark);
+  try{ ["measureS","measureL"].forEach(function(t){ ((insState[t]&&insState[t].rows)||[]).forEach(mark); }); }catch(_){}
+  try{ if(typeof INS_GATE_LOGS!=="undefined" && INS_GATE_LOGS.rows){ (INS_GATE_LOGS.rows.measureS||[]).forEach(mark); (INS_GATE_LOGS.rows.measureL||[]).forEach(mark); } }catch(_){}
+  try{ if(typeof insUnresolvedSrc!=="undefined" && insUnresolvedSrc){ ["measureS","measureL"].forEach(function(t){ ((insUnresolvedSrc[t]&&insUnresolvedSrc[t].rows)||[]).forEach(mark); }); } }catch(_){}
   rows.forEach(function(r, ri){ var d=String(r.draw||"").trim(); if(!d) return; if((Number(r.insCnt)||0)<=0 && (Number(r.fnCnt)||0)<=0 && !String(r.sn||"").trim()) return;
     var need=insFnNeed_(d); if(!need || !need.length) return; var nd=insNormDraw_(d);
     var miss=need.filter(function(k){ return !(done[nd] && done[nd][k]); }); if(miss.length) out[ri]=miss.map(function(k){ return INS_FN_LBL[k]; }); });
@@ -23034,12 +23043,23 @@ function insGateKey_(draw, sn){ return insNormDraw_(draw)+"|"+Object.keys(insSnS
     return orig(draw, sn, function(g){ try{ if(!reqKeys && g && !g.noMaster) __gateRes[insGateKey_(draw, sn)]={ t:Date.now(), missing:g.missing||[], detail:g.missingDetail||[] }; }catch(_){} if(cb) cb(g); }, reqKeys); }; })();
 function insShipGateScan_(rows){
   if(window.__gateScanning) return; var todo=[], seen={};
-  rows.forEach(function(r){ var d=String(r.draw||"").trim(), sn=String(r.sn||"").trim(); if(!d || !sn || insIsReinsp_(r)) return; var k=insGateKey_(d, sn); if(seen[k]) return; seen[k]=1; var c=__gateRes[k]; if(c && Date.now()-c.t<10*60000) return; todo.push({ d:d, sn:sn }); });
+  rows.forEach(function(r){ var d=String(r.draw||"").trim(), sn=String(r.sn||"").trim(); if(!d || !insGateTarget_(r)) return; var k=insGateKey_(d, sn); if(seen[k]) return; seen[k]=1; var c=__gateRes[k]; if(c && Date.now()-c.t<10*60000) return; todo.push({ d:d, sn:sn }); });
   todo=todo.slice(0,40); if(!todo.length) return; window.__gateScanning=true; var i=0, changed=false;
   (function next(){ if(i>=todo.length){ window.__gateScanning=false; if(changed && insType==="shipping"){ try{ insRender(); }catch(_){} } return; }
     var it=todo[i++]; insShipGate_(it.d, it.sn, function(g){ if(g && (g.missing||[]).length) changed=true; setTimeout(next, 250); }); })();
 }
-function insGateMissFor_(r){ var c=__gateRes[insGateKey_(r.draw, r.sn)]; return (c && c.missing && c.missing.length)?c.missing:null; }
+// [수정] 자동 점검·표시 대상 제한 — 전에는 지난 날짜 행과 재고 출고분까지 점검해 "미검사"가 대량으로 떴음
+//   · 오늘 검사일 행만 (지난 행은 이미 출고 완료)
+//   · 재고 출고분 제외: 구분에 '재고', S/N·비고에 '재고', 또는 S/N이 재고 위치 코드(A1~F4)뿐인 행
+function insGateTarget_(r){
+  if(!r || insIsReinsp_(r)) return false;
+  if(String(r.insDate||"").slice(0,10)!==insToday_()) return false;
+  if(/재고/.test(String(r.seg||"")) || /재고/.test(String(r.sn||"")) || /재고/.test(String(r.note||""))) return false;
+  var toks=String(r.sn||"").split(/[,\/\s]+/).filter(Boolean); if(!toks.length) return false;
+  if(toks.every(function(t){ return /^[A-Fa-f][1-4]$/.test(t); })) return false;
+  return true;
+}
+function insGateMissFor_(r){ if(!insGateTarget_(r)) return null; var c=__gateRes[insGateKey_(r.draw, r.sn)]; return (c && c.missing && c.missing.length)?c.missing:null; }
 // 디바운스: 연속 입력 시 마지막 것만 600ms 후 서버 조회(호출 급감)
 var __gateDebT=null, __gateDebLast="";
 function insShipGateDebounced_(draw, sn, cb, reqKeys){
