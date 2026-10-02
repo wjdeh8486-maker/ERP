@@ -1657,7 +1657,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-02 17:40 출하 전 미검사 판정 수정·회의 기록 인쇄"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-02 18:00 회의록 참석자 서명란"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -13582,6 +13582,15 @@ function mtPrintList_(L){
     +'</table>'+qdSign_(["작성","검토","승인"]);
   qdocOpen_("회의·변경 기록 목록 ("+L.length+"건)", h);
 }
+// [추가] 회의록 서명란 = 참석자 수만큼 (증빙용). "품질 이정도, 영업 김OO / 생산 박OO" → 칸 3개. 참석자가 없으면 작성·검토·승인
+function mtAttSign_(att){
+  var names=String(att||"").split(/[,，/·\n;]+/).map(function(x){ return x.trim(); }).filter(Boolean);
+  if(!names.length) return qdSign_();
+  var E=function(t){ return qdE2_(t); }, per=4, rows=[];
+  for(var i=0;i<names.length;i+=per) rows.push(names.slice(i,i+per));
+  return '<h2>참석자 확인 ('+names.length+'명)</h2><table class="sign">'+rows.map(function(rw){ var pad=[]; for(var k=rw.length;k<per;k++) pad.push("");
+      return '<tr>'+rw.concat(pad).map(function(n){ return '<th class="c" style="width:25%;">'+(n?E(n):"")+'</th>'; }).join("")+'</tr><tr>'+rw.concat(pad).map(function(n){ return '<td>'+(n?"(서명)":"")+'</td>'; }).join("")+'</tr>'; }).join("")+'</table>';
+}
 function mtPrint_(r){
   if(typeof qdocOpen_!=="function"){ alert("인쇄 기능을 찾을 수 없습니다."); return; }
   var E=function(t){ return qdE2_(t); }, ed=function(t){ return qdEd_(t); };
@@ -13591,7 +13600,7 @@ function mtPrint_(r){
     +'<h2>1. 논의 내용</h2><table><tr><td>'+ed(r.content)+'</td></tr></table><h2>2. 결정 사항</h2><table><tr><td>'+ed(r.decision)+'</td></tr></table><h2>3. 근거</h2><table><tr><td>'+ed(r.basis)+'</td></tr></table>'
     +'<h2>4. 조치 항목</h2><table><tr><th class="c">No</th><th>조치 내용</th><th>담당</th><th>기한</th><th>상태</th></tr>'+((r.actions||[]).length?r.actions.map(function(a,i){ return '<tr><td class="c">'+(i+1)+'</td><td>'+E(a.t)+'</td><td>'+E(a.owner)+'</td><td>'+E(a.due)+'</td><td>'+E(a.st)+'</td></tr>'; }).join(""):'<tr><td colspan="5" class="c m">없음</td></tr>')+'</table>'
     +((r.files||[]).length?'<h2>5. 첨부</h2><table>'+r.files.map(function(f){ return '<tr><td>'+E(f.name)+'</td><td class="m">'+E(f.url)+'</td></tr>'; }).join("")+'</table>':'')
-    +'<div class="m" style="margin-top:6px;">작성 '+E(r.by||"")+' · '+E(new Date(r.at||0).toLocaleString("ko-KR"))+(r.updBy&&r.upd!==r.at?(' / 최종 수정 '+E(r.updBy)+' · '+E(new Date(r.upd).toLocaleString("ko-KR"))):'')+'</div>'+qdSign_();
+    +'<div class="m" style="margin-top:6px;">작성 '+E(r.by||"")+' · '+E(new Date(r.at||0).toLocaleString("ko-KR"))+(r.updBy&&r.upd!==r.at?(' / 최종 수정 '+E(r.updBy)+' · '+E(new Date(r.upd).toLocaleString("ko-KR"))):'')+'</div>'+mtAttSign_(r.attendees);
   qdocOpen_((r.type==="회의"?"회의록":"변경·결정 기록")+" — "+(r.title||""), h);
 }
 function mtExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
@@ -25895,8 +25904,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-02 17:40 출하 전 미검사 판정 수정·회의 기록 인쇄 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-02 17:40 출하 전 미검사 판정 수정·회의 기록 인쇄" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.1 🔔</div>
+<!-- QMS-BUILD: 2026-10-02 18:00 회의록 참석자 서명란 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-02 18:00 회의록 참석자 서명란" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.1 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
