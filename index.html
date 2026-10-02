@@ -5831,6 +5831,30 @@ function insplistSnExists_(partNo, sn){    // 입력한 S/N이 그 품번 재고
   return false;
 }
 
+// [추가] S/N 표시: 출하검사에서 양품 0(전량 부적합)인 행의 S/N은 "(불량)"으로 표시 — 완료수량에는 원래부터 안 들어감
+//   같은 S/N이 재고 출고나 다른 양품 행에 있으면(재검사 후 출고 등) 그대로 표시
+// [추가] 출하검사 부적합을 조치 완료(조치 완료일 입력)한 수량 → 완료에 더함
+//   · 출고No가 이 주문 하나일 때만 (여러 주문을 묶은 행은 어느 주문 것인지 알 수 없어 제외)
+//   · 그 S/N이 이미 재고 출고(관리번호)로 잡혀 있으면 두 번 세지 않음
+function insplistReworkDone_(orderNo, iv, shipRows){
+  var stockSn={}; (iv||[]).forEach(function(r){ if(String(r.ctrlNo||"").trim()===orderNo && (Number(r.outQty)||0)>0 && r.sn && (typeof insplistStockCountable_!=="function" || insplistStockCountable_(r))) String(r.sn).split(/[,\n\/]+/).forEach(function(t){ (t.trim().replace(/^10768-/,"").match(/\d+/g)||[]).forEach(function(n){ stockSn[n]=1; }); }); });
+  var n=0;
+  (shipRows||[]).forEach(function(r){ if(!r || (typeof insIsReinsp_==="function" && insIsReinsp_(r))) return; if(!String(r.actDate||"").trim()) return;
+    var outs=insplistExpandOutNo_(r.outNo); if(outs.length!==1 || outs[0]!==orderNo) return;
+    var ic=Number(r.insCnt)||0, gc=Number(r.goodCnt)||0, bad=ic-gc; if(bad<=0) return;
+    var sn=[]; String(r.sn||"").split(/[,\n\/]+/).forEach(function(t){ (t.trim().replace(/^10768-/,"").match(/\d+/g)||[]).forEach(function(x){ if(x!=="10768") sn.push(x); }); });
+    if(sn.length && sn.every(function(x){ return stockSn[x]; })) return;   // 이미 재고 출고로 셈
+    n+=bad; });
+  return n;
+}
+function insplistSnLabel_(orderNo, iv, shipRows, sns){
+  var good={}, bad={}, nums=function(txt, o){ String(txt||"").split(/[,\n\/]+/).forEach(function(tok){ tok=tok.trim().replace(/^10768-/,""); (tok.match(/\d+/g)||[]).forEach(function(n){ if(n!=="10768") o[n]=1; }); }); };
+  (iv||[]).forEach(function(r){ if(String(r.ctrlNo||"").trim()===orderNo && (Number(r.outQty)||0)>0 && r.sn) nums(r.sn, good); });
+  var fixed={};
+  (shipRows||[]).forEach(function(r){ if(!r || !r.sn || insplistExpandOutNo_(r.outNo).indexOf(orderNo)<0) return; var ic=Number(r.insCnt)||0, gc=Number(r.goodCnt);
+    if(ic>0 && gc===0){ nums(r.sn, String(r.actDate||"").trim()?fixed:bad); } else nums(r.sn, good); });
+  return sns.map(function(n){ if(good[n]) return n; if(fixed[n]) return n+"(조치완료)"; if(bad[n]) return n+"(불량)"; return n; });
+}
 function insplistBuildRows_(q, shipRows){
   q=String(q||"").trim(); if(!q) return [];
   var md=(typeof mainData!=="undefined"&&mainData)?mainData:[];
@@ -5943,7 +5967,7 @@ sns = Array.from(new Set(sns));
     // [수정] 재고로 입고→관리번호로 출고한 제품을 출하검사일보에도 같은 출고No로 적으면 두 번 세어짐(예: 3개인데 4개 완료)
     //        → 두 곳에 같은 S/N이 있으면 그 개수만큼 출하검사 쪽에서 뺌. S/N이 없으면 기존과 같음
     var __dupSn=Object.keys(__shSn).filter(function(n){ return __stSn[n]; }).length;
-    var done=Math.min(qty, stockOut + Math.max(0, shipDone - __dupSn));     // 완료는 수량이 상한
+    var done=Math.min(qty, stockOut + Math.max(0, shipDone - __dupSn) + insplistReworkDone_(orderNo, iv, shipRows));     // 완료는 수량이 상한 · [추가] 부적합 조치 완료분 포함
     var lack=Math.max(0, qty-done);                  // 부족 = 수량 − 완료 (0 이상)
     var partNo=String(m.partNo||"").trim();
     var stockQty=insplistStockQty_(partNo, m.oldDrawingNo);          // 보유재고 (품번+도번)
@@ -5963,7 +5987,7 @@ else if(used){
 else if(stockQty>0){
   note=(lastLoc?lastLoc:"X")+"("+stockQty+")";
 }
-    return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:sns.join(", "),
+    return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:insplistSnLabel_(orderNo, iv, shipRows, sns).join(", "),
              status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[partNo]||""),
              partNo:partNo, stockQty:stockQty, lastLoc:lastLoc, used:used, note:note };
   }).filter(function(r){
@@ -7743,7 +7767,7 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
     sns=Array.from(new Set(sns));
     var shipDone=shipAlloc[orderNo]||0;
     var __dupSn=Object.keys(__shSn).filter(function(n){ return __stSn[n]; }).length;
-    var done=Math.min(qty, stockOut+Math.max(0, shipDone-__dupSn));
+    var done=Math.min(qty, stockOut+Math.max(0, shipDone-__dupSn)+insplistReworkDone_(orderNo, iv, shipRows));   // [추가] 부적합 조치 완료분 포함
     var lack=Math.max(0, qty-done);
     var partNo=String(m.partNo||"").trim();
     var stockQty=insplistStockQty_(partNo, m.oldDrawingNo);
@@ -7752,7 +7776,7 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
     var note="";
     if(dispatched){ note="납기분출"; }
     else if(stockQty>0){ note=(lastLoc?lastLoc:"X")+"("+stockQty+")"; }
-    return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:sns.join(", "),
+    return { orderNo:orderNo, project:project, name:name, qty:qty, done:done, lack:lack, sn:insplistSnLabel_(orderNo, iv, shipRows, sns).join(", "),
              status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[partNo]||""),
              partNo:partNo, stockQty:stockQty, lastLoc:lastLoc, dispatched:dispatched, po:(m.prpo!=null?String(m.prpo):""), note:note };
   }).filter(function(r){
