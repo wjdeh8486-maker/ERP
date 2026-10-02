@@ -21674,7 +21674,7 @@ function insRender(){
     try{
       if(insType==="measureS" || insType==="measureL"){
         if(!window.__fnLogKick && typeof insGateLoadLogs_==="function" && (Date.now()-((INS_GATE_LOGS&&INS_GATE_LOGS.t)||0))>600000){ window.__fnLogKick=true; insGateLoadLogs_(function(){ window.__fnLogKick=false; try{ if(insType==="measureS"||insType==="measureL") insRender(); }catch(_){} }); }
-        __fnMiss=insFnMissingRows_(rows); Object.keys(__fnMiss).forEach(function(ri){ __fnBanner.push({ draw:rows[ri].draw, ri:+ri, miss:__fnMiss[ri] }); }); }
+        __fnMiss=insFnMissingRows_(rows); __fnBanner=insFnMissingAll_(); }
       if(insType==="shipping"){ rows.forEach(function(r, ri){ var m=insGateMissFor_(r); if(m) __gateBanner.push({ draw:r.draw, sn:r.sn, ri:ri, miss:m }); }); setTimeout(function(){ try{ insShipGateScan_(rows); }catch(_){} }, 1500); }
     }catch(_){}
     // 2행 헤더
@@ -21791,7 +21791,7 @@ function insRender(){
     + (__dupBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#C0392B;font-weight:700;font-size:13px;">⚠ 중복 입력 '+__dupBanner.length+'건 <button type="button" onclick="insDupRescan_(insType)" style="margin:0 6px;padding:2px 8px;border:1px solid #E4B4B4;border-radius:6px;background:#fff;color:#B42318;font-weight:700;cursor:pointer;font-size:12px;">↻ 다시 확인</button>— 같은 도번+S/N이 여러 행에 있습니다. (납품 후 재입고해 다시 검사한 것이면 그 행 비고에 <b>재검사</b>라고 적으면 중복에서 빠집니다) 검사종합 이동 전 확인해 중복을 제거하세요.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__dupBanner.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #E4B4B4;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.draw)+'</b> <span style="color:#8A93A6;">/</span> <b style="color:#C0392B;">'+insEsc(d.sn)+'</b></span>'; }).join("")+(__dupBanner.length>20?'<span style="color:#8A1F1F;font-size:12px;align-self:center;">… 외 '+(__dupBanner.length-20)+'건</span>':'')+'</div></div>'):'')
     + (__outNoOverList.length?('<div style="background:#FFF3E6;border:1px solid #F0C48A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">\u26A0 출고NO 중복/초과 '+__outNoOverList.length+'건 — 개별 출고NO(주문)의 배분 합계가 주문수량을 넘었습니다. (콤마·슬래시로 묶인 출고NO는 개별 주문으로 분해해 계산 · MAIN 수량 기준)<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__outNoOverList.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #F0C48A;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.outNo)+'</b> <span style="color:#8A93A6;">합</span> <b style="color:#B45309;">'+d.sum+'</b> &gt; 수량 '+d.qty+'</span>'; }).join("")+(__outNoOverList.length>20?'<span style="color:#8A5A00;font-size:12px;align-self:center;">… 외 '+(__outNoOverList.length-20)+'건</span>':'')+'</div></div>'):'')
     + (__gateBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B42318;font-weight:700;font-size:13px;">⛔ 출하 전 미검사 '+__gateBanner.length+'건 — 필수검사(치수·기능 등)가 끝나지 않은 제품입니다. 도번을 누르면 해당 행(빨간색)으로 이동합니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__gateBanner.slice(0,30).map(function(d){ return '<span onclick="insTapPinScrollTo_('+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #E4B4B4;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;">'+insEsc(d.draw)+(d.sn?' <span style="font-weight:400;">'+insEsc(String(d.sn).slice(0,20))+'</span>':'')+' · '+insEsc(d.miss.join(","))+'</span>'; }).join("")+'</div></div>'):'')
-    + (__fnBanner.length?('<div style="background:#FFF3E6;border:1px solid #F5C08A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">⚠ 기능검사 미완료 '+__fnBanner.length+'건 — 필수검사 정의에서 기능검사(LEAK·FLOW·가압·진공) 대상인데 소형·대형 어디에도 체크가 없습니다. 도번을 누르면 해당 행(주황색)으로 이동합니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__fnBanner.slice(0,30).map(function(d){ return '<span onclick="insTapPinScrollTo_('+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #F5C08A;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;">'+insEsc(d.draw)+' · '+insEsc(d.miss.join(","))+'</span>'; }).join("")+'</div></div>'):'')
+    + (__fnBanner.length?('<div style="background:#FFF3E6;border:1px solid #F5C08A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">⚠ 기능검사 미완료 '+__fnBanner.length+'건 — 필수검사 정의에서 기능검사(LEAK·FLOW·가압·진공) 대상인데 소형·대형 어디에도 체크가 없습니다(소형·대형 동일 표시). 도번을 누르면 해당 행(주황색)으로 이동합니다 — 다른 화면의 도번이면 그 화면으로 전환됩니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__fnBanner.slice(0,30).map(function(d){ return '<span onclick="insFnGoto_(\''+d.type+'\','+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #F5C08A;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;">'+insEsc(d.draw)+' · '+insEsc(d.miss.join(","))+(d.type!==insType?' <span style="font-weight:400;color:#8A93A6;">('+(d.type==="measureL"?"대형":"소형")+')</span>':'')+'</span>'; }).join("")+'</div></div>'):'')
     + (__tapPinBanner.length?('<div style="background:#FFF8E1;border:1px solid #F0D9A0;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#8A5A00;font-weight:700;font-size:13px;">⚠ '+(__tapPinType==="tap"?"TAP(공정검사)":"PIN 압입")+' 미체크 '+__tapPinBanner.length+'건 — 아래 도번을 누르면 해당 행(노란색)으로 이동합니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__tapPinBanner.slice(0,30).map(function(d){ return '<span onclick="insTapPinScrollTo_('+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #F0D9A0;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;color:#8A5A00;">'+insEsc(d.draw)+' ▸</span>'; }).join("")+(__tapPinBanner.length>30?'<span style="color:#8A5A00;font-size:12px;align-self:center;">… 외 '+(__tapPinBanner.length-30)+'건</span>':'')+'</div></div>'):'')
     + (__capped
         ? '<div style="background:#EAF3FF;border:1px solid #BBD6F5;border-radius:9px;padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:#1F4E79;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'
@@ -23284,6 +23284,24 @@ function insFnMissingRows_(rows){   // → {ri:[라벨...]}
     var miss=need.filter(function(k){ return !(done[nd] && done[nd][k]); }); if(miss.length) out[ri]=miss.map(function(k){ return INS_FN_LBL[k]; }); });
   return out;
 }
+// [추가] 소형·대형 합쳐서 기능검사 미완료 목록 — 어느 화면에서 열어도 동일하게 나오도록 (소형에만 도번이 있어도 대형 화면에 같은 경고)
+//   → [{draw, type:"measureS"|"measureL", ri, miss:[라벨...]}]  (같은 도번은 1건, 현재 화면 행 우선)
+function insFnMissingAll_(){
+  var list=[], seen={}, order=(insType==="measureL")?["measureL","measureS"]:["measureS","measureL"];
+  order.forEach(function(t){
+    var rows=(insState[t]&&insState[t].rows)||[]; if(!rows.length) return;
+    var m=insFnMissingRows_(rows);
+    Object.keys(m).forEach(function(ri){ var d=insNormDraw_(rows[ri].draw); if(seen[d]) return; seen[d]=1; list.push({ draw:rows[ri].draw, type:t, ri:+ri, miss:m[ri] }); });
+  });
+  return list;
+}
+// 배너에서 도번 클릭 → 다른 화면(소형↔대형)의 행이면 그 화면으로 전환 후 이동
+function insFnGoto_(type, ri){
+  try{
+    if(type && type!==insType){ insType=type; insShowAllRows=false; var __sel=document.getElementById("insrep-typeSel"); if(__sel) __sel.value=type; try{ insSyncMetaInputs(); }catch(_){} insRender(); try{ insSaveLocal(); }catch(_){} }
+    insTapPinScrollTo_(ri);
+  }catch(_){}
+}
 // 출하검사: 게이트 결과 기억 (도번+S/N)
 var __gateRes={};
 function insGateKey_(draw, sn){ return insNormDraw_(draw)+"|"+Object.keys(insSnSet_(sn)).sort().join(","); }
@@ -24461,7 +24479,7 @@ function insCloudSave(){
   }catch(_){}
   try{   // [추가] 기능검사 미완료(측정실) / 출하 전 미검사(출하검사) 저장 시 경고
     var __rws=(insState[t]&&insState[t].rows)||[], __lst=[];
-    if(t==="measureS"||t==="measureL"){ var __fm=insFnMissingRows_(__rws); Object.keys(__fm).forEach(function(ri){ __lst.push(__rws[ri].draw+" ("+__fm[ri].join(",")+")"); }); if(__lst.length) insTapAlertPopup_("\u26A0 기능검사 미완료 "+__lst.length+"건 — 확인하세요!\n"+__lst.slice(0,20).join(", ")+(__lst.length>20?(" 외 "+(__lst.length-20)+"건"):"")+"\n\n필수검사 대상인데 LEAK·FLOW·가압·진공 체크가 없습니다. 표에 주황색으로 표시됩니다."); }
+    if(t==="measureS"||t==="measureL"){ var __fa=insFnMissingAll_(); __fa.forEach(function(d){ __lst.push(d.draw+" ("+d.miss.join(",")+")"+(d.type!==t?(d.type==="measureL"?" [대형]":" [소형]"):"")); }); if(__lst.length) insTapAlertPopup_("\u26A0 기능검사 미완료 "+__lst.length+"건 — 확인하세요!\n"+__lst.slice(0,20).join(", ")+(__lst.length>20?(" 외 "+(__lst.length-20)+"건"):"")+"\n\n필수검사 대상인데 LEAK·FLOW·가압·진공 체크가 없습니다. 표에 주황색으로 표시됩니다."); }
     if(t==="shipping"){ __rws.forEach(function(r){ var m=insGateMissFor_(r); if(m) __lst.push(r.draw+(r.sn?(" "+String(r.sn).slice(0,15)):"")+" ("+m.join(",")+")"); }); if(__lst.length) insTapAlertPopup_("\u26D4 출하 전 미검사 "+__lst.length+"건 — 확인하세요!\n"+__lst.slice(0,20).join(", ")+(__lst.length>20?(" 외 "+(__lst.length-20)+"건"):"")+"\n\n필수검사가 끝나지 않은 제품입니다. 표에 빨간색으로 표시됩니다."); }
   }catch(_){}
   try{ if(window.__insDupCache&&window.__insDupCache[t]){ insDupRecalc_(t); if(typeof insRender==="function") insRender(); } }catch(_){}   // [V9.27] 저장 시 배너 갱신
