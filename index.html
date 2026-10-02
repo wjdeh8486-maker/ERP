@@ -1651,10 +1651,12 @@
   .sdl-row.del{ opacity:.55; } .sdl-row.del .sdl-text{ text-decoration:line-through; }
   .sdl-deleted{ font-size:11px; font-weight:700; color:#B42318; background:#FEF3F2; border-radius:6px; padding:0 6px; }
   #view-specdue .sd-sform{ grid-template-columns:1.2fr 1.2fr 1fr 1.6fr auto auto !important; }
+  #view-specdue .sd-dwg{ color:#1D4ED8; text-decoration:none; font-weight:600; } #view-specdue .sd-dwg:hover{ text-decoration:underline; }
+  #view-specdue .sd-tb tr.done .sd-dwg{ color:#98A2B3; }
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-02 16:40 미저장 경고 원인 표시·수정/삭제 머리글"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-02 17:00 특별납기 품번 클릭 시 도면"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -12700,6 +12702,8 @@ function sdCalPrint_(){
   window.__sdLastPrintHtml=html;
 }
 /* ---------- 화면 ---------- */
+// [추가] 품번 → 도면 열기 링크 (MAIN 도면 조회와 같은 방식, 새 탭)
+function sdDwgLink_(d){ d=String(d||"").trim(); if(!d) return ""; return '<a href="#" class="sd-dwg" title="도면 열기 (새 탭)" onclick="event.preventDefault();event.stopPropagation();if(typeof openDrawing===\'function\')openDrawing(\''+sdE_(d).replace(/'/g,"")+'\');">'+sdE_(d)+'</a>'; }
 function sdRender_(){
   var root=document.getElementById("sd-root"); if(!root) return;
   if(!__sd.loaded){ root.innerHTML='<div class="sd-empty">불러오는 중…</div>'; sdLoad_(sdRender_); return; }
@@ -12722,7 +12726,7 @@ function sdRender_(){
   var ks=Object.keys(C.byDraw).sort(function(a,b){ var A=C.byDraw[a], B=C.byDraw[b]; return (A.start||"9")<(B.start||"9")?-1:1; });
   h+='<div class="sd-grid"><section class="sd-card"><h3>품번별 보유·부족</h3>'
     +(ks.length?'<table class="sd-tb"><thead><tr><th>품번</th><th>검사</th><th class="n" title="검사 끝나 출고만 남은 수량">재고</th><th class="n" title="아직 검사 전">검사대기</th><th class="n">보유 합계</th><th class="n">출고 합계</th><th class="n">부족</th><th>부족 시작</th><th>검사 시작</th></tr></thead><tbody>'
-    +ks.map(function(k){ var g=C.byDraw[k], diff=g.hold-g.need; return '<tr><td class="k" title="'+sdE_(g.name||"")+'">'+sdE_(k)+'</td><td><span class="sd-kind'+(g.vision?' v':'')+'">'+g.kind+'</span></td><td class="n"'+(g.usedS?' title="오늘 완료분 '+g.usedS+'개 미리 뺌 (업로드 전)"':'')+'>'+g.stock+(g.usedS?'<small class="m"> −'+g.usedS+'</small>':'')+'</td><td class="n"'+(g.usedW?' title="오늘 완료분 '+g.usedW+'개 미리 뺌 (업로드 전)"':'')+'>'+g.wait+(g.usedW?'<small class="m"> −'+g.usedW+'</small>':'')+'</td><td class="n"><b>'+g.hold+'</b></td><td class="n">'+g.need+'</td><td class="n"><span class="sd-pill '+(diff<0?"bad":"ok")+'">'+diff+'</span></td>'
+    +ks.map(function(k){ var g=C.byDraw[k], diff=g.hold-g.need; return '<tr><td class="k" title="'+sdE_(g.name||"")+'">'+sdDwgLink_(k)+'</td><td><span class="sd-kind'+(g.vision?' v':'')+'">'+g.kind+'</span></td><td class="n"'+(g.usedS?' title="오늘 완료분 '+g.usedS+'개 미리 뺌 (업로드 전)"':'')+'>'+g.stock+(g.usedS?'<small class="m"> −'+g.usedS+'</small>':'')+'</td><td class="n"'+(g.usedW?' title="오늘 완료분 '+g.usedW+'개 미리 뺌 (업로드 전)"':'')+'>'+g.wait+(g.usedW?'<small class="m"> −'+g.usedW+'</small>':'')+'</td><td class="n"><b>'+g.hold+'</b></td><td class="n">'+g.need+'</td><td class="n"><span class="sd-pill '+(diff<0?"bad":"ok")+'">'+diff+'</span></td>'
       +'<td>'+(g.shortFrom?'<b class="r">'+sdMD_(g.shortFrom)+'('+sdDow_(g.shortFrom)+')부터</b>':'<span class="m">-</span>')+'</td><td>'+(g.start?('<b class="'+(g.late?"r":"")+'">'+sdMD_(g.start)+'('+sdDow_(g.start)+')'+(g.late?' 늦음':'')+'</b>'):'-')+'</td></tr>'; }).join("")+'</tbody></table>':'<div class="sd-empty">등록된 미완료 항목이 없습니다</div>')
     +'</section>';
   // 비젼검사 준비 일정 (밀린 것 + 오늘부터 10근무일)
@@ -12750,7 +12754,7 @@ function sdRender_(){
     +'<div class="sd-tw"><table class="sd-tb"><thead><tr><th>상태</th><th>관리번호</th><th>품번</th><th>납기일자</th><th>가능일자</th><th class="n">수량</th><th>비고</th><th>검사 시작</th><th>이력·근거</th><th>완료</th><th>수정</th><th>삭제</th></tr></thead><tbody>'
     +(rows.length?rows.map(function(x){ var st, cls;
         if(sdDone_(x)){ st=(x.done?"완료":"납품완료"); cls="done"; } else if(x.avail<today){ st="지연"; cls="bad"; } else if(x.avail===today){ st="오늘"; cls="warn"; } else { var n=Math.round((new Date(x.avail+"T00:00:00")-new Date(today+"T00:00:00"))/86400000); st="D-"+n; cls=n<=3?"soon":""; }
-        return '<tr class="'+cls+'"><td><span class="sd-st '+cls+'">'+st+'</span></td><td class="k">'+sdE_(x.ord||"-")+'</td><td>'+sdE_(x.draw)+'</td><td class="m">'+sdMD_(x.due)+'</td><td><b>'+sdMD_(x.avail)+'</b> <small class="m">('+(x.avail?sdDow_(x.avail):"")+')</small></td>'
+        return '<tr class="'+cls+'"><td><span class="sd-st '+cls+'">'+st+'</span></td><td class="k">'+sdE_(x.ord||"-")+'</td><td>'+sdDwgLink_(x.draw)+'</td><td class="m">'+sdMD_(x.due)+'</td><td><b>'+sdMD_(x.avail)+'</b> <small class="m">('+(x.avail?sdDow_(x.avail):"")+')</small></td>'
           +'<td class="n"><b>'+x.qty+'</b>'+(x.done && (x.useStock||x.useWait)?' <small class="m">(재고 '+(x.useStock||0)+'·검사 '+(x.useWait||0)+')</small>':'')+(!sdDone_(x) && x._short>0?' <span class="sd-pill bad" title="보유(비젼) 부족">부족 '+x._short+'</span>':'')+'</td><td class="m">'+sdE_(x.note||"")+'</td>'
           +'<td>'+(sdDone_(x)?'<span class="m">-</span>':(x._start?'<span class="'+(x._late?"r":"")+'">'+sdMD_(x._start)+(x._late?' 늦음':'')+'</span>'+(x._ready>0?' <small class="m">(재고 '+x._ready+')</small>':''):(x._ready>=x.qty?'<span class="sd-ready">준비완료</span>':'-')))+'</td>'
           +(function(){ var L=(typeof sdlFor_==="function")?sdlFor_(x.id):[], nf=L.reduce(function(a,e){ return a+((e.files||[]).length); },0), nm=L.filter(function(e){ return !e.auto; }).length; return '<td><button type="button" class="sd-hist" data-hist="'+sdE_(x.id)+'" title="변경·근거 이력 보기 / 고객 요청·근거·첨부 추가">📋 <b>'+L.length+'</b>'+(nf?' 📎'+nf:'')+(nm?'':' <span style="color:#98A2B3;">+근거</span>')+'</button></td>'; })()
@@ -25876,8 +25880,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-02 16:40 미저장 경고 원인 표시·수정/삭제 머리글 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-02 16:40 미저장 경고 원인 표시·수정/삭제 머리글" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.1 🔔</div>
+<!-- QMS-BUILD: 2026-10-02 17:00 특별납기 품번 클릭 시 도면 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-02 17:00 특별납기 품번 클릭 시 도면" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.1 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
