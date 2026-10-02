@@ -13288,8 +13288,8 @@ function sdBulkPop_(){
 /* ==================== 📆 최종납기 변경 이력 (MAIN 데이터) ====================
    · MAIN의 최종납기는 ERP 엑셀 업로드로 바뀌어 "왜 바뀌었는지"가 남지 않음
    · 각 PC가 직전에 본 최종납기와 비교해 바뀐 주문을 자동 감지 → 공유 칸 "dueChangeLog"에 기록(같은 변경은 한 번만)
-   · 프로젝트·감지일별로 묶어 근거(생산 지연·고객 요청 등)와 첨부를 입력 → 근거 미입력은 빨간색·알림 */
-var DCL_KEY="dueChangeLog", DCL_REASONS=["생산 지연","자재·외주 지연","고객 요청","설계 변경","검사·품질 이슈","기타"];
+   · 관리번호·감지일별로 묶어 표시. 대부분 고객 스케줄 변경이라 입력은 선택(예외만 메모) — 알림·경고 없음 */
+var DCL_KEY="dueChangeLog", DCL_REASONS=["고객 요청","생산 지연","자재·외주 지연","설계 변경","검사·품질 이슈","기타"];
 var __dcl={ list:[], loaded:false, ref:null, len:-1, filter:{ q:"", st:"", days:"60", shipped:false } };
 // [추가] 납품완료 주문은 기본으로 숨김 (기록은 지우지 않음 — "납품완료 포함"을 켜면 다시 보임)
 function dclShipped_(ord){ return (typeof sdAutoDone_==="function") && sdAutoDone_(ord); }
@@ -13310,7 +13310,7 @@ function dclDetect_(){
     try{ localStorage.setItem("dclSnap", JSON.stringify(now)); }catch(_){}
     if(!found.length) return;
     var go=function(){ var have={}; __dcl.list.forEach(function(x){ have[x.id]=1; }); var add=found.filter(function(x){ return !have[x.id]; }); if(!add.length) return;
-      __dcl.list=__dcl.list.concat(add); dclSave_(); try{ if(typeof showToast==="function") showToast("📆 최종납기 변경 "+add.length+"건 감지 — 근거를 입력해 주세요 (특별납기 ▸ 최종납기 변경)"); }catch(_){} };
+      __dcl.list=__dcl.list.concat(add); dclSave_(); try{ if(typeof showToast==="function") showToast("📆 최종납기 변경 "+add.length+"건 기록됨 (특별납기 ▸ 최종납기 변경)"); }catch(_){} };
     if(__dcl.loaded) go(); else dclLoad_(go);
   }catch(_){}
 }
@@ -13326,22 +13326,22 @@ function dclRender_(){
   if(!__dcl.loaded){ root.innerHTML='<div class="sd-empty">불러오는 중…</div>'; dclLoad_(dclRender_); return; }
   var f=__dcl.filter, cut=f.days?Date.now()-Number(f.days)*86400000:0, q=String(f.q||"").trim().toUpperCase();
   var hidN=0;
-  var L=__dcl.list.filter(function(x){ if(!f.shipped && dclShipped_(x.ord)){ hidN++; return false; } if(cut && x.ts<cut) return false; if(q && (x.ord+" "+x.proj+" "+x.cust+" "+x.draw+" "+x.name).toUpperCase().indexOf(q)<0) return false; if(f.st==="none" && x.reason) return false; if(f.st==="done" && !x.reason) return false; return true; });
+  var L=__dcl.list.filter(function(x){ if(!f.shipped && dclShipped_(x.ord)){ hidN++; return false; } if(cut && x.ts<cut) return false; if(q && (x.ord+" "+x.proj+" "+x.cust+" "+x.draw+" "+x.name).toUpperCase().indexOf(q)<0) return false; return true; });
   var G=dclGroups_(L), noR=G.filter(function(g){ return g.items.some(function(x){ return !x.reason; }); }).length;
-  root.innerHTML='<div class="sd-head"><div><div class="sd-crumb">특별납기 <span>›</span> 최종납기 변경</div><div class="sd-title">📆 최종납기 변경 이력</div><div class="sd-sub">MAIN(ERP 업로드)에서 최종납기가 바뀐 주문을 자동으로 찾아 관리번호(프로젝트)별로 묶습니다. 왜 바뀌었는지 <b>근거</b>를 입력해 두세요.</div></div>'
+  root.innerHTML='<div class="sd-head"><div><div class="sd-crumb">특별납기 <span>›</span> 최종납기 변경</div><div class="sd-title">📆 최종납기 변경 이력</div><div class="sd-sub">MAIN(ERP 업로드)에서 최종납기가 바뀐 주문을 자동으로 기록해 관리번호(프로젝트)별로 묶습니다. 대부분 고객 스케줄 변경이라 따로 입력할 것은 없고, 예외(생산 지연 등)만 <b>메모</b>로 남기세요.</div></div>'
     +'<div class="sd-act"><button type="button" class="sd-btn" data-a="dclxls">⬇ 엑셀</button><button type="button" class="sd-btn" data-a="dclreload">⟳ 새로고침</button></div></div>'
-    +'<div class="sd-card"><div class="sdl-filters"><input id="dcl-q" placeholder="관리번호·PROJECT NO.·고객·도번 검색" value="'+sdE_(f.q)+'"><select id="dcl-st"><option value="">전체</option><option value="none"'+(f.st==="none"?" selected":"")+'>근거 미입력</option><option value="done"'+(f.st==="done"?" selected":"")+'>근거 입력됨</option></select>'
+    +'<div class="sd-card"><div class="sdl-filters"><input id="dcl-q" placeholder="관리번호·PROJECT NO.·고객·도번 검색" value="'+sdE_(f.q)+'">'
     +'<select id="dcl-d">'+[["30","최근 30일"],["60","최근 60일"],["180","최근 180일"],["","전체 기간"]].map(function(d){ return '<option value="'+d[0]+'"'+(f.days===d[0]?' selected':'')+'>'+d[1]+'</option>'; }).join("")+'</select>'
     +'<label style="font-size:13px;white-space:nowrap;"><input type="checkbox" id="dcl-ship"'+(f.shipped?' checked':'')+'> 납품완료 포함</label>'
-    +'<span class="sd-cnt">'+G.length+'묶음 · '+L.length+'건</span>'+(noR?'<span class="dcl-warn">근거 미입력 '+noR+'묶음</span>':'')+(!f.shipped && hidN?'<span class="m" style="font-size:12px;">납품완료 '+hidN+'건 숨김</span>':'')+'</div>'
+    +'<span class="sd-cnt">'+G.length+'묶음 · '+L.length+'건</span>'+(!f.shipped && hidN?'<span class="m" style="font-size:12px;">납품완료 '+hidN+'건 숨김</span>':'')+'</div>'
     +(G.length?G.map(function(g){ var need=g.items.filter(function(x){ return !x.reason; }).length, r0=(g.items.find(function(x){ return x.reason; })||{}).reason;
         var shifts={}; g.items.forEach(function(x){ var k=dclShift_(x), o=shifts[k]=shifts[k]||{ n:0, f0:x.from, f1:x.from, t0:x.to, t1:x.to }; o.n++; if(x.from<o.f0) o.f0=x.from; if(x.from>o.f1) o.f1=x.from; if(x.to<o.t0) o.t0=x.to; if(x.to>o.t1) o.t1=x.to; });   // 변동 일수별로 묶어 표시
-        return '<div class="dcl-g'+(need?' need':'')+'"><div class="dcl-gh"><b>'+sdE_(g.proj||"-")+'</b><span class="m">'+sdE_(g.cust||"")+'</span>'+(g.pnoList.length?'<span class="m" title="'+sdE_(g.pnoList.join(", "))+'">'+sdE_(g.pnoList.slice(0,3).join(" · "))+(g.pnoList.length>3?(' 외 '+(g.pnoList.length-3)):'')+'</span>':'')+'<span class="m">'+sdMD_(g.day)+' 감지 · '+g.items.length+'건</span><span style="flex:1"></span>'
-          +(need?'<span class="dcl-no">근거 미입력 '+need+'건</span>':'<span class="dcl-ok">근거 입력됨</span>')+'<button type="button" class="sd-btn" data-dcl="'+sdE_(g.key)+'">'+(need?'근거 입력':'근거 보기·수정')+'</button></div>'
+        return '<div class="dcl-g"><div class="dcl-gh"><b>'+sdE_(g.proj||"-")+'</b><span class="m">'+sdE_(g.cust||"")+'</span>'+(g.pnoList.length?'<span class="m" title="'+sdE_(g.pnoList.join(", "))+'">'+sdE_(g.pnoList.slice(0,3).join(" · "))+(g.pnoList.length>3?(' 외 '+(g.pnoList.length-3)):'')+'</span>':'')+'<span class="m">'+sdMD_(g.day)+' 감지 · '+g.items.length+'건</span><span style="flex:1"></span>'
+          +'<button type="button" class="sd-btn" data-dcl="'+sdE_(g.key)+'" title="예외 사유가 있을 때만 (선택)">'+(r0?'메모 보기·수정':'＋ 메모')+'</button></div>'
           +'<div class="dcl-sh">'+Object.keys(shifts).map(function(k){ var o=shifts[k], rg=function(a,b){ return a===b?sdMD_(a):(sdMD_(a)+"~"+sdMD_(b)); }; return '<span class="dcl-chip"><b>'+sdE_(k)+'</b> '+o.n+'건 · '+rg(o.f0,o.f1)+' → '+rg(o.t0,o.t1)+'</span>'; }).join("")+'</div>'
           +(r0?'<div class="dcl-r"><span class="sdl-kind chg">'+sdE_(r0.kind)+'</span> '+sdE_(r0.text).replace(/\n/g,"<br>")+' <span class="m">— '+sdE_(r0.by)+' · '+sdE_(String(r0.at||"").slice(5,16))+'</span>'+((r0.files||[]).length?'<div class="sdl-files">'+r0.files.map(sdlFileHtml_).join("")+'</div>':'')+'</div>':'')
-          +'<details class="dcl-det"><summary>주문 '+g.items.length+'건 보기</summary><table class="sd-tb"><thead><tr><th>관리번호</th><th>PROJECT NO.</th><th>도번</th><th>품명</th><th>최종납기 (전 → 후)</th><th>근거</th></tr></thead><tbody>'
-          +g.items.map(function(x){ return '<tr'+(dclShipped_(x.ord)?' style="opacity:.55;"':'')+'><td class="k">'+sdE_(x.ord)+(dclShipped_(x.ord)?' <span class="sdl-kind done">납품완료</span>':'')+'</td><td>'+sdE_(x.proj||"")+'</td><td>'+sdE_(x.draw)+'</td><td>'+sdE_(x.name)+'</td><td>'+sdE_(x.from)+' → <b>'+sdE_(x.to)+'</b> <span class="m">('+dclShift_(x)+')</span></td><td>'+(x.reason?sdE_(x.reason.kind):'<span class="dcl-no">미입력</span>')+'</td></tr>'; }).join("")+'</tbody></table></details></div>'; }).join("")
+          +'<details class="dcl-det"><summary>주문 '+g.items.length+'건 보기</summary><table class="sd-tb"><thead><tr><th>관리번호</th><th>PROJECT NO.</th><th>도번</th><th>품명</th><th>최종납기 (전 → 후)</th><th>메모</th></tr></thead><tbody>'
+          +g.items.map(function(x){ return '<tr'+(dclShipped_(x.ord)?' style="opacity:.55;"':'')+'><td class="k">'+sdE_(x.ord)+(dclShipped_(x.ord)?' <span class="sdl-kind done">납품완료</span>':'')+'</td><td>'+sdE_(x.proj||"")+'</td><td>'+sdE_(x.draw)+'</td><td>'+sdE_(x.name)+'</td><td>'+sdE_(x.from)+' → <b>'+sdE_(x.to)+'</b> <span class="m">('+dclShift_(x)+')</span></td><td>'+(x.reason?sdE_(x.reason.kind):'<span class="m">-</span>')+'</td></tr>'; }).join("")+'</tbody></table></details></div>'; }).join("")
       :'<div class="sd-empty">감지된 최종납기 변경이 없습니다. (이 기능을 넣은 뒤부터 감지됩니다)</div>')+'</div>';
   if(!root.__bound){ root.__bound=true;
     root.addEventListener("click", function(e){ var b=e.target.closest("[data-dcl]"), a=e.target.closest("[data-a]"); if(b){ dclReasonPop_(b.getAttribute("data-dcl")); return; } if(!a) return; var k=a.getAttribute("data-a"); if(k==="dclreload"){ __dcl.loaded=false; dclRender_(); } if(k==="dclxls") dclExcel_(); });
@@ -13352,14 +13352,14 @@ function dclRender_(){
 function dclReasonPop_(key){
   var g=dclGroups_(__dcl.list).find(function(x){ return x.key===key; }); if(!g) return; var r0=(g.items.find(function(x){ return x.reason; })||{}).reason||{};
   var old=document.querySelector(".sd-ov"); if(old) old.remove(); var ov=document.createElement("div"); ov.className="sd-ov";
-  ov.innerHTML='<div class="sd-pop" style="width:min(600px,96vw);"><div class="sd-ph"><b>📆 최종납기 변경 근거</b><button type="button" data-x="close">닫기 ✕</button></div><div class="sd-pb">'
+  ov.innerHTML='<div class="sd-pop" style="width:min(600px,96vw);"><div class="sd-ph"><b>📆 최종납기 변경 메모 (선택)</b><button type="button" data-x="close">닫기 ✕</button></div><div class="sd-pb">'
     +'<div><b>'+sdE_(g.proj)+'</b> · '+sdE_(g.cust||"")+(g.pnoList.length?(' · '+sdE_(g.pnoList.join(", "))):'')+' · '+sdMD_(g.day)+' 감지 · 주문 '+g.items.length+'건</div>'
     +'<div class="sdl-fr" style="margin-top:10px;"><select id="dcl-kind">'+DCL_REASONS.map(function(k){ return '<option'+(r0.kind===k?' selected':'')+'>'+k+'</option>'; }).join("")+'</select><span class="m">변경 원인</span></div>'
     +'<textarea id="dcl-text" rows="4" style="width:100%;margin-top:8px;border:1px solid #D0D5DD;border-radius:10px;padding:8px 10px;font:inherit;font-size:13.5px;" placeholder="예: 가공 설비 고장으로 생산 2주 지연 — 생산팀 박OO 09/29 회의, 고객 통보 완료(영업 김OO 09/30 메일)">'+sdE_(r0.text||"")+'</textarea>'
     +'<div class="sdl-files" id="dcl-old">'+((r0.files||[]).map(function(f,i){ return qmsFileChipX_(f,'data-dfdel="'+i+'"'); }).join(""))+'</div>'
     +'<div class="sdl-fr" style="margin-top:6px;"><button type="button" class="sd-btn" data-x="file">📎 근거 첨부 (회의록·메일·공문)</button><input type="file" id="dcl-files" multiple style="display:none"><span id="dcl-flist" class="m"></span></div>'
-    +'<div class="m" style="font-size:12px;margin-top:6px;">이 묶음의 주문 '+g.items.length+'건 모두에 같은 근거가 기록됩니다 · 작성자: '+sdE_(sdWho_())+'</div></div>'
-    +'<div class="sd-pf"><button type="button" class="sd-btn pri" data-x="save">근거 저장</button></div></div>';
+    +'<div class="m" style="font-size:12px;margin-top:6px;">예외 사유가 있을 때만 적으세요 — 이 묶음 주문 '+g.items.length+'건 모두에 같은 메모가 남습니다 (비우고 저장하면 메모 삭제) · 작성자: '+sdE_(sdWho_())+'</div></div>'
+    +'<div class="sd-pf"><button type="button" class="sd-btn pri" data-x="save">메모 저장</button></div></div>';
   document.body.appendChild(ov); var files=[], keep=(r0.files||[]).slice(), removed=[];
   ov.addEventListener("click", function(e){ var di=e.target.getAttribute && e.target.getAttribute("data-dfdel"); if(di==null) return; var ff=keep[+di]; if(!ff) return;
     if(!confirm("첨부 '"+ff.name+"'을(를) 삭제할까요? ([근거 저장]을 눌러야 반영)")) return; removed.push(ff); keep[+di]=null;
@@ -13367,7 +13367,7 @@ function dclReasonPop_(key){
   ov.addEventListener("change", function(e){ if(e.target.id==="dcl-files"){ files=files.concat([].slice.call(e.target.files||[])); ov.querySelector("#dcl-flist").textContent=files.map(function(f){ return f.name; }).join(", "); e.target.value=""; } });
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
     if(e.target===ov || x==="close"){ ov.remove(); return; } if(x==="file"){ ov.querySelector("#dcl-files").click(); return; }
-    if(x==="save"){ var text=String(ov.querySelector("#dcl-text").value||"").trim(), kind=ov.querySelector("#dcl-kind").value; if(!text){ alert("변경 근거를 적어 주세요."); return; }
+    if(x==="save"){ var text=String(ov.querySelector("#dcl-text").value||"").trim(), kind=ov.querySelector("#dcl-kind").value; if(!text && !files.length && !keep.filter(Boolean).length){ g.items.forEach(function(it){ var t=__dcl.list.find(function(z){ return z.id===it.id; }); if(t){ delete t.reason; t.rts=Date.now(); } }); removed.forEach(qmsFileTrash_); dclSave_(); ov.remove(); dclRender_(); return; }   // 비우고 저장 = 메모 삭제
       var btn=e.target; btn.disabled=true; btn.textContent=files.length?"첨부 올리는 중…":"저장 중…"; var up=keep.filter(Boolean), left=files.length;
       var go=function(){ removed.forEach(qmsFileTrash_); var rs={ kind:kind, text:text, files:up, by:sdWho_(), at:new Date().toLocaleString("sv-SE").slice(0,16) }, now=Date.now();
         g.items.forEach(function(it){ var t=__dcl.list.find(function(z){ return z.id===it.id; }); if(t){ t.reason=rs; t.rts=now; } });
@@ -13382,11 +13382,11 @@ function dclExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러�
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "최종납기 변경"); XLSX.writeFile(wb, "최종납기_변경이력_"+sdYmd_(new Date())+".xlsx"); }
 // MAIN 표: 최종납기 옆 ↻ (변경 감지됨) — 누르면 근거
 function dclTag_(ord){ if(!__dcl.list.length || dclShipped_(ord)) return ""; var L=dclFor_(String(ord||"").trim()); if(!L.length) return ""; var x=L[L.length-1];
-  return ' <span class="dcl-tag'+(x.reason?'':' need')+'" title="최종납기 변경 '+sdE_(x.from)+' → '+sdE_(x.to)+(x.reason?(' · 근거: '+sdE_(x.reason.kind)+' — '+sdE_(x.reason.text)):' · 근거 미입력')+' (누르면 근거 입력)" onclick="event.stopPropagation();dclGoOrd_(\''+sdE_(x.ord).replace(/'/g,"")+'\')">↻'+(x.reason?'':'!')+'</span>'; }
+  return ' <span class="dcl-tag" title="최종납기 변경 '+sdE_(x.from)+' → '+sdE_(x.to)+(x.reason?(' · 메모: '+sdE_(x.reason.kind)+' — '+sdE_(x.reason.text)):'')+'" onclick="event.stopPropagation();dclGoOrd_(\''+sdE_(x.ord).replace(/'/g,"")+'\')">↻</span>'; }
 function dclGoOrd_(ord){ var L=dclFor_(ord); if(!L.length) return; var x=L[L.length-1]; var key=dclPrefix_(x.ord)+"|"+x.day; dclReasonPop_(key); }
-// 알림: 근거 미입력 묶음
+// 알림: 없음 (간소화)
 (function(){ if(typeof qmsMorningAlerts_!=="function") return; var orig=qmsMorningAlerts_;
-  qmsMorningAlerts_=function(){ var items=[]; try{ items=orig()||[]; }catch(_){} try{ var n=dclGroups_(__dcl.list.filter(function(x){ return !x.reason && Date.now()-x.ts<60*86400000 && !dclShipped_(x.ord); })).length; if(n) items.push({ icon:"📆", title:"최종납기 변경 근거 미입력", count:n+"묶음", color:"#B54708", view:"duechg" }); }catch(_){} return items; }; })();
+  qmsMorningAlerts_=function(){ var items=[]; try{ items=orig()||[]; }catch(_){} return items; }; })();   // [간소화] 근거 미입력 알림 없음 (대부분 고객 스케줄 변경)
 /* ==================== 📝 회의·변경 기록 ====================
    · 회의 내용, 일정·사양·공정 변경, 결정 사항과 그 근거를 한곳에 남김 (특별납기와 별도)
    · 한 건 = 날짜·종류·제목·관련(고객/프로젝트/관리번호·도번)·참석자·논의 내용·결정 사항·근거·조치 항목(담당·기한·상태)·첨부
