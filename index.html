@@ -12703,7 +12703,7 @@ function sdRender_(){
   var all=sdLive_().slice().sort(function(a,b){ return (a.avail||"9")<(b.avail||"9")?-1:((a.avail||"9")>(b.avail||"9")?1:(a.draw||"").localeCompare(b.draw||"")); });
   var rows=all.filter(function(x){ return __sd.filter==="all" || !sdDone_(x); });
   h+='<section class="sd-card"><div class="sd-lh"><h3>출고 일정 <span class="sd-cnt">'+rows.length+'</span></h3>'
-    +'<span class="sd-seg"><button type="button" data-f="all" class="'+(__sd.filter==="all"?"on":"")+'">전체</button><button type="button" data-f="open" class="'+(__sd.filter==="open"?"on":"")+'">미완료</button></span></div>'
+    +'<button type="button" class="sd-btn" data-a="req" style="margin-left:auto;" title="출고 일정 줄을 골라 검사 의뢰서(검사요청서) 출력">📋 검사 의뢰서</button><span class="sd-seg" style="margin-left:8px;"><button type="button" data-f="all" class="'+(__sd.filter==="all"?"on":"")+'">전체</button><button type="button" data-f="open" class="'+(__sd.filter==="open"?"on":"")+'">미완료</button></span></div>'
     +'<div class="sd-form"><input id="sd-f-ord" placeholder="관리번호 (예: 26-402-3)"><input id="sd-f-draw" placeholder="품번 (비우면 관리번호로 자동)"><input id="sd-f-due" type="date" title="납기일자"><input id="sd-f-avail" type="date" title="가능일자"><input id="sd-f-qty" type="number" min="1" placeholder="수량"><input id="sd-f-note" placeholder="비고 (예: 22EA 중 10EA)"><button type="button" class="sd-btn pri" data-a="add">＋ 추가</button></div>'
     +'<div class="sd-tw"><table class="sd-tb"><thead><tr><th>상태</th><th>관리번호</th><th>품번</th><th>납기일자</th><th>가능일자</th><th class="n">수량</th><th>비고</th><th>검사 시작</th><th>이력·근거</th><th>완료</th><th></th></tr></thead><tbody>'
     +(rows.length?rows.map(function(x){ var st, cls;
@@ -12726,6 +12726,7 @@ function sdClick_(e){
   if(!a) return; var k=a.getAttribute("data-a");
   if(k==="reload"){ __sd.loaded=false; sdRender_(); return; }
   if(k==="resave"){ sdSave_(); return; }
+  if(k==="req"){ sdReqPop_(); return; }
   if(k==="bulk"){ var gb=function(){ sdBulkPop_(); }; if(__sdl.loaded) gb(); else sdlLoad_(gb); return; }
   if(k==="calprint"){ sdCalPrint_(); return; }
   if(k==="xls") return sdExcel_();
@@ -13568,6 +13569,40 @@ function mainBulkPop_(pre){
       if(!left) go(); else files.forEach(function(f){ sdUploadFile_(f, function(info){ if(info) up.push(info); if(--left===0) go(); }); });
     } });
   if(pre) setTimeout(find, 50); setTimeout(function(){ ov.querySelector("#mb-q").focus(); }, 60);
+}
+/* [추가] 특별납기 ▸ 검사 의뢰서 — 출고 일정 줄을 골라 MAIN의 검사요청서(같은 양식·MASTER ● 표시)로 출력
+   요청수량 = 고른 특별납기 줄의 수량 합(품번별). MAIN에서 체크해 둔 선택은 창을 닫으면 원래대로 돌아감 */
+var __reqQtyOverride=null;
+function sdReqPop_(){
+  var today=sdYmd_(sdToday_()), lim=new Date(); lim.setDate(lim.getDate()+7); var lim7=sdYmd_(lim);
+  var L=sdLive_().filter(function(x){ return !sdDone_(x) && x.avail; }).sort(function(a,b){ return a.avail<b.avail?-1:(a.avail>b.avail?1:(a.draw||"").localeCompare(b.draw||"")); });
+  if(!L.length){ alert("미완료 출고 일정이 없습니다."); return; }
+  var old=document.querySelector(".sd-ov"); if(old) old.remove();
+  var ov=document.createElement("div"); ov.className="sd-ov";
+  ov.innerHTML='<div class="sd-pop" style="width:min(680px,96vw);max-height:92vh;display:flex;flex-direction:column;"><div class="sd-ph"><b>📋 검사 의뢰서 — 출고 일정 선택</b><button type="button" data-x="close">닫기 ✕</button></div>'
+    +'<div class="sd-pb" style="overflow:auto;"><div class="sdl-fr" style="margin-bottom:6px;"><button type="button" class="sd-btn" data-x="w7">가능일 7일 이내</button><button type="button" class="sd-btn" data-x="all">전체</button><button type="button" class="sd-btn" data-x="none">해제</button><span id="sdr-cnt" class="m" style="margin-left:auto;"></span></div>'
+    +'<div style="border:1px solid #EAECF0;border-radius:8px;max-height:52vh;overflow:auto;">'+L.map(function(x,i){ var late=x.avail<today;
+        return '<label style="display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid #F2F4F7;color:#101828;'+(late?'background:#FFFBFA;':'')+'"><input type="checkbox" class="sdr-chk" data-i="'+i+'"'+(x.avail<=lim7?' checked':'')+'><b style="min-width:70px;'+(late?'color:#B42318;':'')+'">'+sdMD_(x.avail)+' <small class="m">('+sdDow_(x.avail)+')</small></b><span style="min-width:92px;">'+sdE_(x.ord||"-")+'</span><span style="flex:1;">'+sdE_(x.draw)+'</span><b>'+x.qty+'개</b>'+(x._short>0?' <span class="sd-pill bad">부족 '+x._short+'</span>':'')+'</label>'; }).join("")+'</div>'
+    +'<div class="m" style="font-size:12px;margin-top:6px;">같은 품번은 수량을 합쳐 한 줄로 나옵니다. 검사 항목(●)은 검사 MASTER 기준입니다.</div></div>'
+    +'<div class="sd-pf"><button type="button" class="sd-btn pri" data-x="make">검사 의뢰서 만들기</button></div></div>';
+  document.body.appendChild(ov);
+  var cnt=function(){ var c=[].slice.call(ov.querySelectorAll(".sdr-chk:checked")).map(function(e){ return L[+e.getAttribute("data-i")]; }), dr={}; c.forEach(function(x){ dr[x.draw]=1; }); ov.querySelector("#sdr-cnt").textContent=c.length+"줄 · 품번 "+Object.keys(dr).length+"개"; };
+  ov.addEventListener("change", cnt); cnt();
+  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
+    if(e.target===ov || x==="close"){ ov.remove(); return; }
+    if(x==="w7"||x==="all"||x==="none"){ ov.querySelectorAll(".sdr-chk").forEach(function(c){ var it=L[+c.getAttribute("data-i")]; c.checked=(x==="all")||(x==="w7" && it.avail<=lim7); }); cnt(); return; }
+    if(x==="make"){ var sel=[].slice.call(ov.querySelectorAll(".sdr-chk:checked")).map(function(c){ return L[+c.getAttribute("data-i")]; }); if(!sel.length){ alert("출고 일정을 선택하세요."); return; }
+      var q={}; sel.forEach(function(it){ var d=String(it.draw||"").trim(); if(d) q[d]=(q[d]||0)+(Number(it.qty)||0); });
+      ov.remove(); sdReqOpen_(q); } });
+}
+function sdReqOpen_(qtyByDraw){
+  if(typeof reqOpenForm!=="function" || typeof reqSelectedDwg==="undefined"){ alert("검사요청서 기능을 찾을 수 없습니다."); return; }
+  var prev=new Set(reqSelectedDwg); reqSelectedDwg.clear(); Object.keys(qtyByDraw).forEach(function(d){ reqSelectedDwg.add(d); });
+  __reqQtyOverride=qtyByDraw;
+  reqOpenForm();
+  var btn=document.getElementById("reqform-closeBtn");
+  var restore=function(){ __reqQtyOverride=null; reqSelectedDwg.clear(); prev.forEach(function(d){ reqSelectedDwg.add(d); }); try{ reqUpdateButton(); }catch(_){} if(btn) btn.removeEventListener("click", restore); };
+  if(btn) btn.addEventListener("click", restore);
 }
 function qmsMorningBindBadge_(){ var b=document.getElementById("app-version"); if(b && !b.__bound){ b.__bound=true; b.addEventListener("click",function(){ qmsShowMorning_(true); }); } }
 function qmsLoadUnresolvedShared_(cb){
@@ -25447,6 +25482,7 @@ function reqCollectRows(){
     var rows = src.filter(function(r){ return String(r.oldDrawingNo||"").trim()===dwg; });
     var partName="", qty=0;
     rows.forEach(function(r){ if(!partName && r.partName) partName=r.partName; qty += (Number(r.qty)||0); });
+    if(typeof __reqQtyOverride!=="undefined" && __reqQtyOverride && __reqQtyOverride[dwg]!=null) qty=__reqQtyOverride[dwg];   // [추가] 특별납기에서 연 경우: 고른 출고 수량
     out.push({ dwg:dwg, partName:partName, qty:qty });
   });
   return out;
