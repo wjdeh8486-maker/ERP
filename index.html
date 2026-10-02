@@ -1654,13 +1654,23 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-02 16:10 특별납기 검색·수정, 공유저장 팝업 끔"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-02 16:40 미저장 경고 원인 표시·수정/삭제 머리글"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
 //        같은 사이트(github.io)라 열려 있는 탭의 주소를 확인할 수 있음. 처음이면 새 탭으로 열기
 // [성능] 더보기 메뉴 열림을 html 클래스로 표시 (예전 body:has(...) 규칙 대체 — :has는 화면 변경 때마다 전체 스타일을 다시 계산해 느려짐)
 document.addEventListener("click", function(){ setTimeout(function(){ try{ document.documentElement.classList.toggle("qx-menu-open", !!document.querySelector(".ins-dd-menu.open, .qm-dd.open, .qx-more.open")); }catch(_){} }, 0); }, true);
+// [추가] 새로고침·닫기 때 "저장 안 된 변경" 경고가 뜨면, 무엇이 저장 안 됐는지 화면 위에 표시 (브라우저 경고 창 문구는 바꿀 수 없음)
+function qmsUnsavedList_(){ var L=[];
+  try{ if(window.__unsaved) L.push("품질관리 ▸ 변경점/교육 표 — 💾 [저장]을 누르지 않았습니다"); }catch(_){}
+  try{ if(typeof __sd!=="undefined" && __sd.dirty && __sd.saveSt==="fail") L.push("특별납기 — 공유 저장 실패 (특별납기 화면 오른쪽 위 [다시 저장])"); }catch(_){}
+  try{ if(typeof __insPend!=="undefined" && __insPend.length) L.push("검사일보 — 폴더 저장 대기 파일 "+__insPend.length+"개 (오른쪽 아래 [폴더에 저장])"); }catch(_){}
+  return L; }
+window.addEventListener("beforeunload", function(){ try{ var L=qmsUnsavedList_(); if(!L.length) return; var b=document.getElementById("qms-unsaved-bar");
+  if(!b){ b=document.createElement("div"); b.id="qms-unsaved-bar"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:2147483000;background:#FEF3F2;border-bottom:2px solid #F04438;color:#B42318;font:700 13.5px/1.5 'Pretendard Variable','맑은 고딕',sans-serif;padding:10px 16px;box-shadow:0 4px 12px rgba(0,0,0,.15);"; document.body.appendChild(b); }
+  b.innerHTML='⚠ 저장 안 된 변경: '+L.map(function(x){ return '<span style="display:inline-block;background:#fff;border:1px solid #FDA29B;border-radius:6px;padding:1px 8px;margin:2px 4px;">'+x+'</span>'; }).join("")+'<button type="button" onclick="this.parentNode.remove()" style="float:right;border:1px solid #FDA29B;background:#fff;color:#B42318;border-radius:6px;padding:2px 10px;cursor:pointer;">닫기</button>';
+  }catch(_){} });
 function qmsOpenTab_(e, url, name, path){
   try{
     var w=window.open("", name);
@@ -12737,7 +12747,7 @@ function sdRender_(){
   h+='<section class="sd-card"><div class="sd-lh"><h3>출고 일정 <span class="sd-cnt">'+rows.length+'</span></h3>'
     +'<button type="button" class="sd-btn" data-a="newline" style="margin-left:auto;" title="출고 일정 한 줄 직접 추가 (MAIN ☆·엑셀 붙여넣기로도 추가)">＋ 추가</button><button type="button" class="sd-btn" data-a="req" style="margin-left:8px;" title="출고 일정 줄을 골라 검사 의뢰서(검사요청서) 출력">📋 검사 의뢰서</button><span class="sd-seg" style="margin-left:8px;"><button type="button" data-f="all" class="'+(__sd.filter==="all"?"on":"")+'">전체</button><button type="button" data-f="open" class="'+(__sd.filter==="open"?"on":"")+'">미완료</button></span></div>'
     +'<div class="sd-form sd-sform"><input id="sd-s-ord" placeholder="관리번호 (예: 26-402)" value="'+sdE_(__sd.sq.ord)+'"><input id="sd-s-draw" placeholder="품번" value="'+sdE_(__sd.sq.draw)+'"><input id="sd-s-avail" type="date" title="가능일자" value="'+sdE_(__sd.sq.avail)+'"><input id="sd-s-note" placeholder="비고" value="'+sdE_(__sd.sq.note)+'"><button type="button" class="sd-btn pri" data-a="search">🔍 검색</button><button type="button" class="sd-btn" data-a="sclear">초기화</button></div>'
-    +'<div class="sd-tw"><table class="sd-tb"><thead><tr><th>상태</th><th>관리번호</th><th>품번</th><th>납기일자</th><th>가능일자</th><th class="n">수량</th><th>비고</th><th>검사 시작</th><th>이력·근거</th><th>완료</th><th></th><th></th></tr></thead><tbody>'
+    +'<div class="sd-tw"><table class="sd-tb"><thead><tr><th>상태</th><th>관리번호</th><th>품번</th><th>납기일자</th><th>가능일자</th><th class="n">수량</th><th>비고</th><th>검사 시작</th><th>이력·근거</th><th>완료</th><th>수정</th><th>삭제</th></tr></thead><tbody>'
     +(rows.length?rows.map(function(x){ var st, cls;
         if(sdDone_(x)){ st=(x.done?"완료":"납품완료"); cls="done"; } else if(x.avail<today){ st="지연"; cls="bad"; } else if(x.avail===today){ st="오늘"; cls="warn"; } else { var n=Math.round((new Date(x.avail+"T00:00:00")-new Date(today+"T00:00:00"))/86400000); st="D-"+n; cls=n<=3?"soon":""; }
         return '<tr class="'+cls+'"><td><span class="sd-st '+cls+'">'+st+'</span></td><td class="k">'+sdE_(x.ord||"-")+'</td><td>'+sdE_(x.draw)+'</td><td class="m">'+sdMD_(x.due)+'</td><td><b>'+sdMD_(x.avail)+'</b> <small class="m">('+(x.avail?sdDow_(x.avail):"")+')</small></td>'
@@ -15449,7 +15459,7 @@ document.querySelectorAll('[data-qtab]').forEach(btn=>{
 (function(){
   if(window.__unsavedGuardInit) return; window.__unsavedGuardInit=true;
   window.__unsaved = window.__unsaved || false;
-  var mark=function(e){ var t=e.target; if(t && t.getAttribute && t.getAttribute("data-k")!=null){ window.__unsaved=true; document.querySelectorAll("#chg-save,.edu-savebtn").forEach(function(b){ if(!/●/.test(b.textContent)) b.textContent="💾 저장 ●"; }); } };
+  var mark=function(e){ var t=e.target; if(t && t.getAttribute && t.getAttribute("data-k")!=null && t.closest && t.closest("#view-quality")){ window.__unsaved=true; document.querySelectorAll("#chg-save,.edu-savebtn").forEach(function(b){ if(!/●/.test(b.textContent)) b.textContent="💾 저장 ●"; }); } };
   document.addEventListener("input", mark, true);
   document.addEventListener("change", mark, true);
   window.addEventListener("beforeunload", function(e){ if(window.__unsaved){ e.preventDefault(); e.returnValue="저장하지 않은 변경사항이 있습니다. 나가기 전에 [저장]을 눌러주세요."; return e.returnValue; } });
@@ -25866,8 +25876,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-02 16:10 특별납기 검색·수정, 공유저장 팝업 끔 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-02 16:10 특별납기 검색·수정, 공유저장 팝업 끔" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.1 🔔</div>
+<!-- QMS-BUILD: 2026-10-02 16:40 미저장 경고 원인 표시·수정/삭제 머리글 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-02 16:40 미저장 경고 원인 표시·수정/삭제 머리글" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.1 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
