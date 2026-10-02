@@ -1653,10 +1653,11 @@
   #view-specdue .sd-sform{ grid-template-columns:1.2fr 1.2fr 1fr 1.6fr auto auto !important; }
   #view-specdue .sd-dwg{ color:#1D4ED8; text-decoration:none; font-weight:600; } #view-specdue .sd-dwg:hover{ text-decoration:underline; }
   #view-specdue .sd-tb tr.done .sd-dwg{ color:#98A2B3; }
+  .mt-pbtn{ margin-left:auto; order:9; border:1px solid #E4E7EC; background:#fff; color:#344054; border-radius:8px; padding:3px 10px; font-size:12px; font-weight:600; cursor:pointer; } .mt-pbtn:hover{ background:#F2F4F7; }
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-02 17:00 특별납기 품번 클릭 시 도면"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-02 17:40 출하 전 미검사 판정 수정·회의 기록 인쇄"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -13493,25 +13494,27 @@ function mtRender_(){
       if(f.open && !(r.actions||[]).some(function(a){ return a.st!=="완료" && a.t; })) return false;
       if(q && [r.title,r.cust,r.proj,r.ords,r.content,r.decision,r.basis,r.attendees].join(" ").toUpperCase().indexOf(q)<0) return false; return true; })
     .sort(function(a,b){ return (b.date||"")<(a.date||"")?-1:((b.date||"")>(a.date||"")?1:(b.at||0)-(a.at||0)); });
+  root.__lastList=L;
   var OA=mtOpenActs_(), over=OA.filter(function(x){ return x.a.due && x.a.due<mtToday_(); }).length;
   root.innerHTML='<div class="sd-head"><div><div class="sd-crumb">특별납기 <span>›</span> 회의·변경 기록</div><div class="sd-title">📝 회의·변경 기록</div><div class="sd-sub">회의 내용·일정/사양 변경·결정 사항과 <b>근거</b>를 남기고, 조치 항목(담당·기한)을 끝까지 챙깁니다</div></div>'
-    +'<div class="sd-act"><button type="button" class="sd-btn pri" data-m="new">＋ 새 기록</button><button type="button" class="sd-btn" data-m="xls">⬇ 엑셀</button><button type="button" class="sd-btn" data-m="reload">⟳</button></div></div>'
+    +'<div class="sd-act"><button type="button" class="sd-btn pri" data-m="new">＋ 새 기록</button><button type="button" class="sd-btn" data-m="plist" title="지금 보이는 목록을 한 장으로 인쇄·PDF">🖨 목록 인쇄</button><button type="button" class="sd-btn" data-m="xls">⬇ 엑셀</button><button type="button" class="sd-btn" data-m="reload">⟳</button></div></div>'
     +(OA.length?'<div class="sd-card mt-acts"><div class="mt-ah"><b>미완료 조치 항목 '+OA.length+'건</b>'+(over?'<span class="mt-over" style="margin-left:8px;">기한 초과 '+over+'건</span>':'')+'</div><table class="mt-tb"><thead><tr><th>조치 내용</th><th>담당</th><th>기한</th><th>D-day</th><th>관련 기록</th><th>완료</th></tr></thead><tbody>'
       +OA.slice(0,30).map(function(x){ return '<tr'+(x.a.due && x.a.due<mtToday_()?' class="over"':'')+'><td>'+sdE_(x.a.t)+'</td><td>'+sdE_(x.a.owner||"")+'</td><td>'+sdE_(x.a.due||"")+'</td><td>'+mtDday_(x.a.due)+'</td><td><a href="#" data-open="'+sdE_(x.r.id)+'">'+sdE_(x.r.date)+' '+sdE_(x.r.title)+'</a></td><td><input type="checkbox" data-done="'+sdE_(x.r.id)+'|'+sdE_(x.a.id)+'" title="완료"></td></tr>'; }).join("")+'</tbody></table></div>':'')
     +'<div class="sd-card"><div class="sdl-filters"><input id="mt-q" placeholder="제목·고객·프로젝트·관리번호·내용·근거 검색" value="'+sdE_(f.q)+'"><select id="mt-ft"><option value="">종류 전체</option>'+MT_TYPES.map(function(t){ return '<option'+(f.type===t?' selected':'')+'>'+t+'</option>'; }).join("")+'</select>'
     +'<select id="mt-fd">'+[["30","최근 30일"],["90","최근 90일"],["365","최근 1년"],["","전체 기간"]].map(function(d){ return '<option value="'+d[0]+'"'+(f.days===d[0]?' selected':'')+'>'+d[1]+'</option>'; }).join("")+'</select>'
     +'<label style="font-size:13px;"><input type="checkbox" id="mt-fo"'+(f.open?' checked':'')+'> 조치 미완료만</label><span class="sd-cnt">'+L.length+'건</span></div>'
     +(L.length?L.map(function(r){ var acts=(r.actions||[]).filter(function(a){ return a.t; }), op=acts.filter(function(a){ return a.st!=="완료"; }).length;
-        return '<div class="mt-card" data-open="'+sdE_(r.id)+'"><div class="mt-ch"><span class="mt-date">'+sdE_(r.date||"")+'</span><span class="sdl-kind '+({ "회의":"reg","일정 변경":"chg","사양·공정 변경":"cust","품질 이슈":"del","기타 결정":"memo" }[r.type]||"memo")+'">'+sdE_(r.type)+'</span><b>'+sdE_(r.title||"(제목 없음)")+'</b></div>'
+        return '<div class="mt-card" data-open="'+sdE_(r.id)+'"><div class="mt-ch"><button type="button" class="mt-pbtn" data-mprint="'+sdE_(r.id)+'" title="이 기록 인쇄·PDF (회의록 양식)">🖨 인쇄</button><span class="mt-date">'+sdE_(r.date||"")+'</span><span class="sdl-kind '+({ "회의":"reg","일정 변경":"chg","사양·공정 변경":"cust","품질 이슈":"del","기타 결정":"memo" }[r.type]||"memo")+'">'+sdE_(r.type)+'</span><b>'+sdE_(r.title||"(제목 없음)")+'</b></div>'
           +'<div class="mt-rel">'+[r.cust,r.proj,r.ords].filter(Boolean).map(sdE_).join(" · ")+'</div>'
           +(r.decision?'<div class="mt-dec"><span class="m">결정</span> '+sdE_(String(r.decision).slice(0,140))+'</div>':'')
           +(r.basis?'<div class="mt-dec"><span class="m">근거</span> '+sdE_(String(r.basis).slice(0,140))+'</div>':'')
           +'<div class="mt-meta">'+(acts.length?('조치 '+acts.length+'건'+(op?(' · <b class="'+(acts.some(function(a){ return a.st!=="완료" && a.due && a.due<mtToday_(); })?'mt-over':'')+'">미완료 '+op+'</b>'):' · 모두 완료')):'')+((r.files||[]).length?' · 📎'+r.files.length:'')+' · '+sdE_(r.by||"")+(r.updBy && r.upd!==r.at?(' · 수정 '+sdE_(r.updBy)):'')+'</div></div>'; }).join("")
       :'<div class="sd-empty">기록이 없습니다. [＋ 새 기록]으로 시작하세요.</div>')+'</div>';
   if(!root.__bound){ root.__bound=true;
-    root.addEventListener("click", function(e){ var t=e.target, m=t.closest("[data-m]"), o=t.closest("[data-open]");
+    root.addEventListener("click", function(e){ var t=e.target, m=t.closest("[data-m]"), o=t.closest("[data-open]"), pr=t.closest("[data-mprint]");
+      if(pr){ e.stopPropagation(); var rr=__mt.list.find(function(x){ return x.id===pr.getAttribute("data-mprint"); }); if(rr) mtPrint_(rr); return; }
       if(t.getAttribute && t.getAttribute("data-done")) return;
-      if(m){ var k=m.getAttribute("data-m"); if(k==="new") mtEdit_(null); if(k==="xls") mtExcel_(); if(k==="reload"){ __mt.loaded=false; mtRender_(); } return; }
+      if(m){ var k=m.getAttribute("data-m"); if(k==="new") mtEdit_(null); if(k==="xls") mtExcel_(); if(k==="plist") mtPrintList_(root.__lastList||[]); if(k==="reload"){ __mt.loaded=false; mtRender_(); } return; }
       if(o){ e.preventDefault(); mtEdit_(o.getAttribute("data-open")); } });
     root.addEventListener("change", function(e){ var id=e.target.id;
       if(e.target.getAttribute && e.target.getAttribute("data-done")){ var p=e.target.getAttribute("data-done").split("|"), r=__mt.list.find(function(x){ return x.id===p[0]; }); if(!r) return; var a=(r.actions||[]).find(function(y){ return y.id===p[1]; }); if(!a) return;
@@ -13566,6 +13569,18 @@ function mtEdit_(id){
         if(isNew){ r.at=Date.now(); r.by=sdWho_(); r.upd=r.at; r.updBy=r.by; r.hist=[]; __mt.list.push(r); } else if(changed.length) mtTouch_(r, "수정: "+changed.join(", ")); else { ov.remove(); return; }
         mtSave_(); ov.remove(); mtRender_(); try{ if(typeof showToast==="function") showToast("📝 저장했습니다 — 모든 PC에 공유됩니다"); }catch(_){} };
       if(!left) go(); else nf.forEach(function(f){ sdUploadFile_(f, function(info){ if(info) up.push(info); if(--left===0) go(); }); }); } });
+}
+// [추가] 목록 인쇄 — 지금 화면에 보이는(검색·필터 적용된) 기록을 한 장 표로
+function mtPrintList_(L){
+  if(!L.length){ alert("인쇄할 기록이 없습니다."); return; } if(typeof qdocOpen_!=="function"){ alert("인쇄 기능을 찾을 수 없습니다."); return; }
+  var E=function(t){ return qdE2_(t); }, f=__mt.f, cond=[f.type||"종류 전체", f.days?("최근 "+f.days+"일"):"전체 기간", f.q?("검색: "+f.q):"", f.open?"조치 미완료만":""].filter(Boolean).join(" · ");
+  var h=qdHead_("회의·변경 기록 목록", "MTL-"+mtToday_().replace(/-/g,""), E(cond)+" · "+L.length+"건")
+    +'<table><tr><th class="c" style="width:28px;">No</th><th style="width:72px;">날짜</th><th style="width:64px;">종류</th><th>제목 · 관련</th><th>결정 사항 · 근거</th><th style="width:150px;">조치 (담당·기한·상태)</th></tr>'
+    +L.map(function(r,i){ var acts=(r.actions||[]).filter(function(a){ return a.t; });
+      return '<tr><td class="c">'+(i+1)+'</td><td>'+E(r.date)+'</td><td>'+E(r.type)+'</td><td><b>'+E(r.title)+'</b><div class="m">'+E([r.cust,r.proj,r.ords].filter(Boolean).join(" · "))+'</div></td>'
+        +'<td>'+E(r.decision||"")+(r.basis?'<div class="m">근거: '+E(r.basis)+'</div>':'')+'</td><td>'+(acts.length?acts.map(function(a){ return '· '+E(a.t)+' <span class="m">('+E(a.owner||"-")+' · '+E(a.due||"-")+' · '+E(a.st)+')</span>'; }).join("<br>"):'<span class="m">-</span>')+'</td></tr>'; }).join("")
+    +'</table>'+qdSign_(["작성","검토","승인"]);
+  qdocOpen_("회의·변경 기록 목록 ("+L.length+"건)", h);
 }
 function mtPrint_(r){
   if(typeof qdocOpen_!=="function"){ alert("인쇄 기능을 찾을 수 없습니다."); return; }
@@ -23079,7 +23094,7 @@ function insSnTail_(s){ s=String(s==null?"":s).trim(); if(!s) return ""; var p=s
 // S/N 필드(콤마/슬래시/범위 ~) → 꼬리번호 집합. 예: "10768-083~086" → {83,84,85,86}
 function insSnSet_(field){
   var set={}, f=String(field==null?"":field);
-  f.split(/[,\/\n]+/).forEach(function(tok){ tok=tok.trim(); if(!tok) return;
+  f.split(/[,\/\n.·]+/).forEach(function(tok){ tok=tok.trim(); if(!tok) return;
     if(/^[A-Fa-f][1-4]$/.test(tok) || /재고/.test(tok)) return;   // [수정] 재고 위치(D3 등)·'재고사용' 표시는 S/N 아님
     if(tok.indexOf("~")>=0){ var mm=tok.split("~"), a=Number(insSnTail_(mm[0])), b=Number(insSnTail_(mm[1]));
       if(isFinite(a)&&isFinite(b)&&b>=a&&(b-a)<10000){ for(var i=a;i<=b;i++) set[String(i)]=true; return; } }
@@ -23169,7 +23184,7 @@ function insShipGate_(draw, sn, cb, reqKeys){
         var master=data.master, list=data.list||[];
         // 입력된 S/N을 개별로 분리 (250,253,278 → ["250","253","278"])
         var snTails=Object.keys(insSnSet_(sn));
-        var multiSn = snTails.length>1;
+        var multiSn = snTails.length>=1;   // [수정] S/N이 하나여도 그 S/N 기준으로 판정 (전에는 같은 도번의 다른 S/N 검사로도 통과됨)
 
         // S/N별 완료맵: doneBySn[snTail][key]=true
         var doneBySn={}; snTails.forEach(function(t){ doneBySn[t]={}; });
@@ -23178,7 +23193,7 @@ function insShipGate_(draw, sn, cb, reqKeys){
         list.forEach(function(it){
           var itSet=insSnSet_(it.sn);
           QC_COLS.forEach(function(c){
-            if(it[c.key]!=="O") return;
+            var __v=String(it[c.key]==null?"":it[c.key]).trim(); if(!__v || __v==="X" || __v==="-") return;   // [수정] 서버가 완료를 "O" 대신 검사일(2026-09-09)로 주도록 바뀌어, "O"만 완료로 보던 판정이 전부 미검사로 잘못 나왔음
             doneAll[c.key]=true;
             snTails.forEach(function(t){ if(itSet[t]) doneBySn[t][c.key]=true; });
           });
@@ -25880,8 +25895,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-02 17:00 특별납기 품번 클릭 시 도면 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-02 17:00 특별납기 품번 클릭 시 도면" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.1 🔔</div>
+<!-- QMS-BUILD: 2026-10-02 17:40 출하 전 미검사 판정 수정·회의 기록 인쇄 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-02 17:40 출하 전 미검사 판정 수정·회의 기록 인쇄" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.1 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
