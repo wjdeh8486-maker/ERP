@@ -1684,7 +1684,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-03 · V10.2 공유저장 묶음 고정·중복점검 6개월"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-03 · V10.2 메모로 회의록"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -13528,7 +13528,7 @@ function mtRender_(){
   root.__lastList=L;
   var OA=mtOpenActs_(), over=OA.filter(function(x){ return x.a.due && x.a.due<mtToday_(); }).length;
   root.innerHTML='<div class="sd-head"><div><div class="sd-crumb">특별납기 <span>›</span> 회의·변경 기록</div><div class="sd-title">📝 회의·변경 기록</div><div class="sd-sub">회의 내용·일정/사양 변경·결정 사항과 <b>근거</b>를 남기고, 조치 항목(담당·기한)을 끝까지 챙깁니다</div></div>'
-    +'<div class="sd-act"><button type="button" class="sd-btn pri" data-m="new">＋ 새 기록</button><button type="button" class="sd-btn" data-m="plist" title="지금 보이는 목록을 한 장으로 인쇄·PDF">🖨 목록 인쇄</button><button type="button" class="sd-btn" data-m="xls">⬇ 엑셀</button><button type="button" class="sd-btn" data-m="reload">⟳</button></div></div>'
+    +'<div class="sd-act"><button type="button" class="sd-btn pri" data-m="memo" title="회의 중 메모장에 적은 내용을 붙여넣으면 회의록 칸으로 정리">📝 메모로 회의록</button><button type="button" class="sd-btn" data-m="new">＋ 새 기록</button><button type="button" class="sd-btn" data-m="plist" title="지금 보이는 목록을 한 장으로 인쇄·PDF">🖨 목록 인쇄</button><button type="button" class="sd-btn" data-m="xls">⬇ 엑셀</button><button type="button" class="sd-btn" data-m="reload">⟳</button></div></div>'
     +(OA.length?'<div class="sd-card mt-acts"><div class="mt-ah"><b>미완료 조치 항목 '+OA.length+'건</b>'+(over?'<span class="mt-over" style="margin-left:8px;">기한 초과 '+over+'건</span>':'')+'</div><table class="mt-tb"><thead><tr><th>조치 내용</th><th>담당</th><th>기한</th><th>D-day</th><th>관련 기록</th><th>완료</th></tr></thead><tbody>'
       +OA.slice(0,30).map(function(x){ return '<tr'+(x.a.due && x.a.due<mtToday_()?' class="over"':'')+'><td>'+sdE_(x.a.t)+'</td><td>'+sdE_(x.a.owner||"")+'</td><td>'+sdE_(x.a.due||"")+'</td><td>'+mtDday_(x.a.due)+'</td><td><a href="#" data-open="'+sdE_(x.r.id)+'">'+sdE_(x.r.date)+' '+sdE_(x.r.title)+'</a></td><td><input type="checkbox" data-done="'+sdE_(x.r.id)+'|'+sdE_(x.a.id)+'" title="완료"></td></tr>'; }).join("")+'</tbody></table></div>':'')
     +'<div class="sd-card"><div class="sdl-filters"><input id="mt-q" placeholder="제목·고객·프로젝트·관리번호·내용·근거 검색" value="'+sdE_(f.q)+'"><select id="mt-ft"><option value="">종류 전체</option>'+MT_TYPES.map(function(t){ return '<option'+(f.type===t?' selected':'')+'>'+t+'</option>'; }).join("")+'</select>'
@@ -13545,7 +13545,7 @@ function mtRender_(){
     root.addEventListener("click", function(e){ var t=e.target, m=t.closest("[data-m]"), o=t.closest("[data-open]"), pr=t.closest("[data-mprint]");
       if(pr){ e.stopPropagation(); var rr=__mt.list.find(function(x){ return x.id===pr.getAttribute("data-mprint"); }); if(rr) mtPrint_(rr); return; }
       if(t.getAttribute && t.getAttribute("data-done")) return;
-      if(m){ var k=m.getAttribute("data-m"); if(k==="new") mtEdit_(null); if(k==="xls") mtExcel_(); if(k==="plist") mtPrintList_(root.__lastList||[]); if(k==="reload"){ __mt.loaded=false; mtRender_(); } return; }
+      if(m){ var k=m.getAttribute("data-m"); if(k==="new") mtEdit_(null); if(k==="memo") memoPop_(); if(k==="xls") mtExcel_(); if(k==="plist") mtPrintList_(root.__lastList||[]); if(k==="reload"){ __mt.loaded=false; mtRender_(); } return; }
       if(o){ e.preventDefault(); mtEdit_(o.getAttribute("data-open")); } });
     root.addEventListener("change", function(e){ var id=e.target.id;
       if(e.target.getAttribute && e.target.getAttribute("data-done")){ var p=e.target.getAttribute("data-done").split("|"), r=__mt.list.find(function(x){ return x.id===p[0]; }); if(!r) return; var a=(r.actions||[]).find(function(y){ return y.id===p[1]; }); if(!a) return;
@@ -13555,9 +13555,133 @@ function mtRender_(){
 }
 function mtTouch_(r, what){ r.upd=Date.now(); r.updBy=sdWho_(); (r.hist=r.hist||[]).push({ at:r.upd, by:r.updBy, what:what }); if(r.hist.length>60) r.hist=r.hist.slice(-60); }
 // 작성·수정 창
-function mtEdit_(id){
+/* ==================== 📝 메모 → 회의록 자동 정리 ====================
+
+   회의 중엔 메모장에 편하게 적고, 끝나고 붙여넣으면 회의록 칸(제목·참석자·논의·결정·근거·조치·보류)으로 나눠 줌
+
+   · 규칙 기반(인터넷·비용 없음): 줄 앞 표시(결정:, 조치:, -, *, ▶ 등)와 문장 끝말(~하기로, ~까지, 확정 등)로 판단
+
+   · 결과는 작성 창에 채워서 보여주므로, 확인·수정 후 저장 / 원본 메모는 기록에 함께 보관 */
+
+var MEMO_RANKS="님|과장|대리|팀장|부장|사원|주임|차장|실장|이사|대표|책임|선임|수석|매니저";
+
+function memoDate_(txt, base){
+
+  var t=String(txt||""), y=(base||new Date()).getFullYear(), m;
+
+  if((m=t.match(/(20\d{2})[.\-\/년]\s*(\d{1,2})[.\-\/월]\s*(\d{1,2})/))) return m[1]+"-"+String(m[2]).padStart(2,"0")+"-"+String(m[3]).padStart(2,"0");
+
+  if((m=t.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/)) || (m=t.match(/(?:^|[^\d])(\d{1,2})[\/.](\d{1,2})(?![\d\/.])/))){ var mo=+m[1], d=+m[2]; if(mo>=1&&mo<=12&&d>=1&&d<=31) return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"); }
+
+  var now=base||new Date(), add=function(n){ var x=new Date(now); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); }, fri=function(w){ var x=new Date(now); var dd=(5-x.getDay()+7)%7+7*w; x.setDate(x.getDate()+dd); return x.toISOString().slice(0,10); };
+
+  if(/오늘\s*(중|까지)/.test(t)) return add(0); if(/내일/.test(t)) return add(1); if(/모레/.test(t)) return add(2);
+
+  if(/(이번\s*주|금주)/.test(t)) return fri(0); if(/(다음\s*주|차주)/.test(t)) return fri(1);
+
+  return "";
+
+}
+
+function memoOwner_(line){
+  var s=String(line||""), m, R=MEMO_RANKS;
+  if((m=s.match(new RegExp("^\\s*[\\-*•·▶>]?\\s*([가-힣]{2,4})\\s*("+R+")?\\s*[:：\\-–]\\s*\\S")))) return m[1]+(m[2]&&m[2]!=="님"?(" "+m[2]):"");   // 이름: / 이름 - 할 일
+  if((m=s.match(/([가-힣]{2,4})\s*(?:님\s*)?(?:담당|책임)(?![가-힣])/)) && !/^(업무|공정|품질|영업|생산|포장)$/.test(m[1])) return m[1];   // 이름 담당
+  if((m=s.match(/(?:담당|담당자|책임)\s*[:：]\s*([가-힣A-Za-z]{2,10})/))) return m[1];   // 담당: 이름
+  if((m=s.match(/@([가-힣A-Za-z]{2,10})/))) return m[1];
+  if((m=s.match(new RegExp("([가-힣]{2,4})\\s*("+R+")")))) return m[1]+(m[2]!=="님"?(" "+m[2]):"");
+  if((m=s.match(/\(([가-힣]{2,4})\)/))) return m[1];
+  if((m=s.match(/(품질|영업|생산|구매|관리|설계|자재)(팀|파트)?\s*(에서|이|가|은|는)\s/))) return m[1]+(m[2]||"팀");
+  return "";
+}
+function memoParse_(text){
+  var out={ title:"", date:"", attendees:"", cust:"", proj:"", ords:"", content:[], decision:[], basis:[], actions:[], hold:[] };
+  var lines=String(text||"").replace(/\r/g,"").split("\n"), sec="", custs={}, R=MEMO_RANKS;
+  try{ (mainData||[]).forEach(function(r){ var c=String(r.customer||"").trim(); if(c) custs[c]=1; }); }catch(_){} ["유진테크","알파플러스","엘티케이"].forEach(function(c){ custs[c]=1; });
+  var H={ title:/^(제목|회의명|주제)\s*[:：]?/, att:/^(참석자|참석|참여|참)\s*[:：]/, decision:/^(결정\s*사항|결정|결론|확정|합의)\s*[:：]?/, action:/^(조치\s*사항|조치|할\s*일|액션|action|to\s*-?\s*do|후속\s*조치|업무\s*분담)\s*[:：]?/i, basis:/^(근거|이유|사유|배경|원인)\s*[:：]?/, hold:/^(보류|다음\s*회의|추후|미결)\s*[:：]?/, content:/^(논의\s*사항|논의|회의\s*내용|내용|안건|토의)\s*[:：]?/ };
+  var ownerHead=new RegExp("^([가-힣]{2,4})\\s*("+R+")?\\s*[:：\\-–]\\s*\\S");
+  var ordsSet={}, drawSet={};
+  lines.forEach(function(raw){
+    var line=raw.trim(); if(!line) return;
+    (line.match(/\b\d{2}-\d{3}(?:-\d{1,3})?\b/g)||[]).forEach(function(o){ ordsSet[o]=1; });
+    (line.match(/\b[A-Z]\d{3}-\d{3}-[0-9A-Z]{2,4}\b/g)||[]).forEach(function(d){ drawSet[d]=1; });
+    Object.keys(custs).forEach(function(c){ if(!out.cust && line.indexOf(c)>=0) out.cust=c; });
+    if(!out.proj){ var pm=line.match(/\b([A-Z]{1,3}\d{6,8}(?:-[A-Z]{1,4})?)\b/); if(pm) out.proj=pm[1]; }
+    var body=line.replace(/^([\-*•·▶>□■☐✔✓]+|\d{1,2}[.)](?!\d))\s*/,"").trim();
+    // 머리말
+    var hk=null, rest=body;
+    for(var k in H){ if(H[k].test(body)){ var rr=body.replace(H[k],"").trim(); if(k!=="title" && k!=="att" && rr && !/^[:：]/.test(body.slice(body.search(H[k])+(body.match(H[k])[0].length)-1)) && !/[:：]\s*$/.test(body.match(H[k])[0]) && rr.length>0 && body.match(H[k])[0].length<body.length && !/[:：]/.test(body.match(H[k])[0]) && k!=="content"){ /* "결정된 …"처럼 문장 일부면 머리말 아님 */ if(!/^\s/.test(rr) && /^[가-힣]/.test(rr)) continue; } hk=k; rest=rr; break; } }
+    if(hk==="title"){ out.title=rest||out.title; return; }
+    if(hk==="att"){ out.attendees=rest; return; }
+    if(hk){ sec=hk; if(!rest) return; body=rest; }
+    // 날짜: 첫 줄 앞의 날짜
+    if(!out.date && /^(20\d{2}[.\-\/년]\s*)?\d{1,2}\s*[\/.월]\s*\d{1,2}/.test(body)){ out.date=memoDate_(body.slice(0,14)); }
+    var kind=sec;
+    if((!kind || kind==="content") && ownerHead.test(body)) kind="action";
+    else if(!kind || kind==="content"){
+      if(/(하기로|키로|로\s*결정|으로\s*결정|확정|합의|결정됨|결정함|로\s*정함|으로\s*정함)/.test(body)) kind="decision";
+      else if(/(까지|기한|마감|해야|할\s*것|요청\s*바람|회신|송부|보내|발송|확인\s*필요|검토\s*필요|준비|작성\s*예정)/.test(body) && (memoOwner_(body) || memoDate_(body))) kind="action";
+      else if(/(때문|사유|원인|근거|요청에\s*따라|으로\s*인해|로\s*인해)/.test(body)) kind="basis";
+      else if(/(보류|다음\s*회의|추후|미정|재논의)/.test(body)) kind="hold";
+      else if(!kind && !out.title && !out.content.length && body.length<=40 && !/[.。]$/.test(body)){ out.title=body.replace(/^(20\d{2}[.\-\/년]\s*)?\d{1,2}\s*[\/.월]\s*\d{1,2}\s*일?\s*/,"").trim()||body; return; }
+      else kind="content";
+    }
+    if(kind==="action"){ var due=memoDate_(body), own=memoOwner_(body);
+      var t=body.replace(new RegExp("^([가-힣]{2,4})\\s*("+R+")?\\s*[:：\\-–]\\s*"),"").replace(/^([가-힣]{2,4})\s*(님\s*)?(담당|책임)\s*/,"").replace(/(담당|담당자)\s*[:：]\s*[가-힣A-Za-z]{2,10}/,"").replace(/@[가-힣A-Za-z]{2,10}/,"").trim();
+      out.actions.push({ t:t||body, owner:own, due:due, st:"미완료" }); return; }
+    out[kind].push(body);
+  });
+  out.ords=Object.keys(ordsSet).concat(Object.keys(drawSet)).join(", ");
+  if(!out.title) out.title=((out.cust?out.cust+" ":"")+(out.proj?out.proj+" ":"")+"회의").trim();
+  return out;
+}
+function memoPop_(){
+
+  var old=document.querySelector(".sd-ov"); if(old) old.remove(); var ov=document.createElement("div"); ov.className="sd-ov";
+
+  var sample="10/03 유진테크 B04020422 납기 회의\n참석: 품질 이정도, 영업 김영업, 생산 박생산\n- 가공기 고장으로 26-402 프로젝트 2주 지연\n- 고객사 9/30 메일에서 10월 중 납품 요청\n- 최종납기 10/24로 변경하기로 함\n- 비젼검사 하루 5개 → 8개로 늘리기로 결정\n김영업: 고객 회신 메일 10/04까지\n박생산 과장: 설비 수리 일정 공유 이번주\n- 외주 가공 추가 여부는 다음 회의에서";
+
+  ov.innerHTML='<div class="sd-pop" style="width:min(760px,96vw);max-height:94vh;display:flex;flex-direction:column;"><div class="sd-ph"><b>📝 메모로 회의록 만들기</b><button type="button" data-x="close">닫기 ✕</button></div><div class="sd-pb" style="overflow:auto;">'
+
+    +'<div class="m" style="font-size:12.5px;line-height:1.6;margin-bottom:8px;">회의 중 메모장에 적은 내용을 그대로 붙여넣으세요. 형식은 자유입니다. 아래처럼 적으면 더 정확합니다.<br>'
+
+    +'· <b>참석:</b> 이름들 &nbsp;· <b>결정:</b> 또는 "~하기로" &nbsp;· <b>근거:</b> 또는 "~때문" &nbsp;· <b>조치:</b> "이름: 할 일 날짜까지" &nbsp;· <b>보류:</b> "다음 회의에서"</div>'
+
+    +'<textarea id="memo-in" rows="14" style="width:100%;box-sizing:border-box;border:1px solid #D0D5DD;border-radius:10px;padding:10px;font:inherit;font-size:13.5px;line-height:1.6;" placeholder="'+sdE_(sample)+'"></textarea>'
+
+    +'<div class="sdl-fr" style="margin-top:8px;"><button type="button" class="sd-btn" data-x="sample">예시 넣어 보기</button><span class="m" style="font-size:12px;">정리 결과는 작성 창에 채워집니다 — 확인·수정 후 저장하세요 (원본 메모도 함께 보관)</span></div></div>'
+
+    +'<div class="sd-pf"><button type="button" class="sd-btn pri" data-x="go">✨ 회의록으로 정리</button></div></div>';
+
+  document.body.appendChild(ov);
+
+  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
+
+    if(e.target===ov || x==="close"){ ov.remove(); return; }
+
+    if(x==="sample"){ ov.querySelector("#memo-in").value=sample; return; }
+
+    if(x==="go"){ var txt=String(ov.querySelector("#memo-in").value||"").trim(); if(!txt){ alert("메모를 붙여넣으세요."); return; }
+
+      var p=memoParse_(txt); ov.remove();
+
+      var hold=p.hold.length?("\n\n[보류·다음 회의]\n"+p.hold.map(function(x){ return "- "+x; }).join("\n")):"";
+
+      mtEdit_(null, { type:"회의", date:p.date||mtToday_(), title:p.title, cust:p.cust, proj:p.proj, ords:p.ords, attendees:p.attendees,
+
+        content:p.content.map(function(x){ return "- "+x; }).join("\n")+hold, decision:p.decision.map(function(x){ return "- "+x; }).join("\n"), basis:p.basis.map(function(x){ return "- "+x; }).join("\n"),
+
+        actions:p.actions.map(function(a){ return { id:"A"+Date.now().toString(36)+Math.random().toString(36).slice(2,5), t:a.t, owner:a.owner, due:a.due, st:"미완료" }; }), memo:txt });
+
+      try{ if(typeof showToast==="function") showToast("✨ 정리했습니다 — 칸을 확인·수정한 뒤 저장하세요"); }catch(_){} } });
+
+  setTimeout(function(){ ov.querySelector("#memo-in").focus(); }, 50);
+
+}
+
+function mtEdit_(id, pre){
   var r=id?__mt.list.find(function(x){ return x.id===id; }):null, isNew=!r;
-  if(isNew) r={ id:"M"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), type:"회의", date:mtToday_(), title:"", cust:"", proj:"", ords:"", attendees:"", content:"", decision:"", basis:"", actions:[], files:[] };
+  if(isNew) r=Object.assign({ id:"M"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), type:"회의", date:mtToday_(), title:"", cust:"", proj:"", ords:"", attendees:"", content:"", decision:"", basis:"", actions:[], files:[] }, pre||{});   // [추가] pre = 메모 정리 결과
   var old=document.querySelector(".sd-ov"); if(old) old.remove(); var ov=document.createElement("div"); ov.className="sd-ov";
   var inp=function(id,val,ph,w){ return '<input id="'+id+'" value="'+sdE_(val||"")+'" placeholder="'+sdE_(ph||"")+'" style="'+(w?('width:'+w+';'):'flex:1;')+'">'; };
   var ta=function(id,lab,val,ph,rows){ return '<label class="mt-l">'+lab+'<textarea id="'+id+'" rows="'+(rows||3)+'" placeholder="'+sdE_(ph||"")+'">'+sdE_(val||"")+'</textarea></label>'; };
@@ -13573,6 +13697,7 @@ function mtEdit_(id){
     +'<button type="button" class="sd-btn" data-x="addact" style="margin-top:6px;">＋ 조치 추가</button>'
     +'<div class="mt-l" style="margin-top:10px;">첨부</div><div class="sdl-files" id="mt-flist">'+(r.files||[]).map(function(f,i){ return qmsFileChipX_(f,'data-mfdel="'+i+'"'); }).join("")+'</div>'
     +'<div class="sdl-fr" style="margin-top:6px;"><button type="button" class="sd-btn" data-x="file">📎 파일 첨부 (회의 자료·메일·사진)</button><input type="file" id="mt-files" multiple style="display:none"><span id="mt-newf" class="m"></span></div>'
+    +(r.memo?'<details class="mt-hist"><summary>원본 메모 보기</summary><pre style="white-space:pre-wrap;font:inherit;font-size:12.5px;background:#F9FAFB;border-radius:8px;padding:8px;margin:6px 0 0;">'+sdE_(r.memo)+'</pre></details>':'')
     +(isNew?'':'<details class="mt-hist"><summary>작성·수정 이력 ('+((r.hist||[]).length+1)+')</summary><div>'+sdE_(new Date(r.at||0).toLocaleString("ko-KR"))+' · '+sdE_(r.by||"")+' · 작성</div>'+(r.hist||[]).map(function(h){ return '<div>'+sdE_(new Date(h.at).toLocaleString("ko-KR"))+' · '+sdE_(h.by)+' · '+sdE_(h.what)+'</div>'; }).join("")+'</details>')
     +'</div><div class="sd-pf" style="gap:8px;">'+(isNew?'':'<button type="button" class="sd-btn" data-x="del" style="color:#B42318;margin-right:auto;">삭제</button><button type="button" class="sd-btn" data-x="print">🖨 인쇄·PDF</button>')+'<button type="button" class="sd-btn pri" data-x="save">저장</button></div></div>';
   document.body.appendChild(ov); var nf=[], keepF=(r.files||[]).slice(), remF=[];
@@ -26123,8 +26248,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-03 · V10.2 공유저장 묶음 고정·중복점검 6개월 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-03 · V10.2 공유저장 묶음 고정·중복점검 6개월" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-03 · V10.2 메모로 회의록 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-03 · V10.2 메모로 회의록" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
