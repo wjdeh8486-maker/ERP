@@ -1697,7 +1697,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-03 · V10.2 자동 백업 상태"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-04 · V10.2 검토: 납기 회신표"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -14037,6 +14037,99 @@ function rvExcel_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러�
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "검토 목록"); XLSX.writeFile(wb, "QMS_검토목록_"+new Date().toISOString().slice(0,10)+".xlsx"); }
 // 검토 중 화면 — 새 기능은 여기 먼저 등록: { title, desc, open:function(){...} }
 var RV_STAGE=[];
+/* ==================== 🧪 [검토 중] 납기 회신표 → 특별납기 반영 ====================
+   고객 메일의 납기 표(WBS·Purch.Doc.·Purch.Req.·Material·Document·Short Text·Delivery Date·엔티엘예상납기)를
+   복사해 붙여넣거나 엑셀 파일로 올리면 → PO+Material로 MAIN 관리번호를 찾고 → 특별납기 기존 줄과 맞춰 미리보기
+   · 기존 줄 있음: 가능일 변경 (같으면 '변경 없음') / 여러 줄: 확인 필요(줄 선택) / 없음: 신규(체크한 것만)
+   · 예상납기가 날짜가 아니면(피팅수급대기·10/1:발주 등) '날짜 없음' → 체크하면 비고에만 기록
+   · 같은 표를 두 번 반영하면 막음 / 반영한 줄마다 변경·근거 이력에 "납기 회신표" 근거 */
+function mailDigits_(v){ return String(v==null?"":v).replace(/\D/g,""); }
+function mailDate_(v){ if(v==null||v==="") return ""; if(typeof v==="number" && v>30000 && v<80000){ var d=new Date(Math.round((v-25569)*86400000)); return d.toISOString().slice(0,10); }
+  var s=String(v).trim(), m=s.match(/^(20\d{2})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/); if(m) return m[1]+"-"+String(m[2]).padStart(2,"0")+"-"+String(m[3]).padStart(2,"0"); return ""; }
+function mailHash_(t){ var h=0, s=String(t||"").replace(/\s+/g," ").trim(); for(var i=0;i<s.length;i++){ h=((h<<5)-h+s.charCodeAt(i))|0; } return "H"+(h>>>0).toString(36); }
+function mailParseTable_(rows){   // rows: 2차원 배열
+  var head=-1, col={};
+  for(var i=0;i<Math.min(rows.length,10);i++){ var r=rows[i].map(function(x){ return String(x==null?"":x).trim().toLowerCase(); });
+    if(r.some(function(x){ return /purch\.?\s*doc|^po$|발주번호/.test(x); })){ head=i; r.forEach(function(x,j){
+      if(/purch\.?\s*doc|^po$|발주번호/.test(x)) col.po=j; else if(/purch\.?\s*req|^pr$/.test(x)) col.pr=j; else if(/^material|품목코드|자재/.test(x)) col.mat=j;
+      else if(/^document|도면|도번/.test(x)) col.doc=j; else if(/short\s*text|품명|description/.test(x)) col.txt=j; else if(/엔티엘|예상\s*납기|ntl/.test(x)) col.nd=j; else if(/delivery|납기|due/.test(x)) col.cd=j; }); break; } }
+  if(head<0){ head=-1; col={ po:1, pr:2, mat:3, doc:4, txt:5, cd:7, nd:8 }; }   // 머리글 없이 붙여넣으면 받은 표 순서로
+  var out=[]; for(var k=head+1;k<rows.length;k++){ var r=rows[k]; if(!r || !r.length) continue; var po=mailDigits_(r[col.po]); if(!po || po.length<6) continue;
+    out.push({ po:po, pr:mailDigits_(r[col.pr]), mat:String(r[col.mat]==null?"":r[col.mat]).trim(), doc:String(r[col.doc]==null?"":r[col.doc]).trim(), txt:String(r[col.txt]==null?"":r[col.txt]).trim(),
+      cd:mailDate_(r[col.cd]), cdRaw:String(r[col.cd]==null?"":r[col.cd]).trim(), nd:mailDate_(r[col.nd]), ndRaw:String(r[col.nd]==null?"":r[col.nd]).trim() }); }
+  return out;
+}
+function mailMatch_(it){
+  var U=function(v){ return String(v||"").trim().toUpperCase(); }, md=(typeof mainData!=="undefined"&&mainData)||[];
+  var byPo=md.filter(function(r){ var p=mailDigits_(r.prpo); return p && (p.indexOf(it.po)>=0 || (it.pr && p.indexOf(it.pr)>=0)); });
+  var hit=byPo.filter(function(r){ return (it.mat && (U(r.partNo)===U(it.mat))) || (it.doc && (U(r.oldDrawingNo)===U(it.doc) || U(r.partNo)===U(it.doc))); });
+  if(!hit.length){ var any=md.filter(function(r){ return (it.mat && U(r.partNo)===U(it.mat)) || (it.doc && U(r.oldDrawingNo)===U(it.doc)); }).filter(function(r){ return String(r.shipped||"")!=="납품완료"; }); if(any.length===1) return { orders:any, how:"품번" }; return { orders:any.length>1?any:[], how:any.length>1?"품번(여러 건)":"" }; }
+  var open=hit.filter(function(r){ return String(r.shipped||"")!=="납품완료"; }); return { orders:open.length?open:hit, how:"PO+품번", allDone:!open.length };
+}
+function mailBuild_(list){
+  return list.map(function(it, i){ var m=mailMatch_(it), o=m.orders, row={ i:i, it:it, how:m.how, orders:o, sel:null, lines:[], st:"", msg:"" };
+    if(!o.length){ row.st="없음"; row.msg="MAIN에서 PO·품번을 못 찾음 → 관리번호 직접 입력"; return row; }
+    if(m.allDone){ row.st="확인"; row.msg="MAIN에서 이미 납품완료"; }
+    if(o.length>1){ row.st="확인"; row.msg="같은 PO·품번 주문 "+o.length+"건 → 관리번호 선택"; return row; }
+    row.sel=String(o[0].orderNo||"").trim(); mailLineState_(row); return row; });
+}
+function mailLineState_(row){
+  var it=row.it, L=sdLive_().filter(function(x){ return x.ord===row.sel && !sdDone_(x); }); row.lines=L;
+  if(!it.nd){ row.st="날짜없음"; row.msg="예상납기 '"+(it.ndRaw||"-")+"' → 체크하면 비고에만 기록"+(L.length?"":" (특별납기에 없음 → 건너뜀)"); return; }
+  if(!L.length){ row.st="신규"; row.msg="특별납기에 없음 → 가능 "+sdMD_(it.nd)+"로 새로 등록"; return; }
+  if(L.length>1){ row.st="확인"; row.msg="특별납기 "+L.length+"줄(분할) → 바꿀 줄 선택"; row.lineSel=""; return; }
+  if(L[0].avail===it.nd){ row.st="동일"; row.msg="기존 "+sdMD_(L[0].avail)+" = 회신 "+sdMD_(it.nd)+" (변경 없음)"; return; }
+  row.st="변경"; row.msg="기존 "+sdMD_(L[0].avail)+" → "+sdMD_(it.nd);
+}
+function mailPop_(){
+  var old=document.querySelector(".sd-ov"); if(old) old.remove(); var ov=document.createElement("div"); ov.className="sd-ov";
+  ov.innerHTML='<div class="sd-pop" style="width:min(1100px,97vw);max-height:94vh;display:flex;flex-direction:column;"><div class="sd-ph"><b>📨 납기 회신표 → 특별납기 반영 <span style="font-weight:400;font-size:12px;opacity:.8;">(검토 중)</span></b><button type="button" data-x="close">닫기 ✕</button></div>'
+    +'<div class="sd-pb" style="overflow:auto;"><div class="m" style="font-size:12.5px;margin-bottom:6px;">메일의 표를 <b>머리글 줄까지 드래그해 복사 → 아래에 붙여넣기</b> 하거나, 엑셀 파일을 올리세요. PO(Purch.Doc.)+품번(Material)으로 MAIN 관리번호를 찾고, <b>엔티엘예상납기</b>를 가능일자로 맞춥니다.</div>'
+    +'<textarea id="mi-in" rows="6" style="width:100%;box-sizing:border-box;border:1px solid #D0D5DD;border-radius:10px;padding:8px;font:12.5px/1.5 monospace;" placeholder="WBS element\tPurch.Doc.\tPurch.Req.\tMaterial\tDocument\tShort Text\tVendor desc.\tDelivery Date\t엔티엘예상납기"></textarea>'
+    +'<div class="sdl-fr" style="margin-top:6px;"><button type="button" class="sd-btn pri" data-x="parse">🔍 맞춰 보기</button><button type="button" class="sd-btn" data-x="file">📂 엑셀 파일</button><input type="file" id="mi-file" accept=".xlsx,.xls,.csv" style="display:none"><span id="mi-st" class="m" style="font-size:12px;"></span></div>'
+    +'<div id="mi-prev" style="margin-top:10px;"></div></div><div class="sd-pf"><span id="mi-sum" class="m" style="margin-right:auto;font-size:12.5px;"></span><button type="button" class="sd-btn pri" data-x="apply" disabled>체크한 것 반영</button></div></div>';
+  document.body.appendChild(ov);
+  var rows=[], raw="", hash="";
+  var paint=function(){ var el=ov.querySelector("#mi-prev"), cls={ "변경":"chg","신규":"reg","동일":"memo","확인":"del","없음":"del","날짜없음":"memo" };
+    var cnt={}; rows.forEach(function(r){ cnt[r.st]=(cnt[r.st]||0)+1; });
+    el.innerHTML='<div class="m" style="font-size:12.5px;margin-bottom:6px;">'+rows.length+'줄 · '+Object.keys(cnt).map(function(k){ return k+' '+cnt[k]; }).join(' · ')+'</div>'
+      +'<div style="overflow:auto;max-height:52vh;border:1px solid #EAECF0;border-radius:8px;"><table class="mt-tb"><thead><tr><th></th><th>상태</th><th>PO</th><th>Material</th><th>Document</th><th>Short Text</th><th>고객납기</th><th>예상납기</th><th>관리번호</th><th>판단</th></tr></thead><tbody>'
+      +rows.map(function(r){ var it=r.it, def=(r.st==="변경"||r.st==="신규");
+        var ordCell=r.orders.length>1?'<select data-mio="'+r.i+'"><option value="">선택</option>'+r.orders.map(function(o){ return '<option value="'+sdE_(o.orderNo)+'"'+(r.sel===String(o.orderNo).trim()?' selected':'')+'>'+sdE_(o.orderNo)+' ('+sdE_(o.qty)+'개 · '+sdE_(String(o.dueDate||"").slice(5,10))+')</option>'; }).join("")+'</select>'
+          :(r.orders.length?'<b>'+sdE_(r.sel||"")+'</b>':'<input data-mii="'+r.i+'" placeholder="관리번호" style="width:100px;height:28px;border:1px solid #D0D5DD;border-radius:6px;">');
+        var lineCell=(r.lines.length>1)?' <select data-mil="'+r.i+'"><option value="">줄 선택</option>'+r.lines.map(function(l){ return '<option value="'+sdE_(l.id)+'"'+(r.lineSel===l.id?' selected':'')+'>'+sdMD_(l.avail)+'·'+l.qty+'개</option>'; }).join("")+'</select>':'';
+        return '<tr><td><input type="checkbox" class="mi-chk" data-i="'+r.i+'"'+(def?' checked':'')+(r.st==="없음"||r.st==="동일"?' disabled':'')+'></td><td><span class="sdl-kind '+(cls[r.st]||"memo")+'">'+r.st+'</span></td><td>'+sdE_(it.po)+'</td><td>'+sdE_(it.mat)+'</td><td>'+sdE_(it.doc)+'</td><td style="max-width:220px;">'+sdE_(it.txt)+'</td><td class="nw">'+sdE_(it.cd||it.cdRaw)+'</td><td class="nw"><b>'+sdE_(it.nd||it.ndRaw)+'</b></td><td class="nw">'+ordCell+'</td><td style="font-size:12px;">'+sdE_(r.msg)+lineCell+'</td></tr>'; }).join("")+'</tbody></table></div>';
+    var n=ov.querySelectorAll(".mi-chk:checked").length; ov.querySelector("#mi-sum").textContent="체크 "+n+"줄"; ov.querySelector('[data-x="apply"]').disabled=!n; };
+  var run=function(aoa, src){ raw=src; hash=mailHash_(src); rows=mailBuild_(mailParseTable_(aoa));
+    var dup=(__sdl.list||[]).some(function(e){ return String(e.reason||"").indexOf("#"+hash)>=0 && !e.del; });
+    ov.querySelector("#mi-st").innerHTML=dup?'<b style="color:#B42318;">⚠ 이미 반영한 표입니다 — 다시 반영하면 같은 내용이 또 기록됩니다</b>':(rows.length?'':'<b style="color:#B42318;">표를 읽지 못했습니다 — 머리글(Purch.Doc. 등)까지 복사했는지 확인</b>');
+    paint(); };
+  ov.addEventListener("change", function(e){ var t=e.target;
+    if(t.id==="mi-file"){ var f=t.files&&t.files[0]; if(!f) return; var rd=new FileReader(); rd.onload=function(){ try{ var wb=XLSX.read(rd.result,{ type:"array" }), ws=wb.Sheets[wb.SheetNames[0]], aoa=XLSX.utils.sheet_to_json(ws,{ header:1, raw:true, defval:"" }); run(aoa, JSON.stringify(aoa)); }catch(err){ alert("엑셀을 읽지 못했습니다: "+err.message); } }; rd.readAsArrayBuffer(f); t.value=""; return; }
+    var a=t.getAttribute("data-mio"), b=t.getAttribute("data-mil"), c=t.getAttribute("data-mii");
+    if(a!=null){ var r=rows[+a]; r.sel=t.value; if(r.sel){ mailLineState_(r); } paint(); return; }
+    if(b!=null){ var r2=rows[+b]; r2.lineSel=t.value; var L=r2.lines.find(function(l){ return l.id===t.value; }); if(L){ r2.msg=(L.avail===r2.it.nd)?"선택한 줄 = 회신 (변경 없음)":("선택 줄 "+sdMD_(L.avail)+" → "+sdMD_(r2.it.nd)); } paint(); return; }
+    if(c!=null){ var r3=rows[+c]; r3.sel=String(t.value||"").trim(); if(r3.sel){ r3.orders=[{ orderNo:r3.sel }]; mailLineState_(r3); } paint(); return; }
+    if(t.classList && t.classList.contains("mi-chk")){ var n=ov.querySelectorAll(".mi-chk:checked").length; ov.querySelector("#mi-sum").textContent="체크 "+n+"줄"; ov.querySelector('[data-x="apply"]').disabled=!n; } });
+  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
+    if(e.target===ov || x==="close"){ ov.remove(); return; }
+    if(x==="file"){ ov.querySelector("#mi-file").click(); return; }
+    if(x==="parse"){ var txt=String(ov.querySelector("#mi-in").value||""); if(!txt.trim()){ alert("표를 붙여넣거나 엑셀 파일을 올리세요."); return; }
+      var aoa=txt.replace(/\r/g,"").split("\n").filter(function(l){ return l.trim(); }).map(function(l){ return l.indexOf("\t")>=0?l.split("\t"):l.split(/\s{2,}/); }); run(aoa, txt); return; }
+    if(x==="apply"){ var today=sdYmd_(sdToday_()), tag="[납기 회신표 "+today+" #"+hash+"] ", n=0, skip=[];
+      [].slice.call(ov.querySelectorAll(".mi-chk:checked")).forEach(function(c){ var r=rows[+c.getAttribute("data-i")], it=r.it; if(!r.sel){ skip.push(it.po+" "+it.mat+": 관리번호 없음"); return; }
+        var why=tag+"PO "+it.po+" / "+(it.mat||it.doc)+" / 고객납기 "+(it.cd||it.cdRaw||"-")+" / 예상납기 "+(it.nd||it.ndRaw||"-");
+        var L=r.lines.length>1?r.lines.filter(function(l){ return l.id===r.lineSel; }):r.lines;
+        if(r.lines.length>1 && !L.length){ skip.push(r.sel+": 바꿀 줄 선택 안 함"); return; }
+        if(!it.nd){ if(!L.length){ skip.push(r.sel+": 특별납기에 없음(날짜 없음)"); return; } var c1=Object.assign({}, L[0], { note:(it.ndRaw+(L[0].note?(" / "+L[0].note):"")).slice(0,80), __reason:why }); sdPut_(c1); n++; return; }
+        if(L.length){ if(L[0].avail===it.nd) return; sdPut_(Object.assign({}, L[0], { avail:it.nd, __reason:why })); n++; return; }
+        var mo=(mainData||[]).find(function(m){ return String(m.orderNo||"").trim()===r.sel; })||{};
+        sdPut_({ id:"sd"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), ord:r.sel, draw:String(mo.oldDrawingNo||mo.partNo||it.doc||it.mat).trim(), due:it.cd||String(mo.dueDate||"").slice(0,10)||it.nd, avail:it.nd, qty:Number(mo.qty)||1, note:"납기 회신표", done:false, __reason:why }); n++; });
+      sdSave_(); ov.remove(); try{ if(typeof sdRender_==="function") sdRender_(); }catch(_){}
+      alert("📨 반영 "+n+"건"+(skip.length?("\n\n건너뜀 "+skip.length+"건:\n"+skip.join("\n")):"")+"\n\n변경·근거 이력에 '납기 회신표' 근거로 기록됐습니다."); } });
+}
+// 🧪 검토 중 화면에 등록
+try{ RV_STAGE.push({ title:"📨 납기 회신표 → 특별납기 반영", desc:"메일 표를 붙여넣거나 엑셀로 올리면 PO+품번으로 관리번호를 찾아 특별납기와 맞춰 봄 (중복 없이 변경·신규 구분)", open:function(){ var go=function(){ mailPop_(); }; if(!__sd.loaded) sdLoad_(function(){ if(!__sdl.loaded) sdlLoad_(go); else go(); }); else if(!__sdl.loaded) sdlLoad_(go); else go(); } }); }catch(_){}
 function qmsMorningBindBadge_(){ var b=document.getElementById("app-version"); if(b && !b.__bound){ b.__bound=true; b.addEventListener("click",function(){ qmsShowMorning_(true); }); } }
 function qmsLoadUnresolvedShared_(cb){
   try{
@@ -26338,8 +26431,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-03 · V10.2 자동 백업 상태 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-03 · V10.2 자동 백업 상태" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-04 · V10.2 검토: 납기 회신표 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-04 · V10.2 검토: 납기 회신표" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
