@@ -1684,7 +1684,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-02 · V10.2 검사일보 종합"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-03 · V10.2 공유저장 묶음 고정·중복점검 6개월"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -24609,6 +24609,38 @@ function insCloudDupCheck_(localRows, cloudRows){
   });
   return out;
 }
+// ===== [안정화] 공유저장 묶음(insrepMaster) 크기 고정 =====
+//  · 전에는 저장할 때마다 그 일보의 "전체 이력"을 받아 합쳐 다시 올려서, 쓸수록 저장이 느려지는 구조였음
+//  · 이제 묶음에는 최근 45일 행 + 부적합 행(조치 여부 무관 — 종결 이력·NCR용) + 날짜 없는 행만 남기고,
+//    그보다 오래된 행은 구글시트 탭(검사_수입 등)에만 보관 → 검사일보 종합·검사이력에서 그대로 조회
+//  · 안전장치: 시트에 그 행이 있는 것이 확인된 경우에만 뺌. 확인 안 된 행은 시트로 먼저 옮기고(행 단위 기록) 묶음에 그대로 둠 → 다음 저장 때 확인되면 뺌
+//  · 시트 확인 자료(검사일보 열 때 읽은 시트 사본)가 없으면 이번 저장에서는 빼지 않음
+var INS_BLOB_DAYS=45;
+function insPruneForBlob_(t, rows){
+  var out={ rows:rows, pruned:0, moved:0 };
+  try{
+    var sheet=(window.__insDupCache && window.__insDupCache[t]) || null; if(!sheet || !sheet.length) return out;
+    var ids={}, ck={}; var key=function(r){ return [String(r.insDate||"").slice(0,10), insNormDraw_(r.draw), String(r.sn||"").replace(/\s+/g,""), Number(r.insCnt)||0].join("|"); };
+    sheet.forEach(function(r){ if(r._id && !r.__genId) ids[r._id]=1; ck[key(r)]=1; });
+    var cut=new Date(); cut.setDate(cut.getDate()-INS_BLOB_DAYS); var cs=cut.toISOString().slice(0,10), toSheet=[];
+    out.rows=rows.filter(function(r){
+      var d=String((r&&r.insDate)||"").slice(0,10); if(!d || d>=cs) return true;           // 최근·날짜 없음 → 유지
+      if(insRowDefect_(t, r)) return true;                                               // 부적합 행은 유지 (종결 이력·NCR)
+      if((r._id && ids[r._id]) || ck[key(r)]){ out.pruned++; return false; }              // 시트에 있음 → 묶음에서 뺌
+      toSheet.push(r); return true;                                                      // 시트에 없음 → 시트로 옮기고 이번엔 유지
+    });
+    if(toSheet.length){ out.moved=toSheet.length; insSheetUpsertRows_(t, toSheet); }
+  }catch(e){ out={ rows:rows, pruned:0, moved:0 }; }
+  return out;
+}
+// 지정한 행들만 구글시트 탭에 행 단위로 기록 (insWriteTypeToSheet_ 와 같은 형식)
+function insSheetUpsertRows_(type, list){
+  try{ var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; var tab=INS_SHEET_TAB[type]; var cols=insTypeColumns_(type); if(!url||!tab||!cols.length||!list.length) return;
+    var header=cols.map(function(c){ return c.label; }).concat(["작성자","수정시각","_id"]), now=new Date().toLocaleString("ko-KR");
+    var rows=list.map(function(r){ var id=r._id||insRowId_(); r._id=id; var line=cols.map(function(c){ var v=r[c.key]; if(v===true) return "\u25A0"; if(v===false||v==null) return ""; if((c.kind==="text"||c.kind==="draw"||c.kind==="checks"||c.kind==="seg") && v!==""){ return "'"+v; } return v; }); line.push(r.__who||""); line.push(now); line.push(id); return line; });
+    fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({ action:"upsertRows", fileId:INS_SHEET_FILE, sheetName:tab, header:header, rows:rows, deleteIds:[], createIfMissing:true })}).catch(function(){});
+  }catch(_){}
+}
 function insCloudSave(){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ alert("백엔드 주소가 없습니다."); return; }
   var t=insType, label=insTypeLabel(t);
@@ -24655,6 +24687,7 @@ function insCloudSave(){
     });
     var merged=insDedup_(insEnsureIds_(localRows.concat(keep)));
     merged=merged.filter(function(r){ return !(r&&r._id&&insDeletedIds[r._id]); });
+    var __pr=insPruneForBlob_(t, merged); merged=__pr.rows;   // [안정화] 묶음은 최근 45일 + 부적합 행만 (오래된 행은 구글시트 탭에 보관)
     insPersistDeleted_();
     var payload={ rows:merged, deleted:Object.keys(insDeletedIds),
       inspector:(document.getElementById("insrep-inspector")||{}).value||"",
@@ -24667,7 +24700,7 @@ function insCloudSave(){
        if(insState[t]) insState[t].rows=merged;
        if(typeof insSaveLocalNow==="function") insSaveLocalNow(); else insSaveLocal();
        insUpdateDayFilter(); insRender();
-       insSetStatus("\u2705 ["+label+"] \uC800\uC7A5 \uC644\uB8CC(\uACF5\uC720\uB428) "+new Date().toLocaleTimeString("ko-KR")+(keep.length?(" · \uB2E4\uB978 \uB0B4\uC6A9 "+keep.length+"\uD589 \uBCD1\uD569"):""));
+       insSetStatus("\u2705 ["+label+"] \uC800\uC7A5 \uC644\uB8CC(\uACF5\uC720\uB428) "+new Date().toLocaleTimeString("ko-KR")+(keep.length?(" · \uB2E4\uB978 \uB0B4\uC6A9 "+keep.length+"\uD589 \uBCD1\uD569"):"")+(__pr.pruned?(" · 오래된 "+__pr.pruned+"행은 시트 보관"):"")+(__pr.moved?(" · 시트로 옮기는 중 "+__pr.moved+"행"):""));
        insSaveToast_("\u2705 ["+label+"] \uACF5\uC720\uC800\uC7A5 \uC644\uB8CC");
        try{ saveBroadcast_(t); }catch(e){}
        insVerifyAfterSave_(url, t, merged, label, 0);
@@ -24774,7 +24807,8 @@ function insDupRecalc_(type){
   var ck=function(r){ return [String(r.insDate||"").slice(0,10), insNormDraw_(r.draw), String(r.sn||"").replace(/\s+/g,""), Number(r.insCnt)||0].join("|"); };
   var localRows=[]; try{ localRows=(insState[type]&&insState[type].rows)||[]; }catch(_){}
   var localKeys={}; localRows.forEach(function(r){ if(r) localKeys[ck(r)]=1; });
-  base.forEach(function(r){ if(r && r.__genId && localKeys[ck(r)]) return; put(r); });
+  var __c6=new Date(); __c6.setMonth(__c6.getMonth()-6); var __c6s=__c6.toISOString().slice(0,10);   // [안정화] 열 때 중복 점검은 최근 6개월 (오래된 건 검사일보 종합에서)
+  base.forEach(function(r){ if(!r) return; var d=String(r.insDate||"").slice(0,10); if(d && d<__c6s) return; if(r.__genId && localKeys[ck(r)]) return; put(r); });
   localRows.forEach(put);
   var dups=insDupListInRows_(order.map(function(id){ return byId[id]; }), type);
   window.__insDupBanner=window.__insDupBanner||{}; window.__insDupBanner[type]=dups;
@@ -26089,8 +26123,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-02 · V10.2 검사일보 종합 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-02 · V10.2 검사일보 종합" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-03 · V10.2 공유저장 묶음 고정·중복점검 6개월 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-03 · V10.2 공유저장 묶음 고정·중복점검 6개월" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
