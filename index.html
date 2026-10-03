@@ -1697,7 +1697,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-04 · V10.2 검토: 납기 회신표"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-04 · V10.2 검토: 납기 회신표 사진 인식"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -14081,15 +14081,74 @@ function mailLineState_(row){
   if(L[0].avail===it.nd){ row.st="동일"; row.msg="기존 "+sdMD_(L[0].avail)+" = 회신 "+sdMD_(it.nd)+" (변경 없음)"; return; }
   row.st="변경"; row.msg="기존 "+sdMD_(L[0].avail)+" → "+sdMD_(it.nd);
 }
+// ===== [추가] 사진(캡처)으로 받은 납기 회신표 — 글자 인식(OCR) =====
+//  · 표 사진을 올리거나 이 창에서 Ctrl+V → 표의 가로줄을 찾아 "한 행씩" 잘라 인식 (통째로 인식하면 일부 행이 빠짐)
+//  · 날짜가 하나뿐인 행은 그 날짜의 가로 위치로 고객납기/예상납기 칸을 구분 (예: '피팅수급대기' 행)
+//  · 처음 한 번 인식 프로그램(약 5MB)을 내려받음. 틀린 숫자는 입력칸에서 고친 뒤 [맞춰 보기]
+//  · PO·품번이 틀리게 읽히면 '없음'으로 나와 반영되지 않음(엉뚱한 줄 변경 방지). 날짜는 미리보기에서 꼭 확인
+var __ocrLib=null;
+function ocrLoad_(cb){ if(window.Tesseract){ cb(); return; } if(__ocrLib){ __ocrLib.push(cb); return; } __ocrLib=[cb];
+  var sc=document.createElement("script"); sc.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+  sc.onload=function(){ var q=__ocrLib; __ocrLib=null; q.forEach(function(f){ f(); }); }; sc.onerror=function(){ __ocrLib=null; alert("글자 인식 프로그램을 불러오지 못했습니다 (인터넷 연결 확인)."); }; document.head.appendChild(sc); }
+function ocrRowStrips_(img){
+  var W=img.naturalWidth||img.width, H=img.naturalHeight||img.height, c=document.createElement("canvas"); c.width=W; c.height=H; var g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,W,H); g.drawImage(img,0,0);
+  var d=g.getImageData(0,0,W,H).data, lines=[];
+  for(var y=0;y<H;y++){ var n=0; for(var x=0;x<W;x++){ var i=(y*W+x)*4; if(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]<140) n++; }
+    if(n/W>0.45){ if(!lines.length || y-lines[lines.length-1].e>1) lines.push({ s:y, e:y }); else lines[lines.length-1].e=y; } }
+  var strips=[]; for(var k=0;k+1<lines.length;k++){ var a=lines[k].e+1, b=lines[k+1].s-1; if(b-a>=8) strips.push([a,b]); }
+  if(strips.length<2) strips=[[0,H-1]];
+  return { canvas:c, strips:strips, W:W };
+}
+async function ocrRows_(img, onProg){
+  var R=ocrRowStrips_(img), w=await Tesseract.createWorker("eng"), out=[], S=3, re=/20\d{2}-\d{1,2}-\d{1,2}/;
+  await w.setParameters({ tessedit_pageseg_mode:(R.strips.length>1?"7":"6"), preserve_interword_spaces:"1" });
+  for(var i=0;i<R.strips.length;i++){ var s=R.strips[i], h=s[1]-s[0]+1, c=document.createElement("canvas"); c.width=R.W*S; c.height=(h+8)*S; var g=c.getContext("2d");
+    g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height); g.imageSmoothingQuality="high"; g.drawImage(R.canvas,0,s[0],R.W,h,0,4*S,R.W*S,h*S);
+    var im=g.getImageData(0,0,c.width,c.height), a=im.data; for(var j=0;j<a.length;j+=4){ var y=0.299*a[j]+0.587*a[j+1]+0.114*a[j+2]; a[j]=a[j+1]=a[j+2]=y; } g.putImageData(im,0,0);
+    var res=await w.recognize(c), dates=[];
+    ((res.data && res.data.words)||[]).forEach(function(wd){ var t=String(wd.text||"").replace(/[^\d\-\/.:]/g,"").replace(/\./g,"-"); var m=t.match(re); if(m) dates.push({ v:m[0], x:(wd.bbox.x0+wd.bbox.x1)/2/c.width }); });
+    out.push({ text:String((res.data && res.data.text)||"").replace(/\n+/g," ").trim(), dates:dates }); if(onProg) onProg((i+1)/R.strips.length); }
+  await w.terminate(); return out;
+}
+function ocrRowsToTsv_(rows){
+  var head="WBS element\tPurch.Doc.\tPurch.Req.\tMaterial\tDocument\tShort Text\tVendor desc.\tDelivery Date\t엔티엘예상납기", out=[head], n=0, xs={ cd:[], nd:[] };
+  rows.forEach(function(r){ if(r.dates.length>=2){ xs.cd.push(r.dates[0].x); xs.nd.push(r.dates[r.dates.length-1].x); } });
+  var avg=function(a){ return a.length?a.reduce(function(x,y){ return x+y; },0)/a.length:null; }, xcd=avg(xs.cd), xnd=avg(xs.nd);
+  rows.forEach(function(r){
+    var L=r.text.replace(/[|｜\[\]]/g," ").replace(/\s+/g," ").trim(), po=(L.match(/\b45\d{8}\b/)||[])[0]; if(!po) return;
+    var rest=L.slice(L.indexOf(po)+po.length), pr=(rest.match(/\b10\d{6}\b/)||[])[0]||"", r2=pr?rest.slice(rest.indexOf(pr)+pr.length):rest;
+    var mat=(r2.match(/\b1\d{8}\b/)||[])[0]||"", doc=(r2.match(/\b[A-Z]\d{3}-\d{3}-[0-9A-Z]{2,4}\b/)||r2.match(/\b\d{5}-\d{2}\b/)||[])[0]||"";
+    var cd="", nd="", ndRaw="";
+    if(r.dates.length>=2){ cd=r.dates[0].v; nd=r.dates[r.dates.length-1].v; }
+    else if(r.dates.length===1){ var x=r.dates[0].x; var isNd=(xcd!=null && xnd!=null)?(Math.abs(x-xnd)<Math.abs(x-xcd)):(x>0.9);
+      if(isNd){ nd=r.dates[0].v; var mm=L.match(/\b(\d{1,2}\/\d{1,2})\s*:/); cd=mm?(mm[1]+":발주"):""; } else { cd=r.dates[0].v; ndRaw="(날짜 아님 — 사진 확인)"; } }
+    var txt=r2.replace(mat,"").replace(doc,"").replace(/\(?F\)?\S*\s.*$/,"").replace(/[~=]/g,"").replace(/\s+/g," ").trim().slice(0,60);
+    out.push(["",po,pr,mat,doc,txt,"(사진)",cd,nd||ndRaw].join("\t")); n++; });
+  return { tsv:out.join("\n"), n:n };
+}
+function ocrRun_(file, ov){
+  var st=ov.querySelector("#mi-st"); st.innerHTML="🖼 글자 인식 준비 중… (처음 한 번은 프로그램을 내려받아 조금 걸립니다)";
+  var u=URL.createObjectURL(file), img=new Image();
+  img.onerror=function(){ URL.revokeObjectURL(u); st.textContent="사진을 열지 못했습니다."; };
+  img.onload=function(){ ocrLoad_(function(){
+    ocrRows_(img, function(p){ st.textContent="🖼 한 줄씩 인식 중… "+Math.round(p*100)+"%"; }).then(function(rows){ URL.revokeObjectURL(u);
+      var r=ocrRowsToTsv_(rows); ov.querySelector("#mi-in").value=r.tsv;
+      if(!r.n){ st.innerHTML='<b style="color:#B42318;">PO 번호(45…)를 찾지 못했습니다 — 표 부분만 캡처해 다시 시도하세요</b>'; return; }
+      st.innerHTML='🖼 사진에서 <b>'+r.n+'줄</b>을 읽었습니다 — <b>숫자·날짜를 한 번 확인</b>하세요 (위 입력칸에서 고친 뒤 [맞춰 보기])';
+      var b=ov.querySelector('[data-x="parse"]'); if(b) b.click(); })
+    .catch(function(e){ URL.revokeObjectURL(u); st.textContent="글자 인식 실패: "+(e && e.message || e); }); }); };
+  img.src=u;
+}
 function mailPop_(){
   var old=document.querySelector(".sd-ov"); if(old) old.remove(); var ov=document.createElement("div"); ov.className="sd-ov";
   ov.innerHTML='<div class="sd-pop" style="width:min(1100px,97vw);max-height:94vh;display:flex;flex-direction:column;"><div class="sd-ph"><b>📨 납기 회신표 → 특별납기 반영 <span style="font-weight:400;font-size:12px;opacity:.8;">(검토 중)</span></b><button type="button" data-x="close">닫기 ✕</button></div>'
-    +'<div class="sd-pb" style="overflow:auto;"><div class="m" style="font-size:12.5px;margin-bottom:6px;">메일의 표를 <b>머리글 줄까지 드래그해 복사 → 아래에 붙여넣기</b> 하거나, 엑셀 파일을 올리세요. PO(Purch.Doc.)+품번(Material)으로 MAIN 관리번호를 찾고, <b>엔티엘예상납기</b>를 가능일자로 맞춥니다.</div>'
+    +'<div class="sd-pb" style="overflow:auto;"><div class="m" style="font-size:12.5px;margin-bottom:6px;">메일의 표를 <b>머리글 줄까지 드래그해 복사 → 아래에 붙여넣기</b> 하거나, 엑셀 파일을 올리세요. <b>사진뿐이면</b> [🖼 사진 올리기] 또는 캡처 후 이 창에서 <b>Ctrl+V</b>. PO(Purch.Doc.)+품번(Material)으로 MAIN 관리번호를 찾고, <b>엔티엘예상납기</b>를 가능일자로 맞춥니다.</div>'
     +'<textarea id="mi-in" rows="6" style="width:100%;box-sizing:border-box;border:1px solid #D0D5DD;border-radius:10px;padding:8px;font:12.5px/1.5 monospace;" placeholder="WBS element\tPurch.Doc.\tPurch.Req.\tMaterial\tDocument\tShort Text\tVendor desc.\tDelivery Date\t엔티엘예상납기"></textarea>'
-    +'<div class="sdl-fr" style="margin-top:6px;"><button type="button" class="sd-btn pri" data-x="parse">🔍 맞춰 보기</button><button type="button" class="sd-btn" data-x="file">📂 엑셀 파일</button><input type="file" id="mi-file" accept=".xlsx,.xls,.csv" style="display:none"><span id="mi-st" class="m" style="font-size:12px;"></span></div>'
+    +'<div class="sdl-fr" style="margin-top:6px;"><button type="button" class="sd-btn pri" data-x="parse">🔍 맞춰 보기</button><button type="button" class="sd-btn" data-x="file">📂 엑셀 파일</button><input type="file" id="mi-file" accept=".xlsx,.xls,.csv" style="display:none"><button type="button" class="sd-btn" data-x="img" title="표 사진·캡처에서 글자 인식 (이 창에서 Ctrl+V로 캡처 붙여넣기도 됨)">🖼 사진 올리기</button><input type="file" id="mi-img" accept="image/*" style="display:none"><span id="mi-st" class="m" style="font-size:12px;"></span></div>'
     +'<div id="mi-prev" style="margin-top:10px;"></div></div><div class="sd-pf"><span id="mi-sum" class="m" style="margin-right:auto;font-size:12.5px;"></span><button type="button" class="sd-btn pri" data-x="apply" disabled>체크한 것 반영</button></div></div>';
   document.body.appendChild(ov);
   var rows=[], raw="", hash="";
+  ov.addEventListener("paste", function(e){ var fs=[].slice.call((e.clipboardData&&e.clipboardData.files)||[]).filter(function(f){ return /^image\//.test(f.type); }); if(fs.length){ e.preventDefault(); ocrRun_(fs[0], ov); } });   // 캡처 이미지 Ctrl+V
   var paint=function(){ var el=ov.querySelector("#mi-prev"), cls={ "변경":"chg","신규":"reg","동일":"memo","확인":"del","없음":"del","날짜없음":"memo" };
     var cnt={}; rows.forEach(function(r){ cnt[r.st]=(cnt[r.st]||0)+1; });
     el.innerHTML='<div class="m" style="font-size:12.5px;margin-bottom:6px;">'+rows.length+'줄 · '+Object.keys(cnt).map(function(k){ return k+' '+cnt[k]; }).join(' · ')+'</div>'
@@ -14105,6 +14164,7 @@ function mailPop_(){
     ov.querySelector("#mi-st").innerHTML=dup?'<b style="color:#B42318;">⚠ 이미 반영한 표입니다 — 다시 반영하면 같은 내용이 또 기록됩니다</b>':(rows.length?'':'<b style="color:#B42318;">표를 읽지 못했습니다 — 머리글(Purch.Doc. 등)까지 복사했는지 확인</b>');
     paint(); };
   ov.addEventListener("change", function(e){ var t=e.target;
+    if(t.id==="mi-img"){ var fi=t.files&&t.files[0]; if(fi) ocrRun_(fi, ov); t.value=""; return; }
     if(t.id==="mi-file"){ var f=t.files&&t.files[0]; if(!f) return; var rd=new FileReader(); rd.onload=function(){ try{ var wb=XLSX.read(rd.result,{ type:"array" }), ws=wb.Sheets[wb.SheetNames[0]], aoa=XLSX.utils.sheet_to_json(ws,{ header:1, raw:true, defval:"" }); run(aoa, JSON.stringify(aoa)); }catch(err){ alert("엑셀을 읽지 못했습니다: "+err.message); } }; rd.readAsArrayBuffer(f); t.value=""; return; }
     var a=t.getAttribute("data-mio"), b=t.getAttribute("data-mil"), c=t.getAttribute("data-mii");
     if(a!=null){ var r=rows[+a]; r.sel=t.value; if(r.sel){ mailLineState_(r); } paint(); return; }
@@ -14114,6 +14174,7 @@ function mailPop_(){
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
     if(e.target===ov || x==="close"){ ov.remove(); return; }
     if(x==="file"){ ov.querySelector("#mi-file").click(); return; }
+    if(x==="img"){ ov.querySelector("#mi-img").click(); return; }
     if(x==="parse"){ var txt=String(ov.querySelector("#mi-in").value||""); if(!txt.trim()){ alert("표를 붙여넣거나 엑셀 파일을 올리세요."); return; }
       var aoa=txt.replace(/\r/g,"").split("\n").filter(function(l){ return l.trim(); }).map(function(l){ return l.indexOf("\t")>=0?l.split("\t"):l.split(/\s{2,}/); }); run(aoa, txt); return; }
     if(x==="apply"){ var today=sdYmd_(sdToday_()), tag="[납기 회신표 "+today+" #"+hash+"] ", n=0, skip=[];
@@ -26431,8 +26492,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-04 · V10.2 검토: 납기 회신표 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-04 · V10.2 검토: 납기 회신표" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-04 · V10.2 검토: 납기 회신표 사진 인식 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-04 · V10.2 검토: 납기 회신표 사진 인식" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
