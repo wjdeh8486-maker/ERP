@@ -1704,10 +1704,15 @@
   .mb-type{ color:#fff; font-size:11.5px; font-weight:700; border-radius:6px; padding:2px 8px; white-space:nowrap; } .mb-meta{ font-size:12px; color:#667085; margin-top:4px; } .mb-meta a{ color:#1D4ED8; }
   .mb-body{ font-size:13px; color:#344054; margin-top:6px; } .mb-act{ display:flex; gap:6px; align-items:center; margin-top:8px; flex-wrap:wrap; }
   .coa-sn{ display:inline-block; font-size:11.5px; border:1px solid #D0D5DD; border-radius:6px; padding:0 6px; margin:1px; white-space:nowrap; } .coa-sn.ok{ background:#ECFDF3; border-color:#ABEFC6; color:#067647; } .coa-sn.no{ background:#FEF3F2; border-color:#FDA29B; color:#B42318; }
+  .mbq-badge{ display:none; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; margin-left:5px; border-radius:9px; background:#D92D20; color:#fff; font-size:11px; font-weight:800; line-height:1; vertical-align:middle; }
+  #mbq-toast{ position:fixed; right:18px; bottom:84px; z-index:99988; width:320px; background:#fff; border-left:4px solid #5B3EAE; border-radius:12px; box-shadow:0 12px 32px rgba(16,24,40,.25); padding:12px 14px; font-size:13px; cursor:pointer; transition:opacity .5s, transform .5s; font-family:"Pretendard Variable","맑은 고딕",sans-serif; }
+  #mbq-toast div{ color:#475467; margin-top:4px; } #mbq-toast span{ display:block; margin-top:6px; color:#5B3EAE; font-weight:700; font-size:12px; } #mbq-toast.out{ opacity:0; transform:translateY(10px); }
+  .coa-fold{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:12.5px; color:#475467; margin-top:6px; } .coa-fold button{ border:1px solid #E4E7EC; background:#fff; border-radius:7px; padding:2px 10px; font-size:12px; cursor:pointer; }
+  .mb-card.folded{ background:#FAFAFB; } .mb-card.folded .mb-h b{ color:#667085; }
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-04 · V10.2 메일 진단 개인메일 숨김"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-04 · V10.2 새 메일 알림·성적서 접기"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -14218,9 +14223,9 @@ var MB_T={ temp:["🌡","온습도 CSV","#0E7490"], coa:["📄","성적서 요�
 var __mb={ list:[], last:null, loaded:false, f:{ st:"신규", t:"" } };
 function mbUrl_(){ return (typeof docmasterApiUrl==="function")?docmasterApiUrl():""; }
 function mbLoad_(cb){ var u=mbUrl_(); if(!u){ __mb.loaded=true; cb&&cb(); return; }
-  fetch(u+"?mode=mailInbox&status=&_t="+Date.now(),{ cache:"no-store" }).then(function(r){ return r.json(); }).then(function(res){ if(res && res.success){ __mb.list=res.list||[]; __mb.last=res.last; } __mb.loaded=true; __mb.err=res&&!res.success?(res.error||"오류"):""; cb&&cb(); })
+  fetch(u+"?mode=mailInbox&status=&_t="+Date.now(),{ cache:"no-store" }).then(function(r){ return r.json(); }).then(function(res){ if(res && res.success){ __mb.list=res.list||[]; __mb.last=res.last; try{ var nn=__mb.list.filter(function(x){ return x.status==="신규"; }); __mbc.total=nn.length; __mbc.byType={}; nn.forEach(function(x){ __mbc.byType[x.type]=(__mbc.byType[x.type]||0)+1; }); mbBadge_(); }catch(_){} } __mb.loaded=true; __mb.err=res&&!res.success?(res.error||"오류"):""; cb&&cb(); })
     .catch(function(e){ __mb.loaded=true; __mb.err="불러오지 못했습니다 (GS 배포 확인)"; cb&&cb(); }); }
-function mbSet_(id, st, cb){ var it=__mb.list.find(function(x){ return x.id===id; }); if(it){ it.status=st; it.doneBy=(typeof sdWho_==="function"?sdWho_():""); }
+function mbSet_(id, st, cb){ var it=__mb.list.find(function(x){ return x.id===id; }); if(it){ var was=it.status; it.status=st; it.doneBy=(typeof sdWho_==="function"?sdWho_():""); try{ if(was==="신규" && st!=="신규"){ __mbc.total=Math.max(0,(__mbc.total||0)-1); if(__mbc.byType[it.type]) __mbc.byType[it.type]--; } else if(was!=="신규" && st==="신규"){ __mbc.total++; } mbBadge_(); }catch(_){} }
   var u=mbUrl_(); if(u) fetch(u,{ method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:JSON.stringify({ mode:"mailInboxSet", id:id, status:st, by:(typeof sdWho_==="function"?sdWho_():"") }) }).catch(function(){});
   if(document.getElementById("mb-root")) mbRender_(); cb&&cb(); }
 function mbName_(from){ var m=String(from||"").match(/^\s*"?([^"<]+?)"?\s*</); return m?m[1].trim():String(from||"").replace(/<.*>/,"").trim(); }
@@ -14320,7 +14325,7 @@ function mbFileObj_(f, cb){ fetch(mbUrl_()+"?mode=mailFile&id="+encodeURICompone
 function mbAfterNcSave_(m){ try{ if(!m) return; var files=m.__mailFiles||[], rec=ncData[ncData.length-1]; if(rec && files.length){ var st=ncAttachGet_(), key=ncAttachKey_(rec); st[key]=st[key]||[]; files.forEach(function(f){ st[key].push({ name:f.name, url:f.url, fileId:f.id, kind:/^image/.test(f.mime)?"file":"file", mime:f.mime||"" }); }); ncAttachSetAll_(st); try{ ncRender(); }catch(_){} }
   if(m.__mailId) mbSet_(m.__mailId,"반영"); }catch(_){} }
 /* ==================== 📄 성적서 요청 목록 ==================== */
-var __coa={ list:[], loaded:false, f:"접수" };
+var __coa={ list:[], loaded:false, f:"전체", open:{} };   // [수정] 기본 전체 — 발행·송부는 접혀서 보임
 function coaLoad_(cb){ if(typeof qShareLoad_!=="function"){ __coa.loaded=true; cb&&cb(); return; } qShareLoad_("coaReqList", function(v){ if(v && Array.isArray(v.list)){ var m={}; __coa.list.concat(v.list).forEach(function(x){ var p=m[x.id]; if(!p||(x.upd||0)>=(p.upd||0)) m[x.id]=x; }); __coa.list=Object.keys(m).map(function(k){ return m[k]; }); } __coa.loaded=true; cb&&cb(); }); }
 function coaSave_(){ if(typeof qShareLoad_!=="function"||typeof qShareUrl_!=="function"||!qShareUrl_()) return; qShareLoad_("coaReqList", function(v){ var m={}; ((v&&v.list)||[]).concat(__coa.list).forEach(function(x){ var p=m[x.id]; if(!p||(x.upd||0)>=(p.upd||0)) m[x.id]=x; }); __coa.list=Object.keys(m).map(function(k){ return m[k]; }); try{ qSharePost_(qShareUrl_(), "coaReqList", JSON.stringify({ list:__coa.list, ts:Date.now() })); }catch(_){} }); }
 function coaRowsFromMail_(it){
@@ -14337,11 +14342,15 @@ function coaRender_(){
   var root=document.getElementById("coa-root"); if(!root) return;
   if(!__coa.loaded){ root.innerHTML='<div class="sd-empty">불러오는 중…</div>'; coaLoad_(coaRender_); return; }
   var ST=["접수","발행","송부","보류"], cnt={}; __coa.list.forEach(function(x){ if(!x.del) cnt[x.st]=(cnt[x.st]||0)+1; });
-  var L=__coa.list.filter(function(x){ return !x.del && (__coa.f==="전체"||x.st===__coa.f); }).sort(function(a,b){ return (a.rows[0]&&a.rows[0].due||"")<(b.rows[0]&&b.rows[0].due||"")?-1:1; });
+  var L=__coa.list.filter(function(x){ return !x.del && (__coa.f==="전체"||x.st===__coa.f); }).sort(function(a,b){ var d=function(x){ return (x.st==="발행"||x.st==="송부")?1:0; }; return (d(a)-d(b)) || ((a.rows[0]&&a.rows[0].due||"")<(b.rows[0]&&b.rows[0].due||"")?-1:1); });   // 진행 중(접수·보류) 위, 발행·송부(접힘) 아래
   root.innerHTML='<div class="sd-head"><div><div class="sd-crumb">검토 <span>›</span> 성적서 요청</div><div class="sd-title">📄 성적서 요청 <span class="sdl-kind chg" style="font-size:12px;vertical-align:middle;">검토 중</span></div><div class="sd-sub">메일 수집함에서 등록한 성적서(CoA) 요청입니다. <b>[검사 기록 확인]</b>으로 S/N마다 검사종합 기록이 있는지 봅니다.</div></div>'
     +'<div class="sd-act"><button type="button" class="sd-btn" data-coa="inbox">📥 메일 수집함</button><button type="button" class="sd-btn" data-coa="reload">⟳</button></div></div>'
     +'<div class="rv-sts">'+ST.concat(["전체"]).map(function(s){ return '<button type="button" data-coast="'+s+'" class="'+(__coa.f===s?"on":"")+'">'+s+(s!=="전체"?(' <b>'+(cnt[s]||0)+'</b>'):'')+'</button>'; }).join("")+'</div>'
-    +'<div class="sd-card">'+(L.length?L.map(function(x){ return '<div class="mb-card"><div class="mb-h"><span class="mb-type" style="background:#5B3EAE">📄 '+sdE_(x.cust||"성적서")+'</span><b>'+sdE_(x.subject)+'</b>'
+    +'<div class="sd-card">'+(L.length?L.map(function(x){ var fold=(x.st==="발행"||x.st==="송부") && !(__coa.open||{})[x.id], nSn=x.rows.reduce(function(a,r){ return a+r.sns.length; },0);
+        if(fold) return '<div class="mb-card folded"><div class="mb-h"><span class="mb-type" style="background:#98A2B3">📄 '+sdE_(x.cust||"성적서")+'</span><b>'+sdE_(x.subject)+'</b>'
+          +'<select class="rv-qst" data-coaset="'+sdE_(x.id)+'">'+ST.map(function(s){ return '<option'+(x.st===s?' selected':'')+'>'+s+'</option>'; }).join("")+'</select></div>'
+          +'<div class="coa-fold"><span class="sdl-kind done">'+sdE_(x.st)+'</span><span>'+x.rows.length+'품목 · S/N '+nSn+'개 · '+x.rows.map(function(r){ return sdE_(r.dwg); }).slice(0,3).join(", ")+(x.rows.length>3?' 외':'')+'</span><span class="m">'+sdE_(x.stBy||"")+' '+sdE_(x.stAt||"")+'</span><button type="button" data-coaopen="'+sdE_(x.id)+'">▸ 펼치기</button></div></div>';
+        return '<div class="mb-card"><div class="mb-h"><span class="mb-type" style="background:#5B3EAE">📄 '+sdE_(x.cust||"성적서")+'</span><b>'+sdE_(x.subject)+'</b>'+((x.st==="발행"||x.st==="송부")?'<button type="button" data-coaopen="'+sdE_(x.id)+'" style="border:1px solid #E4E7EC;background:#fff;border-radius:7px;padding:2px 10px;font-size:12px;cursor:pointer;">▴ 접기</button>':'')
         +'<select class="rv-qst" data-coaset="'+sdE_(x.id)+'">'+ST.map(function(s){ return '<option'+(x.st===s?' selected':'')+'>'+s+'</option>'; }).join("")+'</select></div>'
         +'<div class="mb-meta">'+sdE_(x.recvAt)+' · '+sdE_(mbName_(x.from))+' · 등록 '+sdE_(x.by||"")+(x.chkAt?(' · 기록 확인 '+sdE_(x.chkAt)):'')+'</div>'
         +'<div style="overflow:auto;"><table class="mt-tb"><thead><tr><th>납품일</th><th>PO</th><th>규격(도번)</th><th>품명</th><th>수량</th><th>S/N</th></tr></thead><tbody>'
@@ -14352,9 +14361,10 @@ function coaRender_(){
   if(!root.__bound){ root.__bound=true;
     root.addEventListener("click", function(e){ var t=e.target, a=t.closest("[data-coa]"), st=t.closest("[data-coast]"), ck=t.closest("[data-coachk]");
       if(t.closest("select")) return; if(st){ __coa.f=st.getAttribute("data-coast"); coaRender_(); return; }
+      var op=t.closest("[data-coaopen]"); if(op){ __coa.open=__coa.open||{}; var oid=op.getAttribute("data-coaopen"); __coa.open[oid]=!__coa.open[oid]; coaRender_(); return; }
       if(a){ var k=a.getAttribute("data-coa"); if(k==="reload"){ __coa.loaded=false; coaRender_(); } if(k==="inbox"){ var nv=document.querySelector('.nav-item[data-view="mailbox"]'); if(nv) nv.click(); } return; }
       if(ck){ coaCheck_(ck.getAttribute("data-coachk"), ck); } });
-    root.addEventListener("change", function(e){ var id=e.target.getAttribute && e.target.getAttribute("data-coaset"); if(!id) return; var x=__coa.list.find(function(z){ return z.id===id; }); if(x){ x.st=e.target.value; x.upd=Date.now(); coaSave_(); coaRender_(); } });
+    root.addEventListener("change", function(e){ var id=e.target.getAttribute && e.target.getAttribute("data-coaset"); if(!id) return; var x=__coa.list.find(function(z){ return z.id===id; }); if(x){ x.st=e.target.value; x.stBy=(typeof sdWho_==="function"?sdWho_():""); x.stAt=new Date().toLocaleString("sv-SE").slice(5,16); x.upd=Date.now(); if(__coa.open) delete __coa.open[x.id]; coaSave_(); coaRender_(); } });
   }
 }
 // S/N마다 검사종합(qcSearch) 기록 확인
@@ -14370,6 +14380,35 @@ function coaCheck_(id, btn){
 }
 try{ RV_STAGE.push({ title:"📥 메일 수집함", desc:"qc·jdlee 메일에서 온습도·성적서 요청·납기 회신·양산장비 일정·고객 클레임을 자동으로 모아 확인 후 반영", open:function(){ var nv=document.querySelector('.nav-item[data-view="mailbox"]'); if(nv) nv.click(); } });
      RV_STAGE.push({ title:"📄 성적서 요청", desc:"메일로 받은 성적서(CoA) 요청 목록 · S/N별 검사 기록 확인 · 접수→발행→송부", open:function(){ coaOpen_(); } }); }catch(_){}
+/* [추가] 새로 수집된 메일 알림 — 10분마다 '신규' 건수만 가볍게 확인
+   · 메뉴 🧪 검토 · 📥 메일 수집함에 빨간 숫자 배지
+   · 지난번보다 새로 들어왔으면 오른쪽 아래 알림 카드 (누르면 메일 수집함)
+   · 아침 '오늘 챙길 것'에도 "메일 수집함 신규 N건" */
+var __mbc={ total:0, byType:{}, latest:"" };
+function mbBadge_(){ var n=__mbc.total||0;
+  [['.qnav-cat[data-cat="review"] > .qnav-btn',"mbq-b1"],['.nav-item[data-view="mailbox"] .qnav-t b',"mbq-b2"]].forEach(function(p){ var host=document.querySelector(p[0]); if(!host) return; var b=document.getElementById(p[1]);
+    if(!b){ b=document.createElement("span"); b.id=p[1]; b.className="mbq-badge"; host.appendChild(b); } b.textContent=n>99?"99+":n; b.style.display=n?"inline-flex":"none"; }); }
+function mbCountPoll_(){
+  var u=mbUrl_(); if(!u || document.hidden) return;
+  fetch(u+"?mode=mailCount&_t="+Date.now(),{ cache:"no-store" }).then(function(r){ return r.json(); }).then(function(res){ if(!res||!res.success) return;
+    __mbc={ total:res.total||0, byType:res.byType||{}, latest:res.latest||"" }; mbBadge_();
+    var seen=""; try{ seen=localStorage.getItem("mbSeenLatest")||""; }catch(_){}
+    if(res.latest && res.latest>seen && res.total>0){
+      try{ localStorage.setItem("mbSeenLatest", res.latest); }catch(_){}
+      if(seen){   // 처음 켠 PC는 알림 없이 기준만 저장
+        var parts=Object.keys(res.byType).map(function(k){ return (MB_T[k]?MB_T[k][0]+" "+MB_T[k][1]:k)+" "+res.byType[k]; }).join(" · ");
+        mbToast_("📥 메일 수집함에 새 메일이 있습니다 (신규 "+res.total+"건)", parts); } }
+    if(document.getElementById("mb-root") && document.getElementById("view-mailbox").classList.contains("active") && res.total!==__mb.list.filter(function(x){ return x.status==="신규"; }).length){ __mb.loaded=false; mbRender_(); }
+  }).catch(function(){}); }
+function mbToast_(title, sub){
+  var w=document.getElementById("mbq-toast"); if(w) w.remove(); w=document.createElement("div"); w.id="mbq-toast";
+  w.innerHTML='<b>'+sdE_(title)+'</b><div>'+sdE_(sub||"")+'</div><span>눌러서 확인 ›</span>';
+  w.onclick=function(){ w.remove(); var nv=document.querySelector('.nav-item[data-view="mailbox"]'); if(nv) nv.click(); };
+  document.body.appendChild(w); setTimeout(function(){ if(w.parentNode) w.classList.add("out"); setTimeout(function(){ if(w.parentNode) w.remove(); }, 500); }, 15000); }
+(function(){ if(typeof qmsMorningAlerts_!=="function") return; var orig=qmsMorningAlerts_;
+  qmsMorningAlerts_=function(){ var items=[]; try{ items=orig()||[]; }catch(_){} try{ if(__mbc.total) items.push({ icon:"📥", title:"메일 수집함 신규 (확인 후 반영)", count:__mbc.total, color:"#5B3EAE", view:"mailbox" }); }catch(_){} return items; }; })();
+setTimeout(mbCountPoll_, 8000); setInterval(mbCountPoll_, 10*60000);
+document.addEventListener("visibilitychange", function(){ if(!document.hidden) setTimeout(mbCountPoll_, 1500); });
 function qmsMorningBindBadge_(){ var b=document.getElementById("app-version"); if(b && !b.__bound){ b.__bound=true; b.addEventListener("click",function(){ qmsShowMorning_(true); }); } }
 function qmsLoadUnresolvedShared_(cb){
   try{
@@ -26730,8 +26769,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-04 · V10.2 메일 진단 개인메일 숨김 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-04 · V10.2 메일 진단 개인메일 숨김" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-04 · V10.2 새 메일 알림·성적서 접기 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-04 · V10.2 새 메일 알림·성적서 접기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
