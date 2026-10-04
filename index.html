@@ -1712,7 +1712,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-04 · V10.2 새 메일 알림·성적서 접기"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-04 · V10.2 메일 수집함 삭제"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -14237,17 +14237,20 @@ function mbRender_(){
   var root=document.getElementById("mb-root"); if(!root) return;
   if(!__mb.loaded){ root.innerHTML='<div class="sd-empty">메일 수집함을 불러오는 중…</div>'; mbLoad_(mbRender_); return; }
   var f=__mb.f, cnt={}; __mb.list.forEach(function(x){ cnt[x.status]=(cnt[x.status]||0)+1; });
-  var L=__mb.list.filter(function(x){ return (f.st==="전체" || x.status===f.st) && (!f.t || x.type===f.t); });
+  var L=__mb.list.filter(function(x){ return x.status!=="삭제" && (f.st==="전체" || x.status===f.st) && (!f.t || x.type===f.t); });   // [추가] 삭제는 숨김(행은 남겨 다시 수집 안 됨)
+  var nIgn=__mb.list.filter(function(x){ return x.status==="무시"; }).length;
   root.innerHTML='<div class="sd-head"><div><div class="sd-crumb">검토 <span>›</span> 메일 수집함</div><div class="sd-title">📥 메일 수집함 <span class="sdl-kind chg" style="font-size:12px;vertical-align:middle;">검토 중</span></div>'
     +'<div class="sd-sub">qc@ntl.kr · jdlee@ntl.kr 메일을 1시간마다 자동으로 모읍니다. 확인하고 <b>[반영]</b>만 누르세요.'+(__mb.last?(' · 마지막 수집 <b>'+sdE_(__mb.last.at)+'</b> (+'+__mb.last.added+'건)'):'')+(__mb.err?(' · <b style="color:#B42318;">'+sdE_(__mb.err)+'</b>'):'')+'</div></div>'
     +'<div class="sd-act"><button type="button" class="sd-btn" data-mb="now" title="1시간을 기다리지 않고 지금 메일함 확인">📬 지금 수집</button><button type="button" class="sd-btn" data-mb="diag" title="0건일 때 원인 확인: 어느 Gmail을 읽는지, 최근 메일이 들어와 있는지">🔍 진단</button><button type="button" class="sd-btn" data-mb="coa">📄 성적서 요청 목록</button><button type="button" class="sd-btn" data-mb="reload">⟳</button></div></div>'
     +'<div class="rv-sts">'+["신규","반영","무시","전체"].map(function(s){ return '<button type="button" data-mbst="'+s+'" class="'+(f.st===s?"on":"")+'">'+s+(s!=="전체"?(' <b>'+(cnt[s]||0)+'</b>'):'')+'</button>'; }).join("")
+    +(f.st==="무시" && nIgn?'<button type="button" data-mb="delign" style="border-color:#FDA29B;color:#B42318;" title="무시한 메일을 목록에서 지움 (다시 수집되지 않음)">🗑 무시 '+nIgn+'건 모두 삭제</button>':'')
     +'<span style="width:12px"></span>'+[["","전체 종류"]].concat(Object.keys(MB_T).map(function(k){ return [k, MB_T[k][0]+" "+MB_T[k][1]]; })).map(function(x){ return '<button type="button" data-mbt="'+x[0]+'" class="'+(f.t===x[0]?"on":"")+'">'+x[1]+'</button>'; }).join("")+'</div>'
     +'<div class="sd-card">'+(L.length?L.map(mbCard_).join(""):'<div class="sd-empty">'+(f.st==="신규"?"새로 들어온 메일이 없습니다":"해당 메일이 없습니다")+'</div>')+'</div>';
   if(!root.__bound){ root.__bound=true;
     root.addEventListener("click", function(e){ var t=e.target, a=t.closest("[data-mb]"), st=t.closest("[data-mbst]"), ty=t.closest("[data-mbt]"), ac=t.closest("[data-mba]");
       if(st){ __mb.f.st=st.getAttribute("data-mbst"); mbRender_(); return; } if(ty){ __mb.f.t=ty.getAttribute("data-mbt"); mbRender_(); return; }
       if(a){ var k=a.getAttribute("data-mb"); if(k==="reload"){ __mb.loaded=false; mbRender_(); } if(k==="coa") coaOpen_(); if(k==="diag"){ mbDiag_(); return; }
+        if(k==="delign"){ var ig=__mb.list.filter(function(x){ return x.status==="무시"; }); if(!ig.length || !confirm("무시한 메일 "+ig.length+"건을 목록에서 지울까요?\n(다시 수집되지 않습니다)")) return; ig.forEach(function(x){ mbSet_(x.id,"삭제"); }); return; }
         if(k==="now"){ a.disabled=true; a.textContent="📬 수집 중…"; fetch(mbUrl_()+"?mode=mailCollectNow&_t="+Date.now(),{ cache:"no-store" }).then(function(r){ return r.json(); }).then(function(res){ alert(res&&res.success?("새 메일 "+(res.added||0)+"건 수집"):("수집 실패: "+(res&&res.error||""))); __mb.loaded=false; mbRender_(); }).catch(function(){ alert("수집 요청 실패 (GS 배포 확인)"); a.disabled=false; a.textContent="📬 지금 수집"; }); }
         return; }
       if(ac){ var p=ac.getAttribute("data-mba").split("|"), it=__mb.list.find(function(x){ return x.id===p[1]; }); if(!it) return; mbAction_(p[0], it, ac); } });
@@ -14284,7 +14287,8 @@ function mbCard_(it){
   else if(it.type==="dueAll"){ var t2=(d.tables||[])[0]; body='양산장비 납기일정'+(t2?(' · 표 '+(t2.length-1)+'줄 '+mbTableHtml_(t2,8)):'');
     acts='<button type="button" class="sd-btn" data-mba="ok|'+sdE_(it.id)+'">✅ 확인 완료</button>'; }
   else if(it.type==="temp"){ body=mbTempSummary_(d.csv); acts='<button type="button" class="sd-btn" data-mba="ok|'+sdE_(it.id)+'">✅ 확인 완료</button>'; }
-  if(it.status!=="신규") acts='<span class="sdl-kind '+(it.status==="반영"?"done":"memo")+'">'+sdE_(it.status)+'</span> <span class="m" style="font-size:12px;">'+sdE_(it.doneBy||"")+' '+sdE_(String(it.doneAt||"").slice(5))+'</span> <button type="button" class="sd-btn" data-mba="undo|'+sdE_(it.id)+'" style="height:28px;font-size:12px;">되돌리기</button>';
+  if(it.status!=="신규") acts='<span class="sdl-kind '+(it.status==="반영"?"done":"memo")+'">'+sdE_(it.status)+'</span> <span class="m" style="font-size:12px;">'+sdE_(it.doneBy||"")+' '+sdE_(String(it.doneAt||"").slice(5))+'</span> <button type="button" class="sd-btn" data-mba="undo|'+sdE_(it.id)+'" style="height:28px;font-size:12px;">되돌리기</button>'
+    +(it.status==="무시"?' <button type="button" class="sd-btn" data-mba="del|'+sdE_(it.id)+'" style="height:28px;font-size:12px;color:#B42318;" title="목록에서 지움 (다시 수집되지 않음)">🗑 삭제</button>':'');
   else acts+=' <button type="button" class="sd-btn" data-mba="skip|'+sdE_(it.id)+'" title="해당 없음 — 목록에서 빼기">무시</button>';
   return '<div class="mb-card"><div class="mb-h"><span class="mb-type" style="background:'+T[2]+'">'+T[0]+' '+T[1]+'</span><b>'+sdE_(it.subject)+'</b></div>'
     +'<div class="mb-meta">'+sdE_(it.recvAt)+' · '+sdE_(mbName_(it.from))+(mbAcct_(it.to)?(' · 받은 계정 '+mbAcct_(it.to)):'')+(files.length?(' · 📎 '+files.map(function(f){ return '<a href="'+sdE_(f.url)+'" target="_blank" rel="noopener">'+sdE_(f.name)+'</a>'; }).join(", ")):'')+'</div>'
@@ -14300,7 +14304,8 @@ function mbClaimFields_(it){
   return o;
 }
 function mbAction_(k, it, btn){
-  if(k==="skip"){ mbSet_(it.id,"무시"); return; } if(k==="ok"){ mbSet_(it.id,"반영"); return; } if(k==="undo"){ mbSet_(it.id,"신규"); return; }
+  if(k==="skip"){ mbSet_(it.id,"무시"); return; }
+  if(k==="del"){ if(confirm("이 메일을 목록에서 지울까요?\n(다시 수집되지 않습니다)")) mbSet_(it.id,"삭제"); return; } if(k==="ok"){ mbSet_(it.id,"반영"); return; } if(k==="undo"){ mbSet_(it.id,"신규"); return; }
   if(k==="due"){ var t=mbFindTable_(it,/Purch\.?\s*Doc|PO/i); var go=function(){ mailPop_(); var ov=document.querySelector(".sd-ov"); window.__mailPopAfterApply=function(){ mbSet_(it.id,"반영"); };
       if(t){ ov.querySelector("#mi-in").value=t.map(function(r){ return r.join("\t"); }).join("\n"); ov.querySelector('[data-x="parse"]').click(); return; }
       var img=((it.data&&it.data.files)||[]).find(function(f){ return /^image/.test(f.mime); }); if(!img){ alert("표나 사진을 찾지 못했습니다."); return; }
@@ -26769,8 +26774,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-04 · V10.2 새 메일 알림·성적서 접기 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-04 · V10.2 새 메일 알림·성적서 접기" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-04 · V10.2 메일 수집함 삭제 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-04 · V10.2 메일 수집함 삭제" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
