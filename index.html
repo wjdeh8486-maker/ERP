@@ -1712,7 +1712,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-04 · V10.2 메일 수집함 삭제"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-04 · V10.2 온습도 메일 요약"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -14286,7 +14286,7 @@ function mbCard_(it){
     acts='<button type="button" class="sd-btn pri" data-mba="coa|'+sdE_(it.id)+'">📄 성적서 요청 등록</button>'; }
   else if(it.type==="dueAll"){ var t2=(d.tables||[])[0]; body='양산장비 납기일정'+(t2?(' · 표 '+(t2.length-1)+'줄 '+mbTableHtml_(t2,8)):'');
     acts='<button type="button" class="sd-btn" data-mba="ok|'+sdE_(it.id)+'">✅ 확인 완료</button>'; }
-  else if(it.type==="temp"){ body=mbTempSummary_(d.csv); acts='<button type="button" class="sd-btn" data-mba="ok|'+sdE_(it.id)+'">✅ 확인 완료</button>'; }
+  else if(it.type==="temp"){ body=mbTempSummary_(d.csv, files); acts='<button type="button" class="sd-btn" data-mba="ok|'+sdE_(it.id)+'">✅ 확인 완료</button>'; }
   if(it.status!=="신규") acts='<span class="sdl-kind '+(it.status==="반영"?"done":"memo")+'">'+sdE_(it.status)+'</span> <span class="m" style="font-size:12px;">'+sdE_(it.doneBy||"")+' '+sdE_(String(it.doneAt||"").slice(5))+'</span> <button type="button" class="sd-btn" data-mba="undo|'+sdE_(it.id)+'" style="height:28px;font-size:12px;">되돌리기</button>'
     +(it.status==="무시"?' <button type="button" class="sd-btn" data-mba="del|'+sdE_(it.id)+'" style="height:28px;font-size:12px;color:#B42318;" title="목록에서 지움 (다시 수집되지 않음)">🗑 삭제</button>':'');
   else acts+=' <button type="button" class="sd-btn" data-mba="skip|'+sdE_(it.id)+'" title="해당 없음 — 목록에서 빼기">무시</button>';
@@ -14294,8 +14294,18 @@ function mbCard_(it){
     +'<div class="mb-meta">'+sdE_(it.recvAt)+' · '+sdE_(mbName_(it.from))+(mbAcct_(it.to)?(' · 받은 계정 '+mbAcct_(it.to)):'')+(files.length?(' · 📎 '+files.map(function(f){ return '<a href="'+sdE_(f.url)+'" target="_blank" rel="noopener">'+sdE_(f.name)+'</a>'; }).join(", ")):'')+'</div>'
     +'<div class="mb-body">'+body+'</div><div class="mb-act">'+acts+'</div></div>';
 }
-function mbTempSummary_(csv){ var L=String(csv||"").replace(/\r/g,"").split("\n").filter(function(x){ return x.trim(); }); if(L.length<2) return "CSV 내용 없음";
-  var h=L[0].split(","), last=L[L.length-1].split(","); return 'CSV '+(L.length-1)+'줄 · 마지막: '+h.map(function(c,i){ return sdE_(c.trim())+' <b>'+sdE_(String(last[i]||"").trim())+'</b>'; }).join(" · ")+' <span class="m">(온습도 화면 연동은 CSV 형식 확인 후)</span>'; }
+function mbTempZone_(files){ var nm=((files||[]).find(function(f){ return /\.csv/i.test(f.name||""); })||{}).name||""; var x=nm.replace(/=\?UTF-8\?Q\?/gi,"").replace(/\?=/g,"").replace(/\s+/g,"").replace(/=([0-9A-F]{2})/gi,"%$1"); try{ x=decodeURIComponent(x); }catch(_){} x=x.replace(/UTF-8\??Q\??/gi,""); var m=x.match(/_([^_]+)_(\d{8})\.csv/i); return m?m[1]:""; }
+// [수정] 온습도 CSV 요약 — 구역·기간·최저/최고·기준 이탈 (저장은 온습도 프로그램이 자동으로 함)
+function mbTempSummary_(csv, files){
+  var L=String(csv||"").replace(/\uFEFF/g,"").replace(/\r/g,"").split("\n"), R=[];
+  L.forEach(function(l){ var c=l.split(","); var dm=String(c[0]||"").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/), tm=String(c[1]||"").trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i); if(!dm||!tm) return;
+    var h=(+tm[1])%12+(/PM/i.test(tm[3])?12:0); R.push({ at:dm[3]+"-"+("0"+dm[1]).slice(-2)+"-"+("0"+dm[2]).slice(-2)+" "+("0"+h).slice(-2)+":"+tm[2], t:parseFloat(c[2]), h:parseFloat(c[3]) }); });
+  if(!R.length) return "CSV 내용 없음";
+  var z=mbTempZone_(files), q=/수입|공정|크린|클린|포장|완제품|보관/.test(z), hMin=q?20:15, hMax=q?60:65, out=R.filter(function(r){ return r.t<15||r.t>25||r.h<hMin||r.h>hMax; }).length;
+  var mn=function(k){ return Math.min.apply(null,R.map(function(r){ return r[k]; })); }, mx=function(k){ return Math.max.apply(null,R.map(function(r){ return r[k]; })); };
+  return '<b>'+sdE_(z||"구역 미확인")+'</b> · '+sdE_(R[0].at.slice(5))+' ~ '+sdE_(R[R.length-1].at.slice(5))+' · '+R.length+'건 · 온도 '+mn("t")+'~'+mx("t")+'℃ · 습도 '+mn("h")+'~'+mx("h")+'%'
+    +(out?' · <b style="color:#B42318;">기준 이탈 '+out+'시간</b>':' · <span style="color:#039855;">기준 이내</span>')
+    +' <span class="m">(온습도'+(q?'(품질)':'(제조)')+' 프로그램이 자동 저장)</span>'; }
 function mbClaimFields_(it){
   var o={ partName:"", partNo:"", sn:"", equip:"", qty:"", defect:"", req:"" }, t=((it.data&&it.data.tables)||[]).find(function(tb){ return tb.some(function(r){ return r.some(function(c){ return /불량\s*현상|품\s*번/.test(c); }); }); });
   (t||[]).forEach(function(r){ var lab=(r.length>=3?r[1]:r[0])||"", v=(r.length>=3?r[2]:r[1])||""; lab=lab.replace(/\s+/g,"");
@@ -26774,8 +26784,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-04 · V10.2 메일 수집함 삭제 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-04 · V10.2 메일 수집함 삭제" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-04 · V10.2 온습도 메일 요약 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-04 · V10.2 온습도 메일 요약" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
