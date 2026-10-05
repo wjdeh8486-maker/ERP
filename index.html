@@ -1718,7 +1718,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-05 · V10.2 측정 프로그램 목록 보완"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-05 · V10.2 측정 프로그램: 특별납기 기준"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -14451,31 +14451,35 @@ function mpRender_(){
   if(!__mp.loaded){ root.innerHTML='<div class="sd-empty">측정 프로그램 목록을 불러오는 중…</div>'; mpLoad_(mpRender_); return; }
   var cnt={ 구형:0, 소형:0, 대형:0 }; __mp.rows.forEach(function(r){ if(cnt[r[0]]!=null) cnt[r[0]]++; });
   var noDwg=__mp.rows.filter(function(r){ return !r[1]; }).length;
-  // 진행 중 주문(납품완료 제외) 도번
-  var md=(typeof mainData!=="undefined"&&mainData)||[], openD={};
-  var __cut=new Date(); __cut.setDate(__cut.getDate()-60); var cutS=__cut.toISOString().slice(0,10);   // [수정] 납기가 60일 넘게 지난 옛 주문은 제외(납품여부가 안 바뀐 옛 행이 많음)
-  md.forEach(function(r){ if(String(r.shipped||"")==="납품완료") return; var du=String(r.dueDate||"").slice(0,10); if(du && du<cutS) return;
-    var d=String(r.oldDrawingNo||r.partNo||"").trim(); if(!d) return; var k=mpKey_(d), o=openD[k]||(openD[k]={ dwg:d, alt:String(r.partNo||"").trim(), name:r.partName||"", cust:r.customer||"", n:0, due:"" }); o.n++; if(du && (!o.due || du<o.due)) o.due=du; });
-  var has=function(o){ return !!(__mp.map[mpKey_(o.dwg)] || (o.alt && __mp.map[mpKey_(o.alt)])); };   // 기존도번·품번 둘 중 하나라도 프로그램이 있으면 자동
-  var need=Object.keys(openD).map(function(k){ return openD[k]; }).filter(function(o){ return !has(o); }).sort(function(a,b){ return (a.due||"9")<(b.due||"9")?-1:1; });
-  var part=Object.keys(openD).filter(function(k){ var s=mpStatus_(openD[k].dwg); return s.any && !(s.소형 && s.대형 && s.구형); }).length;
+  // [수정] 특별납기(특별관리) 미완료 줄 중 자동 프로그램이 없는 도번 — 특별납기 기존도번 + MAIN 품번 둘 다로 맞춤
+  if(typeof __sd!=="undefined" && !__sd.loaded && typeof sdLoad_==="function" && !__mp.sdReq){ __mp.sdReq=true; sdLoad_(function(){ mpRender_(); }); }
+  var md=(typeof mainData!=="undefined"&&mainData)||[], byOrd={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) byOrd[o]=r; });
+  var sdL=(typeof sdLive_==="function" && __sd.loaded)?sdLive_().filter(function(x){ return !sdDone_(x); }):[];
+  var has=function(d, alt){ return !!(__mp.map[mpKey_(d)] || (alt && __mp.map[mpKey_(alt)])); };
+  var need=[], partN=0;
+  sdL.forEach(function(x){ var mo=byOrd[String(x.ord||"").trim()]||{}, d=String(x.draw||mo.oldDrawingNo||"").trim(), alt=String(mo.partNo||"").trim();
+    if(!d && !alt) return; var st=mpStatus_(d||alt); if(has(d,alt)){ if(!(st.구형&&st.소형&&st.대형)) partN++; return; }
+    need.push({ ord:x.ord||"", dwg:d||alt, name:mo.partName||"", cust:mo.customer||"", avail:x.avail||"", qty:x.qty||"" }); });
+  need.sort(function(a,b){ return (a.avail||"0")<(b.avail||"0")?-1:((a.avail||"0")>(b.avail||"0")?1:0); });   // 가능일 미정 먼저, 그다음 빠른 순
+  var part=partN;
   if(!__mp.rows.length) need=[];   // 목록이 아직 없으면 전부 '수동'으로 보이는 것을 막음
   var q=mpKey_(__mp.q), list;
   if(q){ list=Object.keys(__mp.map).filter(function(k){ return k.indexOf(q)>=0; }).map(function(k){ return __mp.map[k]; }); }
   root.innerHTML='<div class="sd-head"><div><div class="sd-crumb">검토 <span>›</span> 측정 프로그램</div><div class="sd-title">📐 측정 자동 프로그램 <span class="sdl-kind chg" style="font-size:12px;vertical-align:middle;">검토 중</span></div>'
     +'<div class="sd-sub">사내 서버 <b>측정 디미스</b>(1.구형 · 2.대형 · 3.소형)의 .DMI 목록입니다. 도번에 자동 프로그램이 없으면 <b>수동 측정</b>입니다.'+(__mp.at?(' · 서버 확인 <b>'+sdE_(__mp.at)+'</b>'):' · <b style="color:#B54708;">아직 목록이 없습니다 — 사내 PC에서 <code>node ntl_excel_upload.js --measprog</code> 실행 (GS 새 버전 배포 필요)</b>')+(__mp.err?(' · <b style="color:#B42318;">'+sdE_(__mp.err)+'</b>'):'')+'</div></div>'
     +'<div class="sd-act"><button type="button" class="sd-btn" data-mp="reload">⟳</button></div></div>'
-    +'<div class="mp-kpi"><div>구형 <b>'+cnt.구형+'</b></div><div>소형 <b>'+cnt.소형+'</b></div><div>대형 <b>'+cnt.대형+'</b></div><div>도번 <b>'+Object.keys(__mp.map).length+'</b></div>'+(noDwg?'<div>도번 못 찾은 파일 <b style="color:#B54708;">'+noDwg+'</b></div>':'')+'<div>진행 중 주문 중 <b style="color:#B42318;">수동 '+need.length+'</b> · 일부 측정기만 '+part+'</div></div>'
+    +'<div class="mp-kpi"><div>구형 <b>'+cnt.구형+'</b></div><div>소형 <b>'+cnt.소형+'</b></div><div>대형 <b>'+cnt.대형+'</b></div><div>도번 <b>'+Object.keys(__mp.map).length+'</b></div>'+(noDwg?'<div>도번 못 찾은 파일 <b style="color:#B54708;">'+noDwg+'</b></div>':'')+'<div>특별납기 중 <b style="color:#B42318;">수동 '+need.length+'</b> · 일부 측정기만 '+part+'</div></div>'
     +'<div class="sd-card" style="margin-bottom:12px;"><div class="sdl-fr"><input id="mp-q" placeholder="도번 검색 (예: M200-005-050) — Enter" value="'+sdE_(__mp.q)+'" style="flex:1;height:38px;border:1px solid #D0D5DD;border-radius:9px;padding:0 12px;"><button type="button" class="sd-btn pri" data-mp="find">🔍 조회</button></div>'
     +(q?('<div style="overflow:auto;margin-top:8px;"><table class="mt-tb"><thead><tr><th>도번</th><th>구형</th><th>소형</th><th>대형</th></tr></thead><tbody>'+(list.length?list.slice(0,200).map(function(o){ return '<tr><td class="nw"><b>'+sdE_(o.dwg)+'</b></td><td>'+mpCell_(o,"구형")+'</td><td>'+mpCell_(o,"소형")+'</td><td>'+mpCell_(o,"대형")+'</td></tr>'; }).join(""):'<tr><td colspan="4" style="text-align:center;"><b style="color:#B42318;">자동 프로그램 없음 → 수동 측정</b></td></tr>')+'</tbody></table></div>'):'<div class="m" style="font-size:12px;margin-top:6px;">✓ 자동에 마우스를 올리면 서버 안의 파일 위치가 보입니다.</div>')+'</div>'
-    +'<div class="sd-card"><div style="font-weight:700;margin-bottom:6px;">✋ 진행 중 주문 중 자동 프로그램이 없는 도번 (수동 측정) <span class="m" style="font-weight:400;font-size:12px;">— 납품완료·납기 60일 지난 주문 제외 · 최종납기 빠른 순 · 프로그램 작성 우선순위 참고</span></div>'
-    +(need.length?'<div style="overflow:auto;max-height:55vh;"><table class="mt-tb"><thead><tr><th>도번</th><th>품명</th><th>고객</th><th>주문</th><th>가장 빠른 납기</th></tr></thead><tbody>'+need.slice(0,500).map(function(o){ return '<tr><td class="nw"><b>'+sdE_(o.dwg)+'</b></td><td>'+sdE_(o.name)+'</td><td>'+sdE_(o.cust)+'</td><td class="n">'+o.n+'</td><td class="nw">'+sdE_(o.due)+'</td></tr>'; }).join("")+'</tbody></table></div>':'<div class="sd-empty">'+(!__mp.rows.length?'측정 프로그램 목록이 올라오면 표시됩니다':(md.length?'모든 진행 중 도번에 자동 프로그램이 있습니다':'MAIN 데이터가 아직 없습니다'))+'</div>')+'</div>';
+    +'<div class="sd-card"><div style="font-weight:700;margin-bottom:6px;">✋ 특별납기(특별관리) 중 자동 프로그램이 없는 도번 (수동 측정) <span class="m" style="font-weight:400;font-size:12px;">— 미완료 출고 일정 · 가능일 빠른 순 · 프로그램 작성 우선순위 참고</span></div>'
+    +(need.length?'<div style="overflow:auto;max-height:55vh;"><table class="mt-tb"><thead><tr><th>가능일자</th><th>관리번호</th><th>도번</th><th>품명</th><th>고객</th><th>수량</th></tr></thead><tbody>'+need.map(function(o){ return '<tr><td class="nw">'+(o.avail?sdE_(o.avail.slice(5)):'<b class="sd-tbd">미정</b>')+'</td><td class="nw">'+sdE_(o.ord)+'</td><td class="nw"><b>'+sdE_(o.dwg)+'</b></td><td>'+sdE_(o.name)+'</td><td>'+sdE_(o.cust)+'</td><td class="n">'+sdE_(o.qty)+'</td></tr>'; }).join("")+'</tbody></table></div>'
+      :'<div class="sd-empty">'+(!__mp.rows.length?'측정 프로그램 목록이 올라오면 표시됩니다':(!__sd.loaded?'특별납기를 불러오는 중…':(sdL.length?'특별납기 품목은 모두 자동 프로그램이 있습니다':'미완료 특별납기가 없습니다')))+'</div>')+'</div>';
   if(!root.__bound){ root.__bound=true;
     root.addEventListener("click", function(e){ var a=e.target.closest("[data-mp]"); if(!a) return; var k=a.getAttribute("data-mp"); if(k==="reload"){ __mp.loaded=false; mpRender_(); } if(k==="find"){ __mp.q=(document.getElementById("mp-q")||{}).value||""; mpRender_(); } });
     root.addEventListener("keydown", function(e){ if(e.target.id==="mp-q" && e.key==="Enter"){ __mp.q=e.target.value; mpRender_(); } });
   }
 }
-try{ RV_STAGE.push({ title:"📐 측정 자동 프로그램", desc:"도번별 구형·소형·대형 측정기 자동 프로그램(.DMI) 유무 · 없으면 수동 측정", open:function(){ var nv=document.querySelector('.nav-item[data-view="measprog"]'); if(nv) nv.click(); } }); }catch(_){}
+try{ RV_STAGE.push({ title:"📐 측정 자동 프로그램", desc:"도번별 구형·소형·대형 측정기 자동 프로그램(.DMI) 유무 · 특별납기 중 수동 측정 품목", open:function(){ var nv=document.querySelector('.nav-item[data-view="measprog"]'); if(nv) nv.click(); } }); }catch(_){}
 function qmsMorningBindBadge_(){ var b=document.getElementById("app-version"); if(b && !b.__bound){ b.__bound=true; b.addEventListener("click",function(){ qmsShowMorning_(true); }); } }
 function qmsLoadUnresolvedShared_(cb){
   try{
@@ -26836,8 +26840,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-05 · V10.2 측정 프로그램 목록 보완 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-05 · V10.2 측정 프로그램 목록 보완" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-05 · V10.2 측정 프로그램: 특별납기 기준 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-05 · V10.2 측정 프로그램: 특별납기 기준" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
