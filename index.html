@@ -1709,10 +1709,16 @@
   #mbq-toast div{ color:#475467; margin-top:4px; } #mbq-toast span{ display:block; margin-top:6px; color:#5B3EAE; font-weight:700; font-size:12px; } #mbq-toast.out{ opacity:0; transform:translateY(10px); }
   .coa-fold{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:12.5px; color:#475467; margin-top:6px; } .coa-fold button{ border:1px solid #E4E7EC; background:#fff; border-radius:7px; padding:2px 10px; font-size:12px; cursor:pointer; }
   .mb-card.folded{ background:#FAFAFB; } .mb-card.folded .mb-h b{ color:#667085; }
+  #view-measprog{ background:#F7F8FA; color:#101828; } #view-measprog *{ font-family:"Pretendard Variable","Pretendard","맑은 고딕","Malgun Gothic",sans-serif !important; box-sizing:border-box; }
+  #view-measprog .sd-head{ display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:14px; } #view-measprog .sd-crumb{ font-size:12px; color:#98A2B3; } #view-measprog .sd-title{ font-size:24px; font-weight:700; } #view-measprog .sd-sub{ font-size:13px; color:#667085; margin-top:4px; } #view-measprog .sd-act{ margin-left:auto; display:flex; gap:8px; }
+  #view-measprog .sd-btn{ height:36px; padding:0 14px; border:1px solid #E4E7EC; border-radius:9px; background:#fff; color:#344054; font-weight:600; cursor:pointer; } #view-measprog .sd-btn.pri{ background:#111827; color:#fff; border-color:#111827; }
+  #view-measprog .sd-card{ background:#fff; border:1px solid #EAECF0; border-radius:14px; padding:14px 16px; } #view-measprog .sd-empty{ text-align:center; color:#98A2B3; padding:20px; } #view-measprog .m{ color:#98A2B3; } #view-measprog .sdl-fr{ display:flex; gap:8px; }
+  .mp-kpi{ display:flex; gap:18px; flex-wrap:wrap; font-size:13px; color:#475467; margin-bottom:12px; } .mp-kpi b{ color:#101828; font-size:15px; margin-left:3px; }
+  .mp-ok{ display:inline-block; background:#ECFDF3; color:#067647; border:1px solid #ABEFC6; border-radius:6px; padding:1px 8px; font-size:12px; font-weight:700; cursor:help; } .mp-no{ display:inline-block; background:#FEF3F2; color:#B42318; border:1px solid #FDA29B; border-radius:6px; padding:1px 8px; font-size:12px; font-weight:700; }
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-04 · V10.2 온습도 메일 요약"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-05 · V10.2 검토: 측정 자동 프로그램"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -1981,6 +1987,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
       <div class="qnav-panel">
         <div class="nav-item nav-sub" data-view="review"><span class="qnav-i">🧪</span><span class="qnav-t"><b>검토 목록</b><small>자동화·새 메뉴·개선 · 검토 중 화면</small></span></div>
         <div class="nav-item nav-sub" data-view="mailbox"><span class="qnav-i">📥</span><span class="qnav-t"><b>메일 수집함</b><small>메일 자동 수집 → 확인 후 반영 (검토 중)</small></span></div>
+        <div class="nav-item nav-sub" data-view="measprog"><span class="qnav-i">📐</span><span class="qnav-t"><b>측정 자동 프로그램</b><small>도번별 구형·소형·대형 · 없으면 수동 (검토 중)</small></span></div>
         <div class="nav-item nav-sub" data-view="coareq"><span class="qnav-i">📄</span><span class="qnav-t"><b>성적서 요청</b><small>CoA 요청 · S/N 검사 기록 확인 (검토 중)</small></span></div>
       </div></div>
   </div>
@@ -2323,6 +2330,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
     <div class="view" id="view-review"><div id="rv-root"></div></div>
     <div class="view" id="view-mailbox"><div id="mb-root"></div></div>
     <div class="view" id="view-coareq"><div id="coa-root"></div></div>
+    <div class="view" id="view-measprog"><div id="mp-root"></div></div>
     <div class="view" id="view-management" style="padding:0;">
       <div id="management-print-page" style="padding:16px;">
         
@@ -4019,7 +4027,7 @@ function qxLayout_(){
       return false; };
     var views=[].slice.call(document.querySelectorAll(".main-area > .view[id^='view-']"));
     views.forEach(function(view){
-      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="specdue" || v==="specduelog" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq") return;   // 검사일보·품질대시보드는 자체 배치
+      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="specdue" || v==="specduelog" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
       var inf=info(v) || (v==="history"?info("management"):null);
       var tb=document.getElementById("topbar-"+v);
       if(tb){
@@ -5082,6 +5090,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="review" && typeof rvRender_==="function"){ rvRender_(); }   // 검토
     if(target==="mailbox" && typeof mbRender_==="function"){ mbRender_(); }   // 메일 수집함
     if(target==="coareq" && typeof coaRender_==="function"){ coaRender_(); }   // 성적서 요청
+    if(target==="measprog" && typeof mpRender_==="function"){ mpRender_(); }   // 측정 자동 프로그램
     if(target==="main" && typeof sdMainBanner_==="function"){ try{ sdMainBanner_(); }catch(_){} }
     if(target==="insrep"){
       if(!window.__insrepInited){ window.__insrepInited = true; insInit(); }
@@ -14424,6 +14433,45 @@ function mbToast_(title, sub){
   qmsMorningAlerts_=function(){ var items=[]; try{ items=orig()||[]; }catch(_){} try{ if(__mbc.total) items.push({ icon:"📥", title:"메일 수집함 신규 (확인 후 반영)", count:__mbc.total, color:"#5B3EAE", view:"mailbox" }); }catch(_){} return items; }; })();
 setTimeout(mbCountPoll_, 8000); setInterval(mbCountPoll_, 10*60000);
 document.addEventListener("visibilitychange", function(){ if(!document.hidden) setTimeout(mbCountPoll_, 1500); });
+/* ==================== 📐 측정 자동 프로그램 (검토 중) ====================
+   사내 서버 측정 디미스 폴더(1.구형 / 2.대형 / 3.소형)의 .DMI 목록 → 도번별 "어느 측정기에 자동 프로그램이 있는지"
+   없으면 수동 측정 · 진행 중 주문 중 프로그램 없는 도번 목록 */
+var MP_M=["구형","소형","대형"], __mp={ loaded:false, map:{}, rows:[], at:"", q:"", tab:"need" };
+function mpKey_(d){ return String(d||"").trim().toUpperCase().replace(/\s+/g,""); }
+function mpLoad_(cb){ var u=mbUrl_(); if(!u){ __mp.loaded=true; cb&&cb(); return; }
+  fetch(u+"?mode=measProg&_t="+Date.now(),{ cache:"no-store" }).then(function(r){ return r.json(); }).then(function(res){ __mp.loaded=true; if(!res||!res.success){ __mp.err=(res&&res.error)||"오류"; cb&&cb(); return; }
+    __mp.rows=res.rows||[]; __mp.at=res.scannedAt||""; __mp.map={};
+    __mp.rows.forEach(function(r){ var k=mpKey_(r[1]); if(!k) return; var o=__mp.map[k]||(__mp.map[k]={ dwg:r[1], 구형:[], 소형:[], 대형:[] }); (o[r[0]]=o[r[0]]||[]).push({ file:r[2], path:r[3], at:r[4] }); }); cb&&cb(); })
+    .catch(function(){ __mp.loaded=true; __mp.err="불러오지 못했습니다 (GS 배포 확인)"; cb&&cb(); }); }
+// 다른 화면에서 쓰는 조회: { 구형:bool, 소형:bool, 대형:bool, any:bool }
+function mpStatus_(dwg){ var o=__mp.map[mpKey_(dwg)]; return { 구형:!!(o&&o.구형.length), 소형:!!(o&&o.소형.length), 대형:!!(o&&o.대형.length), any:!!(o&&(o.구형.length||o.소형.length||o.대형.length)) }; }
+function mpCell_(o, m){ var L=(o&&o[m])||[]; return L.length?('<span class="mp-ok" title="'+sdE_(L.map(function(x){ return x.path+" ("+x.at+")"; }).join("\n"))+'">✓ 자동'+(L.length>1?(' '+L.length):'')+'</span>'):'<span class="mp-no">수동</span>'; }
+function mpRender_(){
+  var root=document.getElementById("mp-root"); if(!root) return;
+  if(!__mp.loaded){ root.innerHTML='<div class="sd-empty">측정 프로그램 목록을 불러오는 중…</div>'; mpLoad_(mpRender_); return; }
+  var cnt={ 구형:0, 소형:0, 대형:0 }; __mp.rows.forEach(function(r){ if(cnt[r[0]]!=null) cnt[r[0]]++; });
+  var noDwg=__mp.rows.filter(function(r){ return !r[1]; }).length;
+  // 진행 중 주문(납품완료 제외) 도번
+  var md=(typeof mainData!=="undefined"&&mainData)||[], openD={};
+  md.forEach(function(r){ if(String(r.shipped||"")==="납품완료") return; var d=String(r.oldDrawingNo||r.partNo||"").trim(); if(!d) return; var k=mpKey_(d), o=openD[k]||(openD[k]={ dwg:d, name:r.partName||"", cust:r.customer||"", n:0, due:"" }); o.n++; var du=String(r.dueDate||"").slice(0,10); if(du && (!o.due || du<o.due)) o.due=du; });
+  var need=Object.keys(openD).filter(function(k){ return !__mp.map[k]; }).map(function(k){ return openD[k]; }).sort(function(a,b){ return (a.due||"9")<(b.due||"9")?-1:1; });
+  var part=Object.keys(openD).filter(function(k){ var s=mpStatus_(openD[k].dwg); return s.any && !(s.소형 && s.대형 && s.구형); }).length;
+  var q=mpKey_(__mp.q), list;
+  if(q){ list=Object.keys(__mp.map).filter(function(k){ return k.indexOf(q)>=0; }).map(function(k){ return __mp.map[k]; }); }
+  root.innerHTML='<div class="sd-head"><div><div class="sd-crumb">검토 <span>›</span> 측정 프로그램</div><div class="sd-title">📐 측정 자동 프로그램 <span class="sdl-kind chg" style="font-size:12px;vertical-align:middle;">검토 중</span></div>'
+    +'<div class="sd-sub">사내 서버 <b>측정 디미스</b>(1.구형 · 2.대형 · 3.소형)의 .DMI 목록입니다. 도번에 자동 프로그램이 없으면 <b>수동 측정</b>입니다.'+(__mp.at?(' · 서버 확인 <b>'+sdE_(__mp.at)+'</b>'):' · <b style="color:#B54708;">아직 목록이 없습니다 — 사내 PC에서 measprog_scan.js 실행</b>')+(__mp.err?(' · <b style="color:#B42318;">'+sdE_(__mp.err)+'</b>'):'')+'</div></div>'
+    +'<div class="sd-act"><button type="button" class="sd-btn" data-mp="reload">⟳</button></div></div>'
+    +'<div class="mp-kpi"><div>구형 <b>'+cnt.구형+'</b></div><div>소형 <b>'+cnt.소형+'</b></div><div>대형 <b>'+cnt.대형+'</b></div><div>도번 <b>'+Object.keys(__mp.map).length+'</b></div>'+(noDwg?'<div>도번 못 찾은 파일 <b style="color:#B54708;">'+noDwg+'</b></div>':'')+'<div>진행 중 주문 중 <b style="color:#B42318;">수동 '+need.length+'</b> · 일부 측정기만 '+part+'</div></div>'
+    +'<div class="sd-card" style="margin-bottom:12px;"><div class="sdl-fr"><input id="mp-q" placeholder="도번 검색 (예: M200-005-050) — Enter" value="'+sdE_(__mp.q)+'" style="flex:1;height:38px;border:1px solid #D0D5DD;border-radius:9px;padding:0 12px;"><button type="button" class="sd-btn pri" data-mp="find">🔍 조회</button></div>'
+    +(q?('<div style="overflow:auto;margin-top:8px;"><table class="mt-tb"><thead><tr><th>도번</th><th>구형</th><th>소형</th><th>대형</th></tr></thead><tbody>'+(list.length?list.slice(0,200).map(function(o){ return '<tr><td class="nw"><b>'+sdE_(o.dwg)+'</b></td><td>'+mpCell_(o,"구형")+'</td><td>'+mpCell_(o,"소형")+'</td><td>'+mpCell_(o,"대형")+'</td></tr>'; }).join(""):'<tr><td colspan="4" style="text-align:center;"><b style="color:#B42318;">자동 프로그램 없음 → 수동 측정</b></td></tr>')+'</tbody></table></div>'):'<div class="m" style="font-size:12px;margin-top:6px;">✓ 자동에 마우스를 올리면 서버 안의 파일 위치가 보입니다.</div>')+'</div>'
+    +'<div class="sd-card"><div style="font-weight:700;margin-bottom:6px;">✋ 진행 중 주문 중 자동 프로그램이 없는 도번 (수동 측정) <span class="m" style="font-weight:400;font-size:12px;">— 최종납기 빠른 순 · 프로그램 작성 우선순위 참고</span></div>'
+    +(need.length?'<div style="overflow:auto;max-height:55vh;"><table class="mt-tb"><thead><tr><th>도번</th><th>품명</th><th>고객</th><th>주문</th><th>가장 빠른 납기</th></tr></thead><tbody>'+need.slice(0,500).map(function(o){ return '<tr><td class="nw"><b>'+sdE_(o.dwg)+'</b></td><td>'+sdE_(o.name)+'</td><td>'+sdE_(o.cust)+'</td><td class="n">'+o.n+'</td><td class="nw">'+sdE_(o.due)+'</td></tr>'; }).join("")+'</tbody></table></div>':'<div class="sd-empty">'+(md.length?'모든 진행 중 도번에 자동 프로그램이 있습니다':'MAIN 데이터가 아직 없습니다')+'</div>')+'</div>';
+  if(!root.__bound){ root.__bound=true;
+    root.addEventListener("click", function(e){ var a=e.target.closest("[data-mp]"); if(!a) return; var k=a.getAttribute("data-mp"); if(k==="reload"){ __mp.loaded=false; mpRender_(); } if(k==="find"){ __mp.q=(document.getElementById("mp-q")||{}).value||""; mpRender_(); } });
+    root.addEventListener("keydown", function(e){ if(e.target.id==="mp-q" && e.key==="Enter"){ __mp.q=e.target.value; mpRender_(); } });
+  }
+}
+try{ RV_STAGE.push({ title:"📐 측정 자동 프로그램", desc:"도번별 구형·소형·대형 측정기 자동 프로그램(.DMI) 유무 · 없으면 수동 측정", open:function(){ var nv=document.querySelector('.nav-item[data-view="measprog"]'); if(nv) nv.click(); } }); }catch(_){}
 function qmsMorningBindBadge_(){ var b=document.getElementById("app-version"); if(b && !b.__bound){ b.__bound=true; b.addEventListener("click",function(){ qmsShowMorning_(true); }); } }
 function qmsLoadUnresolvedShared_(cb){
   try{
@@ -26784,8 +26832,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-04 · V10.2 온습도 메일 요약 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-04 · V10.2 온습도 메일 요약" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-05 · V10.2 검토: 측정 자동 프로그램 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-05 · V10.2 검토: 측정 자동 프로그램" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
