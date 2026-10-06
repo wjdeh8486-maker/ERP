@@ -13682,8 +13682,10 @@ function memoPop_(){
     +'<div class="sdl-fr" style="margin-top:8px;"><button type="button" class="sd-btn" data-x="sample">예시 넣어 보기</button><span class="m" style="font-size:12px;">정리 결과는 작성 창에 채워집니다 — 확인·수정 후 저장하세요 (원본 메모도 함께 보관)</span></div></div>'
     +'<div class="sd-pf"><button type="button" class="sd-btn pri" data-x="go">✨ 회의록으로 정리</button></div></div>';
   document.body.appendChild(ov);
+  var __ta=ov.querySelector("#memo-in"); try{ var __dr=localStorage.getItem("mtMemoDraft"); if(__dr){ __ta.value=__dr; try{ if(typeof showToast==="function") showToast("📝 작성 중이던 메모를 불러왔습니다"); }catch(_){} } }catch(_){}
+  __ta.addEventListener("input", function(){ try{ if(__ta.value.trim()) localStorage.setItem("mtMemoDraft", __ta.value); else localStorage.removeItem("mtMemoDraft"); }catch(_){} });   // [추가] 입력 즉시 임시 저장
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
-    if(e.target===ov || x==="close"){ ov.remove(); return; }
+    if(x==="close"){ ov.remove(); return; }   /* [수정] 바깥 클릭으로는 닫히지 않음 — 회의 중 다른 곳을 눌러도 작성 내용 유지 */
     if(x==="sample"){ ov.querySelector("#memo-in").value=sample; return; }
     if(x==="go"){ var txt=String(ov.querySelector("#memo-in").value||"").trim(); if(!txt){ alert("메모를 붙여넣으세요."); return; }
       var p=memoParse_(txt); ov.remove();
@@ -13716,16 +13718,23 @@ function mtEdit_(id, pre){
     +(isNew?'':'<details class="mt-hist"><summary>작성·수정 이력 ('+((r.hist||[]).length+1)+')</summary><div>'+sdE_(new Date(r.at||0).toLocaleString("ko-KR"))+' · '+sdE_(r.by||"")+' · 작성</div>'+(r.hist||[]).map(function(h){ return '<div>'+sdE_(new Date(h.at).toLocaleString("ko-KR"))+' · '+sdE_(h.by)+' · '+sdE_(h.what)+'</div>'; }).join("")+'</details>')
     +'</div><div class="sd-pf" style="gap:8px;">'+(isNew?'':'<button type="button" class="sd-btn" data-x="del" style="color:#B42318;margin-right:auto;">삭제</button><button type="button" class="sd-btn" data-x="print">🖨 인쇄·PDF</button>')+'<button type="button" class="sd-btn pri" data-x="save">저장</button></div></div>';
   document.body.appendChild(ov); var nf=[], keepF=(r.files||[]).slice(), remF=[];
+  /* [추가] 작성 내용 임시 저장 — 실수로 닫히거나 화면이 바뀌어도 [새 기록]/해당 기록을 다시 열면 이어서 작성 */
+  var __dk="mtEditDraft:"+(isNew?"new":r.id), __ids=["mt-type","mt-date","mt-title","mt-cust","mt-proj","mt-ords","mt-att","mt-content","mt-decision","mt-basis"];
+  var __sv=function(){ try{ var d={ f:{}, a:[] }; __ids.forEach(function(i){ var el=ov.querySelector("#"+i); if(el) d.f[i]=el.value; }); [].slice.call(ov.querySelectorAll("#mt-acts tr")).forEach(function(tr){ d.a.push({ id:tr.getAttribute("data-aid"), t:tr.querySelector(".a-t").value, owner:tr.querySelector(".a-o").value, due:tr.querySelector(".a-d").value, st:tr.querySelector(".a-s").value }); }); localStorage.setItem(__dk, JSON.stringify(d)); }catch(_){} };
+  ov.addEventListener("input", __sv); ov.addEventListener("change", __sv);
+  try{ var __d=(isNew && pre)?null:JSON.parse(localStorage.getItem(__dk)||"null");
+    if(__d){ if(confirm("저장하지 않고 닫았던 작성 내용이 있습니다. 이어서 작성할까요?\n(취소하면 임시 저장본을 지웁니다)")){ __ids.forEach(function(i){ var el=ov.querySelector("#"+i); if(el && __d.f && __d.f[i]!=null) el.value=__d.f[i]; }); ov.querySelector("#mt-acts").innerHTML=(__d.a&&__d.a.length)?__d.a.map(actRow).join(""):actRow(); } else localStorage.removeItem(__dk); }
+  }catch(_){}
   ov.addEventListener("click", function(e){ var di=e.target.getAttribute && e.target.getAttribute("data-mfdel"); if(di==null) return; e.stopPropagation(); var ff=keepF[+di]; if(!ff) return;
     if(!confirm("첨부 '"+ff.name+"'을(를) 삭제할까요? ([저장]을 눌러야 반영)")) return; remF.push(ff); keepF[+di]=null; e.target.closest(".fchip").remove(); }, true);
   ov.addEventListener("change", function(e){ if(e.target.id==="mt-files"){ nf=nf.concat([].slice.call(e.target.files||[])); ov.querySelector("#mt-newf").textContent=nf.map(function(f){ return f.name; }).join(", "); e.target.value=""; } });
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
-    if(e.target.getAttribute && e.target.getAttribute("data-rm")){ e.target.closest("tr").remove(); return; }
-    if(e.target===ov || x==="close"){ ov.remove(); return; }
-    if(x==="addact"){ ov.querySelector("#mt-acts").insertAdjacentHTML("beforeend", actRow()); return; }
+    if(e.target.getAttribute && e.target.getAttribute("data-rm")){ e.target.closest("tr").remove(); __sv(); return; }
+    if(x==="close"){ ov.remove(); return; }   /* [수정] 바깥 클릭으로는 닫히지 않음 — 회의 중 다른 곳을 눌러도 작성 내용 유지 */
+    if(x==="addact"){ ov.querySelector("#mt-acts").insertAdjacentHTML("beforeend", actRow()); __sv(); return; }
     if(x==="file"){ ov.querySelector("#mt-files").click(); return; }
     if(x==="print"){ mtPrint_(r); return; }
-    if(x==="del"){ if(!confirm("이 기록을 삭제할까요? (이력에는 삭제로 남습니다)")) return; r.del=true; mtTouch_(r,"삭제"); mtSave_(); ov.remove(); mtRender_(); return; }
+    if(x==="del"){ if(!confirm("이 기록을 삭제할까요? (이력에는 삭제로 남습니다)")) return; try{ localStorage.removeItem(__dk); }catch(_){} r.del=true; mtTouch_(r,"삭제"); mtSave_(); ov.remove(); mtRender_(); return; }
     if(x==="save"){
       var g=function(i){ return String((ov.querySelector("#"+i)||{}).value||"").trim(); };
       var n={ type:g("mt-type"), date:sdParseDate_(g("mt-date"))||mtToday_(), title:g("mt-title"), cust:g("mt-cust"), proj:g("mt-proj"), ords:g("mt-ords"), attendees:g("mt-att"), content:g("mt-content"), decision:g("mt-decision"), basis:g("mt-basis") };
@@ -13737,8 +13746,8 @@ function mtEdit_(id, pre){
       if(remF.length && !isNew) changed.push("첨부 삭제 "+remF.map(function(f){ return f.name; }).join(", "));
       var btn=e.target; btn.disabled=true; btn.textContent=nf.length?"첨부 올리는 중…":"저장 중…"; var up=keepF.filter(Boolean), left=nf.length;
       var go=function(){ remF.forEach(qmsFileTrash_); if(nf.length) changed.push("첨부 +"+nf.length); Object.assign(r, n); r.files=up;
-        if(isNew){ r.at=Date.now(); r.by=sdWho_(); r.upd=r.at; r.updBy=r.by; r.hist=[]; __mt.list.push(r); } else if(changed.length) mtTouch_(r, "수정: "+changed.join(", ")); else { ov.remove(); return; }
-        mtSave_(); ov.remove(); mtRender_(); try{ if(typeof showToast==="function") showToast("📝 저장했습니다 — 모든 PC에 공유됩니다"); }catch(_){} };
+        if(isNew){ r.at=Date.now(); r.by=sdWho_(); r.upd=r.at; r.updBy=r.by; r.hist=[]; __mt.list.push(r); } else if(changed.length) mtTouch_(r, "수정: "+changed.join(", ")); else { try{ localStorage.removeItem(__dk); }catch(_){} ov.remove(); return; }
+        try{ localStorage.removeItem(__dk); if(isNew) localStorage.removeItem("mtMemoDraft"); }catch(_){} mtSave_(); ov.remove(); mtRender_(); try{ if(typeof showToast==="function") showToast("📝 저장했습니다 — 모든 PC에 공유됩니다"); }catch(_){} };
       if(!left) go(); else nf.forEach(function(f){ sdUploadFile_(f, function(info){ if(info) up.push(info); if(--left===0) go(); }); }); } });
 }
 // [추가] 목록 인쇄 — 지금 화면에 보이는(검색·필터 적용된) 기록을 한 장 표로
