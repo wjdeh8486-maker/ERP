@@ -5514,9 +5514,9 @@ function mainRenderTable(data){
     const wVision = computeWaitVision(r);
     const wIncoming = Number(r.waitIncomingInspection)||0;
     const _reqDwg = String(r.oldDrawingNo||'').trim();
-    const _reqChecked = (_reqDwg && typeof reqSelectedDwg!=='undefined' && reqSelectedDwg.has(_reqDwg)) ? ' checked' : '';
+    const _reqChecked = (_reqDwg && typeof reqSelRows!=='undefined' && reqSelRows.has(_reqDwg+"|"+String(r.orderNo||'').trim())) ? ' checked' : '';
     return `<tr class="${rowClass}">
-      <td class="req-col"><input type="checkbox" class="req-chk" data-dwg="${_reqDwg}" data-partname="${(r.partName||'').replace(/"/g,'&quot;')}" data-qty="${r.qty||''}"${_reqDwg?'':' disabled'}${_reqChecked}></td>
+      <td class="req-col"><input type="checkbox" class="req-chk" data-dwg="${_reqDwg}" data-ord="${String(r.orderNo||'').replace(/"/g,'&quot;')}" data-partname="${(r.partName||'').replace(/"/g,'&quot;')}" data-qty="${r.qty||''}"${_reqDwg?'':' disabled'}${_reqChecked}></td>
       <td>${statusBadge(_status)}</td><td style="white-space:nowrap;">${r.orderNo}${(typeof sdStarBtn_==="function")?sdStarBtn_(r.orderNo):''}</td><td>${r.customer}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
       <td style="text-align:center;">${(typeof qmsEsc_==="function")?qmsEsc_(r.vendorName||''):(r.vendorName||'')}</td>
@@ -5547,8 +5547,8 @@ function mainRenderCards(data){
   const cardsHtml = (__cOver ? data.slice(0, __cCap) : data).map((r, idx)=>{
     const overdue = isOverdue(r.dueDate) && r.shipped!=="납품완료";
     const _cdwg = String(r.oldDrawingNo||'').trim();
-    const _cchecked = (_cdwg && typeof reqSelectedDwg!=='undefined' && reqSelectedDwg.has(_cdwg)) ? ' checked' : '';
-    const _cchk = _cdwg ? `<label class="p-card-chk req-chk-wrap" onclick="event.stopPropagation();"><input type="checkbox" class="req-chk" data-dwg="${_cdwg}" data-partname="${(r.partName||'').replace(/"/g,'&quot;')}" data-qty="${r.qty||''}"${_cchecked}></label>` : '';
+    const _cchecked = (_cdwg && typeof reqSelRows!=='undefined' && reqSelRows.has(_cdwg+"|"+String(r.orderNo||'').trim())) ? ' checked' : '';
+    const _cchk = _cdwg ? `<label class="p-card-chk req-chk-wrap" onclick="event.stopPropagation();"><input type="checkbox" class="req-chk" data-dwg="${_cdwg}" data-ord="${String(r.orderNo||'').replace(/"/g,'&quot;')}" data-partname="${(r.partName||'').replace(/"/g,'&quot;')}" data-qty="${r.qty||''}"${_cchecked}></label>` : '';
     return `<div class="p-card" data-cardidx="${idx}" title="탭하면 크게 보기">
       <div class="p-card-top"><span class="p-card-title">${_cchk}${r.orderNo} · ${r.partName}</span>${statusBadge(computeProductStatus(r))}</div>
       <div class="p-card-sub">${r.customer}${r.vendor ? ' · PROJECT NO. '+r.vendor : ''}${r.oldDrawingNo ? ' · 기존도번 '+r.oldDrawingNo : ''}</div>
@@ -26464,6 +26464,7 @@ function docmasterPrint(){
      검사이력MASTER(?mode=qcMaster)에서 자동으로 ● 표시. 클릭으로 토글 가능.
    - 공정(수입/공정/출하)은 요청서 전체에 하나만 선택. 요청수량·비고 직접 입력.
    ==================================================================== */
+var reqSelRows = new Map();        // [추가] 체크한 행: "도번|ORDER NO." -> {dwg, ord, qty, partName} (요청수량 = 체크한 그 행의 수량)
 var reqSelectedDwg = new Set();      // 체크된 도번(기존도번) 집합
 var reqMasterMap   = null;           // 도번 -> MASTER 레코드 캐시(1회 로드)
 
@@ -26486,13 +26487,13 @@ function reqEsc(t){ return qmsEsc_(t); }
 function reqUpdateButton(){
   var btn = document.getElementById("main-reqFormBtn");
   if(btn){
-    var n = reqSelectedDwg.size;
+    var n = reqSelRows.size;
     btn.textContent = "📋 검사요청서 (" + n + ")";
     btn.disabled = (n === 0);
   }
   var clr = document.getElementById("main-reqClearBtn");
   if(clr){
-    var n2 = reqSelectedDwg.size;
+    var n2 = reqSelRows.size;
     clr.textContent = n2>0 ? ("✕ 선택 해제 (" + n2 + ")") : "✕ 선택 해제";
     clr.disabled = (n2 === 0);
   }
@@ -26506,16 +26507,25 @@ function reqUpdateButton(){
 }
 
 // 체크박스 변경 위임 (테이블 + 카드 공용)
+function reqSyncDwg_(dwg){ var any=false; reqSelRows.forEach(function(v){ if(v.dwg===dwg) any=true; }); if(any) reqSelectedDwg.add(dwg); else reqSelectedDwg.delete(dwg); }
+function reqToggleRow_(cb, on){
+  var dwg = String(cb.getAttribute("data-dwg")||"").trim(); if(!dwg) return;
+  var ord = String(cb.getAttribute("data-ord")||"").trim(), key = dwg+"|"+ord;
+  if(on) reqSelRows.set(key, { dwg:dwg, ord:ord, qty:(Number(cb.getAttribute("data-qty"))||0), partName:(cb.getAttribute("data-partname")||"") });
+  else reqSelRows.delete(key);
+  reqSyncDwg_(dwg);
+}
 document.addEventListener("change", function(e){
   var cb = e.target;
   if(!cb || !cb.classList || !cb.classList.contains("req-chk")) return;
   var dwg = String(cb.getAttribute("data-dwg")||"").trim();
   if(!dwg) return;
-  if(cb.checked) reqSelectedDwg.add(dwg); else reqSelectedDwg.delete(dwg);
-  // 같은 도번의 다른 체크박스(테이블/카드 중복 렌더)도 동기화
+  reqToggleRow_(cb, cb.checked);
+  // 같은 행(도번+ORDER NO.)의 다른 체크박스(테이블/카드 중복 렌더)만 동기화
   try{
-    if(dwg.indexOf('"')<0){
-      document.querySelectorAll('.req-chk[data-dwg="'+dwg+'"]').forEach(function(o){ if(o!==cb) o.checked = cb.checked; });
+    var ord = String(cb.getAttribute("data-ord")||"").trim();
+    if(dwg.indexOf('"')<0 && ord.indexOf('"')<0){
+      document.querySelectorAll('.req-chk[data-dwg="'+dwg+'"][data-ord="'+ord+'"]').forEach(function(o){ if(o!==cb) o.checked = cb.checked; });
     }
   }catch(_){}
   reqUpdateButton();
@@ -26528,9 +26538,7 @@ document.addEventListener("change", function(e){
   all.addEventListener("change", function(){
     document.querySelectorAll("#main-tableBody .req-chk:not(:disabled)").forEach(function(cb){
       cb.checked = all.checked;
-      var dwg = String(cb.getAttribute("data-dwg")||"").trim();
-      if(!dwg) return;
-      if(all.checked) reqSelectedDwg.add(dwg); else reqSelectedDwg.delete(dwg);
+      reqToggleRow_(cb, all.checked);
     });
     reqUpdateButton();
   });
@@ -26556,6 +26564,12 @@ function reqEnsureMaster(){
 // 선택된 도번 → 품명·수량 수집 (mainData 기준, 같은 도번 여러 행이면 수량 합산)
 function reqCollectRows(){
   var out = [];
+  var __ovr = (typeof __reqQtyOverride!=="undefined" && __reqQtyOverride);
+  if(!__ovr && reqSelRows.size){   // [수정] MAIN: 체크한 행 그대로(ORDER NO. 포함), 수량은 체크한 그 행의 수량
+    var cmp=function(a,b){ return String(a).localeCompare(String(b), undefined, {numeric:true}); };
+    Array.from(reqSelRows.values()).sort(function(a,b){ return cmp(a.dwg,b.dwg) || cmp(a.ord,b.ord); }).forEach(function(e){ out.push({ dwg:e.dwg, partName:e.partName, qty:e.qty, ord:e.ord, vendor:"" }); });
+    return out;
+  }
   var dwgs = Array.from(reqSelectedDwg).sort(function(a,b){ return String(a).localeCompare(String(b), undefined, {numeric:true}); });
   var src = (typeof mainData!=="undefined" && mainData) ? mainData : [];
   dwgs.forEach(function(dwg){
@@ -26614,13 +26628,12 @@ function reqBuildModal(){
 function reqRenderRows(map){
   var rows = reqCollectRows();
   var __hm=(typeof __reqMetaOverride!=="undefined" && !!__reqMetaOverride);
-  var head = '<tr><th>No</th><th>도번</th>'+(__hm?'<th>관리번호</th>':'')+'<th class="rf-l">품명</th>'+(__hm?'<th class="rf-l">외주발주(납품처)</th>':'')+'<th>위치</th><th>요청수량</th>'
+  var head = '<tr><th>No</th><th>도번</th><th>'+(__hm?'관리번호':'ORDER NO.')+'</th><th class="rf-l">품명</th>'+(__hm?'<th class="rf-l">외주발주(납품처)</th>':'')+'<th>요청수량</th>'
     + REQ_INS_COLS.map(function(c){ return '<th>'+c.label+'</th>'; }).join("")
     + '<th class="rf-l">비고</th></tr>';
   var body = rows.map(function(r, i){
     var rec = map ? map[r.dwg] : null;
     var noMaster = !rec;
-    var __loc = (invPartStock_(r.dwg)>0 ? invPartLoc_(r.dwg) : "");
     var insTds = REQ_INS_COLS.map(function(c){
       var on = rec && rec[c.key]==="Y";
       return '<td class="rf-ins'+(on?'':' off')+'" data-key="'+c.key+'" data-on="'+(on?1:0)+'">'+(on?'●':'○')+'</td>';
@@ -26628,10 +26641,9 @@ function reqRenderRows(map){
     return '<tr data-dwg="'+reqEsc(r.dwg)+'" data-partname="'+reqEsc(r.partName)+'" data-ord="'+reqEsc(r.ord||"")+'" data-vendor="'+reqEsc(r.vendor||"")+'">'
       + '<td>'+(i+1)+'</td>'
       + '<td>'+reqEsc(r.dwg)+(noMaster?' <span style="color:#C2410C;font-size:10px;">(이력없음)</span>':'')+'</td>'
-      + (__hm?'<td>'+reqEsc(r.ord||"")+'</td>':'')
+      + '<td>'+reqEsc(r.ord||"")+'</td>'
       + '<td class="rf-l">'+reqEsc(r.partName)+'</td>'
       + (__hm?'<td class="rf-l">'+reqEsc(r.vendor||"")+'</td>':'')
-      + '<td style="text-align:center;font-weight:700;color:#0B5CAB;">'+(__loc||'')+'</td>'
       + '<td><input type="number" class="rf-qty" value="'+(r.qty||'')+'" min="0"></td>'
       + insTds
       + '<td class="rf-l"><input type="text" class="rf-memo" placeholder="비고"></td>'
@@ -26664,7 +26676,7 @@ function reqDownloadExcel(){
   var trs = Array.prototype.slice.call(document.querySelectorAll("#reqform-table tbody tr"));
   if(!trs.length){ alert("요청 항목이 없습니다."); return; }
   var __hm=(typeof __reqMetaOverride!=="undefined" && !!__reqMetaOverride);
-  var header = (__hm?["No","도번","관리번호","품명","외주발주(납품처)","위치","요청수량"]:["No","도번","품명","위치","요청수량"]).concat(REQ_INS_COLS.map(function(c){ return c.label; })).concat(["비고"]);
+  var header = (__hm?["No","도번","관리번호","품명","외주발주(납품처)","요청수량"]:["No","도번","ORDER NO.","품명","요청수량"]).concat(REQ_INS_COLS.map(function(c){ return c.label; })).concat(["비고"]);
   var aoa = [];
   aoa.push(["검사 요청서"]);                                                   // R0 제목
   aoa.push(["공정 구분", proc, "요청일", date, "요청자", who, "대상 도번", trs.length+"개"]); // R1 메타
@@ -26679,13 +26691,12 @@ function reqDownloadExcel(){
       var td = tr.querySelector('td.rf-ins[data-key="'+c.key+'"]');
       return (td && td.getAttribute("data-on")==="1") ? "●" : "";
     });
-    var __loc2=(invPartStock_(dwg)>0 ? invPartLoc_(dwg) : "");
-    aoa.push((__hm?[i+1, dwg, tr.getAttribute("data-ord")||"", pn, tr.getAttribute("data-vendor")||"", __loc2, qty]:[i+1, dwg, pn, __loc2, qty]).concat(ins).concat([memo]));
+    aoa.push((__hm?[i+1, dwg, tr.getAttribute("data-ord")||"", pn, tr.getAttribute("data-vendor")||"", qty]:[i+1, dwg, tr.getAttribute("data-ord")||"", pn, qty]).concat(ins).concat([memo]));
   });
   var ws = XLSX.utils.aoa_to_sheet(aoa);
   var lastCol = header.length - 1;
   ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:lastCol} }];                        // 제목행 병합
-  ws['!cols'] = (__hm?[{wch:5},{wch:16},{wch:18},{wch:26},{wch:22},{wch:8},{wch:9}]:[{wch:5},{wch:16},{wch:26},{wch:8},{wch:9}])
+  ws['!cols'] = (__hm?[{wch:5},{wch:16},{wch:18},{wch:26},{wch:22},{wch:9}]:[{wch:5},{wch:16},{wch:16},{wch:26},{wch:9}])
     .concat(REQ_INS_COLS.map(function(){ return {wch:6}; }))
     .concat([{wch:24}]);
   if(typeof styleAoaSheet==="function") styleAoaSheet(ws, { titleRows:[0,1], headerRows:[2] });
@@ -26704,13 +26715,12 @@ function reqPrintForm(){
   var trs = Array.prototype.slice.call(document.querySelectorAll("#reqform-table tbody tr"));
   if(!trs.length){ alert("요청 항목이 없습니다."); return; }
   var __hm=(typeof __reqMetaOverride!=="undefined" && !!__reqMetaOverride);
-  var head = '<tr><th>No</th><th>도번</th>'+(__hm?'<th>관리번호</th>':'')+'<th>품명</th>'+(__hm?'<th>외주발주(납품처)</th>':'')+'<th>위치</th><th>요청수량</th>'
+  var head = '<tr><th>No</th><th>도번</th><th>'+(__hm?'관리번호':'ORDER NO.')+'</th><th>품명</th>'+(__hm?'<th>외주발주(납품처)</th>':'')+'<th>요청수량</th>'
     + REQ_INS_COLS.map(function(c){ return '<th>'+c.label+'</th>'; }).join("")
     + '<th>비고</th></tr>';
   var bodyRows = trs.map(function(tr, i){
     var dwg = tr.getAttribute("data-dwg")||"";
     var pn  = tr.getAttribute("data-partname")||"";
-    var loc = (invPartStock_(dwg)>0 ? invPartLoc_(dwg) : "");
     var qtyEl = tr.querySelector("input.rf-qty");   var qty  = qtyEl ? qtyEl.value : "";
     var memoEl= tr.querySelector("input.rf-memo");  var memo = memoEl? memoEl.value : "";
     var insCells = REQ_INS_COLS.map(function(c){
@@ -26718,7 +26728,7 @@ function reqPrintForm(){
       var on = td && td.getAttribute("data-on")==="1";
       return '<td style="text-align:center;font-weight:700;">'+(on?"●":"")+'</td>';
     }).join("");
-    return '<tr><td>'+(i+1)+'</td><td>'+reqEsc(dwg)+'</td>'+(__hm?'<td>'+reqEsc(tr.getAttribute("data-ord")||"")+'</td>':'')+'<td style="text-align:center;">'+reqEsc(pn)+'</td>'+(__hm?'<td>'+reqEsc(tr.getAttribute("data-vendor")||"")+'</td>':'')+'<td style="font-weight:700;">'+reqEsc(loc)+'</td><td>'+reqEsc(qty)+'</td>'+insCells+'<td style="text-align:center;">'+reqEsc(memo)+'</td></tr>';
+    return '<tr><td>'+(i+1)+'</td><td>'+reqEsc(dwg)+'</td>'+'<td>'+reqEsc(tr.getAttribute("data-ord")||"")+'</td>'+'<td style="text-align:center;">'+reqEsc(pn)+'</td>'+(__hm?'<td>'+reqEsc(tr.getAttribute("data-vendor")||"")+'</td>':'')+'<td>'+reqEsc(qty)+'</td>'+insCells+'<td style="text-align:center;">'+reqEsc(memo)+'</td></tr>';
   }).join("");
   var meta = '<div style="display:flex;gap:26px;flex-wrap:wrap;margin:6px 0 12px;font-size:13px;">'
     + '<div><b>공정 구분:</b> '+reqEsc(proc||"-")+'</div>'
@@ -26735,9 +26745,9 @@ function reqPrintForm(){
 
 // 선택 전체 해제 (숨겨진 항목 포함 — 여러 LIST를 오가며 모은 선택을 한 번에 비움)
 function reqClearAll(){
-  if(reqSelectedDwg.size===0) return;
-  if(!confirm(reqSelectedDwg.size + "개 선택을 모두 해제할까요?")) return;
-  reqSelectedDwg.clear();
+  if(reqSelRows.size===0) return;
+  if(!confirm(reqSelRows.size + "개 선택을 모두 해제할까요?")) return;
+  reqSelectedDwg.clear(); reqSelRows.clear();
   document.querySelectorAll(".req-chk:checked").forEach(function(cb){ cb.checked = false; });
   reqUpdateButton();
 }
