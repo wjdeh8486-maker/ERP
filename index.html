@@ -5893,6 +5893,20 @@ function insplistToday_(){ return (typeof qmsToday_==="function")?qmsToday_():in
 function insplistStockCountable_(r){ var d=insplistYmd_(r&&r.outDate); return !d || d<insplistToday_(); }   // 출고일 없으면 기존처럼 셈
 function insplistShipIsToday_(r){ return insplistYmd_(r&&r.insDate)===insplistToday_(); }
 function insplistTodayShip_(rows){ return (rows||[]).filter(function(r){ return insplistShipIsToday_(r) && !(typeof insIsReinsp_==="function" && insIsReinsp_(r)); }); }   // 재검사 행은 완료수량에서 제외
+// [추가] S/N 토큰 → 숫자 목록. "26112-1"처럼 [숫자-숫자] 한 덩어리는 쪼개지 않고 그대로 (예전엔 26112 와 1 로 갈라져 표시됐음). "10768-" 접두는 기존처럼 제거
+function insplistSnNums_(tok){ tok=String(tok||"").trim().replace(/^10768-/,""); if(/^\d+-\d+$/.test(tok)) return [tok]; return (tok.match(/\d+/g)||[]).filter(function(n){ return n!=="10768"; }); }
+// [수정] 완료수량에 반영할 출하검사: 오늘 검사분 + 과거 검사분 중 "그 ORDER에 재고 출고 기록이 아직 없는 것" (재고 출고가 있으면 거기서 이미 세므로 중복 방지)
+function insplistCountShip_(rows, iv){
+  var stockOrd={}; (iv||[]).forEach(function(r){ var o=String(r.ctrlNo||"").trim(); if(o && (Number(r.outQty)||0)>0 && insplistStockCountable_(r)) stockOrd[o]=1; });
+  var today=insplistToday_();
+  return (rows||[]).filter(function(r){
+    if(typeof insIsReinsp_==="function" && insIsReinsp_(r)) return false;      // 재검사 행은 제외
+    var d=insplistYmd_(r&&r.insDate); if(!d || d>today) return false;
+    if(d===today) return true;
+    var outs=insplistExpandOutNo_(r.outNo); if(!outs.length) return false;
+    return !outs.some(function(o){ return stockOrd[o]; });
+  });
+}
 function insplistShipAlloc_(shipRows, qtyOf){     // 출하검사 검사수를 출고No 순서대로 각 ORDER 수량만큼 순차 배분
   var alloc={};
   (shipRows||[]).forEach(function(r){
@@ -5950,18 +5964,18 @@ function insplistSnExists_(partNo, sn){    // 입력한 S/N이 그 품번 재고
 //   · 출고No가 이 주문 하나일 때만 (여러 주문을 묶은 행은 어느 주문 것인지 알 수 없어 제외)
 //   · 그 S/N이 이미 재고 출고(관리번호)로 잡혀 있으면 두 번 세지 않음
 function insplistReworkDone_(orderNo, iv, shipRows){
-  var stockSn={}; (iv||[]).forEach(function(r){ if(String(r.ctrlNo||"").trim()===orderNo && (Number(r.outQty)||0)>0 && r.sn && (typeof insplistStockCountable_!=="function" || insplistStockCountable_(r))) String(r.sn).split(/[,\n\/]+/).forEach(function(t){ (t.trim().replace(/^10768-/,"").match(/\d+/g)||[]).forEach(function(n){ stockSn[n]=1; }); }); });
+  var stockSn={}; (iv||[]).forEach(function(r){ if(String(r.ctrlNo||"").trim()===orderNo && (Number(r.outQty)||0)>0 && r.sn && (typeof insplistStockCountable_!=="function" || insplistStockCountable_(r))) String(r.sn).split(/[,\n\/]+/).forEach(function(t){ insplistSnNums_(t).forEach(function(n){ stockSn[n]=1; }); }); });
   var n=0;
   (shipRows||[]).forEach(function(r){ if(!r || (typeof insIsReinsp_==="function" && insIsReinsp_(r))) return; if(!String(r.actDate||"").trim()) return;
     var outs=insplistExpandOutNo_(r.outNo); if(outs.length!==1 || outs[0]!==orderNo) return;
     var ic=Number(r.insCnt)||0, gc=Number(r.goodCnt)||0, bad=ic-gc; if(bad<=0) return;
-    var sn=[]; String(r.sn||"").split(/[,\n\/]+/).forEach(function(t){ (t.trim().replace(/^10768-/,"").match(/\d+/g)||[]).forEach(function(x){ if(x!=="10768") sn.push(x); }); });
+    var sn=[]; String(r.sn||"").split(/[,\n\/]+/).forEach(function(t){ insplistSnNums_(t).forEach(function(x){ if(x!=="10768") sn.push(x); }); });
     if(sn.length && sn.every(function(x){ return stockSn[x]; })) return;   // 이미 재고 출고로 셈
     n+=bad; });
   return n;
 }
 function insplistSnLabel_(orderNo, iv, shipRows, sns){
-  var good={}, bad={}, nums=function(txt, o){ String(txt||"").split(/[,\n\/]+/).forEach(function(tok){ tok=tok.trim().replace(/^10768-/,""); (tok.match(/\d+/g)||[]).forEach(function(n){ if(n!=="10768") o[n]=1; }); }); };
+  var good={}, bad={}, nums=function(txt, o){ String(txt||"").split(/[,\n\/]+/).forEach(function(tok){ insplistSnNums_(tok).forEach(function(n){ o[n]=1; }); }); };
   (iv||[]).forEach(function(r){ if(String(r.ctrlNo||"").trim()===orderNo && (Number(r.outQty)||0)>0 && r.sn) nums(r.sn, good); });
   var fixed={};
   (shipRows||[]).forEach(function(r){ if(!r || !r.sn || insplistExpandOutNo_(r.outNo).indexOf(orderNo)<0) return; var ic=Number(r.insCnt)||0, gc=Number(r.goodCnt);
@@ -5994,7 +6008,7 @@ function insplistBuildRows_(q, shipRows){
   if(typeof window!=="undefined") window.__insplistTooMany=__tooMany;
   // 출하검사 검사수를 순차 배분(앞 ORDER부터 수량만큼) — 전체 MAIN 수량 기준
   var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
-  var shipAlloc=insplistShipAlloc_(insplistTodayShip_(shipRows), function(o){ return qtyMap[o]||0; });   // [수정] 오늘 검사분만
+  var shipAlloc=insplistShipAlloc_(insplistCountShip_(shipRows, iv), function(o){ return qtyMap[o]||0; });   // [수정] 오늘 검사분만
   return matched.map(function(m){
     var orderNo=String(m.orderNo||"").trim();
     var qty=Number(m.qty)||0;
@@ -6023,7 +6037,7 @@ iv.forEach(function(r){
           sn = sn.replace(/^10768-/,"");
 
           // 숫자만 추출
-          var nums = sn.match(/\d+/g);
+          var nums = insplistSnNums_(sn);
 
           if(nums){
             nums.forEach(function(n){
@@ -6053,7 +6067,7 @@ if(r.sn){
 
       sn = sn.replace(/^10768-/,"");
 
-      var nums = sn.match(/\d+/g);
+      var nums = insplistSnNums_(sn);
 
       if(nums){
         nums.forEach(function(n){
@@ -7854,7 +7868,7 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
   if(typeof window!=="undefined"){ window.__dispatchTooMany=__tooMany; window.__dispatchTotal=__total; window.__dispatchLastDue=matched.length?String(matched[matched.length-1].dueDate||""):""; }
 
   var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
-  var shipAlloc=insplistShipAlloc_(insplistTodayShip_(shipRows), function(o){ return qtyMap[o]||0; });   // [수정] 오늘 검사분만
+  var shipAlloc=insplistShipAlloc_(insplistCountShip_(shipRows, iv), function(o){ return qtyMap[o]||0; });   // [수정] 오늘 검사분만
 
   return matched.map(function(m){
     var orderNo=String(m.orderNo||"").trim();
@@ -7868,7 +7882,7 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
       if(String(r.ctrlNo||"").trim()===orderNo){
         var __cnt=insplistStockCountable_(r);   // [수정] 어제까지 출고분만
         if(__cnt) stockOut += Number(r.outQty)||0;
-        if(r.sn){ String(r.sn).split(/[,\n\/]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){ sn=sn.replace(/^10768-/,""); var nums=sn.match(/\d+/g); if(nums) nums.forEach(function(n){ sns.push(n); if(__cnt) __stSn[n]=true; }); }); }
+        if(r.sn){ String(r.sn).split(/[,\n\/]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){ var nums=insplistSnNums_(sn); if(nums) nums.forEach(function(n){ sns.push(n); if(__cnt) __stSn[n]=true; }); }); }
       }
     });
     // 출하검사일보 S/N
@@ -7876,7 +7890,7 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
       var outNos=insplistExpandOutNo_(r.outNo);
       var __tdy=insplistShipIsToday_(r);
       if(outNos.indexOf(orderNo)>=0 && r.sn){
-        String(r.sn).split(/[,\n\/]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){ sn=sn.replace(/^10768-/,""); var nums=sn.match(/\d+/g); if(nums) nums.forEach(function(n){ if(n==="10768") return; sns.push(n); if(__tdy) __shSn[n]=true; }); });
+        String(r.sn).split(/[,\n\/]+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(sn){ var nums=insplistSnNums_(sn); if(nums) nums.forEach(function(n){ if(n==="10768") return; sns.push(n); if(__tdy) __shSn[n]=true; }); });
       }
     });
     sns=Array.from(new Set(sns));
