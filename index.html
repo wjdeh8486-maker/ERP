@@ -1732,7 +1732,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-08 · V10.2 재고라벨 공유·분출LIST 안내 숨김"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-08 · V10.2 LED 게이트·중복 날짜 표시"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -8630,7 +8630,7 @@ function shipJudgeGateBySn_(draw, cb, targetSns){
             keys.forEach(function(k){ if(insGateDoneToday_([r], draw, kind, t, k)) bySn[t][k]=true; }); });
         });
       };
-      markDay(logs.incoming, "incoming", ["exterior","bolt"]);
+      markDay(logs.incoming, "incoming", ["exterior","bolt","led"]);   /* [수정] 수입검사 일보의 LED 체크도 완료로 인정 */
       markDay(logs.measureS, "measureS", ["dimension","leak","flow","pressure","vacuum"]);
       markDay(logs.measureL, "measureL", ["dimension","leak","flow","pressure","vacuum"]);
     }
@@ -22687,7 +22687,7 @@ function insRender(){
     '<div style="background:#fff;border:1px solid #E6EBF2;border-radius:12px;padding:14px;">'
     + '<div style="font-weight:800;font-size:16px;color:#1F2A44;margin-bottom:4px;">'+insEsc(cfg.title)+'</div>'
     + '<div style="font-size:12px;color:#5A6478;margin-bottom:10px;">도번을 입력/스캔하면 자동으로 채워지고, 각 칸은 직접 수정할 수 있습니다. 체크박스는 엑셀에서 ■/□ 로 나옵니다.</div>'
-    + (__dupBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#C0392B;font-weight:700;font-size:13px;">⚠ 중복 입력 '+__dupBanner.length+'건 '+insDupStateTxt_()+' <button type="button" onclick="insDupRescan_(insType)" style="margin:0 6px;padding:2px 8px;border:1px solid #E4B4B4;border-radius:6px;background:#fff;color:#B42318;font-weight:700;cursor:pointer;font-size:12px;">↻ 다시 확인</button>— 같은 도번+S/N이 여러 행에 있습니다. (납품 후 재입고해 다시 검사한 것이면 그 행 비고에 <b>재검사</b>라고 적으면 중복에서 빠집니다) 검사종합 이동 전 확인해 중복을 제거하세요.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__dupBanner.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #E4B4B4;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.draw)+'</b> <span style="color:#8A93A6;">/</span> <b style="color:#C0392B;">'+insEsc(d.sn)+'</b></span>'; }).join("")+(__dupBanner.length>20?'<span style="color:#8A1F1F;font-size:12px;align-self:center;">… 외 '+(__dupBanner.length-20)+'건</span>':'')+'</div></div>'):'')
+    + (__dupBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#C0392B;font-weight:700;font-size:13px;">⚠ 중복 입력 '+__dupBanner.length+'건 '+insDupStateTxt_()+' <button type="button" onclick="insDupRescan_(insType)" style="margin:0 6px;padding:2px 8px;border:1px solid #E4B4B4;border-radius:6px;background:#fff;color:#B42318;font-weight:700;cursor:pointer;font-size:12px;">↻ 다시 확인</button>— 같은 도번+S/N이 여러 행에 있습니다. (납품 후 재입고해 다시 검사한 것이면 그 행 비고에 <b>재검사</b>라고 적으면 중복에서 빠집니다) 검사종합 이동 전 확인해 중복을 제거하세요.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__dupBanner.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #E4B4B4;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.draw)+'</b> <span style="color:#8A93A6;">/</span> <b style="color:#C0392B;">'+insEsc(d.sn)+'</b>'+((d.dates&&d.dates.length)?' <span style="color:#8A93A6;">('+d.dates.slice().sort().map(function(x){ return String(x).slice(5).replace("-","."); }).join(", ")+(d.dates.length===1?' 같은 날 2건':'')+(d.items&&d.items.length?' · '+insEsc(d.items.join("·")):'')+')</span>':'')+'</span>'; }).join("")+(__dupBanner.length>20?'<span style="color:#8A1F1F;font-size:12px;align-self:center;">… 외 '+(__dupBanner.length-20)+'건</span>':'')+'</div></div>'):'')
     + (__outNoOverList.length?('<div style="background:#FFF3E6;border:1px solid #F0C48A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">\u26A0 출고NO 중복/초과 '+__outNoOverList.length+'건 — 개별 출고NO(주문)의 배분 합계가 주문수량을 넘었습니다. (콤마·슬래시로 묶인 출고NO는 개별 주문으로 분해해 계산 · MAIN 수량 기준)<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__outNoOverList.slice(0,20).map(function(d){ return '<span style="display:inline-block;background:#fff;border:1px solid #F0C48A;border-radius:6px;padding:3px 8px;font-weight:400;font-size:12px;white-space:nowrap;"><b style="color:#1F2A44;">'+insEsc(d.outNo)+'</b> <span style="color:#8A93A6;">합</span> <b style="color:#B45309;">'+d.sum+'</b> &gt; 수량 '+d.qty+'</span>'; }).join("")+(__outNoOverList.length>20?'<span style="color:#8A5A00;font-size:12px;align-self:center;">… 외 '+(__outNoOverList.length-20)+'건</span>':'')+'</div></div>'):'')
     + (__gateBanner.length?('<div style="background:#FDECEC;border:1px solid #E4B4B4;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B42318;font-weight:700;font-size:13px;">⛔ 출하 전 미검사 '+__gateBanner.length+'건 — 필수검사(치수·기능 등)가 끝나지 않은 제품입니다. 도번을 누르면 해당 행(빨간색)으로 이동합니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__gateBanner.slice(0,30).map(function(d){ return '<span onclick="insTapPinScrollTo_('+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #E4B4B4;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;">'+insEsc(d.draw)+(d.sn?' <span style="font-weight:400;">'+insEsc(String(d.sn).slice(0,20))+'</span>':'')+' · '+insEsc(d.miss.join(","))+'</span>'; }).join("")+'</div></div>'):'')
     + (__fnBanner.length?('<div style="background:#FFF3E6;border:1px solid #F5C08A;border-radius:8px;padding:9px 12px;margin-bottom:10px;color:#B45309;font-weight:700;font-size:13px;">⚠ 기능검사 미완료 '+__fnBanner.length+'건 — 필수검사 정의에서 기능검사(LEAK·FLOW·가압·진공) 대상인데 소형·대형 어디에도 체크가 없습니다(소형·대형 동일 표시). 도번을 누르면 해당 행(주황색)으로 이동합니다 — 다른 화면의 도번이면 그 화면으로 전환됩니다.<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">'+__fnBanner.slice(0,30).map(function(d){ return '<span onclick="insFnGoto_(\''+d.type+'\','+d.ri+')" style="cursor:pointer;display:inline-block;background:#fff;border:1px solid #F5C08A;border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;white-space:nowrap;">'+insEsc(d.draw)+' · '+insEsc(d.miss.join(","))+(d.type!==insType?' <span style="font-weight:400;color:#8A93A6;">('+(d.type==="measureL"?"대형":"소형")+')</span>':'')+'</span>'; }).join("")+'</div></div>'):'')
@@ -24036,6 +24036,7 @@ function insGateDoneToday_(rows, draw, type, targetTail, needKey){
       good = Number(r.goodCnt)||0;
     }
     if(!(good>0)) continue;                                     // 양품수 없음 → 미완료
+    if(type==="incoming" && needKey==="led" && !r.led) continue;   // [추가] LED는 그 행에 LED 체크가 있어야 완료
     var def=(typeof insRowDefect_==="function")?insRowDefect_(type,r):null; var bad=def?def.qty:0;
     if(bad>0 && !String(r.actDate||"").trim()) continue;       // 부적합 미조치 → 누락
     if(targetTail){ var set=insSnSet_(r.sn); if(!set[targetTail]) continue; }   // S/N 지정 시 그 S/N 포함해야
@@ -24127,7 +24128,7 @@ function insShipGate_(draw, sn, cb, reqKeys){
             if(insGateDoneToday_(logRows, draw, kind, targetTail, k)){ doneAll[k]=true; }
           });
         };
-        markDay(logs.incoming, "incoming", ["exterior","bolt"]);
+        markDay(logs.incoming, "incoming", ["exterior","bolt","led"]);   /* [수정] 수입검사 일보의 LED 체크도 완료로 인정 */
         markDay(logs.measureS, "measureS", ["dimension","leak","flow","pressure","vacuum"]);
         markDay(logs.measureL, "measureL", ["dimension","leak","flow","pressure","vacuum"]);
 
@@ -26954,8 +26955,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-08 · V10.2 재고라벨 공유·분출LIST 안내 숨김 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-08 · V10.2 재고라벨 공유·분출LIST 안내 숨김" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-08 · V10.2 LED 게이트·중복 날짜 표시 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-08 · V10.2 LED 게이트·중복 날짜 표시" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
