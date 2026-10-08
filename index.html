@@ -1732,7 +1732,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-08 · V10.2 특별납기 출고·분출 기준 완료"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-08 · V10.2 공정입고 입고일자"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -12635,10 +12635,23 @@ function sdDone_(x){ return !!(x && (x.done || sdAutoDone_(x.ord))); }
    · 같은 관리번호가 여러 줄이면 가능일자 빠른 줄부터 채움 · 이미 완료한 줄 수량은 먼저 뺌
    · 한 번 자동 완료되면 저장(검사일보를 검사종합으로 옮겨도 완료 유지) · 사람이 체크 해제한 줄은 다시 자동 완료 안 함 */
 var __sdOut={ k:"", m:{} };
+/* [추가] 출하검사 일보는 입력한 기기에만 먼저 있음 → 공유 저장본(출하검사)도 5분마다 읽어 이 PC 행과 합침 (다른 PC·태블릿에서 분출한 것도 자동 완료) */
+var __sdShipCloud={ t:0, rows:[], busy:false };
+function sdShipCloudLoad_(){ var now=Date.now(); if(__sdShipCloud.busy || now-__sdShipCloud.t<300000) return; __sdShipCloud.busy=true;
+  var url=(typeof insGateApiUrl_==="function")?insGateApiUrl_():""; if(!url){ __sdShipCloud.busy=false; return; }
+  fetch(url+"?mode=insrepMaster&key=shipping&_t="+now,{cache:"no-store"}).then(function(r){ return r.json(); }).then(function(res){ var o={}; try{ o=JSON.parse(res.json||"{}"); }catch(_){}
+    __sdShipCloud={ t:Date.now(), rows:Array.isArray(o.rows)?o.rows:[], busy:false };
+    var v=document.getElementById("view-specdue"); if(v && v.classList.contains("active")) sdRender_(); }).catch(function(){ __sdShipCloud.busy=false; __sdShipCloud.t=Date.now()-240000; }); }
+function sdShipRows_(){ var loc=(typeof insState!=="undefined"&&insState.shipping&&insState.shipping.rows)||[], cl=__sdShipCloud.rows||[]; if(!cl.length) return loc;
+  var have={}, sig=function(r){ return [String(r.insDate||"").slice(0,10), String(r.draw||"").trim().toUpperCase(), String(r.sn||"").replace(/\s+/g,""), String(r.outNo||"").trim()].join("|"); };
+  loc.forEach(function(r){ if(!r) return; if(r._id) have["i:"+r._id]=1; have["s:"+sig(r)]=1; });
+  var add=cl.filter(function(r){ return r && !(r._id && have["i:"+r._id]) && !have["s:"+sig(r)] && !(r._id && typeof insDeletedIds!=="undefined" && insDeletedIds[r._id]); });
+  return add.length?loc.concat(add):loc; }
 function sdOutTotals_(){
-  var iv=(typeof invData!=="undefined"&&invData)||[], rows=(typeof insState!=="undefined"&&insState.shipping&&insState.shipping.rows)||[], md=(typeof mainData!=="undefined"&&mainData)||[];
+  try{ sdShipCloudLoad_(); }catch(_){}
+  var iv=(typeof invData!=="undefined"&&invData)||[], rows=sdShipRows_(), md=(typeof mainData!=="undefined"&&mainData)||[];
   var key=iv.length+"|"+rows.length+"|"+md.length+"|"+(rows.length?JSON.stringify(rows.map(function(r){ return [r.outNo,r.goodCnt,r.insCnt,r.seg,r.note]; })).length:0);
-  if(__sdOut.k===key && __sdOut.iv===iv && __sdOut.rows===rows) return __sdOut.m;
+  if(__sdOut.k===key && __sdOut.iv===iv) return __sdOut.m;
   var m={}, stSn={}, g=function(o){ return m[o]||(m[o]={ stock:0, ship:0 }); };
   iv.forEach(function(r){ var o=String(r.ctrlNo||"").trim(), q=Number(r.outQty)||0; if(!o || q<=0) return; g(o).stock+=q;
     if(r.sn) String(r.sn).split(/[,\n\/]+/).forEach(function(t){ (typeof insplistSnNums_==="function"?insplistSnNums_(t):[]).forEach(function(n){ (stSn[o]=stSn[o]||{})[n]=1; }); }); });
@@ -23720,13 +23733,16 @@ function insRowDone_(row, cfgKey){
   var v = good + add - minus;
   return v>0 ? v : 0;
 }
-function insSumByDraw_(rows, cfgKey, map){
+function insSumByDraw_(rows, cfgKey, map, dmap){
   (rows||[]).forEach(function(r){
     var d=String((r&&r.draw)||"").trim(); if(!d) return;
     var q=insRowDone_(r,cfgKey); if(!q) return;
     map[d]=(map[d]||0)+q;
+    if(dmap){ var dt=String((r&&r.insDate)||"").slice(0,10); if(dt){ (dmap[d]=dmap[d]||{})[dt]=1; } }   // [추가] 입고일자(=검사 완료일)
   });
 }
+// [추가] 입고일자 표시: "09월 29일" (제품 입고 현황 엑셀과 같은 모양). 여러 날이면 쉼표로
+function insProcInDt_(o){ return Object.keys(o||{}).sort().map(function(x){ var m=x.match(/^\d{4}-(\d{2})-(\d{2})$/); return m?(m[1]+"월 "+m[2]+"일"):x; }).join(", "); }
 function insProcInSrc_(){
   return insProcInSource || {
     incoming:(insState.incoming&&insState.incoming.rows)||[],
@@ -23737,13 +23753,13 @@ function insProcInSrc_(){
 function insProcInCompute_(){
   var src=insProcInSrc_();
   var pass=function(r){ return insDayFilter==="all" || String((r&&r.insDate)||"")===insDayFilter; };
-  var meas={}, clean={};
-  insSumByDraw_(src.incoming.filter(pass),"incoming",meas);   // 수입검사 완료 → 측정실 입고
-  insSumByDraw_(src.measureS.filter(pass),"measureS",clean);  // 측정실 소형 완료 → 크린룸 입고
-  insSumByDraw_(src.measureL.filter(pass),"measureL",clean);  // 측정실 대형 완료 → 크린룸 입고
+  var meas={}, clean={}, mD={}, cD={};
+  insSumByDraw_(src.incoming.filter(pass),"incoming",meas,mD);   // 수입검사 완료 → 측정실 입고
+  insSumByDraw_(src.measureS.filter(pass),"measureS",clean,cD);  // 측정실 소형 완료 → 크린룸 입고
+  insSumByDraw_(src.measureL.filter(pass),"measureL",clean,cD);  // 측정실 대형 완료 → 크린룸 입고
   var seen={}; Object.keys(meas).forEach(function(d){seen[d]=1;}); Object.keys(clean).forEach(function(d){seen[d]=1;});
   return Object.keys(seen).sort(function(a,b){return a.localeCompare(b,undefined,{numeric:true});})
-    .map(function(d){ return {draw:d, meas:meas[d]||0, clean:clean[d]||0}; });
+    .map(function(d){ return {draw:d, meas:meas[d]||0, clean:clean[d]||0, measDt:meas[d]?insProcInDt_(mD[d]):"", cleanDt:clean[d]?insProcInDt_(cD[d]):""}; });
 }
 function insRenderProcessIn(el){
   var rows=insProcInCompute_();
@@ -23754,20 +23770,24 @@ function insRenderProcessIn(el){
    +'측정실입고=수입검사 완료 · 크린룸입고=측정실 소/대 완료(치수완료 - 기능부적합). <b>'+insEsc(srcNote)+'</b></div>'
    +'<div style="overflow:auto;"><table style="border-collapse:collapse;width:100%;min-width:640px;font-size:13px;"><thead><tr>'
    +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">품번(도번)</th>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">측정실 입고일자</th>'
    +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">측정실입고 수량</th>'
    +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">비고</th>'
+   +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">크린룸 입고일자</th>'
    +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">크린룸입고 수량</th>'
    +'<th style="border:1px solid #C9D3E0;background:#EEF3FA;color:#1F2A44;font-weight:700;padding:7px;white-space:nowrap;">비고</th>'
    +'</tr></thead><tbody>';
   if(!rows.length){
-    h+='<tr><td colspan="5" style="border:1px solid #C9D3E0;padding:16px;text-align:center;color:#8A93A6;">집계할 완료 데이터가 없습니다. 상단 ☁불러오기로 최신 검사 일보를 받아오세요.</td></tr>';
+    h+='<tr><td colspan="7" style="border:1px solid #C9D3E0;padding:16px;text-align:center;color:#8A93A6;">집계할 완료 데이터가 없습니다. 상단 ☁불러오기로 최신 검사 일보를 받아오세요.</td></tr>';
   } else {
     rows.forEach(function(r){
       var m=insProcInMemo[r.draw]||{m:"",c:""};
       h+='<tr>'
        +'<td style="border:1px solid #DDE1E8;padding:6px;font-weight:600;white-space:nowrap;">'+insEsc(r.draw)+'</td>'
+       +'<td style="border:1px solid #DDE1E8;padding:6px;text-align:center;white-space:nowrap;">'+insEsc(r.measDt||"")+'</td>'
        +'<td style="border:1px solid #DDE1E8;padding:6px;text-align:center;">'+(r.meas||"")+'</td>'
        +'<td style="border:1px solid #DDE1E8;padding:3px;"><input type="text" class="procin-m" data-d="'+insEsc(r.draw)+'" value="'+insEsc(m.m||"")+'" style="width:100%;min-width:90px;padding:5px 6px;border:1px solid #C9D3E0;border-radius:6px;font-size:12px;box-sizing:border-box;"></td>'
+       +'<td style="border:1px solid #DDE1E8;padding:6px;text-align:center;white-space:nowrap;">'+insEsc(r.cleanDt||"")+'</td>'
        +'<td style="border:1px solid #DDE1E8;padding:6px;text-align:center;">'+(r.clean||"")+'</td>'
        +'<td style="border:1px solid #DDE1E8;padding:3px;"><input type="text" class="procin-c" data-d="'+insEsc(r.draw)+'" value="'+insEsc(m.c||"")+'" style="width:100%;min-width:90px;padding:5px 6px;border:1px solid #C9D3E0;border-radius:6px;font-size:12px;box-sizing:border-box;"></td>'
        +'</tr>';
@@ -23969,11 +23989,11 @@ if(document.readyState==="loading") document.addEventListener("DOMContentLoaded"
 function insExportProcessIn(){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
   var rows=insProcInCompute_();
-  var aoa=[["공정입고 현황","","","",""],["품번(도번)","측정실입고 수량","비고","크린룸입고 수량","비고"]];
-  rows.forEach(function(r){ var m=insProcInMemo[r.draw]||{m:"",c:""}; aoa.push([insNumIfDigits_(r.draw), r.meas||"", m.m||"", r.clean||"", m.c||""]); });
+  var aoa=[["공정입고 현황","","","","","",""],["품번(도번)","측정실 입고일자","측정실입고 수량","비고","크린룸 입고일자","크린룸입고 수량","비고"]];   // [추가] 입고일자 2칸
+  rows.forEach(function(r){ var m=insProcInMemo[r.draw]||{m:"",c:""}; aoa.push([insNumIfDigits_(r.draw), r.measDt||"", r.meas||"", m.m||"", r.cleanDt||"", r.clean||"", m.c||""]); });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:4}}];
-  ws["!cols"]=[{wch:18},{wch:14},{wch:18},{wch:14},{wch:18}];
+  ws["!merges"]=[{s:{r:0,c:0},e:{r:0,c:6}}];
+  ws["!cols"]=[{wch:18},{wch:14},{wch:14},{wch:18},{wch:14},{wch:14},{wch:18}];
   var thin={style:"thin",color:{rgb:"FFB9C2D6"}},border={top:thin,bottom:thin,left:thin,right:thin};
   var range=XLSX.utils.decode_range(ws["!ref"]);
   for(var R=range.s.r;R<=range.e.r;R++){ for(var C=range.s.c;C<=range.e.c;C++){
@@ -26993,8 +27013,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-08 · V10.2 특별납기 출고·분출 기준 완료 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-08 · V10.2 특별납기 출고·분출 기준 완료" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-08 · V10.2 공정입고 입고일자 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-08 · V10.2 공정입고 입고일자" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
