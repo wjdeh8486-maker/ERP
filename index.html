@@ -1732,7 +1732,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-08 · V10.2 공정입고 시트 3유형 집계"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-08 · V10.2 출하 판정 읽기 실패 보완"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -24058,9 +24058,21 @@ function insGateLoadLogs_(cb){
   var now=Date.now();
   if(now-INS_GATE_LOGS.t < 600000){ cb(INS_GATE_LOGS.rows); return; }   // 10분 캐시
   var url=insGateApiUrl_(); if(!url){ cb(INS_GATE_LOGS.rows); return; }
-  var get=function(k){ return fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(k)+"&_t="+now,{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ var o={}; try{o=JSON.parse(res.json||"{}");}catch(e){} return Array.isArray(o.rows)?o.rows:[]; }).catch(function(){return [];}); };
-  Promise.all([get("incoming"),get("measureS"),get("measureL")]).then(function(a){
-    INS_GATE_LOGS={ t:Date.now(), rows:{ incoming:a[0]||[], measureS:a[1]||[], measureL:a[2]||[] } }; cb(INS_GATE_LOGS.rows);
+  /* [수정] 서버 읽기가 실패하면 전에는 빈 목록([])을 10분 동안 그대로 써서, 다 끝난 수입·측정 검사도 "출하 전 미검사"로 떴음
+     → 실패한 유형은 구글시트 탭에서 다시 읽고 + 이 PC 행도 합침. 하나라도 실패면 1분 뒤 다시 읽고, 성공하면 이전 판정을 다시 계산 */
+  var get=function(k){ return fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(k)+"&_t="+now,{cache:"no-store"}).then(function(r){return r.json();}).then(function(res){ if(!res||!res.success) return null; var o={}; try{o=JSON.parse(res.json||"{}");}catch(e){ return null; } return Array.isArray(o.rows)?o.rows:null; }).catch(function(){return null;}); };
+  var sheet=function(k){ return new Promise(function(ok){ try{ if(typeof insReadTypeFromSheet_!=="function"){ ok(null); return; } insReadTypeFromSheet_(k, function(res){ ok(res&&res.all?res.all:null); }); }catch(_){ ok(null); } }); };
+  var T=["incoming","measureS","measureL"];
+  Promise.all(T.map(function(k){ return get(k).then(function(v){ return v||sheet(k); }); })).then(function(a){
+    var fail=0, rows={};
+    T.forEach(function(k,i){ var srv=a[i]; if(!srv){ fail++; srv=[]; }
+      var ids={}; srv.forEach(function(r){ if(r&&r._id) ids[r._id]=1; });
+      var loc=((typeof insState!=="undefined"&&insState[k]&&insState[k].rows)||[]).filter(function(r){ return r && !(r._id && ids[r._id]); });   // 이 PC 행(아직 서버에 없는 것)
+      rows[k]=srv.concat(loc); });
+    var wasFail=!!INS_GATE_LOGS.fail;
+    INS_GATE_LOGS={ t:fail?(Date.now()-540000):Date.now(), rows:rows, fail:fail };
+    if(wasFail && !fail){ try{ __gateRes={}; insGateSaveCache_(); }catch(_){} }   // 실패 때 만든 판정은 버리고 다시 계산
+    cb(INS_GATE_LOGS.rows);
   }).catch(function(){ cb(INS_GATE_LOGS.rows); });
 }
 // S/N 정규화: "10768-084"/"084"/"84" → 꼬리번호 "84" (마지막 '-' 뒤 숫자, 앞0 제거)
@@ -24333,7 +24345,8 @@ function insShipGateScan_(rows){
   rows.forEach(function(r){ var d=String(r.draw||"").trim(), sn=String(r.sn||"").trim(); if(!d || !insGateTarget_(r)) return; var k=insGateKey_(d, sn); if(seen[k]) return; seen[k]=1; var c=__gateRes[k]; if(c && Date.now()-c.t<10*60000) return; todo.push({ d:d, sn:sn }); });
   todo=todo.slice(0,40); if(!todo.length) return; window.__gateScanning=true; var i=0, changed=false;
   (function next(){ if(i>=todo.length){ window.__gateScanning=false; if(changed && insType==="shipping") insSafeRender_(); return; }
-    var it=todo[i++]; insShipGate_(it.d, it.sn, function(g){ if(g && (g.missing||[]).length) changed=true; setTimeout(next, 250); }); })();
+    var it=todo[i++], k0=insGateKey_(it.d, it.sn), p0=__gateRes[k0]?(__gateRes[k0].missing||[]).join(","):"";
+    insShipGate_(it.d, it.sn, function(g){ if(g && ((g.missing||[]).length || (g.missing||[]).join(",")!==p0)) changed=true; setTimeout(next, 250); }); })();   // [수정] 미검사가 풀린 경우에도 다시 그림
 }
 // [수정] 자동 점검·표시 대상 제한 — 전에는 지난 날짜 행과 재고 출고분까지 점검해 "미검사"가 대량으로 떴음
 //   · 오늘 검사일 행만 (지난 행은 이미 출고 완료)
@@ -24525,6 +24538,7 @@ function insSheetAutoLoad_(type){
     if(!res || !res.filtered){ if(badge && type===insType){ badge.textContent="출처: 기존(blob·폴백)"; badge.style.background="#8A93A6"; } try{ insCloudAutoLoad(); }catch(_){}; return; }
     insState[type].rows = insEnsureIds_(res.filtered);
     window.__insEditedAt=Date.now();
+    try{ insSavedSigSet_(type); }catch(_){}
     if(type===insType){ if(typeof insRender==="function") insRender(); if(badge){ badge.textContent="출처: 시트 ("+res.filtered.length+"행 · 30일+미처리)"; badge.style.background="#1E7A46"; } }
   });
 }
@@ -25581,10 +25595,61 @@ function insCloudSave(){
        insSaveToast_("\u2705 ["+label+"] \uACF5\uC720\uC800\uC7A5 \uC644\uB8CC");
        try{ saveBroadcast_(t); }catch(e){}
        insVerifyAfterSave_(url, t, merged, label, 0);
+       try{ insSavedSigSet_(t); }catch(_){}   // [추가] 저장된 상태 기록(하루 재시작 점검용)
        setTimeout(function(){ try{ insDupRescan_(t, true); }catch(_){} }, 4000);   // [추가] 저장된 시트 기준으로 중복 다시 판정
      });
   }).catch(function(){ insSetStatus("["+label+"] 공유 저장 실패 — 네트워크 확인"); });
 }
+/* ===== [추가] 하루 1번 "저장 후 다시 시작" =====
+   켜 둔 채 날짜가 바뀐 PC는 옛 화면·옛 코드·옛 데이터로 계속 쓰게 되어 PC마다 결과가 달라짐
+   → 날짜가 바뀌면 화면을 막고 [저장하고 다시 시작]: 검사일보 미저장 유형을 공유저장 → 새로 불러오기(최신 코드·데이터)
+   · 미저장 판정: 마지막으로 서버와 맞춘 상태(공유저장 성공·시트/공유본 불러오기)와 지금 표가 다르면 미저장 */
+var INS_DAILY_TYPES=["incoming","shipping","measureS","measureL"];
+function qmsLocalDay_(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+var __qmsBootDay=qmsLocalDay_(), __qmsDailySnooze=0;
+function insRowsSig_(t){ var rows=((insState[t]&&insState[t].rows)||[]).filter(function(r){ return r && !(r._id && insDeletedIds[r._id]); });
+  var L=rows.map(function(r){ var o={}; Object.keys(r).sort().forEach(function(k){ if(k.indexOf("__")!==0 && k!=="_id") o[k]=r[k]; }); return JSON.stringify(o); }).sort();
+  var str=L.join("\n"), h=0; for(var i=0;i<str.length;i++){ h=((h<<5)-h+str.charCodeAt(i))|0; } return rows.length+":"+h; }
+function insSavedSigSet_(t){ if(INS_DAILY_TYPES.indexOf(t)<0) return; try{ var o=JSON.parse(localStorage.getItem("insSavedSig")||"{}")||{}; o[t]=insRowsSig_(t); localStorage.setItem("insSavedSig", JSON.stringify(o)); }catch(_){} }
+function insUnsavedTypes_(){ var o={}; try{ o=JSON.parse(localStorage.getItem("insSavedSig")||"{}")||{}; }catch(_){}
+  return INS_DAILY_TYPES.filter(function(t){ return o[t] && o[t]!==insRowsSig_(t); }); }   // 기록이 없는 유형(이 PC에서 아직 안 연 유형)은 미저장으로 보지 않음
+function qmsDailyRestart_(){ try{ insSaveLocalNow(); }catch(_){} try{ var u=new URL(location.href); u.searchParams.set("_r", String(Date.now())); location.replace(u.toString()); }catch(_){ location.reload(); } }
+function qmsDailyCheck_(){
+  if(qmsLocalDay_()===__qmsBootDay) return; if(Date.now()<__qmsDailySnooze) return; if(document.getElementById("qms-daily-ov")) return;
+  qmsDailyShow_(); }
+function qmsDailyShow_(msg){
+  var old=document.getElementById("qms-daily-ov"); if(old) old.remove();
+  var ins=insUnsavedTypes_(), other=(typeof qmsUnsavedList_==="function")?qmsUnsavedList_():[], E=function(x){ return String(x).replace(/&/g,"&amp;").replace(/</g,"&lt;"); };
+  var ov=document.createElement("div"); ov.id="qms-daily-ov"; ov.style.cssText="position:fixed;inset:0;z-index:2147483200;background:rgba(16,24,40,.6);display:flex;align-items:center;justify-content:center;";
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;width:min(520px,92vw);padding:22px 24px;box-shadow:0 16px 48px rgba(0,0,0,.35);color:#101828;font-size:14px;line-height:1.6;">'
+    +'<div style="font-size:17px;font-weight:800;margin-bottom:6px;">🌅 날짜가 바뀌었습니다 — 저장 후 다시 시작</div>'
+    +'<div style="color:#475467;margin-bottom:12px;">어제('+E(__qmsBootDay)+')부터 켜 둔 화면입니다. 최신 코드·데이터로 쓰려면 저장하고 다시 시작해야 합니다.</div>'
+    +(ins.length?'<div style="background:#FFF6E5;border:1px solid #F5C26B;border-radius:8px;padding:8px 12px;margin-bottom:8px;">💾 검사일보 미저장: <b>'+ins.map(function(t){ return E(insTypeLabel(t)); }).join(", ")+'</b> → [저장하고 다시 시작]이 자동으로 공유저장합니다</div>':'<div style="background:#ECFDF3;border:1px solid #A6F4C5;border-radius:8px;padding:8px 12px;margin-bottom:8px;">✅ 검사일보는 모두 저장된 상태입니다</div>')
+    +(other.length?'<div style="background:#FEF3F2;border:1px solid #FDA29B;border-radius:8px;padding:8px 12px;margin-bottom:8px;color:#B42318;">⚠ 직접 저장이 필요한 것:<br>'+other.map(E).join("<br>")+'<br><small>[10분 뒤]를 눌러 저장한 뒤 다시 시작하세요.</small></div>':'')
+    +(msg?'<div style="color:#B42318;font-weight:700;margin-bottom:8px;">'+E(msg)+'</div>':'')
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;">'
+    +'<button type="button" data-x="snooze" style="padding:9px 14px;border:1px solid #D0D5DD;border-radius:8px;background:#fff;cursor:pointer;">10분 뒤</button>'
+    +'<button type="button" data-x="go" style="padding:9px 16px;border:none;border-radius:8px;background:#0B5CAB;color:#fff;font-weight:800;cursor:pointer;">'+(ins.length?'☁ 저장하고 다시 시작':'🔄 다시 시작')+'</button></div></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x"); if(!x) return;
+    if(x==="snooze"){ __qmsDailySnooze=Date.now()+600000; ov.remove(); return; }
+    if(x==="force"){ if(confirm("저장하지 않은 내용은 이 PC에만 남고 다른 PC에는 안 보입니다. 그래도 다시 시작할까요?")) qmsDailyRestart_(); return; }
+    if(x==="go"){
+      var other2=(typeof qmsUnsavedList_==="function")?qmsUnsavedList_():[]; if(other2.length){ qmsDailyShow_("먼저 위의 직접 저장이 필요한 것을 저장하세요."); return; }
+      var todo=insUnsavedTypes_(); if(!todo.length){ qmsDailyRestart_(); return; }
+      e.target.disabled=true; e.target.textContent="☁ 저장 중…";
+      var keepType=insType, i=0;
+      (function next(){
+        if(i>=todo.length){ insType=keepType; var left=insUnsavedTypes_();
+          if(left.length){ qmsDailyShow_("저장이 확인되지 않았습니다: "+left.map(insTypeLabel).join(", ")+" — 네트워크를 확인하고 다시 누르세요."); var ov2=document.getElementById("qms-daily-ov"); if(ov2){ var b=document.createElement("button"); b.type="button"; b.setAttribute("data-x","force"); b.textContent="저장 없이 다시 시작"; b.style.cssText="padding:9px 14px;border:1px solid #FDA29B;border-radius:8px;background:#fff;color:#B42318;cursor:pointer;"; var row=ov2.querySelector('[data-x="go"]').parentNode; row.insertBefore(b,row.firstChild); } return; }
+          qmsDailyRestart_(); return; }
+        var t=todo[i++], t0=Date.now(); insType=t;
+        try{ insCloudSave(); }catch(_){}
+        (function wait(){ if(insUnsavedTypes_().indexOf(t)<0 || Date.now()-t0>25000){ setTimeout(next, 300); return; } setTimeout(wait, 500); })();
+      })(); }
+  });
+}
+try{ setInterval(function(){ try{ qmsDailyCheck_(); }catch(_){} }, 60000); document.addEventListener("visibilitychange", function(){ if(document.visibilityState==="visible") setTimeout(function(){ try{ qmsDailyCheck_(); }catch(_){} }, 500); }); window.addEventListener("focus", function(){ try{ qmsDailyCheck_(); }catch(_){} }); }catch(_){}
 /* 불러오기: 현재 유형(페이지)만 불러옴 — 다른 유형 작업분은 건드리지 않음 */
 // 접속(열기) 시 공유 저장 최신본을 조용히 병합 — 빈 상태로 열려도 자동으로 최신 내용을 채운다.
 function insRecoverToday_(){
@@ -25923,7 +25988,7 @@ function insCloudLoad(){
        if(data && Array.isArray(data.rows)){
          var when=data.savedAt?new Date(data.savedAt).toLocaleString("ko-KR"):"-";
          if(!confirm("["+label+"] 공유 저장본을 불러오면 현재 ["+label+"] 작성분을 덮어씁니다. 진행할까요?\n(저장 시각: "+when+")")){ insSetStatus(""); return; }
-         insState[t]={rows:insDedup_(insEnsureIds_(data.rows))};
+         insState[t]={rows:insDedup_(insEnsureIds_(data.rows))}; try{ insSavedSigSet_(t); }catch(_){}
          if(insMetaByType[t]){ var __prevIbd=insMetaByType[t].inspByDate||{}; insMetaByType[t]={inspector:data.inspector||"",date:data.date||"",inspByDate:__prevIbd}; }
          insSyncMetaInputs();
          insRender(); insSaveLocal();
@@ -27036,8 +27101,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-08 · V10.2 공정입고 시트 3유형 집계 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-08 · V10.2 공정입고 시트 3유형 집계" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-08 · V10.2 출하 판정 읽기 실패 보완 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-08 · V10.2 출하 판정 읽기 실패 보완" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
