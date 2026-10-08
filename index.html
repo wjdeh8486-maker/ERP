@@ -1732,7 +1732,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-07 · V10.2 특별납기 품명 검색·달력 연동"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-08 · V10.2 재고라벨 공유·분출LIST 안내 숨김"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -7995,7 +7995,7 @@ function renderDispatchList(){
   var td='padding:6px 6px;border:1px solid #E1E8F0;';
   var paint=function(shipRows){
     var rows=dispatchBuildRows_(startD, endD, q, shipRows);
-    var __exl=(window.__dispatchExcluded||[]);
+    var __exl=[];   /* [수정] "검색어와 맞지만 빠진 항목(납품완료 등)" 안내 숨김 — 필요 없다는 요청. 다시 보려면 (window.__dispatchExcluded||[]) 로 되돌림 */
     var __exRow=__exl.length?('<tr><td colspan="13" style="text-align:left;color:#7A4A00;background:#FFF8E6;padding:10px 14px;font-size:12.5px;line-height:1.7;"><b>ⓘ 검색어와 맞지만 분출LIST에서 빠진 항목 '+__exl.length+'건</b><br>'
       +__exl.map(function(x){ return '· <b>'+qcEsc(x.orderNo)+'</b> — '+qcEsc(x.why); }).join('<br>')+'</td></tr>'):'';
     if(!rows.length && __exRow){ body.innerHTML=__exRow; return; }
@@ -25637,11 +25637,30 @@ function insItemsForType_(typeKey, r){
 function insIsReinsp_(r){ return !!(r && /재검사|재입고/.test(String(r.note||""))); }
 // [추가] 재고 라벨 "출력 대기"(노란 표시): 재고 체크 시 바로 출력하지 않고 표시만 → 나중에 [🏷 재고 라벨 N]으로 한 번에 출력
 //        대기 목록은 이 PC에 저장(행 id 기준). 출력하면 대기에서 빠짐
-function insStkPend_(){ try{ return JSON.parse(localStorage.getItem("insStkLblPend")||"{}")||{}; }catch(_){ return {}; } }
-function insStkPendSave_(o){ try{ localStorage.setItem("insStkLblPend", JSON.stringify(o)); }catch(_){} insStkPendBtn_(); }
+//        [수정] 대기 목록을 공유 칸(insStkLblPend)에도 저장 → 태블릿에서 표시한 대기를 PC에서도 보고 출력 가능
+//        내부 저장: { 행id:{t:표시시각} } 또는 { 행id:{d:빼낸시각} }(뺀 기록) — 기기끼리 합칠 때 더 늦은 쪽이 이김
+function insStkPendRaw_(){ try{ return JSON.parse(localStorage.getItem("insStkLblPend")||"{}")||{}; }catch(_){ return {}; } }
+function insStkPend_(){ var a=insStkPendRaw_(), o={}; Object.keys(a).forEach(function(k){ if(a[k] && !a[k].d) o[k]=a[k]; }); return o; }
+function insStkPendMerge_(a,b){ var o={}, now=Date.now(); [a||{},b||{}].forEach(function(x){ Object.keys(x).forEach(function(k){ var v=x[k]; if(!v||typeof v!=="object") return; var tv=v.d||v.t||0, cur=o[k], tc=cur?(cur.d||cur.t||0):-1; if(tv>=tc) o[k]=v; }); });
+  Object.keys(o).forEach(function(k){ if(now-(o[k].d||o[k].t||0)>60*86400000) delete o[k]; }); return o; }
+function insStkPendSave_(o){ var raw=insStkPendRaw_(), now=Date.now();
+  Object.keys(raw).forEach(function(k){ if(!raw[k].d && !o[k]) raw[k]={ d:now }; });   // 빠진 것 = 뺀 기록
+  Object.keys(o).forEach(function(k){ if(!raw[k] || raw[k].d) raw[k]={ t:(o[k]&&o[k].t)||now }; });
+  try{ localStorage.setItem("insStkLblPend", JSON.stringify(raw)); }catch(_){}
+  try{ if(typeof qSharePost_==="function" && qShareUrl_()) qShareLoad_("insStkLblPend", function(sv){ var m=insStkPendMerge_(sv||{}, insStkPendRaw_());   // 공유본을 먼저 읽어 합친 뒤 저장(다른 기기 대기 보존)
+    try{ localStorage.setItem("insStkLblPend", JSON.stringify(m)); }catch(_){} qSharePost_(qShareUrl_(), "insStkLblPend", JSON.stringify(m)); }); }catch(_){}
+  insStkPendBtn_(); }
+var __stkPendSyncAt=0;
+function insStkPendSync_(force){ var now=Date.now(); if(!force && now-__stkPendSyncAt<60000) return; __stkPendSyncAt=now;
+  try{ if(typeof qShareLoad_!=="function") return; qShareLoad_("insStkLblPend", function(sv){ if(!sv||typeof sv!=="object") return;
+    var loc=insStkPendRaw_(), m=insStkPendMerge_(loc, sv), was=JSON.stringify(Object.keys(insStkPend_()).sort());
+    try{ localStorage.setItem("insStkLblPend", JSON.stringify(m)); }catch(_){}
+    if(JSON.stringify(Object.keys(insStkPend_()).sort())!==was){ try{ insRender(); }catch(_){} }
+    insStkPendBtn_(); }); }catch(_){} }
 function insStkPendBtn_(){ var b=document.getElementById("insrep-stkLblBtn"), c=document.getElementById("insrep-stkLblCnt"); if(!b) return;
   var o=insStkPend_(), rows=(insState.shipping&&insState.shipping.rows)||[], ids={}; rows.forEach(function(r){ if(r&&r._id) ids[r._id]=1; });
-  var n=Object.keys(o).filter(function(k){ return ids[k]; }).length; if(c) c.textContent=n; b.style.display=(insType==="shipping" && n)?"inline-block":"none"; }
+  var n=Object.keys(o).filter(function(k){ return ids[k]; }).length; if(c) c.textContent=n; b.style.display=(insType==="shipping")?"inline-block":"none"; b.style.opacity=n?"1":".55";   // [수정] 출하검사에선 항상 보이게(0건이면 흐리게)
+  if(insType==="shipping") insStkPendSync_(); }
 function insStkPendAdd_(ri){ var row=insState.shipping.rows[ri]; if(!row) return; if(!row._id && typeof insRowId_==="function") row._id=insRowId_(); var o=insStkPend_(); o[row._id]={ t:Date.now() }; insStkPendSave_(o);
   try{ insSetStatus("🏷 재고 라벨 출력 대기에 추가 — 위 [🏷 재고 라벨] 버튼으로 모아 출력하세요"); }catch(_){} }
 function insStkPendPopup_(){
@@ -26935,8 +26954,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-07 · V10.2 특별납기 품명 검색·달력 연동 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-07 · V10.2 특별납기 품명 검색·달력 연동" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-08 · V10.2 재고라벨 공유·분출LIST 안내 숨김 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-08 · V10.2 재고라벨 공유·분출LIST 안내 숨김" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
