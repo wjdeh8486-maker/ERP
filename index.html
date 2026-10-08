@@ -1732,7 +1732,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-08 · V10.2 공정입고 입고일자"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-08 · V10.2 공정입고 시트 3유형 집계"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -23761,10 +23761,29 @@ function insProcInCompute_(){
   return Object.keys(seen).sort(function(a,b){return a.localeCompare(b,undefined,{numeric:true});})
     .map(function(d){ return {draw:d, meas:meas[d]||0, clean:clean[d]||0, measDt:meas[d]?insProcInDt_(mD[d]):"", cleanDt:clean[d]?insProcInDt_(cD[d]):""}; });
 }
+/* [수정] 공정입고는 수입·측정 소형·측정 대형 3가지를 모두 써야 맞음.
+   전에는 이 PC에서 열어 본 유형만 들어 있어(예: 측정실 대형만 연 PC → 크린룸 대형분만) 같은 날짜라도 PC·시점마다 결과가 달랐음
+   → 공정입고 화면을 열거나 엑셀로 받을 때 구글시트에서 3가지를 모두 읽어 집계 (+ 이 PC에서 아직 시트에 안 올라간 행) */
+var __procInLoading=false;
+function insProcInSheetLoad_(cb){
+  if(__procInLoading){ return; } __procInLoading=true;
+  var T=["incoming","measureS","measureL"], got={}, left=T.length, fail=0;
+  T.forEach(function(t){ insReadTypeFromSheet_(t, function(res){ if(res && res.all) got[t]=res.all; else fail++; if(--left===0) fin(); }); });
+  function fin(){ __procInLoading=false;
+    if(fail===T.length){ cb&&cb(false); return; }
+    var src={ __sheetAt:Date.now(), __fail:fail };
+    T.forEach(function(t){ var sh=(got[t]||[]).filter(function(r){ return !(r && r._id && insDeletedIds[r._id]); }), ids={};
+      sh.forEach(function(r){ if(r && r._id) ids[r._id]=1; });
+      var loc=((insState[t]&&insState[t].rows)||[]).filter(function(r){ return r && !(r._id && ids[r._id]) && !r.__genId; });   // 시트에 아직 없는 이 PC 행
+      src[t]=sh.concat(loc); });
+    insProcInSource=src; cb&&cb(true); }
+}
+function insProcInFresh_(){ return !!(insProcInSource && insProcInSource.__sheetAt && Date.now()-insProcInSource.__sheetAt<300000); }
 function insRenderProcessIn(el){
+  if(!window.__insAutoWriting && !insProcInFresh_() && !__procInLoading){ insProcInSheetLoad_(function(){ if(insType==="processin"){ try{ insRender(); }catch(_){} } }); }
   var rows=insProcInCompute_();
   var __day=(insDayFilter==="all")?"전체 날짜":("날짜 "+insDayFilter);
-  var srcNote=(insProcInSource?"공유 최신본":"이 기기 작성분")+" · "+__day;
+  var srcNote=(__procInLoading?"⏳ 시트에서 수입·측정 소/대 불러오는 중… (잠시 후 자동 갱신)":(insProcInSource&&insProcInSource.__sheetAt?("시트 최신본(수입·측정 소/대 모두) "+new Date(insProcInSource.__sheetAt).toTimeString().slice(0,5)+(insProcInSource.__fail?" · 일부 유형 읽기 실패":"")):(insProcInSource?"공유 최신본":"⚠ 이 기기 작성분만")))+" · "+__day;
   var h=''
    +'<div style="margin-bottom:8px;font-size:12px;color:#26324A;">완료수량 = 양품수 + (조치완료일 작성 시 부적합수). '
    +'측정실입고=수입검사 완료 · 크린룸입고=측정실 소/대 완료(치수완료 - 기능부적합). <b>'+insEsc(srcNote)+'</b></div>'
@@ -23986,8 +24005,12 @@ function insAutoPanel_(){
     el.innerHTML="<b>오늘 현황</b><br>"+line("excel","엑셀 5종 ("+INS_AUTO_CFG.excel+")")+"<br>"+line("master","붙여넣기용 ("+INS_AUTO_CFG.master+")"); }, "master"); }, "excel");
 }
 if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", function(){ setTimeout(insAutoStart_, 3000); }); else setTimeout(insAutoStart_, 3000);
-function insExportProcessIn(){
+function insExportProcessIn(__retry){
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
+  if(!window.__insAutoWriting && !__retry && !insProcInFresh_()){   // [수정] 받기 전에 시트에서 3가지 유형을 모두 읽고 집계
+    if(__procInLoading){ alert("시트에서 검사일보를 불러오는 중입니다. 잠시 후 다시 눌러 주세요."); return; }
+    insSetStatus("⏳ [공정입고] 시트에서 수입·측정 소/대 불러오는 중…");
+    insProcInSheetLoad_(function(ok){ if(!ok){ if(!confirm("시트에서 검사일보를 읽지 못했습니다.\n이 PC에 있는 자료로만 받을까요? (일부 유형이 빠질 수 있음)")) return; } insExportProcessIn(true); }); return; }
   var rows=insProcInCompute_();
   var aoa=[["공정입고 현황","","","","","",""],["품번(도번)","측정실 입고일자","측정실입고 수량","비고","크린룸 입고일자","크린룸입고 수량","비고"]];   // [추가] 입고일자 2칸
   rows.forEach(function(r){ var m=insProcInMemo[r.draw]||{m:"",c:""}; aoa.push([insNumIfDigits_(r.draw), r.measDt||"", r.meas||"", m.m||"", r.cleanDt||"", r.clean||"", m.c||""]); });
@@ -27013,8 +27036,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-08 · V10.2 공정입고 입고일자 -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-08 · V10.2 공정입고 입고일자" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
+<!-- QMS-BUILD: 2026-10-08 · V10.2 공정입고 시트 3유형 집계 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-08 · V10.2 공정입고 시트 3유형 집계" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.2 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
