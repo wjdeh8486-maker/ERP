@@ -6383,10 +6383,54 @@ function qdocOpen_(title, html){
   ov.innerHTML='<style>'+QDOC_CSS+'</style><div style="position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:center;background:#1F2A44;color:#fff;border-radius:12px;padding:10px 14px;width:min(820px,100%);box-sizing:border-box;margin-bottom:10px;">'
     +'<b style="flex:1;">📄 '+qdE2_(title)+' <span style="font-weight:500;font-size:12px;opacity:.8;">— 노란 칸은 바로 고칠 수 있습니다</span></b>'
     +'<button type="button" data-x="print" style="background:#fff;color:#1F2A44;border:0;border-radius:8px;padding:7px 14px;font-weight:800;cursor:pointer;">🖨 인쇄 / PDF</button>'
+    +'<button type="button" data-x="word" style="background:#2B579A;color:#fff;border:0;border-radius:8px;padding:7px 14px;font-weight:800;cursor:pointer;">⬇ Word 다운로드</button>'
+    +'<button type="button" data-x="xlsx" style="background:#1D6F42;color:#fff;border:0;border-radius:8px;padding:7px 14px;font-weight:800;cursor:pointer;">⬇ Excel 다운로드</button>'
     +'<button type="button" data-x="close" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:8px;padding:7px 12px;cursor:pointer;">닫기 ✕</button></div>'
     +'<div id="qdoc-page" class="qd-doc" style="background:#fff;width:min(820px,100%);box-sizing:border-box;padding:28px 30px;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.25);">'+html+'</div>';
-  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x"); if(x==="close" || e.target===ov){ ov.remove(); } else if(x==="print"){ qdocPrint_(title); } });
+  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x"); if(x==="close" || e.target===ov){ ov.remove(); } else if(x==="print"){ qdocPrint_(title); } else if(x==="word"){ qdocWord_(title); } else if(x==="xlsx"){ qdocExcel_(title); } });
   document.body.appendChild(ov);
+}
+// [추가] Word(.doc)로 내려받기 — 화면에서 고친 내용 그대로 저장, 받은 뒤 Word에서 자유롭게 수정 (표·노란 칸 배경 유지)
+function qdocWord_(title){
+  var pg=document.getElementById("qdoc-page"); if(!pg) return;
+  var body=pg.innerHTML.replace(/ contenteditable="true"/g,"");
+  var css=QDOC_CSS+'.qd-doc .ed{background:transparent}.qd-doc{font-size:10pt}.qd-doc table{width:100%}@page WordSection1{size:21cm 29.7cm;margin:1.5cm 1.5cm 1.5cm 1.5cm}div.WordSection1{page:WordSection1}';
+  var html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>'+qdE2_(title)+'</title>'
+    +'<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]--><style>'+css+'</style></head><body><div class="WordSection1"><div class="qd-doc">'+body+'</div></div></body></html>';
+  var nm=String(title||"문서").replace(/[\\\/:*?"<>|]/g,"_").replace(/\s+/g," ").trim()+"_"+qdToday2_().replace(/-/g,"")+".doc";
+  var blob=new Blob(["\ufeff",html],{type:"application/msword"}), a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=nm; document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  try{ if(typeof showToast==="function") showToast("⬇ "+nm+" 다운로드 — Word에서 열어 수정하세요"); }catch(_){}
+}
+// [추가] Excel(.xlsx)로 내려받기 — 문서의 제목·머리말·소제목·표를 위에서 아래 순서대로 한 시트에 나열 (화면에서 고친 내용 반영)
+function qdocExcel_(title){
+  var pg=document.getElementById("qdoc-page"); if(!pg) return;
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 아직 불러오지 못했습니다. 잠시 후 다시 눌러 주세요."); return; }
+  var aoa=[], merges=[], wch=[], tx=function(el){ return String(el.innerText||el.textContent||"").replace(/\u00a0/g," ").replace(/[ \t]+\n/g,"\n").trim(); };
+  var put=function(row){ aoa.push(row); row.forEach(function(v,i){ var l=Math.min(String(v).split("\n").reduce(function(a,b){ return Math.max(a,b.length); },0)*1.6+2,60); if(!wch[i]||wch[i]<l) wch[i]=l; }); };
+  var walk=function(el){
+    Array.prototype.forEach.call(el.children,function(c){
+      var tg=c.tagName;
+      if(tg==="TABLE"){
+        Array.prototype.forEach.call(c.querySelectorAll("tr"),function(tr){
+          var row=[]; Array.prototype.forEach.call(tr.children,function(td){ var v=tx(td), n=Math.min(parseInt(td.getAttribute("colspan")||"1",10)||1,12); if(v!==""&&/^-?\d+(\.\d+)?$/.test(v)&&v.length<12&&!/^0\d/.test(v)) v=Number(v); row.push(v); for(var k=1;k<n;k++) row.push(""); });
+          if(row.length) put(row);
+        });
+        put([]);
+      } else if(c.classList&&c.classList.contains("kpi")){
+        Array.prototype.forEach.call(c.children,function(k){ var b=k.querySelector("b"); put([tx(k).replace(tx(b||k),"").trim()||"", b?tx(b):""]); }); put([]);
+      } else if(/^H[1-6]$/.test(tg)){ if(tg!=="H1") put([]); put([tx(c)]); }
+      else if(c.querySelector&&c.querySelector("table")){ walk(c); }
+      else { var t=tx(c); if(t) put([t]); }
+    });
+  };
+  walk(pg);
+  var ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=wch.map(function(w){ return { wch:Math.max(w,6) }; });
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "문서");
+  var nm=String(title||"문서").replace(/[\\\/:*?"<>|]/g,"_").replace(/\s+/g," ").trim()+"_"+qdToday2_().replace(/-/g,"")+".xlsx";
+  XLSX.writeFile(wb, nm);
+  try{ if(typeof showToast==="function") showToast("⬇ "+nm+" 다운로드"); }catch(_){}
 }
 function qdocPrint_(title){
   var pg=document.getElementById("qdoc-page"); if(!pg) return;
