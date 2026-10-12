@@ -23481,6 +23481,7 @@ function insExport(){
    · 출고: 분출 체크 또는 출고 No가 있는 행만 기록 (재고 보관만이면 출고 비움)
    · S/N이 있으면 펼쳐서 S/N 1개당 1행(수량 1), S/N이 없으면 한 행에 수량 합계
    입고일자·출고일자=검사일, 입고수량=검사수, 출고수량=양품수(없으면 검사수), 관리번호=출고 No */
+var INS_LEDGER_SN_STRIP=/^10768-/;   // 대장 S/N에서 앞 접두어를 뺄 패턴 (추가: /^(10768-|12345-)/) — 25315- 등 나머지는 그대로
 function insExportLedger_(rows, dtag){
   var n=function(v){ var t=String(v==null?"":v).trim(); if(t==="") return ""; var x=Number(t); return isNaN(x)?"":x; };
   var aoa=[["제품 입/출고 관리 대장","","","","","","","","","","",""],
@@ -23497,7 +23498,7 @@ function insExportLedger_(rows, dtag){
     if(sns.length){   // S/N 펼침: 1개당 1행, 수량 1
       sns.forEach(function(x){
         var nt=[note,x.note].filter(function(t){ return t; }).join(" ");
-        aoa.push([ draw, d, x.sn, 1, isOut?d:"", isOut?1:"", outNo, nt, "","","","" ]); cnt++;
+        aoa.push([ draw, d, String(x.sn).replace(INS_LEDGER_SN_STRIP,""), 1, isOut?d:"", isOut?1:"", outNo, nt, "","","","" ]); cnt++;
       });
     } else {
       aoa.push([ draw, d, "", ic, isOut?d:"", isOut?oc:"", outNo, note, "","","","" ]); cnt++;
