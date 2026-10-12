@@ -13548,6 +13548,9 @@ function sdBulkPop_(){
 var DCL_KEY="dueChangeLog", DCL_REASONS=["고객 요청","생산 지연","자재·외주 지연","설계 변경","검사·품질 이슈","기타"];
 var __dcl={ list:[], loaded:false, ref:null, len:-1, filter:{ q:"", st:"", days:"60", shipped:false } };
 // [추가] 납품완료 주문은 기본으로 숨김 (기록은 지우지 않음 — "납품완료 포함"을 켜면 다시 보임)
+// [추가] 같은 주문이 같은 납기로 바뀐 기록은 한 번만 (PC마다 기억한 이전 납기가 달라 중복 기록되던 것 방지)
+//   직전 기록(해당 주문)의 변경 후 납기가 같으면 중복 — A→B, B→A, A→B 처럼 실제로 되돌아간 경우는 유지
+function dclUniq_(list){ var last={}; return (list||[]).slice().sort(function(a,b){ return (a.ts||0)-(b.ts||0); }).filter(function(x){ if(last[x.ord]===x.to) return false; last[x.ord]=x.to; return true; }); }
 function dclShipped_(ord){ return (typeof sdAutoDone_==="function") && sdAutoDone_(ord); }
 function dclMerge_(a,b){ var m={}; (a||[]).concat(b||[]).forEach(function(x){ if(!x||!x.id) return; var p=m[x.id]; if(!p || (x.rts||0)>(p.rts||0)) m[x.id]=x; }); return Object.keys(m).map(function(k){ return m[k]; }).sort(function(x,y){ return x.ts-y.ts; }); }
 function dclLoad_(cb){ try{ var c=JSON.parse(localStorage.getItem("dclCache")||"null"); if(Array.isArray(c)) __dcl.list=dclMerge_(__dcl.list,c); }catch(_){}
@@ -13565,7 +13568,7 @@ function dclDetect_(){
       var p=snap[o]; if(had && p && p!==d) found.push({ id:o+"|"+p+"|"+d, ord:o, proj:String(r.vendor||""), cust:String(r.customer||""), draw:String(r.oldDrawingNo||r.partNo||""), name:String(r.partName||""), from:p, to:d, day:today, ts:Date.now() }); });
     try{ localStorage.setItem("dclSnap", JSON.stringify(now)); }catch(_){}
     if(!found.length) return;
-    var go=function(){ var have={}; __dcl.list.forEach(function(x){ have[x.id]=1; }); var add=found.filter(function(x){ return !have[x.id]; }); if(!add.length) return;
+    var go=function(){ var have={}; __dcl.list.forEach(function(x){ have[x.id]=1; }); var lastTo={}; dclUniq_(__dcl.list).forEach(function(x){ lastTo[x.ord]=x.to; }); var add=found.filter(function(x){ if(have[x.id]) return false; if(lastTo[x.ord]===x.to) return false; lastTo[x.ord]=x.to; return true; }); if(!add.length) return;
       __dcl.list=__dcl.list.concat(add); dclSave_(); try{ if(typeof showToast==="function") showToast("📆 최종납기 변경 "+add.length+"건 기록됨 (특별납기 ▸ 최종납기 변경)"); }catch(_){} };
     if(__dcl.loaded) go(); else dclLoad_(go);
   }catch(_){}
@@ -13582,7 +13585,7 @@ function dclRender_(){
   if(!__dcl.loaded){ root.innerHTML='<div class="sd-empty">불러오는 중…</div>'; dclLoad_(dclRender_); return; }
   var f=__dcl.filter, cut=f.days?Date.now()-Number(f.days)*86400000:0, q=String(f.q||"").trim().toUpperCase();
   var hidN=0;
-  var L=__dcl.list.filter(function(x){ if(!f.shipped && dclShipped_(x.ord)){ hidN++; return false; } if(cut && x.ts<cut) return false; if(q && (x.ord+" "+x.proj+" "+x.cust+" "+x.draw+" "+x.name).toUpperCase().indexOf(q)<0) return false; return true; });
+  var L=dclUniq_(__dcl.list).filter(function(x){ if(!f.shipped && dclShipped_(x.ord)){ hidN++; return false; } if(cut && x.ts<cut) return false; if(q && (x.ord+" "+x.proj+" "+x.cust+" "+x.draw+" "+x.name).toUpperCase().indexOf(q)<0) return false; return true; });
   var G=dclGroups_(L), noR=G.filter(function(g){ return g.items.some(function(x){ return !x.reason; }); }).length;
   root.innerHTML='<div class="sd-head"><div><div class="sd-crumb">특별납기 <span>›</span> 최종납기 변경</div><div class="sd-title">📆 최종납기 변경 이력</div><div class="sd-sub">MAIN(ERP 업로드)에서 최종납기가 바뀐 주문을 자동으로 기록해 관리번호(프로젝트)별로 묶습니다. 대부분 고객 스케줄 변경이라 따로 입력할 것은 없고, 예외(생산 지연 등)만 <b>메모</b>로 남기세요.</div></div>'
     +'<div class="sd-act"><button type="button" class="sd-btn" data-a="dclxls">⬇ 엑셀</button><button type="button" class="sd-btn" data-a="dclreload">⟳ 새로고침</button></div></div>'
