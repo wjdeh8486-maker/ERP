@@ -14360,7 +14360,7 @@ if(false) try{ RV_STAGE.push({ title:"📨 납기 회신표 → 특별납기 반
 /* ==================== 📥 메일 수집함 (검토 중) ====================
    GAS가 1시간마다 Gmail(회사 메일에서 리디렉션된 메일)을 읽어 '메일수집함' 탭에 모아 둔 것을 보고 [반영]
    종류: 🌡 온습도 CSV · 📄 성적서 요청 · 📨 납기 회신표 · 🏭 양산장비 납기일정 · 🚨 고객 클레임 */
-var MB_T={ temp:["🌡","온습도 CSV","#0E7490"], coa:["📄","성적서 요청","#5B3EAE"], dueReply:["📨","납기 회신표","#B54708"], dueAll:["🏭","양산장비 납기일정","#344054"], claim:["🚨","고객 클레임","#B42318"] };
+var MB_T={ temp:["🌡","온습도 CSV","#0E7490"], coa:["📄","성적서 요청","#5B3EAE"], dueReply:["📨","납기 회신표","#B54708"], dueAll:["🏭","양산장비 납기일정","#344054"], claim:["🚨","고객 클레임","#B42318"], dueMail:["📅","납기 답변 메일","#027A48"] };
 var __mb={ list:[], last:null, loaded:false, f:{ st:"신규", t:"" } };
 function mbUrl_(){ return (typeof docmasterApiUrl==="function")?docmasterApiUrl():""; }
 function mbLoad_(cb){ var u=mbUrl_(); if(!u){ __mb.loaded=true; cb&&cb(); return; }
@@ -14402,7 +14402,7 @@ function mbDiag_(){
   var old=document.querySelector(".sd-ov"); if(old) old.remove(); var ov=document.createElement("div"); ov.className="sd-ov";
   ov.innerHTML='<div class="sd-pop" style="width:min(900px,96vw);max-height:92vh;display:flex;flex-direction:column;"><div class="sd-ph"><b>🔍 메일 수집 진단</b><button type="button" data-x="close">닫기 ✕</button></div><div class="sd-pb" id="mbd" style="overflow:auto;">확인 중…</div></div>';
   document.body.appendChild(ov); ov.addEventListener("click", function(e){ if(e.target===ov || (e.target.getAttribute&&e.target.getAttribute("data-x")==="close")) ov.remove(); });
-  var el=ov.querySelector("#mbd"), T={ temp:"🌡 온습도", coa:"📄 성적서", dueReply:"📨 납기 회신", dueAll:"🏭 양산장비", claim:"🚨 클레임" };
+  var el=ov.querySelector("#mbd"), T={ temp:"🌡 온습도", coa:"📄 성적서", dueReply:"📨 납기 회신", dueAll:"🏭 양산장비", claim:"🚨 클레임", dueMail:"📅 납기 답변" };
   fetch(mbUrl_()+"?mode=mailDiag&_t="+Date.now(),{ cache:"no-store" }).then(function(r){ return r.json(); }).then(function(d){
     if(!d || !d.success){ el.innerHTML='<b style="color:#B42318;">진단 실패</b> — '+sdE_((d&&d.error)||"")+'<br>GS.gs를 <b>새 버전으로 배포</b>했는지, <b>setupMailTrigger</b>를 실행해 권한을 승인했는지 확인하세요.'; return; }
     var hit=(d.recent||[]).filter(function(x){ return x.type!=="-"; }).length, comp=(d.recent||[]).filter(function(x){ return /ntl\.kr|eugenetech|itronicsglobal/i.test(x.from+" "+x.to); }).length;
@@ -14417,6 +14417,17 @@ function mbDiag_(){
       +((d.recent||[]).map(function(x){ return '<tr><td class="nw">'+sdE_(x.date)+'</td><td>'+sdE_(x.from)+'</td><td>'+sdE_(String(x.to||"").slice(0,60))+'</td><td>'+sdE_(x.subject)+'</td><td class="nw">'+(T[x.type]?('<b>'+T[x.type]+'</b>'):'<span class="m">-</span>')+'</td></tr>'; }).join("")||'<tr><td colspan="5" class="m" style="text-align:center;">메일 없음</td></tr>')+'</tbody></table></div>'; })
     .catch(function(){ el.innerHTML='<b style="color:#B42318;">서버에 연결하지 못했습니다.</b> GS.gs 새 버전 배포를 확인하세요.'; });
 }
+// [추가] 납기 답변 메일 요약 — 관리번호 줄 + 날짜·납기·납품·완료 이야기가 나온 줄만 추려 보여줌 (서명·머리말 제외)
+function mbDueMailSummary_(d){
+  var L=String((d&&d.text)||"").split("\n").map(function(x){ return x.trim(); }).filter(Boolean), seen={}, out=[];
+  L.forEach(function(x){
+    if(/^(보낸\s*사람|보낸\s*날짜|받는\s*사람|참조|제목|Phone|Mobile|E-?mail|From|To|Cc|Sent|Subject)\s*[:：]/i.test(x)) return;
+    if(/엔\s*티\s*엘\s+사장|^_{5,}|^-{5,}|감사\s*합니다|안녕\s*하(세요|십니까)/.test(x)) return;
+    if(/관리번호|\d{1,2}\s*월\s*\d{1,2}\s*일|납기|납품|입고|소요|제작\s*(진행|완료|시작)|세정|견적/.test(x) && !seen[x]){ seen[x]=1; out.push(x); }
+  });
+  if(!out.length) return '<span class="m">내용 요약 없음 — 제목·첨부(사진)로 확인하세요</span>';
+  return out.slice(0,6).map(function(x){ return sdE_(x.slice(0,120)); }).join("<br>")+(out.length>6?'<br><span class="m">… 외 '+(out.length-6)+'줄 (원본 메일에서 확인)</span>':'');
+}
 function mbCard_(it){
   var T=MB_T[it.type]||["📧",it.type,"#667085"], d=it.data||{}, files=d.files||[], body="", acts="";
   if(it.type==="dueReply"){ var t=mbFindTable_(it,/Purch\.?\s*Doc|PO/i); body=t?('표 '+(t.length-1)+'줄 '+mbTableHtml_(t,6)):(files.some(function(f){ return /^image/.test(f.mime); })?'본문 표가 없고 사진만 있음 → 사진에서 읽기':'표를 찾지 못함');
@@ -14426,6 +14437,8 @@ function mbCard_(it){
   else if(it.type==="coa"){ var rq=coaRowsFromMail_(it); body=rq.length?(rq.length+'품목 · S/N '+rq.reduce(function(a,r){ return a+r.sns.length; },0)+'개 · '+rq.map(function(r){ return sdE_(r.dwg||r.partName); }).slice(0,3).join(", ")+(rq.length>3?' 외':'')):'표를 찾지 못함';
     acts='<button type="button" class="sd-btn pri" data-mba="coa|'+sdE_(it.id)+'">📄 성적서 요청 등록</button>'; }
   else if(it.type==="dueAll"){ var t2=(d.tables||[])[0]; body='양산장비 납기일정'+(t2?(' · 표 '+(t2.length-1)+'줄 '+mbTableHtml_(t2,8)):'');
+    acts='<button type="button" class="sd-btn" data-mba="ok|'+sdE_(it.id)+'">✅ 확인 완료</button>'; }
+  else if(it.type==="dueMail"){ body=mbDueMailSummary_(d);
     acts='<button type="button" class="sd-btn" data-mba="ok|'+sdE_(it.id)+'">✅ 확인 완료</button>'; }
   else if(it.type==="temp"){ body=mbTempSummary_(d.csv, files); acts='<button type="button" class="sd-btn" data-mba="ok|'+sdE_(it.id)+'">✅ 확인 완료</button>'; }
   if(it.status!=="신규") acts='<span class="sdl-kind '+(it.status==="반영"?"done":"memo")+'">'+sdE_(it.status)+'</span> <span class="m" style="font-size:12px;">'+sdE_(it.doneBy||"")+' '+sdE_(String(it.doneAt||"").slice(5))+'</span> <button type="button" class="sd-btn" data-mba="undo|'+sdE_(it.id)+'" style="height:28px;font-size:12px;">되돌리기</button>'
