@@ -2472,6 +2472,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
             <input type="date" id="overdue-dueDateTo" class="main-date-input">
             <button id="overdue-dueDateBtn" type="button" class="tb-cal-apply" style="padding:9px 14px;border-radius:6px;">조회</button>
           </div>
+          <div id="overdue-monthChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;"></div>
         </div>
       </div>
       <div class="table-wrap">
@@ -16207,7 +16208,7 @@ function overdueGetRows(){
 // 검색창 필터까지 적용한 결과를 돌려줍니다. 화면 표시/인쇄/엑셀 다운로드가 전부 이 함수 하나를
 // 공유해서, "검색 결과만 인쇄"·"검색 결과만 다운로드"가 실제로 검색 결과와 항상 일치합니다.
 let overdueSelectedStatuses = ["생산","재고","출고","수입","측정","외관","비젼","OK"];
-function overdueGetFilteredRows(){
+function overdueGetFilteredRows(skipDue){
   const raw = document.getElementById("overdue-searchInput").value.trim().toLowerCase();
   let rows = overdueGetRows();
   rows = rows.filter(r=>overdueSelectedStatuses.includes(computeProductStatus(r)));
@@ -16222,10 +16223,10 @@ function overdueGetFilteredRows(){
     }
   }
   // 최종납기일 범위 검색
-  const dueFrom = document.getElementById("overdue-dueDateFrom").value;
-  const dueTo = document.getElementById("overdue-dueDateTo").value;
-  if(dueFrom){ rows = rows.filter(r=> r.dueDate && r.dueDate >= dueFrom); }
-  if(dueTo){ rows = rows.filter(r=> r.dueDate && r.dueDate <= dueTo); }
+  const dueFrom = skipDue ? "" : document.getElementById("overdue-dueDateFrom").value;
+  const dueTo = skipDue ? "" : document.getElementById("overdue-dueDateTo").value;
+  if(dueFrom){ rows = rows.filter(r=> r.dueDate && String(r.dueDate).slice(0,10) >= dueFrom); }
+  if(dueTo){ rows = rows.filter(r=> r.dueDate && String(r.dueDate).slice(0,10) <= dueTo); }
   // 지연일수가 많은 순으로 정렬 (가장 급한 건이 맨 위)
   return rows.slice().sort((a,b)=> overdueDaysLate(b.dueDate) - overdueDaysLate(a.dueDate));
 }
@@ -16283,6 +16284,30 @@ function overdueApplySearch(){
   overdueVisibleLimit = OVERDUE_PAGE_SIZE; // 새 검색/필터마다 상위 100건부터 다시 시작
   overdueRenderTable(overdueGetFilteredRows());
 }
+// [추가] 최종납기 "월" 칩 — 지연 건이 있는 달만 버튼으로 나열, 누르면 그 달 1일~말일로 바로 검색 (같은 달을 다시 누르면 해제)
+//   칩의 건수는 상태·검색창 조건은 반영하고 납기일 범위는 무시한 값
+function overdueMonthChips_(){
+  const box = document.getElementById("overdue-monthChips"); if(!box) return;
+  const f = document.getElementById("overdue-dueDateFrom").value, t = document.getElementById("overdue-dueDateTo").value;
+  const cnt = {};
+  overdueGetFilteredRows(true).forEach(r=>{ const m = String(r.dueDate||"").slice(0,7); if(/^\d{4}-\d{2}$/.test(m)) cnt[m] = (cnt[m]||0)+1; });
+  const months = Object.keys(cnt).sort();
+  const last = m => { const y=+m.slice(0,4), mo=+m.slice(5,7); return m+"-"+String(new Date(y,mo,0).getDate()).padStart(2,"0"); };
+  const on = !!(f||t);
+  const chip = (label, m, active) => '<button type="button" data-m="'+m+'" style="padding:5px 11px;border-radius:999px;border:1px solid '+(active?'var(--navy)':'#C9D3E0')+';background:'+(active?'var(--navy)':'#fff')+';color:'+(active?'#fff':'#33415C')+';font-size:12px;font-weight:700;cursor:pointer;">'+label+'</button>';
+  box.innerHTML = months.length ? chip("전체 월","",!on) + months.map(m=> chip(m.slice(0,4)+"년 "+(+m.slice(5,7))+"월 · "+cnt[m], m, f===m+"-01" && t===last(m))).join("") : '<span style="font-size:12px;color:#8A94A6;">월 버튼 — 지연 데이터가 불러와지면 여기에 월별로 표시됩니다</span>';
+}
+document.addEventListener("click", (e)=>{
+  const b = e.target.closest && e.target.closest("#overdue-monthChips button"); if(!b) return;
+  const m = b.getAttribute("data-m"), fi = document.getElementById("overdue-dueDateFrom"), ti = document.getElementById("overdue-dueDateTo");
+  const last = m ? m+"-"+String(new Date(+m.slice(0,4), +m.slice(5,7), 0).getDate()).padStart(2,"0") : "";
+  if(!m || (fi.value===m+"-01" && ti.value===last)){ fi.value=""; ti.value=""; } else { fi.value=m+"-01"; ti.value=last; }
+  e.stopPropagation();
+  overdueApplySearch();
+  try{ var tw=document.querySelector("#view-overdue .table-wrap"); if(tw) tw.scrollTop=0; }catch(_){}
+}, true);
+// 표를 그릴 때마다 월 칩도 다시 그림 (상태·검색 조건이 바뀌면 건수도 같이 바뀜)
+(function(){ var __o=overdueRenderTable; overdueRenderTable=function(rows){ var r=__o.apply(this,arguments); try{ overdueMonthChips_(); }catch(e){} return r; }; })();
 // ===== 상위 100건 + 더보기 =====
 // 지연 건수가 많아져도 화면이 버벅이지 않도록, 처음에는 지연일수 많은 순 상위 100건만 그리고
 // [더보기]를 누르면 100건씩 추가로 표시합니다. (지연 건수 통계, 인쇄, 엑셀은 항상 전체 기준)
