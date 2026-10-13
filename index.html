@@ -6155,20 +6155,16 @@ function insplistOverdueSet_(on){
   if(inp){ if(!inp.getAttribute("data-ph0")) inp.setAttribute("data-ph0", inp.placeholder||"");
     inp.placeholder=on?"납기지연 중 기존도번 검색 (예: D-1234 / 여러 개는 쉼표) · 비우면 전체":inp.getAttribute("data-ph0"); }
 }
-// 기존도번별 지연 요약 칩 (클릭 → 그 도번만 보기)
+// 납기지연 요약 줄 (품목 종수 · ORDER 건수 · 부족 합계)
 function insplistOdSummary_(rows){
   var g={}, order=[];
   rows.forEach(function(r){ var k=String(r.oldDraw||"").trim()||"(도번없음)"; if(!g[k]){ g[k]={draw:k,name:r.name||"",n:0,lack:0,max:0}; order.push(k); } var x=g[k]; x.n++; x.lack+=Number(r.lack)||0; if((r.overDays||0)>x.max) x.max=r.overDays||0; });
   var list=order.map(function(k){ return g[k]; }).sort(function(a,b){ return (b.max-a.max)||(b.lack-a.lack); });
   var tot=rows.reduce(function(a,r){ return a+(Number(r.lack)||0); },0);
-  var chip=function(x){ var c=x.max>=30?"#8A1F1F":(x.max>=7?"#C0392B":"#B54708");
-    return '<span class="insplist-odchip" data-draw="'+qcEsc(x.draw==="(도번없음)"?"":x.draw)+'" title="'+qcEsc(x.name)+' — 클릭하면 이 도번만 보기" style="display:inline-block;margin:3px 4px 3px 0;padding:4px 9px;border:1px solid '+c+';border-radius:14px;background:#fff;color:#1F2A44;font-size:12px;cursor:pointer;white-space:nowrap;">'
-      +'<b>'+qcEsc(x.draw)+'</b> · '+x.n+'건 · 부족 <b style="color:'+c+';">'+x.lack+'</b>개 · 최대 <b style="color:'+c+';">+'+x.max+'일</b></span>'; };
-  return '<tr><td colspan="12" style="text-align:left;background:#FEF3F2;padding:8px 10px;">'
+  return '<tr><td colspan="12" style="text-align:left;background:#FEF3F2;padding:8px 10px;white-space:normal;max-width:0;">'
     +'<div style="color:#C0392B;font-weight:800;margin-bottom:4px;">⏰ 달력 검수품 · 미완료 · 납기 지남 — 품목 '+list.length+'종 · ORDER '+rows.length+'건 · 부족 합계 '+tot+'개'
     +(window.__insplistOdDraw?' <span style="color:#0B5CAB;">(검색: '+qcEsc(window.__insplistOdDraw)+')</span>':'')+'</div>'
-    +'<div style="color:#667085;font-size:11.5px;margin-bottom:2px;">기존도번별 요약 (최대 지연일 순) · 아래 표는 최종납기 오래된 순 = 우선 출고 순</div>'
-    +list.map(chip).join("")+'</td></tr>';
+    +'<div style="color:#667085;font-size:11.5px;">최종납기 오래된 순 = 우선 출고 순 · 검색창에 기존도번을 넣으면 그 품목만 볼 수 있습니다</div></td></tr>';
 }
 function insplistOverdueToggle_(){
   var on=!window.__insplistOverdue;
@@ -6284,7 +6280,6 @@ else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;
       ic.addEventListener("click", function(ev){ ev.stopPropagation(); insplistGoQcHist_(ic.getAttribute("data-draw")); });
     });
     body.querySelectorAll(".insplist-ihist").forEach(function(ic){ ic.addEventListener("click", function(ev){ ev.stopPropagation(); ihOpen_(ic.getAttribute("data-draw")); }); });
-    body.querySelectorAll(".insplist-odchip").forEach(function(ch){ ch.addEventListener("click", function(){ var inp=document.getElementById("insplist-search"); if(inp) inp.value=ch.getAttribute("data-draw")||""; renderInspList(); }); });
   };
   // 화면 로드분으로 즉시 표시 → 서버 최신 출하검사 일보로 갱신
   var local=(typeof insState!=="undefined"&&insState.shipping&&Array.isArray(insState.shipping.rows))?insState.shipping.rows:[];
