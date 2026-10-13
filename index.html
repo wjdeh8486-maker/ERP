@@ -2516,6 +2516,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#EEF3FA;border:1px solid #C9D3E0;border-radius:10px;padding:8px 12px;margin-bottom:10px;">
         <span style="font-weight:800;color:#1F2A44;font-size:13px;">🔫 재고 바코드 스캔</span>
         <input id="inv-qrscan" type="text" placeholder="스캐너로 재고 라벨 QR 찍기 (또는 도번 입력 후 Enter)" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();invQrScan_(this);}" style="flex:1;min-width:220px;padding:8px 12px;border:1px solid #5B3EAE;border-radius:8px;font-size:13px;box-sizing:border-box;">
+        <button type="button" id="inv-camBtn" onclick="window.__invScanTarget=true; if(typeof scanOpen==='function') scanOpen();" title="폰·태블릿 카메라로 재고 라벨 QR(또는 도번 바코드)을 찍어 조회" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;white-space:nowrap;">📷 카메라</button>
         <span style="font-size:11.5px;color:#8A93A6;">찍으면 그 품목의 현재 보유 수량·위치·입고일·재검사 이력·다음 예정일이 뜹니다</span>
       </div>
       <div class="tabs">
@@ -4849,6 +4850,11 @@ function scanOnDecode(decoded){
     scanBeep();
     return;
   }
+  // [추가] 재고 입출고 📷 카메라로 연 경우 → 스캐너 입력과 같은 '제품 이력 조회' (라벨 QR 주소면 도번만 추출)
+  if(window.__invScanTarget && typeof qrItemView_==="function"){
+    var __dr=code; try{ var __mm=code.match(/[?&]item=([^&#]+)/); if(__mm) __dr=decodeURIComponent(__mm[1]); }catch(_){}
+    scanBeep(); scanClose(); __dr=String(__dr||"").trim(); if(__dr) qrItemView_(__dr); return;
+  }
   scanHandle(code);
 }
 function scanStop(){
@@ -4857,7 +4863,7 @@ function scanStop(){
     catch(_){ __scanner=null; }
   }
 }
-function scanClose(){ scanStop(); var ov=document.getElementById("scan-overlay"); if(ov) ov.style.display="none"; window.__scanContinuous=false; window.__insScanTarget=false; window.__dispatchScanTarget=false; __scanLast=""; }
+function scanClose(){ scanStop(); var ov=document.getElementById("scan-overlay"); if(ov) ov.style.display="none"; window.__scanContinuous=false; window.__insScanTarget=false; window.__dispatchScanTarget=false; window.__invScanTarget=false; __scanLast=""; }
 // 생산공정현황이 아직 없으면 즉시 불러온다(특히 모바일에서 메인 로드 전 스캔 대비)
 function scanEnsureProcessData(){
   if(typeof processData!=="undefined" && processData.length) return Promise.resolve();
@@ -4889,6 +4895,9 @@ function scanHandle(code){
     if(window.__insScanTarget || insrepActive()){ if(typeof insScanReceive==="function"){ insScanReceive(code); return; } }
     // 분출LIST 화면이면 통합검색으로 가지 않고 해당 행 체크
     if(window.__dispatchScanTarget || dispatchActive()){ if(typeof dispatchScanReceive==="function"){ dispatchScanReceive(code); return; } }
+    // [추가] 재고 라벨 QR(…?item=도번) → 폰 카메라로 찍었을 때와 같은 '제품 이력 조회' 화면 (보유수량·위치·입고일·재검사 이력)
+    var __im=code.match(/[?&]item=([^&#]+)/);
+    if(__im && typeof qrItemView_==="function"){ var __d=""; try{ __d=decodeURIComponent(__im[1]).trim(); }catch(_){ __d=__im[1]; } if(__d){ qrItemView_(__d); return; } }
     var res=scanResolveDrawing(code);
     var term=(res && res.drawing) ? res.drawing : code;
     gsOpen();
