@@ -13150,6 +13150,15 @@ function sdMainBanner_(){
 }
 function sdTagFor_(ord){ if(!__sd.items.length) return ""; var o=String(ord||"").trim(); var l=sdLive_().filter(function(x){ return !sdDone_(x) && x.ord===o; }); if(!l.length) return "";
   return ' <span class="sd-mini" title="특별납기 — 가능일자(고객 약속일). 누르면 특별납기 관리로 이동" onclick="event.stopPropagation();sdGo_(\''+sdE_(o).replace(/'/g,"")+'\')">⭐ 가능 '+l.map(function(x){ return (x.avail?sdMD_(x.avail):"미정")+"·"+x.qty+"EA"; }).join(", ")+'</span>'; }
+// [추가] 지연 LIST용 — 특별납기가 '완료'(출고·분출 완료)된 건도 회색으로 표시 (진행 중 건은 기존 ⭐ 가능 표시 그대로)
+function sdTagDoneFor_(ord){
+  try{
+    var o=String(ord||"").trim(); if(!o||!__sd||!__sd.items||!__sd.items.length) return "";
+    var l=sdLive_().filter(function(x){ return x.ord===o; }); if(!l.length) return "";
+    var act=l.filter(function(x){ return !sdDone_(x); }); if(act.length) return "";   // 진행 중 건이 있으면 sdTagFor_가 이미 표시
+    return ' <span class="sd-mini" style="background:#F2F4F7;color:#667085;border-color:#D0D5DD;" title="특별납기 완료 건 — 가능일자(고객 약속일). 누르면 특별납기 관리로 이동" onclick="event.stopPropagation();sdGo_(\''+sdE_(o).replace(/'/g,"")+'\')">⭐ 가능 '+l.map(function(x){ return (x.avail?sdMD_(x.avail):"미정")+"·"+x.qty+"EA"; }).join(", ")+' ✔완료</span>';
+  }catch(_){ return ""; }
+}
 // 아침 '오늘 챙길 것' + 품질 대시보드 중요 알림에 추가 (원래 함수를 감싸서 맨 앞에)
 (function(){ if(typeof qmsMorningAlerts_!=="function") return; var orig=qmsMorningAlerts_;
   qmsMorningAlerts_=function(){ var items=[]; try{ items=orig()||[]; }catch(_){}
@@ -16333,7 +16342,7 @@ function overdueRenderTable(rows){
       <td>${dwgLink(r.oldDrawingNo)}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
       <td>${getCurrentProcess(r.orderNo)}</td>
-      <td class="cell-overdue">${r.dueDate||''}${(typeof dclTag_==="function")?dclTag_(r.orderNo):''}${(typeof sdTagFor_==="function")?sdTagFor_(r.orderNo):''}</td>
+      <td class="cell-overdue">${r.dueDate||''}${(typeof dclTag_==="function")?dclTag_(r.orderNo):''}${(typeof sdTagFor_==="function")?(sdTagFor_(r.orderNo)||(typeof sdTagDoneFor_==="function"?sdTagDoneFor_(r.orderNo):'')):''}</td>
     `;
     tbody.appendChild(tr);
   });
