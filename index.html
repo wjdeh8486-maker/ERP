@@ -8219,6 +8219,18 @@ function dispatchLabelPrint_(){
   dispatchPrintLabelsForRows_(rows);
 }
 // 공통 라벨 인쇄기: 분출LIST 행 배열({po,partNo,orderNo,name,project,due,oldDraw,qty}) → 70×40mm 라벨 인쇄
+// [추가] 라벨 세정품 구분 — 외주발주(납품처)에 '세정'이 들어 있으면 세정품(수량을 원형 ③ 으로 인쇄), 없으면 일반 숫자 3
+//   '세정(X)' 처럼 세정 안 한다고 적은 경우는 세정품 아님 (예: "ST(삼영),세정(X)" → 일반, "명석(사급),와이엔티,세정" → 세정품)
+function labelVendorOf_(r){
+  var v=String((r&&r.vendorName)||"").trim(); if(v) return v;
+  var o=String((r&&r.orderNo)||"").trim(); if(!o) return "";
+  try{ var md=(typeof mainData!=="undefined"&&mainData)||[]; for(var i=0;i<md.length;i++){ if(String(md[i].orderNo||"").trim()===o){ var vn=String(md[i].vendorName||"").trim(); if(vn) return vn; } } }catch(_){}
+  try{ return (typeof sdVendorOf_==="function")?sdVendorOf_(o):""; }catch(_){ return ""; }
+}
+function labelIsClean_(r){
+  var v=labelVendorOf_(r).replace(/세\s*정\s*[\(（\[]\s*[xX×✕✗]\s*[\)）\]]/g,"");
+  return /세\s*정/.test(v);
+}
 function dispatchPrintLabelsForRows_(rows){
   rows=(rows||[]).filter(Boolean);
   if(!rows.length){ alert("라벨을 인쇄할 항목이 없습니다."); return; }
@@ -8233,7 +8245,7 @@ function dispatchPrintLabelsForRows_(rows){
       +'<tr><th>품 명</th><td class="nm">'+qcEsc(r.name||"")+'</td></tr>'
       +row("장비명", r.project)
       +row("납품일자", r.due)
-      +'<tr><th>도면번호</th><td class="dr"><table class="drt"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><tr><td class="dv">'+qcEsc(r.oldDraw||"")+'</td><td class="qb">수 량</td><td class="qv">'+(Number(r.qty)||0)+'</td></tr></table></td></tr>'
+      +'<tr><th>도면번호</th><td class="dr"><table class="drt"><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><tr><td class="dv">'+qcEsc(r.oldDraw||"")+'</td><td class="qb">수 량</td><td class="qv">'+(labelIsClean_(r)?'<span class="cq">'+(Number(r.qty)||0)+'</span>':(Number(r.qty)||0))+'</td></tr></table></td></tr>'
       +'</table>'
       +'<div class="ftr">㈜ 엔티엘</div>'
       +'</div>';
@@ -8258,6 +8270,7 @@ function dispatchPrintLabelsForRows_(rows){
     +'table.drt td.dv{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }'
     +'table.drt td.qb{ text-align:right; color:#16345a; font-weight:700; font-size:6.6pt; white-space:nowrap; padding-right:1mm; }'
     +'table.drt td.qv{ text-align:center; font-weight:800; font-size:8.6pt; }'
+    +'span.cq{ display:inline-block; min-width:5.2mm; height:5.2mm; line-height:4.6mm; padding:0 0.6mm; border:0.5mm solid #111; border-radius:50%; text-align:center; font-weight:800; font-size:8.6pt; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
     +'.ftr{ margin-top:0.6mm; text-align:center; background:#16345a; color:#fff; font-weight:800; font-size:7.8pt; padding:0.9mm 0; border-radius:2px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
     +'</style></head><body>'+labelsHtml+'</body></html>');
   win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
