@@ -6161,10 +6161,17 @@ function insplistOdSummary_(rows){
   rows.forEach(function(r){ var k=String(r.oldDraw||"").trim()||"(도번없음)"; if(!g[k]){ g[k]={draw:k,name:r.name||"",n:0,lack:0,max:0}; order.push(k); } var x=g[k]; x.n++; x.lack+=Number(r.lack)||0; if((r.overDays||0)>x.max) x.max=r.overDays||0; });
   var list=order.map(function(k){ return g[k]; }).sort(function(a,b){ return (b.max-a.max)||(b.lack-a.lack); });
   var tot=rows.reduce(function(a,r){ return a+(Number(r.lack)||0); },0);
-  return '<tr><td colspan="12" style="text-align:left;background:#FEF3F2;padding:8px 10px;white-space:normal;max-width:0;">'
-    +'<div style="color:#C0392B;font-weight:800;margin-bottom:4px;">⏰ 달력 검수품 · 미완료 · 납기 지남 — 품목 '+list.length+'종 · ORDER '+rows.length+'건 · 부족 합계 '+tot+'개'
-    +(window.__insplistOdDraw?' <span style="color:#0B5CAB;">(검색: '+qcEsc(window.__insplistOdDraw)+')</span>':'')+'</div>'
-    +'<div style="color:#667085;font-size:11.5px;">최종납기 오래된 순 = 우선 출고 순 · 검색창에 기존도번을 넣으면 그 품목만 볼 수 있습니다</div></td></tr>';
+  return '<span title="최종납기 오래된 순 = 우선 출고 순 · 검색창에 기존도번을 넣으면 그 품목만 볼 수 있습니다" style="color:#C0392B;font-weight:800;font-size:13px;">⏰ 달력 검수품 · 미완료 · 납기 지남 — 품목 '+list.length+'종 · ORDER '+rows.length+'건 · 부족 합계 '+tot+'개'
+    +(window.__insplistOdDraw?' <span style="color:#0B5CAB;">(검색: '+qcEsc(window.__insplistOdDraw)+')</span>':'')+'</span>';
+}
+// 요약 줄을 표 밖, 재고 데이터 안내줄 오른쪽에 표시 (html 없으면 숨김)
+function insplistOdSumShow_(html){
+  var el=document.getElementById("insplist-odsum");
+  if(!el){ var sf=document.getElementById("qms-sfresh-insplist"); if(!sf||!sf.parentNode) return;
+    var row=document.createElement("div"); row.style.cssText="display:flex;align-items:baseline;flex-wrap:wrap;column-gap:18px;";
+    sf.parentNode.insertBefore(row, sf); row.appendChild(sf);
+    el=document.createElement("div"); el.id="insplist-odsum"; el.style.cssText="margin:0 0 8px;"; row.appendChild(el); }
+  el.innerHTML=html||""; el.style.display=html?"":"none";
 }
 function insplistOverdueToggle_(){
   var on=!window.__insplistOverdue;
@@ -6220,6 +6227,7 @@ function qmsStockFreshMount_(bodyId, key){
 }
 function renderInspList(){
   try{ qmsStockFreshMount_("insplist-body","insplist"); }catch(_){}   // [추가] 재고 데이터 최신 여부
+  try{ insplistOdSumShow_(""); }catch(_){}   // 납기지연 요약 줄 초기화 (결과 그릴 때 다시 표시)
   var body=document.getElementById("insplist-body"); if(!body) return;
   // 재고사용 목록 최초 1회 서버 로드 후 재렌더
   // 재고사용 목록 서버 로드 (30초마다 갱신 → 새로고침/재검색 시에도 반영)
@@ -6244,7 +6252,7 @@ function renderInspList(){
     if(!rows.length){ body.innerHTML='<tr><td colspan="12" style="text-align:center;color:#8A93A6;padding:18px;">"'+qcEsc(q)+'" 에 해당하는 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
     var tooMany=(typeof window!=="undefined" && window.__insplistTooMany);
     var notice = tooMany ? '<tr><td colspan="12" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">⚠ 검색 결과가 너무 많아 앞 300건만 표시합니다. ORDER NO.를 더 구체적으로 입력하세요 (예: 26-386)</td></tr>' : '';
-    if(window.__insplistOverdue) notice+=insplistOdSummary_(rows);
+    insplistOdSumShow_(window.__insplistOverdue?insplistOdSummary_(rows):"");
     body.innerHTML=notice+rows.map(function(r){
       var lc=r.lack>0?"#C0392B":"#1E7A46";
      var noteHtml="";
