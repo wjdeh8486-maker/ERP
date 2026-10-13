@@ -3103,9 +3103,9 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
             <colgroup><col style="width:30%"><col style="width:36%"><col style="width:12%"><col style="width:22%"></colgroup>
             <thead><tr>
               <th style="padding:9px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">도번</th>
-              <th style="padding:9px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">S/N</th>
+              <th id="mh-th-sn" onclick="mhSort_('sn')" title="클릭하면 S/N 순으로 정렬 (다시 누르면 반대 순서)" style="padding:9px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;cursor:pointer;user-select:none;">S/N</th>
               <th style="padding:9px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">수량</th>
-              <th style="padding:9px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;">측정일</th>
+              <th id="mh-th-d" onclick="mhSort_('d')" title="클릭하면 측정일 순으로 정렬 (다시 누르면 반대 순서)" style="padding:9px;border:1px solid #E1E8F0;position:sticky;top:0;background:#1F2A44;color:#fff;z-index:5;cursor:pointer;user-select:none;">측정일</th>
             </tr></thead>
             <tbody id="mh-body"></tbody>
           </table>
@@ -7792,11 +7792,20 @@ function mhFilter_(drawQ, snQ){
       return okD && okS;
     });
   }
+  // [추가] 헤더 클릭 정렬 — S/N(숫자 인식: 10768-99 < 10768-100) / 측정일, 기본은 측정일 최신순
+  var sk=__mhSort.key, sd=(__mhSort.dir==="asc")?1:-1, nc=function(x,y){ return String(x||"").localeCompare(String(y||""),"ko",{numeric:true}); };
   return list.slice().sort(function(a,b){
-    var c=String(b.d||"").localeCompare(String(a.d||"")); if(c!==0) return c;
-    return String(a.dr||"").localeCompare(String(b.dr||""));
+    var c=0;
+    if(sk==="sn"){ var ea=!a.sn, eb=!b.sn; if(ea!==eb) return ea?1:-1; c=sd*nc(a.sn,b.sn); if(c!==0) return c; }   // S/N 없는 행은 항상 맨 아래
+    else { var da=!a.d, db=!b.d; if(da!==db) return da?1:-1; c=sd*String(a.d||"").localeCompare(String(b.d||"")); if(c!==0) return c; }
+    c=String(b.d||"").localeCompare(String(a.d||"")); if(c!==0) return c;
+    c=String(a.dr||"").localeCompare(String(b.dr||"")); if(c!==0) return c;
+    return nc(a.sn,b.sn);
   });
 }
+var __mhSort={key:"d",dir:"desc"};
+function mhSort_(k){ if(__mhSort.key===k) __mhSort.dir=(__mhSort.dir==="asc")?"desc":"asc"; else __mhSort={key:k,dir:(k==="d")?"desc":"asc"}; renderMeasureHist(); }
+function mhSortMark_(){ [["sn","S/N"],["d","측정일"]].forEach(function(x){ var e=document.getElementById("mh-th-"+x[0]); if(e) e.textContent=x[1]+(__mhSort.key===x[0]?(__mhSort.dir==="asc"?" ▲":" ▼"):" ↕"); }); }
 
 function renderMeasureHist(){
   var body=document.getElementById("mh-body"); if(!body) return;
@@ -7804,7 +7813,7 @@ function renderMeasureHist(){
   if(st){ st.textContent = __measureIndex.length ? ("인덱스 "+__measureIndex.length.toLocaleString()+"건"+(__mhLastScan?(" · 최근 스캔 "+__mhLastScan):"")) : "폴더를 선택해 스캔하세요."; }
   var dq=String((document.getElementById("mh-search-draw")||{}).value||"").trim();
   var sq=String((document.getElementById("mh-search-sn")||{}).value||"").trim();
-  var rows=mhFilter_(dq, sq);
+  var rows=mhFilter_(dq, sq); mhSortMark_();
   var td='padding:7px 8px;border:1px solid #E6EBF2;';
   if(!__measureIndex.length){ body.innerHTML='<tr><td colspan="4" style="text-align:center;color:#8A93A6;padding:22px;">아직 인덱스가 없습니다. 위에서 측정보고서 폴더를 선택해 스캔하세요.</td></tr>'; return; }
   if(!rows.length){ var __qq=[dq,sq].filter(Boolean).join(" / "); body.innerHTML='<tr><td colspan="4" style="text-align:center;color:#B0662A;padding:22px;font-weight:700;">'+(__qq?("\u2018"+mhEsc_(__qq)+"\u2019 측정 이력이 없습니다 · 측정 미완료"):"조건에 맞는 항목이 없습니다")+'</td></tr>'; return; }
@@ -14228,14 +14237,20 @@ var RV_STAGE=[];
    · 같은 표를 두 번 반영하면 막음 / 반영한 줄마다 변경·근거 이력에 "납기 회신표" 근거 */
 function mailDigits_(v){ return String(v==null?"":v).replace(/\D/g,""); }
 function mailDate_(v){ if(v==null||v==="") return ""; if(typeof v==="number" && v>30000 && v<80000){ var d=new Date(Math.round((v-25569)*86400000)); return d.toISOString().slice(0,10); }
-  var s=String(v).trim(), m=s.match(/^(20\d{2})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/); if(m) return m[1]+"-"+String(m[2]).padStart(2,"0")+"-"+String(m[3]).padStart(2,"0"); return ""; }
+  var s=String(v).trim(), m=s.match(/^(20\d{2})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/); if(m) return m[1]+"-"+String(m[2]).padStart(2,"0")+"-"+String(m[3]).padStart(2,"0");
+  // [추가] 고객 회신표의 한글 날짜 — "11월 6일" / "2027년 1월 15일". 연도가 없으면 올해, 오늘보다 두 달 넘게 지난 날짜면 내년으로 봄
+  var k=s.match(/^(?:(20\d{2})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일?$/);
+  if(k){ var mo=+k[2], da=+k[3]; if(mo<1||mo>12||da<1||da>31) return ""; var now=new Date(), yr=k[1]?+k[1]:now.getFullYear();
+    if(!k[1] && new Date(yr,mo-1,da) < new Date(now.getFullYear(),now.getMonth(),now.getDate()-60)) yr++;
+    return yr+"-"+String(mo).padStart(2,"0")+"-"+String(da).padStart(2,"0"); }
+  return ""; }
 function mailHash_(t){ var h=0, s=String(t||"").replace(/\s+/g," ").trim(); for(var i=0;i<s.length;i++){ h=((h<<5)-h+s.charCodeAt(i))|0; } return "H"+(h>>>0).toString(36); }
 function mailParseTable_(rows){   // rows: 2차원 배열
   var head=-1, col={};
   for(var i=0;i<Math.min(rows.length,10);i++){ var r=rows[i].map(function(x){ return String(x==null?"":x).trim().toLowerCase(); });
     if(r.some(function(x){ return /purch\.?\s*doc|^po$|발주번호/.test(x); })){ head=i; r.forEach(function(x,j){
       if(/purch\.?\s*doc|^po$|발주번호/.test(x)) col.po=j; else if(/purch\.?\s*req|^pr$/.test(x)) col.pr=j; else if(/^material|품목코드|자재/.test(x)) col.mat=j;
-      else if(/^document|도면|도번/.test(x)) col.doc=j; else if(/short\s*text|품명|description/.test(x)) col.txt=j; else if(/엔티엘|예상\s*납기|ntl/.test(x)) col.nd=j; else if(/delivery|납기|due/.test(x)) col.cd=j; }); break; } }
+      else if(/^document|도면|도번/.test(x)) col.doc=j; else if(/short\s*text|품명|description/.test(x)) col.txt=j; else if(/엔티엘|예상\s*납기|ntl|회신/.test(x)) col.nd=j; else if(/delivery|납기|due/.test(x)) col.cd=j; }); break; } }
   if(head<0){
     var hasPo=rows.some(function(r){ return r.some(function(c){ return /^\s*45\d{8}\s*$/.test(String(c==null?"":c)); }); });
     if(!hasPo) return mailParseInternal_(rows);   // [통합] 기존 특별납기 엑셀 붙여넣기 형식
