@@ -6010,6 +6010,11 @@ function insplistBuildRows_(q, shipRows){
   });
   var __od=!!(typeof window!=="undefined" && window.__insplistOverdue), __odToday=insplistToday_();
   if(__od) matched=matched.filter(function(r){ var d=insplistYmd_(r.dueDate); return String(r.shipped||"")!=="납품완료" && d && d<__odToday; });   // 납기지연 모드: 납기 지난 것만
+  if(__od && window.__insplistOdDraw){   // 납기지연 모드 검색: 기존도번(부분) / ORDER / PROJECT, 쉼표로 여러 개
+    var __odQs=String(window.__insplistOdDraw).split(",").map(function(x){ return x.trim().toUpperCase(); }).filter(Boolean);
+    matched=matched.filter(function(r){ var dr=String(r.oldDrawingNo||"").toUpperCase(), o=String(r.orderNo||"").trim().toUpperCase(), pj=String(r.vendor||"").toUpperCase();
+      return __odQs.some(function(k){ return (dr && dr.indexOf(k)>=0) || o===k || o.indexOf(k+"-")===0 || (k.length>=3 && pj.indexOf(k)>=0); }); });
+  }
   // 결과 과다 시 안전장치: 200건 초과면 잘라냄(재고 계산 폭주 방지)
   var __tooMany=false;
   if(matched.length>300){ matched=matched.slice(0,300); __tooMany=true; }
@@ -6141,10 +6146,29 @@ else if(stockQty>0){
 // ===== [추가] 검수LIST ⏰ 납기지연: 일정 달력 '검수' PROJECT 전체 → 미완료 + 최종납기 지난 건, 납기 오래된 순 =====
 function insplistOverDays_(due, today){ var a=insplistYmd_(due); if(!a||!today) return 0; return Math.max(0, Math.round((new Date(today+"T00:00:00")-new Date(a+"T00:00:00"))/86400000)); }
 function insplistOverdueQuery_(){ var set=(typeof dispatchInspProjSet_==="function")?dispatchInspProjSet_():{}; return Object.keys(set).filter(function(k){ return k.length>=3; }).join(","); }
+function insplistOdQ_(q){ if(!window.__insplistOverdue) return q; window.__insplistOdDraw=String(q||"").trim(); return insplistOverdueQuery_(); }
 function insplistOverdueSet_(on){
-  window.__insplistOverdue=!!on;
+  window.__insplistOverdue=!!on; if(!on) window.__insplistOdDraw="";
   var b=document.getElementById("insplist-overdueBtn");
   if(b){ b.style.background=on?"#7A1F1F":"#C0392B"; b.textContent=on?"✕ 납기지연 해제":"⏰ 납기지연"; }
+  var inp=document.getElementById("insplist-search");
+  if(inp){ if(!inp.getAttribute("data-ph0")) inp.setAttribute("data-ph0", inp.placeholder||"");
+    inp.placeholder=on?"납기지연 중 기존도번 검색 (예: D-1234 / 여러 개는 쉼표) · 비우면 전체":inp.getAttribute("data-ph0"); }
+}
+// 기존도번별 지연 요약 칩 (클릭 → 그 도번만 보기)
+function insplistOdSummary_(rows){
+  var g={}, order=[];
+  rows.forEach(function(r){ var k=String(r.oldDraw||"").trim()||"(도번없음)"; if(!g[k]){ g[k]={draw:k,name:r.name||"",n:0,lack:0,max:0}; order.push(k); } var x=g[k]; x.n++; x.lack+=Number(r.lack)||0; if((r.overDays||0)>x.max) x.max=r.overDays||0; });
+  var list=order.map(function(k){ return g[k]; }).sort(function(a,b){ return (b.max-a.max)||(b.lack-a.lack); });
+  var tot=rows.reduce(function(a,r){ return a+(Number(r.lack)||0); },0);
+  var chip=function(x){ var c=x.max>=30?"#8A1F1F":(x.max>=7?"#C0392B":"#B54708");
+    return '<span class="insplist-odchip" data-draw="'+qcEsc(x.draw==="(도번없음)"?"":x.draw)+'" title="'+qcEsc(x.name)+' — 클릭하면 이 도번만 보기" style="display:inline-block;margin:3px 4px 3px 0;padding:4px 9px;border:1px solid '+c+';border-radius:14px;background:#fff;color:#1F2A44;font-size:12px;cursor:pointer;white-space:nowrap;">'
+      +'<b>'+qcEsc(x.draw)+'</b> · '+x.n+'건 · 부족 <b style="color:'+c+';">'+x.lack+'</b>개 · 최대 <b style="color:'+c+';">+'+x.max+'일</b></span>'; };
+  return '<tr><td colspan="12" style="text-align:left;background:#FEF3F2;padding:8px 10px;">'
+    +'<div style="color:#C0392B;font-weight:800;margin-bottom:4px;">⏰ 달력 검수품 · 미완료 · 납기 지남 — 품목 '+list.length+'종 · ORDER '+rows.length+'건 · 부족 합계 '+tot+'개'
+    +(window.__insplistOdDraw?' <span style="color:#0B5CAB;">(검색: '+qcEsc(window.__insplistOdDraw)+')</span>':'')+'</div>'
+    +'<div style="color:#667085;font-size:11.5px;margin-bottom:2px;">기존도번별 요약 (최대 지연일 순) · 아래 표는 최종납기 오래된 순 = 우선 출고 순</div>'
+    +list.map(chip).join("")+'</td></tr>';
 }
 function insplistOverdueToggle_(){
   var on=!window.__insplistOverdue;
@@ -6209,23 +6233,22 @@ function renderInspList(){
     insplistLoadUsedNotes_(function(){ insplistLoadPreShip_(function(){ renderInspList(); }); });
   }
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
-  if(q && window.__insplistOverdue) insplistOverdueSet_(false);      // 검색하면 납기지연 모드 해제
-  if(!q && window.__insplistOverdue){
+  if(window.__insplistOverdue){      // 납기지연 모드: 검색어는 기존도번 필터로 사용 (해제는 버튼으로)
     if(!(schedEvents&&schedEvents.length) && !window.__insplistSchedTried && typeof qmsLoadSchedShared_==="function"){   // 달력 미로딩 → 1회 불러온 뒤 재렌더
       window.__insplistSchedTried=true; body.innerHTML='<tr><td colspan="12" style="text-align:center;color:#0B5CAB;padding:18px;">일정 달력 검수 목록 불러오는 중…</td></tr>';
       qmsLoadSchedShared_(function(){ renderInspList(); }); return; }
-    q=insplistOverdueQuery_();
+    q=insplistOdQ_(q);
     if(!q){ body.innerHTML='<tr><td colspan="12" style="text-align:center;color:#8A93A6;padding:18px;">일정 달력에 \'검수\'로 등록된 PROJECT가 없습니다.</td></tr>'; return; }
   }
   if(!q){ body.innerHTML='<tr><td colspan="12" style="text-align:center;color:#0B5CAB;padding:18px;font-weight:600;">위 검색창에 ORDER NO.(예: <b>26-386</b>)를 입력하면 세부 항목이 펼쳐집니다.</td></tr>'; return; }
   var td='padding:6px 6px;border:1px solid #E1E8F0;';  // 패딩 축소
   var paint=function(shipRows){
     var rows=insplistBuildRows_(q, shipRows);
-    if(!rows.length && window.__insplistOverdue){ body.innerHTML='<tr><td colspan="12" style="text-align:center;color:#1E7A46;padding:18px;font-weight:700;">✅ 달력 검수품 중 납기 지난 미완료 항목이 없습니다.</td></tr>'; return; }
+    if(!rows.length && window.__insplistOverdue){ body.innerHTML='<tr><td colspan="12" style="text-align:center;color:#1E7A46;padding:18px;font-weight:700;">✅ 달력 검수품 중 납기 지난 미완료 항목이 없습니다.'+(window.__insplistOdDraw?' (검색: '+qcEsc(window.__insplistOdDraw)+')':'')+'</td></tr>'; return; }
     if(!rows.length){ body.innerHTML='<tr><td colspan="12" style="text-align:center;color:#8A93A6;padding:18px;">"'+qcEsc(q)+'" 에 해당하는 항목이 없습니다. (MAIN 대시보드를 먼저 한 번 열어 데이터를 불러오세요)</td></tr>'; return; }
     var tooMany=(typeof window!=="undefined" && window.__insplistTooMany);
     var notice = tooMany ? '<tr><td colspan="12" style="text-align:center;color:#B0662A;background:#FFF6EC;padding:10px;font-weight:700;">⚠ 검색 결과가 너무 많아 앞 300건만 표시합니다. ORDER NO.를 더 구체적으로 입력하세요 (예: 26-386)</td></tr>' : '';
-    if(window.__insplistOverdue) notice+='<tr><td colspan="12" style="text-align:left;color:#C0392B;background:#FEF3F2;padding:8px 10px;font-weight:700;">⏰ 달력 검수품 · 미완료 · 납기 지남 '+rows.length+'건 — 최종납기 오래된 순 (위쪽부터 우선 출고)</td></tr>';
+    if(window.__insplistOverdue) notice+=insplistOdSummary_(rows);
     body.innerHTML=notice+rows.map(function(r){
       var lc=r.lack>0?"#C0392B":"#1E7A46";
      var noteHtml="";
@@ -6261,6 +6284,7 @@ else if(r.note && r.note.charAt(0)==="X"){ noteHtml='<span style="color:#B0662A;
       ic.addEventListener("click", function(ev){ ev.stopPropagation(); insplistGoQcHist_(ic.getAttribute("data-draw")); });
     });
     body.querySelectorAll(".insplist-ihist").forEach(function(ic){ ic.addEventListener("click", function(ev){ ev.stopPropagation(); ihOpen_(ic.getAttribute("data-draw")); }); });
+    body.querySelectorAll(".insplist-odchip").forEach(function(ch){ ch.addEventListener("click", function(){ var inp=document.getElementById("insplist-search"); if(inp) inp.value=ch.getAttribute("data-draw")||""; renderInspList(); }); });
   };
   // 화면 로드분으로 즉시 표시 → 서버 최신 출하검사 일보로 갱신
   var local=(typeof insState!=="undefined"&&insState.shipping&&Array.isArray(insState.shipping.rows))?insState.shipping.rows:[];
@@ -8459,7 +8483,7 @@ function insplistStockUseOpen_(){
   var checks=Array.prototype.slice.call(document.querySelectorAll(".insplist-chk:checked"));
   if(!checks.length){ alert("재고사용할 항목을 먼저 체크하세요."); return; }
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
-  if(!q && window.__insplistOverdue) q=insplistOverdueQuery_();
+  q=insplistOdQ_(q);
   var all=insplistBuildRows_(q, __insplistShip);
   var byOrder={}; all.forEach(function(r){ byOrder[r.orderNo]=r; });
   __stockUseRows=checks.map(function(c){
@@ -8982,7 +9006,7 @@ function insplistStockUseCancel_(){
 // 검수LIST 라벨 인쇄 (분출LIST 공통 라벨 인쇄기 재사용, 70×40mm)
 function insplistLabelPrint_(){
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
-  if(!q && window.__insplistOverdue) q=insplistOverdueQuery_();
+  q=insplistOdQ_(q);
   if(!q){ alert("먼저 ORDER NO. 또는 PROJECT NO.를 검색하세요."); return; }
   var all=insplistBuildRows_(q, (typeof __insplistShip!=="undefined"?__insplistShip:[]));
   var checks=Array.prototype.slice.call(document.querySelectorAll(".insplist-chk:checked"));
@@ -8992,7 +9016,7 @@ function insplistLabelPrint_(){
 }
 function insplistPrint_(){
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
-  if(!q && window.__insplistOverdue) q=insplistOverdueQuery_();
+  q=insplistOdQ_(q);
   if(!q){ alert("먼저 ORDER NO. 또는 PROJECT NO.를 검색하세요."); return; }
   var rows=insplistBuildRows_(q, __insplistShip);
   if(!rows.length){ alert("인쇄할 항목이 없습니다."); return; }
@@ -9059,7 +9083,7 @@ function insplistStyleSheet_(ws, aoa, dataRows, lackCol){
 }
 function insplistExcel_(){
   var q=String((document.getElementById("insplist-search")||{}).value||"").trim();
-  if(!q && window.__insplistOverdue) q=insplistOverdueQuery_();
+  q=insplistOdQ_(q);
   if(!q){ alert("먼저 ORDER NO. 또는 PROJECT NO.를 검색하세요."); return; }
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도하세요."); return; }
   var rows=insplistBuildRows_(q, __insplistShip);
@@ -12434,7 +12458,7 @@ function qmsGoto_(it){
     if(it.view==="insplist" && it.searchInsp){
       // 명일 검수품 → 검수LIST 이동 + PROJECT NO. 검색
       var nv=document.querySelector('.nav-item[data-view="insplist"]'); if(nv) nv.click();
-      setTimeout(function(){ var inp=document.getElementById("insplist-search"); if(inp){ inp.value=it.searchInsp; } if(typeof renderInspList==="function") renderInspList(); }, 200);
+      setTimeout(function(){ var inp=document.getElementById("insplist-search"); if(typeof insplistOverdueSet_==="function") insplistOverdueSet_(false); if(inp){ inp.value=it.searchInsp; } if(typeof renderInspList==="function") renderInspList(); }, 200);
       return;
     }
     if(it.fn && typeof window[it.fn]==="function"){ window[it.fn](); return; }
@@ -26738,6 +26762,7 @@ function schedGoInspList_(proj){
   if(nav) nav.click();   // 검수LIST 화면으로 전환
   setTimeout(function(){
     var inp=document.getElementById("insplist-search");
+    if(typeof insplistOverdueSet_==="function") insplistOverdueSet_(false);
     if(inp){ inp.value=proj; }
     if(typeof renderInspList==="function") renderInspList();
   }, 150);
