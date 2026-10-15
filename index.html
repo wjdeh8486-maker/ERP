@@ -5791,7 +5791,6 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
   const filtered = mainGetPrintListRows();
   const rowsHtml = filtered.map(r=>{
     const status = computeProductStatus(r);
-    const loc = (invPartLoc_(r.partNo||"")||invPartLoc_(r.oldDrawingNo||""));
     return `<tr>
       <td style="color:${mainStatusTextColor(status)};font-weight:400;">${status}</td><td>${r.orderNo}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
@@ -5800,24 +5799,20 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
       <td>${dwgLink(r.oldDrawingNo)}</td>
       <td></td>
       <td>${r.qty}</td>
-      <td></td>
       <td>${r.dueDate||''}</td>
-      <td></td>
-      <td>${computeWaitDeliver(r)}</td>
-      <td style="text-align:center;font-weight:700;">${loc||''}</td>
+      <td style="text-align:center;">${(typeof qmsEsc_==="function")?qmsEsc_(getCurrentProcess(r.orderNo)||''):(getCurrentProcess(r.orderNo)||'')}</td>
     </tr>`;
   }).join("");
   document.getElementById("print-area").innerHTML = `
     <h2>NTL QMS Portal · MAIN 대시보드 (${new Date().toLocaleString("ko-KR")})</h2>
     <table>
       <colgroup>
-        <col style="width:6%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:11%">
-        <col style="width:11%"><col style="width:4%"><col style="width:8%"><col style="width:8%">
-        <col style="width:7%"><col style="width:5%"><col style="width:8%">
+        <col style="width:6%"><col style="width:9%"><col style="width:12%"><col style="width:9%"><col style="width:11%">
+        <col style="width:11%"><col style="width:14%"><col style="width:5%"><col style="width:9%"><col style="width:14%">
       </colgroup>
       <thead><tr>
         <th>제품상태</th><th>ORDER NO.</th><th>PROJECT NO.</th><th>PO</th><th>외주발주(납품처)</th><th>기존도번</th><th>S/N</th>
-        <th>수량</th><th>출고날짜</th><th>최종납기</th><th>비고</th><th>납품 대기</th><th>위치</th>
+        <th>수량</th><th>최종납기</th><th>현재진행공정</th>
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
@@ -5826,16 +5821,15 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
 }, "인쇄 준비 중..."));
 document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
-  const aoa = [["제품상태","ORDER NO.","PROJECT NO.","PO","외주발주(납품처)","기존도번","S/N","수량","출고날짜","최종납기","비고","납품 대기","위치"]];
+  const aoa = [["제품상태","ORDER NO.","PROJECT NO.","PO","외주발주(납품처)","기존도번","S/N","수량","최종납기","현재진행공정"]];
   filtered.forEach(r=>{
     aoa.push([
       computeProductStatus(r), r.orderNo||'', r.vendor||'', (r.prpo==null?'':String(r.prpo)), r.vendorName||'', r.oldDrawingNo||'',
-      "", r.qty||0, "", r.dueDate||'', "", computeWaitDeliver(r),
-      (invPartLoc_(r.partNo||"")||invPartLoc_(r.oldDrawingNo||""))
+      "", r.qty||0, r.dueDate||'', (getCurrentProcess(r.orderNo)||'')
     ]);
   });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:10},{wch:14},{wch:16},{wch:14},{wch:18},{wch:18},{wch:10},{wch:8},{wch:12},{wch:12},{wch:12},{wch:10},{wch:8}];
+  ws['!cols'] = [{wch:10},{wch:14},{wch:18},{wch:14},{wch:18},{wch:18},{wch:12},{wch:8},{wch:12},{wch:22}];
   styleAoaSheet(ws, { headerRows:[0] });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "분출 LIST");
