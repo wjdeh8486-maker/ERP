@@ -271,8 +271,8 @@
   thead th{background:var(--navy);color:#fff;font-weight:600;padding:10px 8px;position:sticky;top:0;white-space:nowrap;text-align:center;border-right:1px solid #33406099;}
   thead th.wait-col{color:var(--yellow);}
   thead th.wait-col, tbody td.wait-col-cell{min-width:58px;max-width:80px;font-size:12px;line-height:1.3;}
-  #main-tableBody td:nth-child(16), #main-tableBody td:nth-child(17), #main-tableBody td:nth-child(18){max-width:60px;font-size:12px;padding:8px 4px;}
-  #view-main thead th:nth-child(16), #view-main thead th:nth-child(17), #view-main thead th:nth-child(18){font-size:11.5px;padding:8px 4px;}
+  #main-tableBody td:nth-child(17), #main-tableBody td:nth-child(18), #main-tableBody td:nth-child(19){max-width:60px;font-size:12px;padding:8px 4px;}
+  #view-main thead th:nth-child(17), #view-main thead th:nth-child(18), #view-main thead th:nth-child(19){font-size:11.5px;padding:8px 4px;}
   /* ===== 검사요청서 선택 체크박스 컬럼 (MAIN 대시보드) ===== */
   #view-main th.req-col, #view-main td.req-col{ text-align:center; width:34px; min-width:34px; padding:6px 4px; }
   #view-main td.req-col input, #view-main th.req-col input{ width:17px; height:17px; cursor:pointer; accent-color:var(--navy); }
@@ -2034,7 +2034,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         <div class="search-box">
           <span id="main-syncBanner" class="sync-banner" style="display:none;">⚪ 동기화 확인 중...</span>
           <span id="main-processStatus" class="sync-banner" style="display:none;"></span>
-          <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO, 외주발주 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
+          <input id="main-searchInput" type="text" placeholder="고객사, 품번, 품명, ORDER NO, PROJECT NO, PO, 외주발주 검색 (쉼표=OR, 슬래시=좁혀서 AND)">
           <button id="main-searchBtn">🔍 검색</button>
         </div>
         <div class="search-hint-text" style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ <span class="hint-comma" style="color:#FFD400;font-weight:400;">쉼표(,)</span>로 구분하면 여러 개 중 하나라도 맞으면 검색되고, <span class="hint-slash" style="color:#FF6B81;font-weight:400;">슬래시(/)</span>로 구분하면 그 단어를 모두 포함하는 항목만 좁혀서 검색합니다. (예: "26-171<span class="hint-slash" style="color:#FF6B81;font-weight:400;">/</span>SHOWERHEAD<span class="hint-comma" style="color:#FFD400;font-weight:400;">,</span> BLOCK PLATE" → 26-171이면서 SHOWERHEAD이거나, BLOCK PLATE)</div>
@@ -2302,7 +2302,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
           <thead>
             <tr>
               <th class="req-col" title="검사요청서 전체 선택/해제"><input type="checkbox" id="main-reqSelectAll"></th>
-              <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th><th>외주발주<br>(납품처)</th><th>기존도번</th><th>품명</th><th>수량</th>
+              <th>제품상태</th><th>ORDER NO.</th><th>고객사</th><th>PROJECT NO.</th><th>PO</th><th>외주발주<br>(납품처)</th><th>기존도번</th><th>품명</th><th>수량</th>
               <th>최종납기</th><th>납품일자</th><th>납품여부</th><th>현재진행공정</th>
               <th class="wait-col">납품<br>대기</th><th class="wait-col">수입<br>검사대기</th><th class="wait-col">측정실<br>검사대기</th>
               <th class="wait-col">크린룸<br>검사대기</th><th class="wait-col">비젼<br>검사대기</th><th>선출고</th>
@@ -5534,6 +5534,7 @@ function mainRenderTable(data){
       <td class="req-col"><input type="checkbox" class="req-chk" data-dwg="${_reqDwg}" data-ord="${String(r.orderNo||'').replace(/"/g,'&quot;')}" data-partname="${(r.partName||'').replace(/"/g,'&quot;')}" data-qty="${r.qty||''}"${_reqDwg?'':' disabled'}${_reqChecked}></td>
       <td>${statusBadge(_status)}</td><td style="white-space:nowrap;">${r.orderNo}${(typeof sdStarBtn_==="function")?sdStarBtn_(r.orderNo):''}</td><td>${r.customer}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
+      <td style="text-align:center;font-size:12px;">${(typeof qmsEsc_==="function")?qmsEsc_(r.prpo==null?'':r.prpo):(r.prpo||'')}</td>
       <td style="text-align:center;">${(typeof qmsEsc_==="function")?qmsEsc_(r.vendorName||''):(r.vendorName||'')}</td>
       <td>${dwgLink(r.oldDrawingNo)}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
@@ -5654,7 +5655,7 @@ function mainGetFilteredBase(){
     const removeDots = s => String(s||"").replace(/\./g, "");
     if(orGroups.length){
       filtered = filtered.filter(r=>{
-        const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.vendorName,r.oldDrawingNo].join(" ").toLowerCase();
+        const haystack = [r.orderNo,r.customer,r.partNo,r.partName,r.vendor,r.vendorName,r.oldDrawingNo,r.prpo].join(" ").toLowerCase();   // [추가] PO(PR 및 PO) 검색
         const haystackNoDots = removeDots(haystack);
         return orGroups.some(andTerms => andTerms.every(t=>{
           const tNoDots = removeDots(t);
@@ -5774,8 +5775,7 @@ function mainGetPrintListRows(){
   // 대시보드의 "전체 상태" 체크박스 설정을 그대로 인쇄물/다운로드에도 적용합니다.
   filtered = filtered.filter(r=>mainSelectedStatuses.includes(computeProductStatus(r)));
   if(mainHideCompleted){ filtered = filtered.filter(r=>computeProductStatus(r) !== "완료"); }
-  // "출고" 건은 체크박스 설정과 상관없이 항상 제외합니다.
-  filtered = filtered.filter(r=>computeProductStatus(r) !== "출고");
+  // [수정] "출고" 건도 포함 — 화면의 '전체 상태' 체크 설정을 그대로 따름 (이전: 항상 제외)
   // 화면의 정렬 드롭다운과 상관없이 항상 "기존도번 오름차순(1→N)"이 우선,
   // 같은 기존도번 안에서는 "최종납기 빠른 날짜가 위로" 정렬합니다.
   filtered = filtered.slice().sort((a,b)=>{
@@ -5795,6 +5795,7 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
     return `<tr>
       <td style="color:${mainStatusTextColor(status)};font-weight:400;">${status}</td><td>${r.orderNo}</td>
       <td style="text-align:center;">${r.vendor||''}</td>
+      <td style="text-align:center;">${(typeof qmsEsc_==="function")?qmsEsc_(r.prpo==null?'':r.prpo):(r.prpo||'')}</td>
       <td style="text-align:center;">${(typeof qmsEsc_==="function")?qmsEsc_(r.vendorName||''):(r.vendorName||'')}</td>
       <td>${dwgLink(r.oldDrawingNo)}</td>
       <td></td>
@@ -5810,12 +5811,12 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
     <h2>NTL QMS Portal · MAIN 대시보드 (${new Date().toLocaleString("ko-KR")})</h2>
     <table>
       <colgroup>
-        <col style="width:6%"><col style="width:8%"><col style="width:8%"><col style="width:9%"><col style="width:12%">
-        <col style="width:13%"><col style="width:5%"><col style="width:9%"><col style="width:9%">
-        <col style="width:7%"><col style="width:6%"><col style="width:8%">
+        <col style="width:6%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:11%">
+        <col style="width:11%"><col style="width:4%"><col style="width:8%"><col style="width:8%">
+        <col style="width:7%"><col style="width:5%"><col style="width:8%">
       </colgroup>
       <thead><tr>
-        <th>제품상태</th><th>ORDER NO.</th><th>PROJECT NO.</th><th>외주발주(납품처)</th><th>기존도번</th><th>S/N</th>
+        <th>제품상태</th><th>ORDER NO.</th><th>PROJECT NO.</th><th>PO</th><th>외주발주(납품처)</th><th>기존도번</th><th>S/N</th>
         <th>수량</th><th>출고날짜</th><th>최종납기</th><th>비고</th><th>납품 대기</th><th>위치</th>
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
@@ -5825,16 +5826,16 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
 }, "인쇄 준비 중..."));
 document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
-  const aoa = [["제품상태","ORDER NO.","PROJECT NO.","외주발주(납품처)","기존도번","S/N","수량","출고날짜","최종납기","비고","납품 대기","위치"]];
+  const aoa = [["제품상태","ORDER NO.","PROJECT NO.","PO","외주발주(납품처)","기존도번","S/N","수량","출고날짜","최종납기","비고","납품 대기","위치"]];
   filtered.forEach(r=>{
     aoa.push([
-      computeProductStatus(r), r.orderNo||'', r.vendor||'', r.vendorName||'', r.oldDrawingNo||'',
+      computeProductStatus(r), r.orderNo||'', r.vendor||'', (r.prpo==null?'':String(r.prpo)), r.vendorName||'', r.oldDrawingNo||'',
       "", r.qty||0, "", r.dueDate||'', "", computeWaitDeliver(r),
       (invPartLoc_(r.partNo||"")||invPartLoc_(r.oldDrawingNo||""))
     ]);
   });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:10},{wch:14},{wch:16},{wch:18},{wch:18},{wch:10},{wch:8},{wch:12},{wch:12},{wch:12},{wch:10},{wch:8}];
+  ws['!cols'] = [{wch:10},{wch:14},{wch:16},{wch:14},{wch:18},{wch:18},{wch:10},{wch:8},{wch:12},{wch:12},{wch:12},{wch:10},{wch:8}];
   styleAoaSheet(ws, { headerRows:[0] });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "분출 LIST");
