@@ -5791,8 +5791,8 @@ function mainGetPrintListRows(){
 //   PR 및 PO → Purch.Doc. · 발주일자 → Release Date(PO) · 미입고수량 = 납품완료면 0, 아니면 수량
 //   구매 담당 = QC제품관리 구매담당 · Purch.Req. = QC제품관리 PR-NO · Size/dimensions = QC제품관리 소재규격(및 후처리)
 //   코미코인계 · 최종납기 · 특이사항 = 수기 기재용 빈칸 · 세정품(외주발주에 "세정", 분출라벨과 같은 기준)은 납기일정을 진한 하늘색
-const MAIN_CUST_HEAD = ["제품상태","ORDER NO.","구매 담당","현재진행공정","WBS element","Purch.Req.","Purch.Doc.","Material","Document","Size/dimensions","Short Text","VendorDes.","Release Date(PO)","PO Qty","납기일정","미입고수량","코미코인계","최종납기","특이사항"];
-const MAIN_CUST_DOC_IDX = 8, MAIN_CUST_DATE_IDX = [14], MAIN_CUST_CLEAN_RGB = "0EA5E9";
+const MAIN_CUST_HEAD = ["제품상태","ORDER NO.","구매 담당","현재진행공정","WBS element","Purch.Req.","Purch.Doc.","Material","Document","Size/dimensions","Short Text","VendorDes.","Release Date(PO)","PO Qty","납기일정","미입고수량","코미코인계","최종납기","특이사항","지연일수(금일)"];
+const MAIN_CUST_DOC_IDX = 8, MAIN_CUST_DATE_IDX = [14], MAIN_CUST_LATE_IDX = 19, MAIN_CUST_CLEAN_RGB = "0EA5E9";
 function mainCustIsClean_(r){ try{ return (typeof labelIsClean_==="function") ? labelIsClean_(r) : /세\s*정/.test(String(r.vendorName||"").replace(/세\s*정\s*[\(（\[]\s*[xX×✕✗]\s*[\)）\]]/g,"")); }catch(_){ return false; } }
 // [추가] xlsx-js-style은 !pageSetup(용지 방향·맞춤)을 파일에 쓰지 않음 → 만든 xlsx의 시트 XML에 직접 넣어 저장
 function qmsXlsxSaveLandscape_(wb, filename){
@@ -5814,12 +5814,20 @@ function qmsXlsxSaveLandscape_(wb, filename){
     setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   }catch(e){ XLSX.writeFile(wb, filename); }   // 실패 시 기존 방식(용지 설정 없이)으로 저장
 }
+// [추가] 금일 대비 지연일수: 납기일정(최종납기)이 오늘보다 지났고 납품완료가 아니면 지난 일수, 아니면 빈칸
+function mainCustLateDays_(r){
+  if(String(r.shipped||"").trim()==="납품완료") return "";
+  const due = (typeof insplistYmd_==="function") ? insplistYmd_(r.dueDate) : String(r.dueDate||"").slice(0,10);
+  const today = (typeof insplistToday_==="function") ? insplistToday_() : new Date().toISOString().slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(due) || due >= today) return "";
+  return Math.round((new Date(today+"T00:00:00") - new Date(due+"T00:00:00"))/86400000);
+}
 function mainCustRow_(r){
   const shipped = String(r.shipped||"").trim();
   const notIn = shipped === "납품완료" ? 0 : (Number(r.qty)||0);
   const proc = (typeof getCurrentProcess==="function") ? (getCurrentProcess(r.orderNo)||"") : "";
   return [ computeProductStatus(r), r.orderNo||"", r.purchaser||"", proc, r.vendor||"", r.prNo||"", (r.prpo==null?"":String(r.prpo)), r.partNo||"", r.oldDrawingNo||"", r.matSpec||"",
-           r.partName||"", "(주)엔티엘", r.orderDate||"", Number(r.qty)||0, r.dueDate||"", notIn, "", "", "" ];   // 코미코인계·최종납기·특이사항 = 수기 기재용 빈칸
+           r.partName||"", "(주)엔티엘", r.orderDate||"", Number(r.qty)||0, r.dueDate||"", notIn, "", "", "", mainCustLateDays_(r) ];   // 코미코인계·최종납기·특이사항 = 수기 기재용 빈칸
 }
 document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
@@ -5829,11 +5837,12 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
     return "<tr>" + v.map((x,i)=>{
       if(i===0) return `<td style="color:${mainStatusTextColor(status)};font-weight:400;">${E(x)}</td>`;
       if(i===MAIN_CUST_DOC_IDX) return `<td>${dwgLink(r.oldDrawingNo)}</td>`;
+      if(i===MAIN_CUST_LATE_IDX && x!=="") return `<td style="color:#C0392B !important;font-weight:800;">${E(x)}</td>`;
       if(clean && MAIN_CUST_DATE_IDX.indexOf(i)>=0) return `<td style="color:#${MAIN_CUST_CLEAN_RGB} !important;font-weight:800;">${E(x)}</td>`;
       return `<td>${E(x)}</td>`;
     }).join("") + "</tr>";
   }).join("");
-  const W = [4,5,4,6,7,5,6,5,7,6,8,4,5,3,6,3,5,6,5];   // 합 100 · 코미코인계·최종납기·특이사항은 수기 기재용
+  const W = [4,5,4,6,6,5,6,5,7,5,6,4,5,3,6,3,5,6,5,4];   // 합 100 · 코미코인계·최종납기·특이사항은 수기 기재용
   document.getElementById("print-area").innerHTML = `
     <style>@page{ size: A4 landscape; margin: 8mm 8mm; } @media print{ #print-area table{ font-size:8px !important; table-layout:fixed !important; } #print-area th, #print-area td{ white-space:normal !important; overflow-wrap:anywhere; overflow:hidden; } #print-area thead{ display:table-header-group !important; } #print-area tbody tr{ break-inside:avoid; page-break-inside:avoid; } }</style>
     <h2>NTL QMS Portal · 발주 현황 (${new Date().toLocaleString("ko-KR")}) <span style="font-size:9px;font-weight:600;color:#${MAIN_CUST_CLEAN_RGB};">■ 하늘색 납기 = 세정품</span></h2>
@@ -5852,9 +5861,11 @@ document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>ru
   filtered.forEach(r=>{ aoa.push(mainCustRow_(r)); cleanRows.push(mainCustIsClean_(r)); });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!margins'] = {left:0.25,right:0.25,top:0.4,bottom:0.4,header:0.2,footer:0.2};
-  ws['!cols'] = [{wch:8},{wch:12},{wch:9},{wch:16},{wch:18},{wch:11},{wch:13},{wch:11},{wch:15},{wch:20},{wch:28},{wch:11},{wch:13},{wch:7},{wch:11},{wch:8},{wch:11},{wch:11},{wch:12}];
+  ws['!cols'] = [{wch:8},{wch:12},{wch:9},{wch:16},{wch:18},{wch:11},{wch:13},{wch:11},{wch:15},{wch:20},{wch:28},{wch:11},{wch:13},{wch:7},{wch:11},{wch:8},{wch:11},{wch:11},{wch:12},{wch:9}];
   styleAoaSheet(ws, { headerRows:[0] });
   // 세정품: 납기일정·최종납기 진한 하늘색 (styleAoaSheet 서식 위에 글자만 덮어씀)
+  for(let k=1;k<aoa.length;k++){ if(aoa[k][MAIN_CUST_LATE_IDX]==="") continue; const ref=XLSX.utils.encode_cell({r:k, c:MAIN_CUST_LATE_IDX}); const cell=ws[ref]; if(!cell) continue;
+    const st=cell.s||{}; cell.s=Object.assign({}, st, { font:Object.assign({}, st.font||{}, { bold:true, color:{ rgb:"C0392B" } }) }); }   // 지연일수 빨간 굵게
   cleanRows.forEach((c,k)=>{ if(!c) return; MAIN_CUST_DATE_IDX.forEach(ci=>{ const ref = XLSX.utils.encode_cell({r:k+1, c:ci}); const cell = ws[ref]; if(!cell) return;
     const st = cell.s || {}; cell.s = Object.assign({}, st, { font: Object.assign({}, st.font||{}, { bold:true, color:{ rgb: MAIN_CUST_CLEAN_RGB } }) }); }); });
   const wb = XLSX.utils.book_new();
