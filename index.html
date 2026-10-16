@@ -5787,33 +5787,30 @@ function mainGetPrintListRows(){
   });
   return filtered;
 }
+// [변경] 분출 LIST 인쇄·다운로드 = 유진테크 미입고 리스트 양식
+//   PR 및 PO → Purch.Doc. · 발주일자 → Release Date(PO) · 미입고수량 = 납품완료면 0, 아니면 수량
+//   구매 담당 = QC제품관리 구매담당 · Purch.Req. = QC제품관리 PR-NO · Size/dimensions = QC제품관리 소재규격(및 후처리) · 특이사항 = 수기 기재용 빈칸
+const MAIN_CUST_HEAD = ["제품상태","ORDER NO.","구매 담당","WBS element","Purch.Req.","Purch.Doc.","Material","Document","Size/dimensions","Short Text","VendorDes.","Release Date(PO)","PO Qty","납기일정","미입고수량","특이사항"];
+function mainCustRow_(r){
+  const shipped = String(r.shipped||"").trim();
+  const notIn = shipped === "납품완료" ? 0 : (Number(r.qty)||0);
+  return [ computeProductStatus(r), r.orderNo||"", r.purchaser||"", r.vendor||"", r.prNo||"", (r.prpo==null?"":String(r.prpo)), r.partNo||"", r.oldDrawingNo||"", r.matSpec||"",
+           r.partName||"", "(주)엔티엘", r.orderDate||"", Number(r.qty)||0, r.dueDate||"", notIn, "" ];
+}
 document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
+  const E = (typeof qmsEsc_==="function") ? qmsEsc_ : (t=>String(t==null?"":t));
   const rowsHtml = filtered.map(r=>{
-    const status = computeProductStatus(r);
-    return `<tr>
-      <td style="color:${mainStatusTextColor(status)};font-weight:400;">${status}</td><td>${r.orderNo}</td>
-      <td style="text-align:center;">${r.vendor||''}</td>
-      <td style="text-align:center;">${(typeof qmsEsc_==="function")?qmsEsc_(r.prpo==null?'':r.prpo):(r.prpo||'')}</td>
-      <td style="text-align:center;">${(typeof qmsEsc_==="function")?qmsEsc_(r.vendorName||''):(r.vendorName||'')}</td>
-      <td>${dwgLink(r.oldDrawingNo)}</td>
-      <td>${r.qty}</td>
-      <td>${r.dueDate||''}</td>
-      <td style="text-align:center;">${(typeof qmsEsc_==="function")?qmsEsc_(getCurrentProcess(r.orderNo)||''):(getCurrentProcess(r.orderNo)||'')}</td>
-      <td></td>
-    </tr>`;
+    const v = mainCustRow_(r), status = v[0];
+    return "<tr>" + v.map((x,i)=> i===0 ? `<td style="color:${mainStatusTextColor(status)};font-weight:400;">${E(x)}</td>` : (i===7 ? `<td>${dwgLink(r.oldDrawingNo)}</td>` : `<td>${E(x)}</td>`)).join("") + "</tr>";
   }).join("");
+  const W = [5,7,5,9,6,7,6,8,9,12,6,6,4,6,4,5];
   document.getElementById("print-area").innerHTML = `
+    <style>@page{ size: A4 landscape; margin: 8mm 8mm; }</style>
     <h2>NTL QMS Portal · MAIN 대시보드 (${new Date().toLocaleString("ko-KR")})</h2>
     <table>
-      <colgroup>
-        <col style="width:6%"><col style="width:9%"><col style="width:12%"><col style="width:9%"><col style="width:11%">
-        <col style="width:11%"><col style="width:5%"><col style="width:9%"><col style="width:14%"><col style="width:14%">
-      </colgroup>
-      <thead><tr>
-        <th>제품상태</th><th>ORDER NO.</th><th>PROJECT NO.</th><th>PO</th><th>외주발주(납품처)</th><th>기존도번</th>
-        <th>수량</th><th>최종납기</th><th>현재진행공정</th><th>비고</th>
-      </tr></thead>
+      <colgroup>${W.map(w=>`<col style="width:${w}%">`).join("")}</colgroup>
+      <thead><tr>${MAIN_CUST_HEAD.map(h=>`<th>${h}</th>`).join("")}</tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
   `;
@@ -5821,15 +5818,10 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
 }, "인쇄 준비 중..."));
 document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
-  const aoa = [["제품상태","ORDER NO.","PROJECT NO.","PO","외주발주(납품처)","기존도번","수량","최종납기","현재진행공정","비고"]];
-  filtered.forEach(r=>{
-    aoa.push([
-      computeProductStatus(r), r.orderNo||'', r.vendor||'', (r.prpo==null?'':String(r.prpo)), r.vendorName||'', r.oldDrawingNo||'',
-      r.qty||0, r.dueDate||'', (getCurrentProcess(r.orderNo)||''), ""
-    ]);
-  });
+  const aoa = [MAIN_CUST_HEAD.slice()];
+  filtered.forEach(r=>{ aoa.push(mainCustRow_(r)); });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:10},{wch:14},{wch:18},{wch:14},{wch:18},{wch:18},{wch:8},{wch:12},{wch:22},{wch:20}];
+  ws['!cols'] = [{wch:8},{wch:12},{wch:9},{wch:18},{wch:11},{wch:13},{wch:11},{wch:15},{wch:20},{wch:28},{wch:11},{wch:13},{wch:7},{wch:11},{wch:8},{wch:12}];
   styleAoaSheet(ws, { headerRows:[0] });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "분출 LIST");
@@ -9496,6 +9488,10 @@ function mapRowToMain(row){
     processCost: Number(getFieldFlexible(row, "후처리(세정)")||getFieldFlexible(row, "처리비(세정)")||getFieldFlexible(row, "후처리")||getFieldFlexible(row, "처리비")||getFieldFlexible(row, "세정처리비")||getFieldFuzzy(row, "후처리")||getFieldFuzzy(row, "세정"))||0,
     // 수입검사 대기: 등록일자 2026년부터, 생산공정현황 - 수입검사(외관) = 대기 (음수면 0)
     waitIncomingInspection: computeWaitIncomingInspection(row),
+    prNo: String(getFieldFlexible(row, "PR-NO") || getFieldFlexible(row, "PR NO") || getFieldFlexible(row, "PR NO.") || getFieldFlexible(row, "PR-NO.") || getFieldFlexible(row, "PRNO") || "").trim(),   // [추가] 출력용 Purch.Req.: QC제품관리 "PR-NO"
+    purchaser: String(getFieldFuzzy(row, "구매담당") || "").trim(),   // [추가] 출력용: QC제품관리 "구매담당"(구매 담당/구매담당자 등)
+    matSpec: String(getFieldFuzzy(row, "소재규격") || "").trim(),   // [추가] 출력용: QC제품관리 "소재규격 및 후처리"
+    orderDate: normalizeDateValue(getFieldFlexible(row, "발주일자") || getFieldFlexible(row, "발주일"), orderYear) || "",   // [추가] Release Date(PO) 출력용
     prpo: getFieldFlexible(row, "PR 및 PO"),  // H열: 열이 있으면 값 있는 행만 표시. 열 자체가 없으면(undefined) 필터 안 함
     _source: row["_source"]   // 연도 구분(2023~2026). 지연건수 등에서 최근 연도만 보기 위해 보존
   };
