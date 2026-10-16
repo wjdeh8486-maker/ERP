@@ -14638,7 +14638,7 @@ function mbCard_(it){
     +(it.status==="무시"?' <button type="button" class="sd-btn" data-mba="del|'+sdE_(it.id)+'" style="height:28px;font-size:12px;color:#B42318;" title="목록에서 지움 (다시 수집되지 않음)">🗑 삭제</button>':'');
   else acts+=' <button type="button" class="sd-btn" data-mba="skip|'+sdE_(it.id)+'" title="해당 없음 — 목록에서 빼기">무시</button>';
   return '<div class="mb-card"><div class="mb-h"><span class="mb-type" style="background:'+T[2]+'">'+T[0]+' '+T[1]+'</span><b>'+sdE_(it.subject)+'</b></div>'
-    +'<div class="mb-meta">'+sdE_(it.recvAt)+' · '+sdE_(mbName_(it.from))+(mbAcct_(it.to)?(' · 받은 계정 '+mbAcct_(it.to)):'')+(files.length?(' · 📎 '+files.map(function(f){ return '<a href="'+sdE_(f.url)+'" target="_blank" rel="noopener">'+sdE_(f.name)+'</a>'; }).join(", ")):'')+'</div>'
+    +'<div class="mb-meta">'+sdE_(it.recvAt)+' · '+sdE_(mbName_(it.from))+(mbAcct_(it.to)?(' · 받은 계정 '+mbAcct_(it.to)):'')+(files.length?(' · 📎 '+files.map(function(f,fi){ return '<a href="'+sdE_(f.url)+'" target="_blank" rel="noopener" title="드라이브에서 열기">'+sdE_(mbFileName_(f))+'</a> <button type="button" class="sd-btn" data-mba="file|'+sdE_(it.id)+'" data-fi="'+fi+'" title="이 PC로 내려받기 (드라이브 권한과 상관없이 서버에서 직접 받음)" style="height:24px;padding:0 8px;font-size:11.5px;vertical-align:middle;">⬇ 받기</button>'; }).join(" · ")):'')+'</div>'
     +'<div class="mb-body">'+body+'</div><div class="mb-act">'+acts+'</div></div>';
 }
 function mbTempZone_(files){ var nm=((files||[]).find(function(f){ return /\.csv/i.test(f.name||""); })||{}).name||""; var x=nm.replace(/=\?UTF-8\?Q\?/gi,"").replace(/\?=/g,"").replace(/\s+/g,"").replace(/=([0-9A-F]{2})/gi,"%$1"); try{ x=decodeURIComponent(x); }catch(_){} x=x.replace(/UTF-8\??Q\??/gi,""); var m=x.match(/_([^_]+)_(\d{8})\.csv/i); return m?m[1]:""; }
@@ -14660,7 +14660,32 @@ function mbClaimFields_(it){
   if(!o.defect) o.defect=String(it.subject||"").replace(/^(re|fw|fwd)\s*:\s*/i,"").replace(/\[[^\]]*\]\s*/g,"").replace(/\s*-\s*엔티엘\s*$/,"").trim();
   return o;
 }
+// [추가] 메일 첨부 내려받기 — 드라이브 링크 권한과 상관없이 서버(mailFile)에서 내용을 받아 저장. 메일 인코딩된 파일명(=?UTF-8?Q?…?=)도 풀어서 저장
+function mbDecodeMime_(nm){
+  var s=String(nm||""); if(s.indexOf("=?")<0) return s;
+  s=s.replace(/(\?=)\s+(=\?)/g,"$1$2");   // 붙어 있는 인코딩 조각 사이 공백 제거
+  return s.replace(/=\?([^?]+)\?([QqBb])\?([^?]*)\?=/g, function(all, cs, enc, txt){
+    try{ var bytes;
+      if(/b/i.test(enc)){ var bin=atob(txt); bytes=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i); }
+      else { var t=txt.replace(/_/g," "), arr=[]; for(var j=0;j<t.length;j++){ if(t[j]==="=" && /^[0-9A-Fa-f]{2}$/.test(t.substr(j+1,2))){ arr.push(parseInt(t.substr(j+1,2),16)); j+=2; } else arr.push(t.charCodeAt(j)); } bytes=new Uint8Array(arr); }
+      return new TextDecoder(cs.toLowerCase()).decode(bytes);
+    }catch(_){ return all; } });
+}
+function mbFileName_(f, mime){
+  var n=mbDecodeMime_((f&&f.name)||"첨부").replace(/[\\\/:*?"<>|]/g,"_").trim()||"첨부", m=String(mime||(f&&f.mime)||"").toLowerCase();
+  if(!/\.[A-Za-z0-9]{2,5}$/.test(n)){ var ext=/pdf/.test(m)?".pdf":/spreadsheetml/.test(m)?".xlsx":/ms-excel/.test(m)?".xls":/csv/.test(m)?".csv":/wordprocessingml/.test(m)?".docx":/jpe?g/.test(m)?".jpg":/png/.test(m)?".png":""; n+=ext; }
+  return n;
+}
+function mbDownload_(f, btn){
+  if(!f) return; var old=btn?btn.textContent:""; if(btn){ btn.disabled=true; btn.textContent="받는 중…"; }
+  var done=function(){ if(btn){ btn.disabled=false; btn.textContent=old; } };
+  mbFileObj_(f, function(file){ done();
+    if(!file){ if(confirm("서버에서 파일을 받지 못했습니다 (10MB 초과이거나 연결 문제).\n드라이브에서 열어 볼까요?")){ try{ window.open(f.url, "_blank", "noopener"); }catch(_){} } return; }
+    var a=document.createElement("a"); a.href=URL.createObjectURL(file); a.download=mbFileName_(f, file.type); document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 2000); });
+}
 function mbAction_(k, it, btn){
+  if(k==="file"){ var __fs=(it.data&&it.data.files)||[], __fi=Number(btn&&btn.getAttribute("data-fi")); mbDownload_(__fs[__fi], btn); return; }
   if(k==="skip"){ mbSet_(it.id,"무시"); return; }
   if(k==="del"){ if(confirm("이 메일을 목록에서 지울까요?\n(다시 수집되지 않습니다)")) mbSet_(it.id,"삭제"); return; } if(k==="ok"){ mbSet_(it.id,"반영"); return; } if(k==="undo"){ mbSet_(it.id,"신규"); return; }
   if(k==="due"){ var t=mbFindTable_(it,/Purch\.?\s*Doc|PO/i); var go=function(){ mailPop_(); var ov=document.querySelector(".sd-ov"); window.__mailPopAfterApply=function(){ mbSet_(it.id,"반영"); };
