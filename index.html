@@ -5790,9 +5790,9 @@ function mainGetPrintListRows(){
 // [변경] MAIN 발주 현황 인쇄·다운로드 = 유진테크 미입고 리스트 양식
 //   PR 및 PO → Purch.Doc. · 발주일자 → Release Date(PO) · 미입고수량 = 납품완료면 0, 아니면 수량
 //   구매 담당 = QC제품관리 구매담당 · Purch.Req. = QC제품관리 PR-NO · Size/dimensions = QC제품관리 소재규격(및 후처리)
-//   코미코인계 · 특이사항 = 수기 기재용 빈칸 · 세정품(외주발주에 "세정", 분출라벨과 같은 기준)은 납기일정·최종납기를 진한 하늘색
-const MAIN_CUST_HEAD = ["제품상태","ORDER NO.","현재진행공정","구매 담당","WBS element","Purch.Req.","Purch.Doc.","Material","Document","Size/dimensions","Short Text","VendorDes.","Release Date(PO)","PO Qty","납기일정","미입고수량","코미코인계","최종납기","특이사항"];
-const MAIN_CUST_DOC_IDX = 8, MAIN_CUST_DATE_IDX = [14, 17], MAIN_CUST_CLEAN_RGB = "0EA5E9";
+//   코미코인계 · 최종납기 · 특이사항 = 수기 기재용 빈칸 · 세정품(외주발주에 "세정", 분출라벨과 같은 기준)은 납기일정을 진한 하늘색
+const MAIN_CUST_HEAD = ["제품상태","ORDER NO.","구매 담당","현재진행공정","WBS element","Purch.Req.","Purch.Doc.","Material","Document","Size/dimensions","Short Text","VendorDes.","Release Date(PO)","PO Qty","납기일정","미입고수량","코미코인계","최종납기","특이사항"];
+const MAIN_CUST_DOC_IDX = 8, MAIN_CUST_DATE_IDX = [14], MAIN_CUST_CLEAN_RGB = "0EA5E9";
 function mainCustIsClean_(r){ try{ return (typeof labelIsClean_==="function") ? labelIsClean_(r) : /세\s*정/.test(String(r.vendorName||"").replace(/세\s*정\s*[\(（\[]\s*[xX×✕✗]\s*[\)）\]]/g,"")); }catch(_){ return false; } }
 // [추가] xlsx-js-style은 !pageSetup(용지 방향·맞춤)을 파일에 쓰지 않음 → 만든 xlsx의 시트 XML에 직접 넣어 저장
 function qmsXlsxSaveLandscape_(wb, filename){
@@ -5818,8 +5818,8 @@ function mainCustRow_(r){
   const shipped = String(r.shipped||"").trim();
   const notIn = shipped === "납품완료" ? 0 : (Number(r.qty)||0);
   const proc = (typeof getCurrentProcess==="function") ? (getCurrentProcess(r.orderNo)||"") : "";
-  return [ computeProductStatus(r), r.orderNo||"", proc, r.purchaser||"", r.vendor||"", r.prNo||"", (r.prpo==null?"":String(r.prpo)), r.partNo||"", r.oldDrawingNo||"", r.matSpec||"",
-           r.partName||"", "(주)엔티엘", r.orderDate||"", Number(r.qty)||0, r.dueDate||"", notIn, "", r.dueDate||"", "" ];
+  return [ computeProductStatus(r), r.orderNo||"", r.purchaser||"", proc, r.vendor||"", r.prNo||"", (r.prpo==null?"":String(r.prpo)), r.partNo||"", r.oldDrawingNo||"", r.matSpec||"",
+           r.partName||"", "(주)엔티엘", r.orderDate||"", Number(r.qty)||0, r.dueDate||"", notIn, "", "", "" ];   // 코미코인계·최종납기·특이사항 = 수기 기재용 빈칸
 }
 document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
@@ -5833,7 +5833,7 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
       return `<td>${E(x)}</td>`;
     }).join("") + "</tr>";
   }).join("");
-  const W = [4,5,6,4,7,5,6,5,7,6,8,4,5,3,6,3,5,6,5];   // 합 100 · 코미코인계·특이사항은 수기 기재용
+  const W = [4,5,4,6,7,5,6,5,7,6,8,4,5,3,6,3,5,6,5];   // 합 100 · 코미코인계·최종납기·특이사항은 수기 기재용
   document.getElementById("print-area").innerHTML = `
     <style>@page{ size: A4 landscape; margin: 8mm 8mm; } @media print{ #print-area table{ font-size:8px !important; table-layout:fixed !important; } #print-area th, #print-area td{ white-space:normal !important; overflow-wrap:anywhere; overflow:hidden; } #print-area thead{ display:table-header-group !important; } #print-area tbody tr{ break-inside:avoid; page-break-inside:avoid; } }</style>
     <h2>NTL QMS Portal · 발주 현황 (${new Date().toLocaleString("ko-KR")}) <span style="font-size:9px;font-weight:600;color:#${MAIN_CUST_CLEAN_RGB};">■ 하늘색 납기 = 세정품</span></h2>
@@ -5852,7 +5852,7 @@ document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>ru
   filtered.forEach(r=>{ aoa.push(mainCustRow_(r)); cleanRows.push(mainCustIsClean_(r)); });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!margins'] = {left:0.25,right:0.25,top:0.4,bottom:0.4,header:0.2,footer:0.2};
-  ws['!cols'] = [{wch:8},{wch:12},{wch:16},{wch:9},{wch:18},{wch:11},{wch:13},{wch:11},{wch:15},{wch:20},{wch:28},{wch:11},{wch:13},{wch:7},{wch:11},{wch:8},{wch:11},{wch:11},{wch:12}];
+  ws['!cols'] = [{wch:8},{wch:12},{wch:9},{wch:16},{wch:18},{wch:11},{wch:13},{wch:11},{wch:15},{wch:20},{wch:28},{wch:11},{wch:13},{wch:7},{wch:11},{wch:8},{wch:11},{wch:11},{wch:12}];
   styleAoaSheet(ws, { headerRows:[0] });
   // 세정품: 납기일정·최종납기 진한 하늘색 (styleAoaSheet 서식 위에 글자만 덮어씀)
   cleanRows.forEach((c,k)=>{ if(!c) return; MAIN_CUST_DATE_IDX.forEach(ci=>{ const ref = XLSX.utils.encode_cell({r:k+1, c:ci}); const cell = ws[ref]; if(!cell) return;
@@ -25473,7 +25473,8 @@ function ncAlertBroadcastType(t, force){   // force=true: [부적합 알림 보�
     var draw=String((r&&r.draw)||"").trim(); if(!draw) return;
     var __rd=String((r&&r.insDate)||"").trim();
     if(__today && __rd && __rd.slice(0,10)!==__today) return;   // 해당 날짜(오늘)만 알림 — 과거 미조치 재알림 방지
-    alerts.push({ proc:proc, draw:draw, qty:d.qty, types:d.types, by:by, force:!!force });
+    var __note=String((r&&r.note)||"").trim();   // [추가] 비고란 내용도 알림에 포함 (서버 extra 칸으로 전달)
+    alerts.push({ proc:proc, draw:draw, qty:d.qty, types:d.types, by:by, force:!!force, extra:(__note?{ note:__note }:null) });
   });
   if(!alerts.length) return;
   fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
@@ -25689,6 +25690,7 @@ function ncAlertShow(a){
     +  '<div><b>도번</b> : <a href="#" class="ncalert-dwg" style="color:#1a4fbd;text-decoration:underline;font-weight:700;cursor:pointer;" title="도면 PDF 열기">'+insEsc(a.draw||"-")+'</a></div>'
     +  '<div><b>부적합 수량</b> : <b style="color:#C0392B;">'+insEsc(String(a.qty||0))+'</b></div>'
     +  '<div><b>유형</b> : '+insEsc(a.types||"-")+'</div>'
+    +  ((a.extra&&a.extra.note)?('<div style="white-space:pre-wrap;word-break:break-all;"><b>비고</b> : '+insEsc(String(a.extra.note))+'</div>'):'')   // [추가] 검사일보 비고란
     +  (a.by?('<div style="color:#5A6478;">검사자 : '+insEsc(a.by)+'</div>'):'')
     +'</div>'
     +'<div style="text-align:right;margin-top:10px;"><button type="button" style="border:none;background:#F0F4F8;color:#26324A;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:17px;">닫기</button></div>';
