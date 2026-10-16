@@ -2265,8 +2265,8 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         </div>
         <button type="button" id="main-calendarBtn" class="btn-plain tb-cal-apply">📅 검색 달력적용</button>
         <button type="button" id="main-bulkDueBtn" class="btn-plain" onclick="(function(){ var q=''; try{ var s=document.querySelector('#main-searchGroup input'); q=s?String(s.value||'').split(/[,/]/)[0].trim():''; }catch(_){} var go=function(){ mainBulkPop_(q); }; if(typeof sdLoad_==='function' && !__sd.loaded) sdLoad_(go); else go(); })()" title="한 프로젝트 주문들의 일정을 한 번에 변경 — 특별납기에 반영하고 회의·변경 기록에 근거와 함께 남김">📆 일괄 일정 변경</button>
-        <button id="main-printBtn" class="tb-print-btn">🖨️ 분출 LIST 인쇄</button>
-        <button id="main-listDownloadBtn" type="button" class="tb-download-btn">📥 LIST 다운로드</button>
+        <button id="main-printBtn" class="tb-print-btn">🖨️ 발주 현황 인쇄</button>
+        <button id="main-listDownloadBtn" type="button" class="tb-download-btn">📥 발주 현황 다운로드</button>
         <button id="main-reqFormBtn" type="button" disabled>📋 검사요청서 (0)</button>
         <button id="main-reqClearBtn" type="button" disabled>✕ 선택 해제</button>
       </div>
@@ -5787,27 +5787,56 @@ function mainGetPrintListRows(){
   });
   return filtered;
 }
-// [변경] 분출 LIST 인쇄·다운로드 = 유진테크 미입고 리스트 양식
+// [변경] MAIN 발주 현황 인쇄·다운로드 = 유진테크 미입고 리스트 양식
 //   PR 및 PO → Purch.Doc. · 발주일자 → Release Date(PO) · 미입고수량 = 납품완료면 0, 아니면 수량
-//   구매 담당 = QC제품관리 구매담당 · Purch.Req. = QC제품관리 PR-NO · Size/dimensions = QC제품관리 소재규격(및 후처리) · 특이사항 = 수기 기재용 빈칸
-const MAIN_CUST_HEAD = ["제품상태","ORDER NO.","구매 담당","WBS element","Purch.Req.","Purch.Doc.","Material","Document","Size/dimensions","Short Text","VendorDes.","Release Date(PO)","PO Qty","납기일정","미입고수량","특이사항"];
+//   구매 담당 = QC제품관리 구매담당 · Purch.Req. = QC제품관리 PR-NO · Size/dimensions = QC제품관리 소재규격(및 후처리)
+//   코미코인계 · 특이사항 = 수기 기재용 빈칸 · 세정품(외주발주에 "세정", 분출라벨과 같은 기준)은 납기일정·최종납기를 진한 하늘색
+const MAIN_CUST_HEAD = ["제품상태","ORDER NO.","현재진행공정","구매 담당","WBS element","Purch.Req.","Purch.Doc.","Material","Document","Size/dimensions","Short Text","VendorDes.","Release Date(PO)","PO Qty","납기일정","미입고수량","코미코인계","최종납기","특이사항"];
+const MAIN_CUST_DOC_IDX = 8, MAIN_CUST_DATE_IDX = [14, 17], MAIN_CUST_CLEAN_RGB = "0EA5E9";
+function mainCustIsClean_(r){ try{ return (typeof labelIsClean_==="function") ? labelIsClean_(r) : /세\s*정/.test(String(r.vendorName||"").replace(/세\s*정\s*[\(（\[]\s*[xX×✕✗]\s*[\)）\]]/g,"")); }catch(_){ return false; } }
+// [추가] xlsx-js-style은 !pageSetup(용지 방향·맞춤)을 파일에 쓰지 않음 → 만든 xlsx의 시트 XML에 직접 넣어 저장
+function qmsXlsxSaveLandscape_(wb, filename){
+  try{
+    const arr = XLSX.write(wb, { type:"array", bookType:"xlsx" });
+    const cfb = XLSX.CFB.read(new Uint8Array(arr), { type:"array" });
+    const dec = new TextDecoder(), enc = new TextEncoder();
+    cfb.FullPaths.forEach((path, i)=>{
+      if(!/xl\/worksheets\/sheet\d+\.xml$/.test(path)) return;
+      const f = cfb.FileIndex[i]; let x = dec.decode(f.content);
+      if(x.indexOf("<pageSetup")>=0 || x.indexOf("<pageMargins")<0) return;
+      if(x.indexOf("<sheetPr")<0) x = x.replace(/(<worksheet[^>]*>)/, "$1<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>");
+      x = x.replace(/(<pageMargins[^>]*\/>)/, "$1<pageSetup paperSize=\"9\" orientation=\"landscape\" fitToWidth=\"1\" fitToHeight=\"0\"/>");
+      f.content = enc.encode(x); f.size = f.content.length;
+    });
+    const out = XLSX.CFB.write(cfb, { fileType:"zip", type:"array" });
+    const blob = new Blob([out], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  }catch(e){ XLSX.writeFile(wb, filename); }   // 실패 시 기존 방식(용지 설정 없이)으로 저장
+}
 function mainCustRow_(r){
   const shipped = String(r.shipped||"").trim();
   const notIn = shipped === "납품완료" ? 0 : (Number(r.qty)||0);
-  return [ computeProductStatus(r), r.orderNo||"", r.purchaser||"", r.vendor||"", r.prNo||"", (r.prpo==null?"":String(r.prpo)), r.partNo||"", r.oldDrawingNo||"", r.matSpec||"",
-           r.partName||"", "(주)엔티엘", r.orderDate||"", Number(r.qty)||0, r.dueDate||"", notIn, "" ];
+  const proc = (typeof getCurrentProcess==="function") ? (getCurrentProcess(r.orderNo)||"") : "";
+  return [ computeProductStatus(r), r.orderNo||"", proc, r.purchaser||"", r.vendor||"", r.prNo||"", (r.prpo==null?"":String(r.prpo)), r.partNo||"", r.oldDrawingNo||"", r.matSpec||"",
+           r.partName||"", "(주)엔티엘", r.orderDate||"", Number(r.qty)||0, r.dueDate||"", notIn, "", r.dueDate||"", "" ];
 }
 document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
   const E = (typeof qmsEsc_==="function") ? qmsEsc_ : (t=>String(t==null?"":t));
   const rowsHtml = filtered.map(r=>{
-    const v = mainCustRow_(r), status = v[0];
-    return "<tr>" + v.map((x,i)=> i===0 ? `<td style="color:${mainStatusTextColor(status)};font-weight:400;">${E(x)}</td>` : (i===7 ? `<td>${dwgLink(r.oldDrawingNo)}</td>` : `<td>${E(x)}</td>`)).join("") + "</tr>";
+    const v = mainCustRow_(r), status = v[0], clean = mainCustIsClean_(r);
+    return "<tr>" + v.map((x,i)=>{
+      if(i===0) return `<td style="color:${mainStatusTextColor(status)};font-weight:400;">${E(x)}</td>`;
+      if(i===MAIN_CUST_DOC_IDX) return `<td>${dwgLink(r.oldDrawingNo)}</td>`;
+      if(clean && MAIN_CUST_DATE_IDX.indexOf(i)>=0) return `<td style="color:#${MAIN_CUST_CLEAN_RGB} !important;font-weight:800;">${E(x)}</td>`;
+      return `<td>${E(x)}</td>`;
+    }).join("") + "</tr>";
   }).join("");
-  const W = [4,6,4,8,6,7,6,8,9,11,5,6,3,6,4,7];   // 합 100 · 특이사항은 수기 기재용으로 넓게
+  const W = [4,5,6,4,7,5,6,5,7,6,8,4,5,3,6,3,5,6,5];   // 합 100 · 코미코인계·특이사항은 수기 기재용
   document.getElementById("print-area").innerHTML = `
-    <style>@page{ size: A4 landscape; margin: 8mm 8mm; } @media print{ #print-area table{ font-size:8.6px !important; table-layout:fixed !important; } #print-area th, #print-area td{ white-space:normal !important; overflow-wrap:anywhere; overflow:hidden; } #print-area thead{ display:table-header-group !important; } #print-area tbody tr{ break-inside:avoid; page-break-inside:avoid; } }</style>
-    <h2>NTL QMS Portal · MAIN 대시보드 (${new Date().toLocaleString("ko-KR")})</h2>
+    <style>@page{ size: A4 landscape; margin: 8mm 8mm; } @media print{ #print-area table{ font-size:8px !important; table-layout:fixed !important; } #print-area th, #print-area td{ white-space:normal !important; overflow-wrap:anywhere; overflow:hidden; } #print-area thead{ display:table-header-group !important; } #print-area tbody tr{ break-inside:avoid; page-break-inside:avoid; } }</style>
+    <h2>NTL QMS Portal · 발주 현황 (${new Date().toLocaleString("ko-KR")}) <span style="font-size:9px;font-weight:600;color:#${MAIN_CUST_CLEAN_RGB};">■ 하늘색 납기 = 세정품</span></h2>
     <table>
       <colgroup>${W.map(w=>`<col style="width:${w}%">`).join("")}</colgroup>
       <thead><tr>${MAIN_CUST_HEAD.map(h=>`<th>${h}</th>`).join("")}</tr></thead>
@@ -5819,17 +5848,19 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
 document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
   const aoa = [MAIN_CUST_HEAD.slice()];
-  filtered.forEach(r=>{ aoa.push(mainCustRow_(r)); });
+  const cleanRows = [];
+  filtered.forEach(r=>{ aoa.push(mainCustRow_(r)); cleanRows.push(mainCustIsClean_(r)); });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!margins'] = {left:0.25,right:0.25,top:0.4,bottom:0.4,header:0.2,footer:0.2};
-  ws['!pageSetup'] = {orientation:"landscape", paperSize:9, fitToWidth:1, fitToHeight:0};   // [추가] A4 가로 · 가로 1페이지 맞춤
-  ws['!sheetPr'] = {pageSetUpPr:{fitToPage:true}};
-  ws['!cols'] = [{wch:8},{wch:12},{wch:9},{wch:18},{wch:11},{wch:13},{wch:11},{wch:15},{wch:20},{wch:28},{wch:11},{wch:13},{wch:7},{wch:11},{wch:8},{wch:12}];
+  ws['!cols'] = [{wch:8},{wch:12},{wch:16},{wch:9},{wch:18},{wch:11},{wch:13},{wch:11},{wch:15},{wch:20},{wch:28},{wch:11},{wch:13},{wch:7},{wch:11},{wch:8},{wch:11},{wch:11},{wch:12}];
   styleAoaSheet(ws, { headerRows:[0] });
+  // 세정품: 납기일정·최종납기 진한 하늘색 (styleAoaSheet 서식 위에 글자만 덮어씀)
+  cleanRows.forEach((c,k)=>{ if(!c) return; MAIN_CUST_DATE_IDX.forEach(ci=>{ const ref = XLSX.utils.encode_cell({r:k+1, c:ci}); const cell = ws[ref]; if(!cell) return;
+    const st = cell.s || {}; cell.s = Object.assign({}, st, { font: Object.assign({}, st.font||{}, { bold:true, color:{ rgb: MAIN_CUST_CLEAN_RGB } }) }); }); });
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "분출 LIST");
+  XLSX.utils.book_append_sheet(wb, ws, "발주 현황");
   const dateStr = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, `분출LIST_${dateStr}.xlsx`);
+  qmsXlsxSaveLandscape_(wb, `발주현황_${dateStr}.xlsx`);   // A4 가로 · 가로 1페이지 맞춤
 }, "엑셀 생성 중..."));
 // 검색 버튼을 누르면 잠시 "검색 중..." 표시를 보여주고, 실제 검색(무거울 수 있는 필터링/렌더링)은
 // 화면이 그 표시를 그릴 시간을 준 다음 실행합니다.
