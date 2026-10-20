@@ -14817,6 +14817,7 @@ function mbAfterNcSave_(m){ try{ if(!m) return; var files=m.__mailFiles||[], rec
    · 엑셀 서식·병합·수식은 그대로 두고 값만 바꿈(파일 내부 XML 직접 수정) → 열 때 판정(O.K) 수식 자동 재계산 */
 function coaFillNorm_(v){ return String(v==null?"":v).replace(/\s+/g,"").toLowerCase(); }
 function coaFillIsInt_(v){ var s=String(v==null?"":v).trim(); return /^\d{1,4}$/.test(s); }
+function coaNoTok_(v){ var m=String(v==null?"":v).trim().match(/^(\d{1,4})\s*(상|하)?$/); return m?{ no:String(parseInt(m[1],10)), side:m[2]||"" }:null; }   // 3D측정번호 칸: 22 / 22상
 function coaFillColName_(c){ var s=""; c++; while(c>0){ var m=(c-1)%26; s=String.fromCharCode(65+m)+s; c=Math.floor((c-1)/26); } return s; }
 function coaFillColIdx_(ref){ var m=String(ref).match(/^([A-Z]+)/); var s=m?m[1]:"A", n=0; for(var i=0;i<s.length;i++) n=n*26+(s.charCodeAt(i)-64); return n-1; }
 // 측정 탭: "No." · "Actual" 머리글을 찾아 { map:{ 측정번호:[{item,val}…] }, part:품번, sn:S/N }
@@ -14827,15 +14828,15 @@ function coaFillDataMap_(aoa){
     var nm=-1; for(var c=0;c<row.length;c++){ var t=coaFillNorm_(row[c]); if(n<0 && (t==="no." || t==="no")) n=c; if(a<0 && t==="actual") a=c; if(it<0 && t==="item") it=c; if(nm<0 && t==="nominal") nm=c; }
     if(n>=0 && a>=0){ h=r; noC=n; acC=a; itC=(it>=0?it:n+1); nmC=nm; break; } }
   if(h<0) return null;
-  var part="", sn="";   // 머리 정보: "품번" · "S/N" 오른쪽 칸
+  var part="", sn="", side="";   // 머리 정보: "품번" · "S/N" · "특기사항"(상/하) 오른쪽 칸
   for(var r0=0;r0<h;r0++){ var rw0=aoa[r0]||[]; for(var c0=0;c0<rw0.length;c0++){ var t0=coaFillNorm_(rw0[c0]);
     var nx=function(){ for(var k=c0+1;k<Math.min(rw0.length,c0+4);k++){ var v=String(rw0[k]==null?"":rw0[k]).trim(); if(v) return v; } return ""; };
-    if(!part && (t0==="품번" || t0==="partno." || t0==="partno")) part=nx(); if(!sn && (t0==="s/n" || t0==="serialno.")) sn=nx(); } }
+    if(!part && (t0==="품번" || t0==="partno." || t0==="partno")) part=nx(); if(!sn && (t0==="s/n" || t0==="serialno.")) sn=nx(); if(!side && t0==="특기사항") side=nx(); } }
   var map={}, cur=null;
   for(var r2=h+1;r2<aoa.length;r2++){ var rw=aoa[r2]||[], nv=rw[noC], av=rw[acC];
     if(nv!=="" && nv!=null){ cur=String(nv).trim(); if(/^\d+(\.0+)?$/.test(cur)) cur=String(parseInt(cur,10)); continue; }
     if(cur!==null && av!=="" && av!=null && !isNaN(Number(av))) (map[cur]=map[cur]||[]).push({ item:String(rw[itC]==null?"":rw[itC]).trim(), val:Number(av), nom:(nmC>=0?Number(rw[nmC]):NaN) }); }
-  return { map:map, part:part, sn:sn };
+  return { map:map, part:part, sn:sn, side:String(side||"").replace(/\s+/g,"") };
 }
 // 양식 줄 → 측정 하위 줄 고르기: Spec에 기하공차 이름(진원도·평면도 등)이 있으면 같은 항목, 없으면 같은 번호 안에서 나온 순서대로
 var COA_GDT_RE=/(진원도|원통도|평면도|평행도|직각도|동심도|위치도|윤곽도|직진도|경사도|흔들림|대칭도)/;
@@ -14856,7 +14857,7 @@ function coaFillSnMatch_(v, name){ v=String(v==null?"":v).trim(); name=String(na
   return v===name || v.slice(-(name.length+1))==="-"+name || name.slice(-(v.length+1))==="-"+v || (!isNaN(Number(v)) && !isNaN(Number(name)) && Number(v)===Number(name)); }
 // 엑셀 파일(ArrayBuffer) → 채울 칸 목록 계산
 // extras: [{ name:파일명, buf }] — 성적서와 따로 고른 3차원 측정 파일(들). 각 파일의 측정 탭도 데이터로 씀
-function coaFillPlan_(buf, extras){
+function coaFillPlan_(buf, extras, skip){ skip=skip||{};
   var wb=XLSX.read(new Uint8Array(buf), { type:"array" });
   var data={}, reports=[];
   (extras||[]).forEach(function(ex){ try{ var w2=XLSX.read(new Uint8Array(ex.buf), { type:"array" });
@@ -14872,8 +14873,9 @@ function coaFillPlan_(buf, extras){
       var byHead=keys.filter(function(k){ return data[k].sn && coaFillSnTail_(data[k].sn)===tail; });   // 측정 탭 안에 적힌 S/N이 같은 것
       if(byHead.length){ var pm=byHead.filter(function(k){ return !tPart0 || !data[k].part || coaFillPartNorm_(data[k].part)===coaFillPartNorm_(tPart0); }); return (pm.length?pm:byHead)[0]; }
       return keys.find(function(n){ return coaFillSnMatch_(v, n.replace(/^.* › /,"")); }); };
-    var snRow=aoa[rm+1]||[], sns=[], unmatched=[];
-    for(var c=rmC;c<snRow.length;c++){ var v=snRow[c]; if(v===""||v==null) continue; var hit=findData(v); if(hit) sns.push({ col:c, sn:String(v).trim(), sheet:hit }); else unmatched.push(String(v).trim()); }
+    var snRow=aoa[rm+1]||[], sns=[], unmatched=[], hdr0=aoa[rm]||[], bnd=snRow.length;
+    for(var cb=rmC+1;cb<hdr0.length;cb++){ if(String(hdr0[cb]==null?"":hdr0[cb]).trim()){ bnd=cb; break; } }   // 측정치 머리글 오른쪽 다음 머리글(계측기) 앞까지만
+    for(var c=rmC;c<bnd;c++){ var v=snRow[c]; if(v===""||v==null) continue; var hit=findData(v); if(hit) sns.push({ col:c, sn:String(v).trim(), sheet:hit }); else unmatched.push(String(v).trim()); }
     // 양식의 Part Code(도번) — "Part Code"/"PART NO." 오른쪽 칸
     var tPart=""; for(var rr=0;rr<Math.min(aoa.length,r0) && !tPart;rr++){ var rw1=aoa[rr]||[]; for(var cc=0;cc<rw1.length;cc++){ var tt=coaFillNorm_(rw1[cc]); if(tt==="partcode" || tt==="partno." || tt==="partno"){ for(var k2=cc+1;k2<Math.min(rw1.length,cc+12);k2++){ var vv=String(rw1[k2]==null?"":rw1[k2]).trim(); if(vv){ tPart=vv; break; } } break; } } }
     // [추가] 도번·S/N 일치 확인 — 측정 탭 머리의 품번·S/N이 양식의 Part Code·S/N과 다르면 그 열은 채우지 않음
@@ -14890,7 +14892,7 @@ function coaFillPlan_(buf, extras){
     var cells=[], missing=[], occ={};
     for(var r3=r0+1;r3<aoa.length;r3++){ var no=(aoa[r3]||[])[best]; if(!coaFillIsInt_(no)) continue; no=String(parseInt(no,10));
       var oc=occ[no]||0; occ[no]=oc+1; var spec=specC>=0?(aoa[r3]||[])[specC]:"";
-      sns.forEach(function(x){ var val=coaFillPick_(data[x.sheet].map[no], spec, oc); var ref=coaFillColName_(x.col+rp.cOff)+(r3+1+rp.rOff);
+      sns.forEach(function(x){ var val=coaFillPick_(data[x.sheet].map[no], spec, oc); var ref=coaFillColName_(x.col+rp.cOff)+(r3+1+rp.rOff); if(skip[rp.name+"!"+ref]) return;   // 수식 칸은 양식이 계산
         if(val===undefined) missing.push(x.sn+" · No."+no); else cells.push({ ref:ref, val:val, no:no, sn:x.sn, old:(aoa[r3]||[])[x.col] }); }); }
     plans.push({ sheet:rp.name, cells:cells, missing:missing, sns:sns, unmatched:unmatched, bad:bad, part:tPart, noCol:coaFillColName_(best+rp.cOff) });
   });
@@ -14913,20 +14915,23 @@ function coaFillWrite_(buf, plan){
   var cfb=XLSX.CFB.read(new Uint8Array(buf), { type:"array" }), dec=new TextDecoder("utf-8"), enc=new TextEncoder();
   var find=function(p){ var i=cfb.FullPaths.findIndex(function(x){ return x.replace(/^Root Entry\//,"")===p; }); return i>=0?cfb.FileIndex[i]:null; };
   var wbF=find("xl/workbook.xml"), relF=find("xl/_rels/workbook.xml.rels"); if(!wbF||!relF) throw new Error("엑셀(xlsx) 형식이 아닙니다");
-  var wbx=dec.decode(wbF.content), rel=dec.decode(relF.content), fail=[];
+  var wbx=dec.decode(wbF.content), rel=dec.decode(relF.content), fail=[], kept=[];
   plan.plans.forEach(function(p){ if(!p.cells.length) return;
     var sm=wbx.match(new RegExp('<sheet [^>]*name="'+p.sheet.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/&/g,"&amp;")+'"[^>]*r:id="([^"]+)"'));
     var rid=sm&&sm[1], tm=rid&&rel.match(new RegExp('Id="'+rid+'"[^>]*Target="([^"]+)"|Target="([^"]+)"[^>]*Id="'+rid+'"'));
     var target=tm&&(tm[1]||tm[2]); if(!target){ fail.push(p.sheet+": 시트를 찾지 못함"); return; }
     var path=target.replace(/^\/?xl\//,"").replace(/^\//,""); var f=find("xl/"+path); if(!f){ fail.push(p.sheet+": 시트 파일 없음"); return; }
     var x=dec.decode(f.content);
-    p.cells.forEach(function(c){ var nx=coaFillSetCell_(x, c.ref, c.val); if(nx===null) fail.push(p.sheet+"!"+c.ref); else x=nx; });
+    p.cells.forEach(function(c){ if(coaCellHasFormula_(x, c.ref)){ kept.push(p.sheet+"!"+c.ref); return; }   // 양식 수식(INDIRECT 등) 칸은 그대로
+      var nx=coaFillSetCell_(x, c.ref, c.val); if(nx===null) fail.push(p.sheet+"!"+c.ref); else x=nx; });
     f.content=enc.encode(x); f.size=f.content.length; });
   wbx=/<calcPr[^>]*fullCalcOnLoad=/.test(wbx)?wbx:wbx.replace(/<calcPr/, '<calcPr fullCalcOnLoad="1"');   // 열 때 판정 수식 다시 계산
   if(wbx.indexOf("<calcPr")<0) wbx=wbx.replace("</workbook>",'<calcPr fullCalcOnLoad="1"/></workbook>');
   wbF.content=enc.encode(wbx); wbF.size=wbF.content.length;
-  return { out:XLSX.CFB.write(cfb, { fileType:"zip", type:"array" }), fail:fail };
+  return { out:XLSX.CFB.write(cfb, { fileType:"zip", type:"array" }), fail:fail, kept:kept };
 }
+function coaCellInner_(xml, ref){ var m=xml.match(new RegExp('<c r="'+ref+'"((?:\\s[^>]*?)?)(\\/>|>([\\s\\S]*?)<\\/c>)')); return (m && m[2]!=="/>")?(m[3]||""):null; }   // 빈 칸(<c …/>)은 null
+function coaCellHasFormula_(xml, ref){ var inner=coaCellInner_(xml, ref); return !!(inner && inner.indexOf("<f")>=0); }
 /* ===== [추가] 📏 성적서 자동 작성: 성적서(양식) 선택 + S/N 입력 → 측정이력 폴더에서 측정 파일을 찾아 작성 =====
    · 측정이력 폴더(\\Ntl\5.품질팀\품질문서\측정보고서)는 PC 브라우저(Chrome/Edge)에서 한 번 연결 → 기억 (업로드 없음, NAS에서 바로 읽음)
    · 도번 = 성적서 Part Code → 측정이력 폴더에서 같은 이름 폴더(고객 폴더 아래까지)를 찾고, 그 안에서 S/N 파일만 읽음
@@ -14996,8 +15001,10 @@ function coaParseSnInput_(v){
   return { prefix:pre, tails:uniq };
 }
 // 성적서 양식 분석: 시트·위치(행·열은 엑셀 기준 0부터)
-function coaTplInfo_(buf){
-  var wb=XLSX.read(new Uint8Array(buf), { type:"array" });
+function coaTplInfo_(buf){ var l=coaTplInfos_(buf); return l.length?l[0]:null; }
+// 성적서 페이지(3D측정번호·측정치 칸이 있는 시트) 모두 — 1장·2장… 또는 1~8 탭
+function coaTplInfos_(buf){
+  var list=[], wb=XLSX.read(new Uint8Array(buf), { type:"array" });
   for(const sn of wb.SheetNames){ var ws=wb.Sheets[sn], aoa=XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:"" }), rg=ws["!ref"]?XLSX.utils.decode_range(ws["!ref"]):{ s:{ r:0, c:0 } };
     var r0=-1, rm=-1, rmC=-1;
     for(var r=0;r<aoa.length;r++){ var row=aoa[r]||[]; for(var c=0;c<row.length;c++){ var t=coaFillNorm_(row[c]); if(r0<0 && t.indexOf("3d측정번호")>=0) r0=r; if(rm<0 && t==="측정치"){ rm=r; rmC=c; } } }
@@ -15013,18 +15020,19 @@ function coaTplInfo_(buf){
     var snRow=aoa[rm+1]||[], used=[]; for(var c4=rmC;c4<bound;c4++){ if(String(snRow[c4]==null?"":snRow[c4]).trim()) used.push(c4); }
     var step=(used.length>=2)?(used[1]-used[0]):8, slots=[]; for(var c5=rmC;c5<bound;c5+=step) slots.push(c5);
     // 측정번호 열 = 3D측정번호 아래에서 정수가 가장 많은 열 (측정치 칸보다 왼쪽)
-    var best=-1, bestN=0; for(var c6=0;c6<rmC;c6++){ var n=0; for(var r6=r0+1;r6<Math.min(aoa.length,r0+80);r6++){ if(coaFillIsInt_((aoa[r6]||[])[c6])) n++; } if(n>bestN){ bestN=n; best=c6; } }
-    var rows3d=[]; for(var r7=r0+1;r7<aoa.length;r7++){ if(best>=0 && coaFillIsInt_((aoa[r7]||[])[best])) rows3d.push(r7); }
-    return { sheet:sn, rOff:rg.s.r, cOff:rg.s.c, aoa:aoa, r0:r0, rm:rm, slots:slots, part:part, snCell:snCell, qtyCell:qtyCell, rows3d:rows3d,
-             oldTails:used.map(function(c){ return String(snRow[c]).trim(); }) };
+    var best=-1, bestN=0; for(var c6=0;c6<rmC;c6++){ var n=0; for(var r6=r0+1;r6<Math.min(aoa.length,r0+80);r6++){ if(coaNoTok_((aoa[r6]||[])[c6])) n++; } if(n>bestN){ bestN=n; best=c6; } }
+    var rows3d=[]; for(var r7=r0+1;r7<aoa.length;r7++){ if(best>=0 && coaNoTok_((aoa[r7]||[])[best])) rows3d.push(r7); }
+    list.push({ sheet:sn, rOff:rg.s.r, cOff:rg.s.c, aoa:aoa, r0:r0, rm:rm, slots:slots, part:part, snCell:snCell, qtyCell:qtyCell, rows3d:rows3d, numCol:best,
+             oldTails:used.map(function(c){ return String(snRow[c]).trim(); }) });
   }
-  return null;
+  return list;
 }
 function coaXmlEsc_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 // 한 칸 바꾸기: kind "n"(숫자) / "s"(글자) / "x"(지우기, 서식은 남김)
 function coaXmlCell_(xml, ref, kind, v){
   var re=new RegExp('<c r="'+ref+'"((?:\\s[^>]*?)?)(\\/>|>([\\s\\S]*?)<\\/c>)'), m=xml.match(re);
   var body=kind==="n"?('<v>'+String(v)+'</v>'):kind==="s"?('<is><t xml:space="preserve">'+coaXmlEsc_(v)+'</t></is>'):"";
+  if(m && kind==="x" && m[3] && m[3].indexOf("<f")>=0) return xml;   // 수식 칸은 지우지 않음
   if(m){ var attrs=(m[1]||"").replace(/\s+t="[^"]*"/,"").replace(/\/$/,""); if(kind==="s") attrs+=' t="inlineStr"';
     return xml.replace(re, kind==="x"?('<c r="'+ref+'"'+attrs+'/>'):('<c r="'+ref+'"'+attrs+'>'+body+'</c>')); }
   if(kind==="x") return xml;
@@ -15033,60 +15041,146 @@ function coaXmlCell_(xml, ref, kind, v){
   return coaXmlCell_(ins, ref, "s", v);
 }
 // 성적서 양식을 새 S/N에 맞게 고친 파일(ArrayBuffer) 만들기
-function coaTplPrepare_(buf, info, prefix, tails){
+// 양식 열기 도우미: 시트 이름 → XML 읽기/쓰기
+function coaXlsxOpen_(buf){
   var cfb=XLSX.CFB.read(new Uint8Array(buf), { type:"array" }), dec=new TextDecoder("utf-8"), enc=new TextEncoder();
   var find=function(p){ var i=cfb.FullPaths.findIndex(function(x){ return x.replace(/^Root Entry\//,"")===p; }); return i>=0?cfb.FileIndex[i]:null; };
   var wbx=dec.decode(find("xl/workbook.xml").content), rel=dec.decode(find("xl/_rels/workbook.xml.rels").content);
-  var sm=wbx.match(new RegExp('<sheet [^>]*name="'+info.sheet.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/&/g,"&amp;")+'"[^>]*r:id="([^"]+)"'));
-  var tm=sm&&rel.match(new RegExp('Id="'+sm[1]+'"[^>]*Target="([^"]+)"|Target="([^"]+)"[^>]*Id="'+sm[1]+'"'));
-  var f=tm&&find("xl/"+String(tm[1]||tm[2]).replace(/^\/?xl\//,"").replace(/^\//,"")); if(!f) throw new Error("성적서 시트를 찾지 못했습니다");
-  var x=dec.decode(f.content), R=function(r,c){ return coaFillColName_(c+info.cOff)+(r+1+info.rOff); };
-  info.slots.forEach(function(sc, i){
-    var t=tails[i];
-    x=coaXmlCell_(x, R(info.rm+1, sc), t===undefined?"x":(/^0\d/.test(t)?"s":"n"), t===undefined?null:(/^0\d/.test(t)?t:Number(t)));   // S/N 칸 (082처럼 0으로 시작하면 글자로)
-    for(var r=info.rm+2;r<info.r0;r++){   // 외관·기능 표시(○ 등): 새 S/N 칸은 첫 칸과 같게, 안 쓰는 칸은 비움
-      var v0=(info.aoa[r]||[])[info.slots[0]];
-      if(t===undefined) x=coaXmlCell_(x, R(r,sc), "x");
-      else if(i>0 && v0!=="" && v0!=null && typeof v0==="string") x=coaXmlCell_(x, R(r,sc), "s", v0); }
-    info.rows3d.forEach(function(r){ x=coaXmlCell_(x, R(r,sc), "x"); });   // 측정치는 비운 뒤 새 데이터로
+  var file=function(name){ var sm=wbx.match(new RegExp('<sheet [^>]*name="'+String(name).replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/&/g,"&amp;")+'"[^>]*r:id="([^"]+)"'));
+    var tm=sm&&rel.match(new RegExp('Id="'+sm[1]+'"[^>]*Target="([^"]+)"|Target="([^"]+)"[^>]*Id="'+sm[1]+'"'));
+    return tm?find("xl/"+String(tm[1]||tm[2]).replace(/^\/?xl\//,"").replace(/^\//,"")):null; };
+  return { get:function(name){ var f=file(name); return f?dec.decode(f.content):null; }, set:function(name, x){ var f=file(name); if(f){ f.content=enc.encode(x); f.size=f.content.length; } },
+           out:function(){ return XLSX.CFB.write(cfb, { fileType:"zip", type:"array" }); } };
+}
+// 성적서 양식을 새 S/N에 맞게 고친 파일 만들기 (모든 페이지)
+function coaTplPrepare_(buf, infos, prefix, tails){
+  if(!Array.isArray(infos)) infos=[infos];
+  var X=coaXlsxOpen_(buf);
+  infos.forEach(function(info){
+    var x=X.get(info.sheet); if(x==null) throw new Error("성적서 시트를 찾지 못했습니다: "+info.sheet);
+    var R=function(r,c){ return coaFillColName_(c+info.cOff)+(r+1+info.rOff); };
+    info.slots.forEach(function(sc, i){
+      var t=tails[i];
+      x=coaXmlCell_(x, R(info.rm+1, sc), t===undefined?"x":(/^0\d/.test(t)?"s":"n"), t===undefined?null:(/^0\d/.test(t)?t:Number(t)));   // S/N 칸 (082처럼 0으로 시작하면 글자로)
+      for(var r=info.rm+2;r<info.r0;r++){   // 외관·기능 표시(○ 등): 새 S/N 칸은 첫 칸과 같게, 안 쓰는 칸은 비움
+        var v0=(info.aoa[r]||[])[info.slots[0]];
+        if(t===undefined) x=coaXmlCell_(x, R(r,sc), "x");
+        else if(i>0 && v0!=="" && v0!=null && typeof v0==="string") x=coaXmlCell_(x, R(r,sc), "s", v0); }
+      info.rows3d.forEach(function(r){ x=coaXmlCell_(x, R(r,sc), "x"); });   // 측정치(값 칸)는 비운 뒤 새 데이터로 — 수식 칸은 그대로
+    });
+    if(info.snCell) x=coaXmlCell_(x, R(info.snCell.r, info.snCell.c), "s", (prefix?prefix+"-":"")+tails.join(","));
+    if(info.qtyCell) x=coaXmlCell_(x, R(info.qtyCell.r, info.qtyCell.c), "n", tails.length);
+    X.set(info.sheet, x);
   });
-  if(info.snCell) x=coaXmlCell_(x, R(info.snCell.r, info.snCell.c), "s", (prefix?prefix+"-":"")+tails.join(","));
-  if(info.qtyCell) x=coaXmlCell_(x, R(info.qtyCell.r, info.qtyCell.c), "n", tails.length);
-  f.content=enc.encode(x); f.size=f.content.length;
-  return XLSX.CFB.write(cfb, { fileType:"zip", type:"array" });
+  return X.out();
+}
+// 양식 수식 분석: INDIRECT("'"&BW17&"'!C12") → 이름 칸(BW17) 수식 IF(AA17>0,AA17&"하","") → S/N 칸 + 붙는 글자("하")
+//   결과: suffixes(필요한 시트 이름 꼬리: "하","상" 또는 "") · refs(수식 칸별 시트 꼬리·참조 칸)
+function coaFormulaInfo_(buf, infos){
+  var X=coaXlsxOpen_(buf), sfx={}, refs=[], un=function(t){ return String(t).replace(/&quot;/g,'"').replace(/&amp;/g,"&").replace(/&gt;/g,">").replace(/&lt;/g,"<").replace(/&apos;/g,"'"); };
+  infos.forEach(function(info){ var x=X.get(info.sheet); if(!x) return;
+    var fOf=function(ref){ var inner=coaCellInner_(x, ref), m=inner&&inner.match(/<f[^>]*>([\s\S]*?)<\/f>/); return m?un(m[1]):""; };
+    var re=/<c r="([A-Z]+)(\d+)"[^>]*>[^<]*<f[^>]*>([^<]*INDIRECT[^<]*)<\/f>/g, m;
+    while((m=re.exec(x))){ var f=un(m[3]), q=f.match(/INDIRECT\(\s*"'"\s*&\s*([A-Z]+\d+)\s*&\s*"'!([A-Z]+)(\d+)"\s*\)/); if(!q) continue;
+      var nameRef=q[1], nf=fOf(nameRef), src=nameRef, tail="", k=nf.match(/([A-Z]+\d+)\s*&\s*"([^"]*)"/); if(k){ src=k[1]; tail=k[2]; }
+      var srcCol=coaFillColIdx_(src)-info.cOff, slot=info.slots.indexOf(srcCol);
+      sfx[tail]=1; refs.push({ sheet:info.sheet, info:info, ref:m[1]+m[2], row:+m[2]-1-info.rOff, slot:slot, tail:tail, col:q[2], trow:+q[3] }); } });
+  return { suffixes:Object.keys(sfx), refs:refs };
+}
+// 검증: 수식이 가리키는 측정 시트 칸의 측정번호(그 위 No.)가 성적서 3D측정번호와 같은지
+function coaFormulaCheck_(fi, tails, sheets){
+  var checked=0, bad=[];
+  fi.refs.forEach(function(r){ if(r.slot<0 || tails[r.slot]===undefined) return; var nm=tails[r.slot]+r.tail, ws=sheets[nm]; if(!ws) return;
+    var tk=coaNoTok_((r.info.aoa[r.row]||[])[r.info.numCol]); if(!tk) return; var want=tk.no; checked++;
+    var got=""; for(var rr=r.trow-1; rr>=1 && rr>r.trow-12; rr--){ var c=ws["A"+rr]; if(c && c.v!=="" && c.v!=null){ got=String(c.v).trim(); break; } }
+    if(/^\d+(\.0+)?$/.test(got)) got=String(parseInt(got,10));
+    if(got!==want) bad.push(r.sheet+"!"+r.ref+" 번호 "+want+" ↔ '"+nm+"'!"+r.col+r.trow+" (No."+(got||"없음")+")"); });
+  return { checked:checked, bad:bad };
 }
 // 측정이력 폴더에서 S/N별 측정 파일 찾기 (도번·S/N 확인)
 async function coaFindMeas_(root, draw, tails, log){
   var diag=[], dirs=await coaFindDrawDirs_(root, draw, diag);
   if(!dirs.length) return { dirs:[], found:{}, why:{}, diag:diag };
   var files=[]; for(const d of dirs) await coaCollectXls_(d.h, d.path, 0, files);
-  for(const f of files){ try{ f.file=await f.h.getFile(); f.mt=f.file.lastModified||0; }catch(_){ f.mt=0; } }
+  // [속도] 저장일은 입력한 S/N 이름이 들어간 파일만 확인 (도번 폴더에 측정 파일이 수백 개여도 빠르게)
+  var tset={}; tails.forEach(function(t){ tset[String(parseInt(t,10))]=1; });
+  for(const f of files){ if(!coaNameTails_(f.name).some(function(x){ return tset[x]; })) continue; try{ f.file=await f.h.getFile(); f.mt=f.file.lastModified||0; }catch(_){ f.mt=0; } }
   var found={}, why={};
   for(const t of tails){
     var tn=String(parseInt(t,10)), cands=files.filter(function(f){ return coaNameTails_(f.name).indexOf(tn)>=0; }).sort(function(a,b){ return b.mt-a.mt; });
     if(!cands.length){ why[t]="파일 없음"; continue; }
     var reasons=[];
     for(const c of cands){
-      try{ var buf=await c.file.arrayBuffer(), w=XLSX.read(new Uint8Array(buf), { type:"array" }), ok=null;
+      try{ var buf=await c.file.arrayBuffer(), w=XLSX.read(new Uint8Array(buf), { type:"array" }), ok=null, okWs=null;
         for(const sn of w.SheetNames){ var m=coaFillDataMap_(XLSX.utils.sheet_to_json(w.Sheets[sn], { header:1, raw:true, defval:"" })); if(!m || !Object.keys(m.map).length) continue;
           if(m.sn && coaFillSnTail_(m.sn)!==tn){ reasons.push(c.name+": 파일 안 S/N "+m.sn.trim()); continue; }
           if(m.part && coaFillPartNorm_(m.part)!==coaFillPartNorm_(draw)){ reasons.push(c.name+": 파일 안 품번 "+m.part.trim()); continue; }
-          ok=m; break; }
-        if(ok){ found[t]={ name:c.name, path:c.path, buf:buf, m:ok, mt:c.mt, others:cands.length-1 }; break; }
+          ok=m; okWs=w.Sheets[sn]; break; }
+        if(ok){ var side=(/^(상|하)$/.test(ok.side)?ok.side:((c.name.replace(/\.[^.]+$/,"").match(/(상|하)(?!.*(상|하))/)||[])[1]||""));
+          var ent={ name:c.name, path:c.path, buf:buf, m:ok, ws:okWs, mt:c.mt, side:side };
+          if(!found[t]){ found[t]=Object.assign({ others:cands.length-1, sides:{} }, ent); }
+          if(!found[t].sides[side]) found[t].sides[side]=ent; }
       }catch(e){ reasons.push(c.name+": 읽기 실패"); }
     }
+    if(found[t]) found[t].others=Math.max(0, cands.length-Object.keys(found[t].sides).length);
     if(!found[t]) why[t]=reasons.length?reasons.join(" / "):"측정 데이터 없음";
   }
   return { dirs:dirs, found:found, why:why, nFiles:files.length };
+}
+/* ===== [추가] 측정 데이터 시트를 S/N 이름으로 성적서에 넣기 =====
+   · 양식이 INDIRECT("'"&S/N&"'!C12") 처럼 S/N 이름 시트를 참조하는 경우 → 매크로 없이 계산됨
+   · 측정 파일 시트의 값을 원래 칸 위치(A1…) 그대로 옮김 (서식 제외). 같은 이름 시트가 이미 있으면 내용을 새 데이터로 바꿈 */
+function coaSheetXml_(ws){
+  var X=function(t){ return String(t==null?"":t).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+  var rows={};
+  Object.keys(ws).forEach(function(k){ if(k.charAt(0)==="!") return; var c=ws[k]; if(!c || c.v===undefined || c.v===null || c.v==="") return;
+    var a=XLSX.utils.decode_cell(k); (rows[a.r]=rows[a.r]||[]).push({ c:a.c, ref:k, cell:c }); });
+  var body=Object.keys(rows).map(Number).sort(function(a,b){ return a-b; }).map(function(r){
+    var cs=rows[r].sort(function(a,b){ return a.c-b.c; }).map(function(x){ var c=x.cell;
+      if(c.t==="n" && isFinite(c.v)) return '<c r="'+x.ref+'"><v>'+c.v+'</v></c>';
+      if(c.t==="b") return '<c r="'+x.ref+'" t="b"><v>'+(c.v?1:0)+'</v></c>';
+      if(c.t==="d"){ var d=c.v instanceof Date?c.v:new Date(c.v); return '<c r="'+x.ref+'" t="inlineStr"><is><t xml:space="preserve">'+X(isNaN(d)?c.v:d.toISOString().slice(0,10))+'</t></is></c>'; }
+      return '<c r="'+x.ref+'" t="inlineStr"><is><t xml:space="preserve">'+X(c.w!=null&&c.t!=="s"?c.w:c.v)+'</t></is></c>'; }).join("");
+    return '<row r="'+(r+1)+'">'+cs+'</row>'; }).join("");
+  var cols=""; if(Array.isArray(ws["!cols"])){ var cl=ws["!cols"].map(function(c,i){ var w=c&&(c.wch||(c.wpx?c.wpx/7:0)||(c.width)); return w?('<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+(Math.round(w*100)/100)+'" customWidth="1"/>'):""; }).join(""); if(cl) cols="<cols>"+cl+"</cols>"; }
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+    +cols+'<sheetData>'+body+'</sheetData><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>';
+}
+// out: 완성된 xlsx(ArrayBuffer/Uint8Array) · list: [{ name:"366", ws:SheetJS 시트 }] → 시트를 넣은 새 파일(Uint8Array)
+function coaAddSheets_(out, list){
+  if(!list || !list.length) return out;
+  var cfb=XLSX.CFB.read(new Uint8Array(out), { type:"array" }), dec=new TextDecoder("utf-8"), enc=new TextEncoder();
+  var find=function(p){ var i=cfb.FullPaths.findIndex(function(x){ return x.replace(/^Root Entry\//,"")===p; }); return i>=0?cfb.FileIndex[i]:null; };
+  var wbF=find("xl/workbook.xml"), relF=find("xl/_rels/workbook.xml.rels"), ctF=find("[Content_Types].xml");
+  var wbx=dec.decode(wbF.content), rel=dec.decode(relF.content), ct=dec.decode(ctF.content);
+  var esc=function(t){ return String(t).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+  list.forEach(function(it){
+    var name=String(it.name).replace(/[\\\/\?\*\[\]:]/g,"_").slice(0,31), xml=enc.encode(coaSheetXml_(it.ws));
+    var sm=wbx.match(new RegExp('<sheet [^>]*name="'+esc(name).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+'"[^>]*r:id="([^"]+)"'));
+    if(sm){   // 같은 이름 시트가 있으면 내용 교체
+      var tm=rel.match(new RegExp('Id="'+sm[1]+'"[^>]*Target="([^"]+)"|Target="([^"]+)"[^>]*Id="'+sm[1]+'"'));
+      var f=tm&&find("xl/"+String(tm[1]||tm[2]).replace(/^\/?xl\//,"").replace(/^\//,"")); if(f){ f.content=xml; f.size=xml.length; return; } }
+    var n=1; while(find("xl/worksheets/sheet"+n+".xml")) n++;
+    var rid=1; while(new RegExp('Id="rId'+rid+'"').test(rel)) rid++;
+    var sid=1; (wbx.match(/sheetId="(\d+)"/g)||[]).forEach(function(m){ var v=+m.replace(/\D/g,""); if(v>=sid) sid=v+1; });
+    XLSX.CFB.utils.cfb_add(cfb, "xl/worksheets/sheet"+n+".xml", xml);
+    rel=rel.replace("</Relationships>", '<Relationship Id="rId'+rid+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+n+'.xml"/></Relationships>');
+    wbx=wbx.replace("</sheets>", '<sheet name="'+esc(name)+'" sheetId="'+sid+'" r:id="rId'+rid+'"/></sheets>');
+    ct=ct.replace("</Types>", '<Override PartName="/xl/worksheets/sheet'+n+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+  });
+  wbF.content=enc.encode(wbx); wbF.size=wbF.content.length; relF.content=enc.encode(rel); relF.size=relF.content.length; ctF.content=enc.encode(ct); ctF.size=ctF.content.length;
+  return XLSX.CFB.write(cfb, { fileType:"zip", type:"array" });
 }
 function coaGenDirLabel_(ov){ var el=ov.querySelector("#cg-dir"); if(el) el.innerHTML=__coaMeasDir?('✅ 연결됨: <b>'+coaXmlEsc_(__coaMeasDir.name)+'</b>'):'<span style="color:#B42318;">연결 안 됨</span>'; }
 function coaGenLoadTpl_(file, ov){
   var st=ov.querySelector("#cg-tplname"), E=coaXmlEsc_;
   file.arrayBuffer().then(function(buf){
-    var info=null; try{ info=coaTplInfo_(buf); }catch(_){}
+    var infos=[]; try{ infos=coaTplInfos_(buf); }catch(_){} var info=infos[0]||null;
     if(!info){ __coaGen.tpl=null; st.innerHTML='<span style="color:#B42318;">⚠ 성적서 양식이 아닙니다 ("3D측정번호"·"측정치" 칸 없음)</span>'; return; }
-    __coaGen.tpl={ name:file.name, buf:buf, info:info };
-    st.innerHTML='<b>'+E(file.name)+'</b> · 도번 '+E(info.part||"?")+' · 한 장에 S/N '+info.slots.length+'개 · 측정번호 '+info.rows3d.length+'줄'+(info.oldTails.length?(' · 양식의 기존 S/N '+E(info.oldTails.join(","))):'');
+    var fi0=null; try{ fi0=coaFormulaInfo_(buf, infos); }catch(_){}
+    __coaGen.tpl={ name:file.name, buf:buf, info:info, infos:infos };
+    st.innerHTML='<b>'+E(file.name)+'</b> · 도번 '+E(info.part||"?")+(infos.length>1?(' · '+infos.length+'페이지'):'')+' · 한 장에 S/N '+info.slots.length+'개 · 측정번호 '+infos.reduce(function(a,x){ return a+x.rows3d.length; },0)+'줄'
+      +(fi0&&fi0.refs.length?(' · <b style="color:#0B5CAB;">수식 양식</b>(측정 시트 '+E(fi0.suffixes.map(function(x){ return "S/N"+(x||""); }).join("·"))+' 참조)'):'')+(info.oldTails.length?(' · 양식의 기존 S/N '+E(info.oldTails.join(","))):'');
     var dr=ov.querySelector("#cg-draw"); if(dr) dr.value=info.part||"";
     var nm=ov.querySelector("#cg-name"); if(nm) nm.value=file.name;
     var sn=ov.querySelector("#cg-sn"); if(sn){ sn.focus(); coaGenNameSync_(ov); }
@@ -15119,17 +15213,35 @@ async function coaGenRun_(ov){
       +'<div style="font-size:12.5px;color:#475467;margin-top:8px;">살펴본 폴더 (이 화면을 캡처해 주시면 구조에 맞게 고치겠습니다):</div>'
       +'<div style="font-size:12px;background:#F9FAFB;border:1px solid #EAECF0;border-radius:8px;padding:8px 10px;margin-top:4px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all;">'+E((fm.diag||[]).join("\n")||"(폴더 목록을 읽지 못함)")+'</div>'; return; }
     var prefix=p.prefix || ((info.snCell&&String(info.snCell.v).match(/^(\d{5})-/))||[])[1] || "";
-    var newBuf=coaTplPrepare_(tpl.buf, info, prefix, p.tails);
+    var infos=tpl.infos||[info], newBuf=coaTplPrepare_(tpl.buf, infos, prefix, p.tails), fi=coaFormulaInfo_(newBuf, infos);
     var extras=p.tails.filter(function(t){ return fm.found[t]; }).map(function(t){ return { name:fm.found[t].name, buf:fm.found[t].buf }; });
-    var plan=coaFillPlan_(newBuf, extras), w=coaFillWrite_(newBuf, plan);
-    var tot=plan.plans.reduce(function(a,q){ return a+q.cells.length; },0), miss=p.tails.filter(function(t){ return !fm.found[t]; });
+    var skip={}; fi.refs.forEach(function(r){ skip[r.sheet+"!"+r.ref]=1; });
+    var plan=coaFillPlan_(newBuf, extras, skip), w=coaFillWrite_(newBuf, plan);
+    // [추가] 측정 데이터 시트를 S/N 이름(366 등)으로 성적서에 넣음 → 양식의 INDIRECT 수식이 매크로 없이 계산됨
+    //   수식 양식이면 수식이 찾는 이름(S/N+하, S/N+상 …)으로, 아니면 S/N 이름으로
+    var addList=[], missSide=[], sheetsBy={};
+    p.tails.forEach(function(t){ var F=fm.found[t]; if(!F) return;
+      var tl=fi.suffixes.length?fi.suffixes:[""];
+      tl.forEach(function(sx){ var e=F.sides[sx] || (sx===""?F:null) || (tl.length===1?F:null);
+        if(e && e.ws){ addList.push({ name:t+sx, ws:e.ws }); sheetsBy[t+sx]=e.ws; } else missSide.push(t+sx); }); });
+    try{ w.out=coaAddSheets_(w.out, addList); }catch(e){ w.fail.push("S/N 시트 추가 실패: "+(e&&e.message||e)); addList=[]; }
+    var tot=plan.plans.reduce(function(a,q){ return a+q.cells.length; },0)-(w.kept||[]).length, miss=p.tails.filter(function(t){ return !fm.found[t]; });
+    var chk=fi.refs.length?coaFormulaCheck_(fi, p.tails, sheetsBy):null;
     var dfmt=function(ms){ if(!ms) return ""; var d=new Date(ms), z=function(n){ return String(n).padStart(2,"0"); }; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate())+" "+z(d.getHours())+":"+z(d.getMinutes()); };
-    var html='<div style="background:'+(miss.length?'#FFF6E5':'#ECFDF3')+';border:1px solid '+(miss.length?'#FEC84B':'#ABEFC6')+';border-radius:10px;padding:10px 14px;margin-bottom:10px;"><b>'+(tot?('✅ 측정치 '+tot+'칸 작성'):'⚠ 작성된 칸이 없습니다')+'</b> · 도번 '+E(draw)+' · S/N '+E((prefix?prefix+"-":"")+p.tails.join(","))+(miss.length?(' · <b style="color:#B42318;">S/N '+E(miss.join(", "))+' 측정 데이터 없음</b>'):'')+'</div>';
+    var warn=miss.length || missSide.length || (chk && chk.bad.length);
+    var fcnt=fi.refs.filter(function(r){ return r.slot>=0 && p.tails[r.slot]!==undefined && sheetsBy[p.tails[r.slot]+r.tail]; }).length;
+    var head=(tot?('✅ 측정치 '+tot+'칸 작성'):'')+(fcnt?((tot?' · ':'✅ ')+'수식 칸 '+fcnt+'개는 측정 시트로 계산'):'');
+    var html='<div style="background:'+(warn?'#FFF6E5':'#ECFDF3')+';border:1px solid '+(warn?'#FEC84B':'#ABEFC6')+';border-radius:10px;padding:10px 14px;margin-bottom:10px;"><b>'+(head||'⚠ 작성된 칸이 없습니다')+'</b> · 도번 '+E(draw)+' · S/N '+E((prefix?prefix+"-":"")+p.tails.join(","))+(miss.length?(' · <b style="color:#B42318;">S/N '+E(miss.join(", "))+' 측정 데이터 없음</b>'):'')+'</div>';
+    if(addList.length) html+='<div style="font-size:12.5px;color:#1E7A46;margin-bottom:6px;">📄 측정 데이터 시트 추가: '+E(addList.map(function(x){ return x.name; }).join(", "))+' (매크로 없이 양식 수식이 계산됩니다)</div>';
+    if(missSide.length) html+='<div style="font-size:12.5px;color:#B42318;font-weight:700;margin-bottom:6px;">⛔ 측정 시트 없음: '+E(missSide.join(", "))+' — 그 S/N의 해당 측정 파일(특기사항 상/하)을 찾지 못했습니다</div>';
+    if(chk && (chk.checked || chk.bad.length)){ html+=chk.bad.length?('<div style="background:#FEF3F2;border:1px solid #FDA29B;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#B42318;margin-bottom:6px;"><b>⛔ 측정번호 위치 불일치 '+chk.bad.length+'건</b> — 수식이 가리키는 칸의 No.가 성적서 번호와 다릅니다 (측정 프로그램이 바뀐 경우). 이 칸들은 확인하세요:<br>'+chk.bad.slice(0,15).map(E).join("<br>")+(chk.bad.length>15?"<br>…":"")+'</div>')
+                       :('<div style="font-size:12.5px;color:#1E7A46;margin-bottom:6px;">✔ 측정번호 위치 확인 '+chk.checked+'칸 모두 일치</div>'); }
     html+='<div style="font-size:12.5px;color:#475467;margin-bottom:8px;">도번 폴더: '+E(fm.dirs.map(function(d){ return d.path; }).join(" · "))+'</div>';
     html+='<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:8px;"><tr style="background:#F2F4F7;"><th style="padding:5px;border:1px solid #EAECF0;">S/N</th><th style="padding:5px;border:1px solid #EAECF0;">사용한 측정 파일</th><th style="padding:5px;border:1px solid #EAECF0;">저장일</th></tr>'
       +p.tails.map(function(t){ var f=fm.found[t];
+        var sl=f?Object.keys(f.sides||{}).filter(function(k){ return k; }):[];
         return '<tr><td style="padding:5px;border:1px solid #EAECF0;text-align:center;font-weight:700;">'+E(t)+'</td>'
-          +(f?('<td style="padding:5px;border:1px solid #EAECF0;">'+E(f.path)+(f.others?(' <span style="color:#B54708;">(같은 S/N 파일 '+f.others+'개 더 있음 → 최근 것 사용)</span>'):'')+'</td><td style="padding:5px;border:1px solid #EAECF0;white-space:nowrap;">'+E(dfmt(f.mt))+'</td>')
+          +(f?('<td style="padding:5px;border:1px solid #EAECF0;">'+(sl.length?sl.map(function(k){ return '<b>['+E(k)+']</b> '+E(f.sides[k].path); }).join("<br>"):E(f.path))+(f.others?(' <span style="color:#B54708;">(같은 S/N 파일 '+f.others+'개 더 있음 → 최근 것 사용)</span>'):'')+'</td><td style="padding:5px;border:1px solid #EAECF0;white-space:nowrap;">'+E(dfmt(f.mt))+'</td>')
              :('<td colspan="2" style="padding:5px;border:1px solid #EAECF0;color:#B42318;">⛔ '+E(fm.why[t]||"없음")+'</td>'))+'</tr>'; }).join("")+'</table>';
     plan.plans.forEach(function(q){
       if(q.bad && q.bad.length) html+='<div style="color:#B42318;font-size:12.5px;font-weight:700;margin-bottom:6px;">⛔ 도번·S/N 불일치로 비운 열: '+E(q.bad.join(" / "))+'</div>';
