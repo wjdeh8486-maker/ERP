@@ -25490,6 +25490,8 @@ function insSnFull_(field){
     var rng=tok.match(/^(?:(\w+)-)?(\d+)\s*~\s*(?:\w+-)?(\d+)$/);   // 범위 26185-1~5
     if(rng){ var pf=rng[1]||prefix; var a=Number(rng[2]), b=Number(rng[3]); if(pf) prefix=pf;
       if(isFinite(a)&&isFinite(b)&&b>=a&&(b-a)<10000){ for(var i=a;i<=b;i++) out.push(norm((pf?pf+"-":"")+i)); return; } }
+    var multi=tok.match(/^(\d{5})-(\d+(?:-\d+)+)$/);   // [추가] 26282-2-8 = 26282-2, 26282-8 (하이픈으로 이어 쓴 순번). 전에는 통째로 남고 로트가 안 바뀌어 뒤의 1,6,5가 앞 로트(26184)로 붙었음
+    if(multi){ prefix=multi[1]; multi[2].split("-").forEach(function(n){ out.push(norm(prefix+"-"+n)); }); return; }
     var full=tok.match(/^(\w+)-(\d+)$/);         // 완전형 26185-4 / 10768-4
     if(full){ prefix=full[1]; out.push(norm(tok)); return; }
     var only=tok.match(/^(\d+)$/);               // 순번만 3 → 앞 로트 이어받기 (10768이면 순번만)
@@ -25508,6 +25510,7 @@ function insSnSet_(field){
     if(/^[A-Fa-f][1-4]$/.test(tok) || /재고/.test(tok)) return;   // [수정] 재고 위치(D3 등)·'재고사용' 표시는 S/N 아님
     if(tok.indexOf("~")>=0){ var mm=tok.split("~"), a=Number(insSnTail_(mm[0])), b=Number(insSnTail_(mm[1]));
       if(isFinite(a)&&isFinite(b)&&b>=a&&(b-a)<10000){ for(var i=a;i<=b;i++) set[String(i)]=true; return; } }
+    var mt=tok.match(/^\d{5}-(\d+(?:-\d+)+)$/); if(mt){ mt[1].split("-").forEach(function(n){ set[String(Number(n))]=true; }); return; }   // [추가] 26282-2-8 = 2, 8
     var t=insSnTail_(tok); if(t) set[t]=true;
   });
   return set;
