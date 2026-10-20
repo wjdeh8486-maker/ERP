@@ -15945,6 +15945,12 @@ function ofRange_(){
     case "rng": return (__of.d1||__of.d2)?[__of.d1||"0000-00-00", __of.d2||"9999-12-31", "기간"]:null;
   } return null;
 }
+function ofMesPassed_(proc){
+  var p=String(proc||"").trim(); if(!p) return false;
+  if(/^세정납품/.test(p)) return true;
+  if(typeof isWaitTargetProcess==="function" && isWaitTargetProcess(p)) return true;
+  return /측정|포장|출하|TAP검사|검사/.test(p);
+}
 function ofLoadLog_(){
   if(__of.log || __of.logLoading) return; __of.logLoading=true;
   var apply=function(v){ if(v && v.e){ __of.log=v; return true; } return false; };
@@ -15954,20 +15960,26 @@ function ofLoadLog_(){
 function ofRow_(r){
   var st=(typeof computeProductStatus==="function")?computeProductStatus(r):"", idx=OF_ST2IDX[st]; if(idx===undefined) idx=1;
   var proc=""; try{ proc=(typeof getCurrentProcessDisp_==="function")?(getCurrentProcessDisp_(r.orderNo)||""):""; }catch(_){}
-  if(idx===1 && (!proc || /^대기/.test(proc))) idx=0;   // MES 작업 시작 전(대기) → 수주 단계
+  // [추가] 가공→수입 기준: 이 관리번호의 MES 공정이 수입검사 대상 공정(사상·E.P·CP·외주가공 종료·폴리싱 종료·종료)이나 그 뒤(측정·포장·검사)에 와야 넘어감
+  //   도번 단위 검사대기 수량이 있어도 이 관리번호 MES가 기준에 안 맞으면 가공에 둠 → MES 입력 누락·다른 관리번호로 생산한 건을 드러냄
+  //   (출고·납품완료는 이 관리번호의 실제 기록이라 그대로 · MES 기록이 아예 없는 건은 판단하지 않음)
+  var mesKnown=(typeof processMap!=="undefined" && processMap && Object.prototype.hasOwnProperty.call(processMap, r.orderNo)), mesHold=false;
+  if(mesKnown && idx>=2 && idx<=6 && !ofMesPassed_(proc)){ mesHold=true; idx=1; }
+  if(idx===1 && !mesHold && (!proc || /^대기/.test(proc))) idx=0;   // MES 작업 시작 전(대기) → 수주 단계
   var ev=(__of.log && __of.log.e && __of.log.e[r.orderNo])||[], last=ev.length?ev[ev.length-1]:null;
   var today=ofToday_(), due=String(r.dueDate||"").slice(0,10), dd=due?ofDays_(today, due):null;
   var od=__of.outIdx && __of.outIdx[String(r.orderNo||"").trim()], outD=od?Object.keys(od).sort().join(", "):"";   // 출고일 = 미리 만든 색인 (건마다 재고 전체를 훑으면 멈춤)
   var isSH=/SHOWER\s*HEAD/i.test(String(r.partName||"")) || st==="비젼";
-  return { r:r, st:st, idx:idx, mixed:st==="OK", proc:proc, ev:ev, last:last, due:due, dd:dd, late:(st!=="완료" && dd!==null && dd<0), outD:outD, isSH:isSH };
+  return { r:r, st:st, idx:idx, mesHold:mesHold, mixed:st==="OK" && !mesHold, proc:proc, ev:ev, last:last, due:due, dd:dd, late:(st!=="완료" && dd!==null && dd<0), risk:(st!=="완료" && dd!==null && dd>=0 && dd<=3 && idx<2), outD:outD, isSH:isSH };
 }
 function ofChip_(x, i){
   var S=OF_STAGES[i], cls="of-ch", sub="";
   var skip=(S.k==="vis" && !x.isSH);
-  if(x.st==="완료" || i<x.idx) cls+=" of-done"; else if(i===x.idx || (x.mixed && i>=2 && i<=5)) cls+=" of-cur"+(x.late?" of-late":""); else cls+=" of-next";
+  if(x.st==="완료" || i<x.idx) cls+=" of-done"; else if(i===x.idx || (x.mixed && i>=2 && i<=5)) cls+=" of-cur"+(x.late?" of-late":(x.risk?" of-risk":"")); else cls+=" of-next";
   if(skip && i!==x.idx) cls+=" of-skip";
   if(S.k==="order") sub=(x.r.orderDate?("발주 "+ofMD_(x.r.orderDate)):"")+(x.due?((x.r.orderDate?" · ":"")+"납기 "+ofMD_(x.due)):"");
   else if(S.k==="prod"){ sub=x.proc||(i<x.idx?"종료":"");
+    if(x.mesHold && i===x.idx){ cls+=" of-mes"; sub=(x.proc||"MES 기록 없음")+" · ⚠ MES 미진행 ("+({ "수입":"수입", "측정":"측정", "비젼":"비젼", "외관":"외관", "재고":"재고", "OK":"검사" }[x.st]||x.st)+" 대기 수량 있음)"; }
     if(x.last && i===x.idx) sub+=' <span class="of-since">'+ofMD_(x.last[0])+'~'+(function(){ var n=ofDays_(x.last[0], ofToday_()); return n!==null?(' '+n+'일'):''; })()+'</span>'; }
   else if(S.k==="out"){ var ods=x.outD?x.outD.split(", "):[]; sub=ods.length?("출고 "+ofMD_(ods[ods.length-1])+(ods.length>1?(" 외 "+(ods.length-1)+"회"):"")):""; }   // 분할 출고는 마지막 날짜 + 횟수
   else if(S.k==="done") sub=x.r.shipDate?("납품 "+ofMD_(x.r.shipDate)):"";
@@ -16023,6 +16035,8 @@ function ofRender_(){
       +'.of-ch.of-done{background:#ECFDF3;border-color:#ABEFC6;color:#067647;}.of-ch.of-done b::before{content:"✓ ";}'
       +'.of-ch.of-cur{background:#1D4ED8;border-color:#1D4ED8;color:#fff;box-shadow:0 2px 8px rgba(29,78,216,.35);}'
       +'.of-ch.of-cur.of-late{background:#C0392B;border-color:#C0392B;}'
+      +'.of-ch.of-cur.of-mes{background:#FFF4ED;border:2px dashed #EA580C;color:#9A3412;box-shadow:none;}.of-p .l .m{color:#EA580C;}'
+      +'.of-ch.of-cur.of-risk{background:#FACC15;border-color:#EAB308;color:#422006;box-shadow:0 2px 8px rgba(234,179,8,.4);}.of-row.risk{border-color:#EAB308;background:#FFFBEB;}.of-info .dd.r{color:#A16207;}.of-p .l .r{color:#A16207;}'
       +'.of-ch.of-skip{opacity:.45;border-style:dashed;}.of-since{display:inline-block;background:rgba(255,255,255,.25);border-radius:6px;padding:0 4px;margin-left:2px;}'
       +'.of-det{margin-top:8px;border-top:1px dashed #D0D5DD;padding-top:8px;}.of-note{font-size:12px;color:#667085;margin-top:4px;}'
       +'.of-tb{border-collapse:collapse;font-size:12.5px;}.of-tb th,.of-tb td{border:1px solid #98A2B3;padding:4px 10px;text-align:center;}.of-tb th{background:#1F2A44;color:#fff;}'
@@ -16033,7 +16047,7 @@ function ofRender_(){
       +'<div class="of-sub">관리번호별로 지금 어느 단계인지 보여줍니다 · 단계는 MAIN 제품상태 기준 · 가공 공정은 MES · 줄을 누르면 MES 공정 변경 이력</div></div><div class="of-sub" id="of-logst"></div></div>'
       +'<div class="of-pipe" id="of-pipe"></div>'
       +'<div class="of-tool"><input type="text" id="of-q" placeholder="관리번호 · PROJECT NO. · PO · 기존도번 · 품번 · 품명 (쉼표로 여러 개) → Enter 또는 검색"><button type="button" id="of-go" style="padding:8px 16px;border:0;border-radius:9px;background:#1F2A44;color:#fff;font-weight:700;cursor:pointer;">🔍 검색</button><button type="button" id="of-clr" style="padding:8px 12px;border:1.5px solid #D0D5DD;border-radius:9px;background:#fff;color:#475467;font-weight:700;cursor:pointer;">초기화</button><select id="of-cust"><option value="">전체 고객사</option></select>'
-      +'<label><input type="checkbox" id="of-late"> 납기 지연만</label><label><input type="checkbox" id="of-done"> 납품완료 포함</label></div>'
+      +'<label><input type="checkbox" id="of-late"> 납기 지연만</label><label title="도번 검사대기 수량은 있는데 이 관리번호 MES가 가공 단계인 건"><input type="checkbox" id="of-mes"> MES 확인 필요만</label><label><input type="checkbox" id="of-done"> 납품완료 포함</label></div>'
       +'<div class="of-tool"><b style="color:#475467;">📅 납기</b>'+[["","전체"],["tw","이번 주"],["nw","다음 주"],["tm","이번 달"],["upto","이번 주까지(지연 포함)"],["rng","기간 지정"]].map(function(o){ return '<button type="button" class="of-dr" data-dr="'+o[0]+'">'+o[1]+'</button>'; }).join("")
       +'<span id="of-rng" style="display:none;align-items:center;gap:4px;"><input type="date" id="of-d1"> ~ <input type="date" id="of-d2"></span><span id="of-drlbl" style="color:#1D4ED8;font-weight:700;"></span></div>'
       +'<div class="of-cnt" id="of-cnt"></div><div id="of-list"></div>';
@@ -16041,10 +16055,11 @@ function ofRender_(){
     var qIn=host.querySelector("#of-q"), go=function(){ __of.q=qIn.value.trim().toLowerCase(); __of.limit=100; ofRender_(); };
     qIn.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); go(); } });
     host.querySelector("#of-go").addEventListener("click", go);
-    host.querySelector("#of-clr").addEventListener("click", function(){ qIn.value=""; __of.q=""; __of.stage=-1; __of.cust=""; __of.late=false; __of.dr=""; __of.d1=""; __of.d2=""; __of.limit=100;
+    host.querySelector("#of-clr").addEventListener("click", function(){ qIn.value=""; __of.q=""; __of.stage=-1; __of.cust=""; __of.late=false; __of.mes=false; var mcb=host.querySelector("#of-mes"); if(mcb) mcb.checked=false; __of.dr=""; __of.d1=""; __of.d2=""; __of.limit=100;
       ["of-d1","of-d2"].forEach(function(id){ var d=host.querySelector("#"+id); if(d) d.value=""; });
       var c=host.querySelector("#of-cust"); if(c) c.value=""; var l=host.querySelector("#of-late"); if(l) l.checked=false; ofRender_(); });
     host.querySelector("#of-cust").addEventListener("change", function(e){ __of.cust=e.target.value; __of.limit=100; ofRender_(); });
+    host.querySelector("#of-mes").addEventListener("change", function(e){ __of.mes=e.target.checked; __of.limit=100; ofRender_(); });
     host.querySelector("#of-late").addEventListener("change", function(e){ __of.late=e.target.checked; __of.limit=100; ofRender_(); });
     host.querySelector("#of-done").addEventListener("change", function(e){ __of.done=e.target.checked; __of.limit=100; ofRender_(); });
     host.addEventListener("click", function(e){
@@ -16071,24 +16086,24 @@ function ofRender_(){
   var RG=ofRange_();
   host.querySelectorAll(".of-dr").forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-dr")===__of.dr); });
   var rgEl=host.querySelector("#of-rng"); if(rgEl) rgEl.style.display=__of.dr==="rng"?"inline-flex":"none";
-  var dl=host.querySelector("#of-drlbl"); if(dl) dl.textContent=RG?((RG[0]>"0000"?ofMD_(RG[0]):"처음")+" ~ "+(RG[1]<"9999"?ofMD_(RG[1]):"끝")):"";
+  var dl=host.querySelector("#of-drlbl"); if(dl) dl.textContent=RG?((RG[0]>"0000-00-00"?ofMD_(RG[0]):"지난 납기")+" ~ "+(RG[1]<"9999"?ofMD_(RG[1]):"끝")):"";
   var base=rows.filter(function(x){ if(__of.cust && x.cust!==__of.cust) return false;
     if(RG){ if(!x.due || x.due<RG[0] || x.due>RG[1]) return false; }
     if(__of.q){ var t=x.txt;   // 관리번호·PROJECT NO.(vendor)·PO·도번·품번·품명·외주발주 / 쉼표=또는, 슬래시=그리고
       if(!__of.q.split(",").some(function(g){ g=g.trim(); return g && g.split("/").every(function(w){ w=w.trim(); return !w || t.indexOf(w)>=0; }); })) return false; } return true; });
   // 단계별 건수 (납품완료는 최근 30일)
-  var cnt=OF_STAGES.map(function(){ return { n:0, l:0 }; }), today=ofToday_();
+  var cnt=OF_STAGES.map(function(){ return { n:0, l:0, r:0, m:0 }; }), today=ofToday_();
   base.forEach(function(x){ if(x.st==="완료"){ var sd=String(x.r.shipDate||"").slice(0,10), g=sd?ofDays_(sd, today):null; if(g!==null && g<=30) cnt[8].n++; return; }
-    cnt[x.idx].n++; if(x.late) cnt[x.idx].l++; });
-  host.querySelector("#of-pipe").innerHTML=OF_STAGES.map(function(S,i){ return '<div class="of-p'+(__of.stage===i?' on':'')+'" data-i="'+i+'"><b>'+ofE_(S.t)+'</b><div class="n">'+cnt[i].n+'</div><div class="l">'+(i===8?'<span style="color:#667085;font-weight:400;">최근 30일</span>':(cnt[i].l?('지연 '+cnt[i].l):''))+'</div></div>'; }).join("");
+    cnt[x.idx].n++; if(x.late) cnt[x.idx].l++; else if(x.risk) cnt[x.idx].r++; if(x.mesHold) cnt[x.idx].m++; });
+  host.querySelector("#of-pipe").innerHTML=OF_STAGES.map(function(S,i){ return '<div class="of-p'+(__of.stage===i?' on':'')+'" data-i="'+i+'"><b>'+ofE_(S.t)+'</b><div class="n">'+cnt[i].n+'</div><div class="l">'+(i===8?'<span style="color:#667085;font-weight:400;">최근 30일</span>':((cnt[i].l?('지연 '+cnt[i].l):'')+(cnt[i].r?((cnt[i].l?' · ':'')+'<span class="r">임박 '+cnt[i].r+'</span>'):'')+(cnt[i].m?(((cnt[i].l||cnt[i].r)?' · ':'')+'<span class="m">MES 확인 '+cnt[i].m+'</span>'):'')))+'</div></div>'; }).join("");
   var list=base.filter(function(x){ if(__of.stage>=0){ if(__of.stage===8){ if(x.st!=="완료") return false; } else if(x.idx!==__of.stage || x.st==="완료") return false; }
       else if(!__of.done && x.st==="완료") return false;
-      if(__of.late && !x.late) return false; return true; });
+      if(__of.late && !x.late) return false; if(__of.mes && !x.mesHold) return false; return true; });
   list.sort(function(a,b){ var da=a.due||"9999", db=b.due||"9999"; return da<db?-1:da>db?1:String(a.r.orderNo).localeCompare(String(b.r.orderNo), undefined, { numeric:true }); });
   if(__of.stage===8) list.reverse();
   var lg=__of.log, ls=host.querySelector("#of-logst"); if(ls) ls.innerHTML=lg?('MES 공정 기록: '+ofE_(lg.since||"?")+'부터 · 마지막 확인 '+ofE_(lg.day||"?")):(__of.logLoading?'MES 공정 기록 불러오는 중…':'MES 공정 기록 없음 (업로드 PC 기록 전)');
   // [성능] 검색 우선: 검색·단계·고객사·지연 중 하나라도 고르기 전에는 목록을 그리지 않음 (단계별 건수만)
-  if(!(__of.q || __of.stage>=0 || __of.late || __of.cust || RG)){
+  if(!(__of.q || __of.stage>=0 || __of.late || __of.mes || __of.cust || RG)){
     var lateN=base.filter(function(x){ return x.late; }).length;
     host.querySelector("#of-cnt").textContent="진행 중 "+base.filter(function(x){ return x.st!=="완료"; }).length+"건"+(__of.buildMs!=null?(" · 계산 "+__of.buildMs+"ms"):"");
     host.querySelector("#of-list").innerHTML='<div class="of-note" style="padding:28px;text-align:center;font-size:13.5px;">위의 <b>단계 상자</b>를 누르거나 <b>검색</b>하면 목록이 나옵니다.'
@@ -16097,8 +16112,8 @@ function ofRender_(){
     return; }
   host.querySelector("#of-cnt").textContent=(RG?("납기 "+RG[2]+" · "):"")+list.length+"건"+(__of.stage>=0?(" · "+OF_STAGES[__of.stage].t+" 단계"):"")+(list.length>__of.limit?(" (앞 "+__of.limit+"건 표시)"):"")+" · 납기 빠른 순";
   host.querySelector("#of-list").innerHTML=list.slice(0, __of.limit).map(function(x){ var r=x.r, k=ofE_(r.orderNo);
-      var dd=x.dd===null?'':(x.st==="완료"?'':('<span class="dd'+(x.late?' l':'')+'">'+(x.dd<0?('D+'+(-x.dd)+' 지연'):(x.dd===0?'D-day':('D-'+x.dd)))+'</span>'));
-      return '<div class="of-row'+(x.late?' late':'')+'"><div class="of-info" data-k="'+k+'"><span class="on">'+k+'</span><span>'+ofE_(r.customer||"")+'</span><span>'+(r.oldDrawingNo&&typeof dwgLink==="function"?dwgLink(r.oldDrawingNo):ofE_(r.oldDrawingNo||r.partNo||""))+'</span><span>'+ofE_(r.partName||"")+'</span><span>수량 <b>'+ofE_(r.qty)+'</b></span>'
+      var dd=x.dd===null?'':(x.st==="완료"?'':('<span class="dd'+(x.late?' l':(x.risk?' r':''))+'">'+(x.risk?'⚠ 수입검사 전 · ':'')+(x.dd<0?('D+'+(-x.dd)+' 지연'):(x.dd===0?'D-day':('D-'+x.dd)))+'</span>'));
+      return '<div class="of-row'+(x.late?' late':(x.risk?' risk':''))+'"><div class="of-info" data-k="'+k+'"><span class="on">'+k+'</span><span>'+ofE_(r.customer||"")+'</span><span>'+(r.oldDrawingNo&&typeof dwgLink==="function"?dwgLink(r.oldDrawingNo):ofE_(r.oldDrawingNo||r.partNo||""))+'</span><span>'+ofE_(r.partName||"")+'</span><span>수량 <b>'+ofE_(r.qty)+'</b></span>'
         +(r.vendor?'<span>PJT '+ofE_(r.vendor)+'</span>':'')+(r.prpo?'<span>PO '+ofE_(r.prpo)+'</span>':'')+dd+'<span class="tg">'+(__of.open[r.orderNo]?'▲ 닫기':'▼ 공정 이력')+'</span></div>'
         +'<div class="of-chain">'+OF_STAGES.map(function(S,i){ return ofChip_(x,i); }).join("")+'</div>'+(__of.open[r.orderNo]?ofDetail_(x):'')+'</div>'; }).join("")
     +(list.length>__of.limit?'<button type="button" class="of-more">더 보기 ('+(list.length-__of.limit)+'건 남음)</button>':'')
