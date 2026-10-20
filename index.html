@@ -14949,15 +14949,31 @@ function coaDrawKey_(v){ return String(v==null?"":v).toUpperCase().replace(/[^A-
 function coaDirIsDraw_(name, draw){ var n=String(name||"").toUpperCase().trim(), d=String(draw||"").toUpperCase().trim(); if(!d) return false;
   if(coaDrawKey_(n)===coaDrawKey_(d)) return true;
   return n.indexOf(d)===0 && /^[\s_(\[.]/.test(n.slice(d.length)); }   // "M200-005-050 (REV1)" 같은 폴더도 인정
-// 측정이력 폴더에서 도번 폴더 찾기: 바로 아래 → (없으면) 고객 폴더 아래 한 단계
-async function coaFindDrawDirs_(root, draw){
-  var lv1=(await coaDirList_(root)).filter(function(e){ return e.kind==="directory"; });
-  var hits=lv1.filter(function(e){ return coaDirIsDraw_(e.name, draw); }).map(function(e){ return { h:e, path:e.name }; });
-  if(hits.length) return hits;
-  // 고객 폴더(유진테크·유진어스처럼 이름에 숫자 없는 폴더)는 항상 한 단계 더 찾음. 폴더가 적으면(40개 이하) 전부 한 단계 더
-  var subs=lv1.filter(function(e){ return lv1.length<=40 || !/\d/.test(e.name); });
-  for(const c of subs){ var lv2=(await coaDirList_(c)).filter(function(e){ return e.kind==="directory"; });
-    lv2.forEach(function(e){ if(coaDirIsDraw_(e.name, draw)) hits.push({ h:e, path:c.name+"\\"+e.name }); }); }
+// 측정이력 폴더에서 도번 폴더 찾기 — 최대 5단계까지 내려가되, 다른 도번 폴더는 건너뜀
+//   더 내려가는 폴더: 이름에 숫자 없는 폴더(유진테크·유진어스 등) / 연도(2026…) / 도번 앞자리 묶음(M200 → M200-005-050) / 폴더가 적은 단계(40개 이하)
+//   도번 폴더가 따로 없고 파일 이름에 도번이 들어간 경우도 찾음(fileHits). 못 찾으면 본 폴더 목록을 돌려줘 화면에 표시
+async function coaFindDrawDirs_(root, draw, diag){
+  var key=coaDrawKey_(draw), hits=[], fileHits=[], seen=0;
+  var looksDraw=function(n){ return /[A-Z]?\d{3}-\d{3}|\d{5}-\d{2}|\b1\d{8}\b|\d{6,}/i.test(n); };
+  var walk=async function(dir, path, depth){
+    if(depth>5 || seen>20000) return;
+    var ents; try{ ents=await coaDirList_(dir); }catch(_){ return; } seen+=ents.length;
+    var ds=ents.filter(function(e){ return e.kind==="directory"; });
+    if(diag && depth<=2) diag.push((path||"(연결 폴더)")+" → "+(ds.length?ds.slice(0,12).map(function(e){ return e.name; }).join(", ")+(ds.length>12?(" … 외 "+(ds.length-12)+"개"):""):"(하위 폴더 없음)"));
+    ents.forEach(function(e){ if(e.kind==="file" && coaDrawKey_(e.name).indexOf(key)>=0 && /\.(xlsx|xlsm|xls)$/i.test(e.name)) fileHits.push({ dir:dir, path:path }); });
+    var found=ds.filter(function(e){ return coaDirIsDraw_(e.name, draw); });
+    found.forEach(function(e){ hits.push({ h:e, path:(path?path+"\\":"")+e.name }); });
+    if(found.length) return;
+    // 도번 앞부분과 맞는 폴더(M → M200 → M200-005-050)부터 먼저, 그다음 고객·분류 폴더
+    var pri=function(e){ var k=coaDrawKey_(e.name); return (k && key.indexOf(k)===0)?0:(!/\d/.test(e.name)?1:2); };
+    ds=ds.slice().sort(function(a,b){ return pri(a)-pri(b); });
+    for(const e of ds){ var k=coaDrawKey_(e.name);
+      var go=!/\d/.test(e.name) || /^(19|20)\d{2}/.test(e.name) || (k && key.indexOf(k)===0) || (ds.length<=40 && !looksDraw(e.name));
+      if(go) await walk(e, (path?path+"\\":"")+e.name, depth+1);
+      if(hits.length) return; }
+  };
+  await walk(root, "", 0);
+  if(!hits.length && fileHits.length){ var u={}; fileHits.forEach(function(f){ if(!u[f.path]){ u[f.path]=1; hits.push({ h:f.dir, path:f.path||"(연결 폴더)" }); } }); }
   return hits;
 }
 async function coaCollectXls_(dir, path, depth, acc){
@@ -15041,8 +15057,8 @@ function coaTplPrepare_(buf, info, prefix, tails){
 }
 // 측정이력 폴더에서 S/N별 측정 파일 찾기 (도번·S/N 확인)
 async function coaFindMeas_(root, draw, tails, log){
-  var dirs=await coaFindDrawDirs_(root, draw);
-  if(!dirs.length) return { dirs:[], found:{}, why:{} };
+  var diag=[], dirs=await coaFindDrawDirs_(root, draw, diag);
+  if(!dirs.length) return { dirs:[], found:{}, why:{}, diag:diag };
   var files=[]; for(const d of dirs) await coaCollectXls_(d.h, d.path, 0, files);
   for(const f of files){ try{ f.file=await f.h.getFile(); f.mt=f.file.lastModified||0; }catch(_){ f.mt=0; } }
   var found={}, why={};
@@ -15099,7 +15115,9 @@ async function coaGenRun_(ov){
     coaGenDirLabel_(ov);
     res.innerHTML='<div style="color:#5A6478;">🔎 측정이력에서 '+E(draw)+' · S/N '+E(p.tails.join(", "))+' 찾는 중… (처음엔 폴더 목록을 읽느라 조금 걸릴 수 있습니다)</div>';
     var fm=await coaFindMeas_(__coaMeasDir, draw, p.tails);
-    if(!fm.dirs.length) return fail("측정이력 폴더("+__coaMeasDir.name+")에서 도번 폴더 '"+draw+"'를 찾지 못했습니다.");
+    if(!fm.dirs.length){ res.innerHTML='<div style="color:#B42318;font-weight:700;">⚠ 측정이력 폴더('+E(__coaMeasDir.name)+')에서 도번 \''+E(draw)+'\' 폴더·파일을 찾지 못했습니다.</div>'
+      +'<div style="font-size:12.5px;color:#475467;margin-top:8px;">살펴본 폴더 (이 화면을 캡처해 주시면 구조에 맞게 고치겠습니다):</div>'
+      +'<div style="font-size:12px;background:#F9FAFB;border:1px solid #EAECF0;border-radius:8px;padding:8px 10px;margin-top:4px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all;">'+E((fm.diag||[]).join("\n")||"(폴더 목록을 읽지 못함)")+'</div>'; return; }
     var prefix=p.prefix || ((info.snCell&&String(info.snCell.v).match(/^(\d{5})-/))||[])[1] || "";
     var newBuf=coaTplPrepare_(tpl.buf, info, prefix, p.tails);
     var extras=p.tails.filter(function(t){ return fm.found[t]; }).map(function(t){ return { name:fm.found[t].name, buf:fm.found[t].buf }; });
