@@ -1946,6 +1946,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
       <div class="qnav-panel">
         <div class="nav-item nav-sub" data-view="main" title="MAIN 대시보드 (주문·납기 종합 현황)"><span class="qnav-i">🏠</span><span class="qnav-t"><b>MAIN 대시보드</b><small>주문·납기 종합 현황</small></span></div>
         <div class="nav-item nav-sub" data-view="qdash" title="품질 대시보드 (이번 주까지 물량의 검사·출하검사·알림)"><span class="qnav-i">📈</span><span class="qnav-t"><b>품질 대시보드</b><small>검사·출하검사·알림 한눈에</small></span></div>
+        <div class="nav-item nav-sub" data-view="orderflow" title="수주~출하 흐름 (관리번호별 단계·MES 공정 이력)"><span class="qnav-i">🔀</span><span class="qnav-t"><b>수주~출하 흐름</b><small>관리번호별 단계·공정 이력</small></span></div>
       </div></div>
     <div class="qnav-cat" data-cat="dash"><button type="button" class="qnav-btn"><span class="qnav-ico">📊</span>현황<span class="qnav-caret">▾</span></button>
       <div class="qnav-panel">
@@ -2339,6 +2340,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
     </div>
     <!-- ===================== 📊 품질 대시보드 VIEW (내용은 qdRender_()가 그림) ===================== -->
     <div class="view" id="view-qdash"><div id="qd-root"></div></div>
+    <div class="view" id="view-orderflow"><div id="of-root"></div></div>
     <!-- ===================== ⭐ 특별납기 관리 VIEW (내용은 sdRender_()가 그림) ===================== -->
     <div class="view" id="view-specdue"><div id="sd-root"></div></div>
     <div class="view" id="view-specduelog"><div id="sdl-root"></div></div>
@@ -4062,7 +4064,7 @@ function qxLayout_(){
       return false; };
     var views=[].slice.call(document.querySelectorAll(".main-area > .view[id^='view-']"));
     views.forEach(function(view){
-      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="specdue" || v==="specduelog" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
+      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="specdue" || v==="specduelog" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
       var inf=info(v) || (v==="history"?info("management"):null);
       var tb=document.getElementById("topbar-"+v);
       if(tb){
@@ -5125,6 +5127,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
       schedRender();
     }
     if(target==="qdash" && typeof qdRender_==="function"){ qdRender_(); }   // 품질 대시보드
+    if(target==="orderflow" && typeof ofRender_==="function"){ ofRender_(); }   // [추가] 수주~출하 흐름
     if(target==="specdue" && typeof sdRender_==="function"){ sdRender_(); }   // 특별납기 관리
     if(target==="specduelog" && typeof sdlRender_==="function"){ sdlRender_(); }   // 특별납기 변경·근거 이력
     if(target==="duechg" && typeof dclRender_==="function"){ dclRender_(); }   // 최종납기 변경 이력
@@ -5370,6 +5373,7 @@ function refreshActiveViewAfterData(){
     else if(id === "view-overdue" && typeof overdueApplySearch === "function"){ overdueApplySearch(); }
     else if(id === "view-main" && typeof mainInitialRender === "function" && mainData){ mainInitialRender(mainData); }
     else if(id === "view-qdash" && typeof qdRender_ === "function"){ qdRender_(); }
+    else if(id === "view-orderflow" && typeof ofRender_ === "function"){ ofRender_(); }
     else if(id === "view-specdue" && typeof sdRender_ === "function"){ sdRender_(); }
   }catch(_){ }
 }
@@ -15914,6 +15918,135 @@ function qmsRenderMorning_(force, key){
     var cb=document.getElementById("qms-morning-close"); if(cb) cb.addEventListener("click",function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); });
     ov.addEventListener("click",function(e){ if(e.target===ov && ov.parentNode) ov.parentNode.removeChild(ov); });
   }catch(e){}
+}
+/* ==================== 🔀 수주~출하 흐름 (MAIN 소메뉴) ====================
+   관리번호 한 건을 수주 → 가공(MES) → 수입·측정·비젼·외관 검사 → 재고 → 출고 → 납품완료 흐름으로 표시
+   · 단계 = MAIN 제품상태(computeProductStatus)와 같은 기준 · 가공 공정 = MES 현재진행공정
+   · 공정 변경 날짜 = 업로드 PC가 매일 MES 파일을 비교해 쌓은 기록(qShare "mesProcLog") — 기록 시작일 이전은 없음 */
+var OF_STAGES=[
+  { k:"order", t:"수주·작업대기" }, { k:"prod", t:"가공(MES)" }, { k:"inc", t:"수입검사" }, { k:"meas", t:"측정" },
+  { k:"vis", t:"비젼" }, { k:"clean", t:"외관(크린룸)" }, { k:"stock", t:"재고" }, { k:"out", t:"출고" }, { k:"done", t:"납품완료" } ];
+var OF_ST2IDX={ "생산":1, "수입":2, "측정":3, "비젼":4, "외관":5, "재고":6, "출고":7, "완료":8, "OK":2 };
+var __of={ q:"", cust:"", stage:-1, late:false, done:false, limit:200, open:{}, log:null, logLoading:false };
+function ofE_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function ofToday_(){ var d=new Date(), z=function(n){ return String(n).padStart(2,"0"); }; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
+function ofDays_(a, b){ var x=Date.parse(a), y=Date.parse(b); return (isNaN(x)||isNaN(y))?null:Math.round((y-x)/864e5); }
+function ofMD_(d){ d=String(d||""); return /^\d{4}-\d{2}-\d{2}/.test(d)?(Number(d.slice(5,7))+"/"+Number(d.slice(8,10))):d; }
+function ofLoadLog_(){
+  if(__of.log || __of.logLoading) return; __of.logLoading=true;
+  var apply=function(v){ if(v && v.e){ __of.log=v; return true; } return false; };
+  try{ if(typeof idbGet==="function") idbGet("mesProcLog").then(function(v){ if(!__of.log && apply(v)) ofRender_(); }).catch(function(){}); }catch(_){}
+  try{ if(typeof qShareLoad_==="function") qShareLoad_("mesProcLog", function(sv){ __of.logLoading=false; if(apply(sv)){ try{ if(typeof idbSet==="function") idbSet("mesProcLog", sv); }catch(_){} ofRender_(); } }); else __of.logLoading=false; }catch(_){ __of.logLoading=false; }
+}
+function ofRow_(r){
+  var st=(typeof computeProductStatus==="function")?computeProductStatus(r):"", idx=OF_ST2IDX[st]; if(idx===undefined) idx=1;
+  var proc=""; try{ proc=(typeof getCurrentProcessDisp_==="function")?(getCurrentProcessDisp_(r.orderNo)||""):""; }catch(_){}
+  if(idx===1 && (!proc || /^대기/.test(proc))) idx=0;   // MES 작업 시작 전(대기) → 수주 단계
+  var ev=(__of.log && __of.log.e && __of.log.e[r.orderNo])||[], last=ev.length?ev[ev.length-1]:null;
+  var today=ofToday_(), due=String(r.dueDate||"").slice(0,10), dd=due?ofDays_(today, due):null;
+  var outD=""; try{ outD=(typeof mainCustOutDate_==="function")?mainCustOutDate_(r):""; }catch(_){}
+  var isSH=/SHOWER\s*HEAD/i.test(String(r.partName||"")) || st==="비젼";
+  return { r:r, st:st, idx:idx, mixed:st==="OK", proc:proc, ev:ev, last:last, due:due, dd:dd, late:(st!=="완료" && dd!==null && dd<0), outD:outD, isSH:isSH };
+}
+function ofChip_(x, i){
+  var S=OF_STAGES[i], cls="of-ch", sub="";
+  var skip=(S.k==="vis" && !x.isSH);
+  if(x.st==="완료" || i<x.idx) cls+=" of-done"; else if(i===x.idx || (x.mixed && i>=2 && i<=5)) cls+=" of-cur"+(x.late?" of-late":""); else cls+=" of-next";
+  if(skip && i!==x.idx) cls+=" of-skip";
+  if(S.k==="order") sub=(x.r.orderDate?("발주 "+ofMD_(x.r.orderDate)):"")+(x.due?((x.r.orderDate?" · ":"")+"납기 "+ofMD_(x.due)):"");
+  else if(S.k==="prod"){ sub=x.proc||(i<x.idx?"종료":"");
+    if(x.last && i===x.idx) sub+=' <span class="of-since">'+ofMD_(x.last[0])+'~'+(function(){ var n=ofDays_(x.last[0], ofToday_()); return n!==null?(' '+n+'일'):''; })()+'</span>'; }
+  else if(S.k==="out") sub=x.outD?("출고 "+x.outD.split(", ").map(ofMD_).join(", ")):"";
+  else if(S.k==="done") sub=x.r.shipDate?("납품 "+ofMD_(x.r.shipDate)):"";
+  else if(skip) sub="해당 없음";
+  return '<div class="'+cls+'"><b>'+ofE_(S.t)+'</b>'+(sub?'<span>'+(S.k==="prod"?sub.replace(/^([^<]*)/, function(m){ return ofE_(m); }):ofE_(sub))+'</span>':'')+'</div>';
+}
+function ofDetail_(x){
+  var lg=__of.log, h='';
+  if(!lg) h='<div class="of-note">MES 공정 기록을 불러오지 못했습니다 (업로드 PC에서 기록이 아직 올라오지 않았을 수 있음)</div>';
+  else if(!x.ev.length) h='<div class="of-note">기록 시작('+ofE_(lg.since||"?")+') 이후 공정 변경이 없습니다. 현재: '+ofE_(x.proc||"-")+'</div>';
+  else h='<table class="of-tb"><thead><tr><th>확인일</th><th>이전 공정</th><th></th><th>바뀐 공정</th><th>MES 상태</th></tr></thead><tbody>'
+    +x.ev.map(function(e){ return '<tr><td>'+ofE_(e[0])+(e[3]&&e[3]!==e[0]?('<small> ('+ofE_(ofMD_(e[3]))+' 이후)</small>'):'')+'</td><td>'+ofE_(e[4]||"")+'</td><td>→</td><td><b>'+ofE_(e[1]||"-")+'</b></td><td>'+ofE_(e[2]||"")+'</td></tr>'; }).join("")+'</tbody></table>'
+    +'<div class="of-note">날짜는 MES 파일을 내려받은 날 기준입니다 (하루 1번 → 그 전날 내려받기 이후 언젠가 바뀜). 기록 시작 '+ofE_(lg.since||"?")+'</div>';
+  return '<div class="of-det">'+h+'</div>';
+}
+function ofRender_(){
+  var host=document.getElementById("of-root"); if(!host) return;
+  ofLoadLog_();
+  if(!host.__built){ host.__built=true;
+    if(!document.getElementById("of-style")){ var css=document.createElement("style"); css.id="of-style"; css.textContent=
+      '#of-root{padding:18px 20px 40px;color:#1F2A44;}'
+      +'.of-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px;}'
+      +'.of-crumb{font-size:12px;color:#667085;}.of-title{font-size:24px;font-weight:800;margin-top:2px;}.of-sub{font-size:12.5px;color:#667085;margin-top:3px;}'
+      +'.of-pipe{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:6px;margin-bottom:14px;}'
+      +'.of-p{background:#fff;border:1.5px solid #D0D5DD;border-radius:10px;padding:10px 6px;text-align:center;cursor:pointer;position:relative;}'
+      +'.of-p:not(:last-child)::after{content:"›";position:absolute;right:-8px;top:50%;transform:translateY(-50%);color:#98A2B3;font-weight:800;}'
+      +'.of-p b{display:block;font-size:12.5px;}.of-p .n{font-size:22px;font-weight:800;color:#1D4ED8;line-height:1.25;}.of-p .l{font-size:11.5px;color:#C0392B;font-weight:700;min-height:15px;}'
+      +'.of-p.on{border-color:#1D4ED8;background:#EFF4FF;box-shadow:0 0 0 2px #C7D7FE;}'
+      +'.of-tool{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:13px;}'
+      +'.of-tool input[type=text]{flex:1;min-width:220px;padding:8px 12px;border:1.5px solid #D0D5DD;border-radius:9px;font-size:13.5px;}'
+      +'.of-tool select{padding:8px 10px;border:1.5px solid #D0D5DD;border-radius:9px;font-size:13px;}.of-tool label{display:flex;align-items:center;gap:4px;cursor:pointer;}'
+      +'.of-cnt{font-size:12.5px;color:#475467;margin-bottom:8px;}'
+      +'.of-row{background:#fff;border:1.5px solid #D0D5DD;border-radius:12px;padding:10px 12px;margin-bottom:8px;}'
+      +'.of-row.late{border-color:#F04438;}'
+      +'.of-info{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13px;margin-bottom:8px;cursor:pointer;}'
+      +'.of-info .on{font-weight:800;font-size:14.5px;}.of-info .dd{font-weight:800;}.of-info .dd.l{color:#C0392B;}.of-info .tg{margin-left:auto;color:#667085;font-size:12px;}'
+      +'.of-chain{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:4px;}'
+      +'.of-ch{border-radius:8px;padding:6px 4px;text-align:center;font-size:11.5px;border:1.5px solid #E4E7EC;background:#F9FAFB;color:#98A2B3;min-height:44px;display:flex;flex-direction:column;justify-content:center;}'
+      +'.of-ch b{font-size:12px;}.of-ch span{display:block;font-size:11px;margin-top:2px;word-break:keep-all;}'
+      +'.of-ch.of-done{background:#ECFDF3;border-color:#ABEFC6;color:#067647;}.of-ch.of-done b::before{content:"✓ ";}'
+      +'.of-ch.of-cur{background:#1D4ED8;border-color:#1D4ED8;color:#fff;box-shadow:0 2px 8px rgba(29,78,216,.35);}'
+      +'.of-ch.of-cur.of-late{background:#C0392B;border-color:#C0392B;}'
+      +'.of-ch.of-skip{opacity:.45;border-style:dashed;}.of-since{display:inline-block;background:rgba(255,255,255,.25);border-radius:6px;padding:0 4px;margin-left:2px;}'
+      +'.of-det{margin-top:8px;border-top:1px dashed #D0D5DD;padding-top:8px;}.of-note{font-size:12px;color:#667085;margin-top:4px;}'
+      +'.of-tb{border-collapse:collapse;font-size:12.5px;}.of-tb th,.of-tb td{border:1px solid #98A2B3;padding:4px 10px;text-align:center;}.of-tb th{background:#1F2A44;color:#fff;}'
+      +'.of-more{display:block;margin:10px auto;padding:9px 20px;border:1.5px solid #1D4ED8;background:#fff;color:#1D4ED8;border-radius:9px;font-weight:700;cursor:pointer;}'
+      +'@media (max-width:900px){.of-pipe,.of-chain{grid-template-columns:repeat(3,minmax(0,1fr));}.of-p:not(:last-child)::after{display:none;}}';
+      document.head.appendChild(css); }
+    host.innerHTML='<div class="of-head"><div><div class="of-crumb">MAIN › 수주~출하 흐름</div><div class="of-title">🔀 수주~출하 흐름</div>'
+      +'<div class="of-sub">관리번호별로 지금 어느 단계인지 보여줍니다 · 단계는 MAIN 제품상태 기준 · 가공 공정은 MES · 줄을 누르면 MES 공정 변경 이력</div></div><div class="of-sub" id="of-logst"></div></div>'
+      +'<div class="of-pipe" id="of-pipe"></div>'
+      +'<div class="of-tool"><input type="text" id="of-q" placeholder="관리번호 · PO · 기존도번 · 품번 · 품명 검색"><select id="of-cust"><option value="">전체 고객사</option></select>'
+      +'<label><input type="checkbox" id="of-late"> 납기 지연만</label><label><input type="checkbox" id="of-done"> 납품완료 포함</label></div>'
+      +'<div class="of-cnt" id="of-cnt"></div><div id="of-list"></div>';
+    var tmr=null;
+    host.querySelector("#of-q").addEventListener("input", function(e){ clearTimeout(tmr); tmr=setTimeout(function(){ __of.q=e.target.value.trim().toLowerCase(); __of.limit=200; ofRender_(); }, 200); });
+    host.querySelector("#of-cust").addEventListener("change", function(e){ __of.cust=e.target.value; __of.limit=200; ofRender_(); });
+    host.querySelector("#of-late").addEventListener("change", function(e){ __of.late=e.target.checked; __of.limit=200; ofRender_(); });
+    host.querySelector("#of-done").addEventListener("change", function(e){ __of.done=e.target.checked; __of.limit=200; ofRender_(); });
+    host.addEventListener("click", function(e){
+      var p=e.target.closest(".of-p"); if(p){ var i=Number(p.getAttribute("data-i")); __of.stage=(__of.stage===i)?-1:i; __of.limit=200; ofRender_(); return; }
+      var inf=e.target.closest(".of-info"); if(inf){ var k=inf.getAttribute("data-k"); __of.open[k]=!__of.open[k]; ofRender_(); return; }
+      if(e.target.closest(".of-more")){ __of.limit+=200; ofRender_(); } });
+  }
+  var data=(typeof mainData!=="undefined" && Array.isArray(mainData))?mainData:[];
+  if(!data.length){ host.querySelector("#of-list").innerHTML='<div class="of-note" style="padding:30px;text-align:center;">MAIN 데이터를 불러오는 중입니다…</div>'; return; }
+  try{ if(typeof mainStatusMapDirty!=="undefined" && mainStatusMapDirty && typeof computeAllStatuses==="function"){ mainStatusMap=computeAllStatuses(mainData); mainStatusMapDirty=false; } }catch(_){}
+  var rows=data.filter(function(r){ return (Number(r.qty)||0)>0 && (typeof mainHasPRPO!=="function" || mainHasPRPO(r)); }).map(ofRow_);
+  // 고객사 목록
+  var cs=host.querySelector("#of-cust"); if(cs && cs.options.length<=1){ var cu={}; rows.forEach(function(x){ var c=String(x.r.customer||"").trim(); if(c) cu[c]=(cu[c]||0)+1; });
+    Object.keys(cu).sort(function(a,b){ return cu[b]-cu[a]; }).forEach(function(c){ var o=document.createElement("option"); o.value=c; o.textContent=c+" ("+cu[c]+")"; cs.appendChild(o); }); }
+  var base=rows.filter(function(x){ if(__of.cust && String(x.r.customer||"").trim()!==__of.cust) return false;
+    if(__of.q){ var t=[x.r.orderNo,x.r.prpo,x.r.oldDrawingNo,x.r.partNo,x.r.partName,x.r.vendor].join(" ").toLowerCase(); if(t.indexOf(__of.q)<0) return false; } return true; });
+  // 단계별 건수 (납품완료는 최근 30일)
+  var cnt=OF_STAGES.map(function(){ return { n:0, l:0 }; }), today=ofToday_();
+  base.forEach(function(x){ if(x.st==="완료"){ var sd=String(x.r.shipDate||"").slice(0,10), g=sd?ofDays_(sd, today):null; if(g!==null && g<=30) cnt[8].n++; return; }
+    cnt[x.idx].n++; if(x.late) cnt[x.idx].l++; });
+  host.querySelector("#of-pipe").innerHTML=OF_STAGES.map(function(S,i){ return '<div class="of-p'+(__of.stage===i?' on':'')+'" data-i="'+i+'"><b>'+ofE_(S.t)+'</b><div class="n">'+cnt[i].n+'</div><div class="l">'+(i===8?'<span style="color:#667085;font-weight:400;">최근 30일</span>':(cnt[i].l?('지연 '+cnt[i].l):''))+'</div></div>'; }).join("");
+  var list=base.filter(function(x){ if(__of.stage>=0){ if(__of.stage===8){ if(x.st!=="완료") return false; } else if(x.idx!==__of.stage || x.st==="완료") return false; }
+      else if(!__of.done && x.st==="완료") return false;
+      if(__of.late && !x.late) return false; return true; });
+  list.sort(function(a,b){ var da=a.due||"9999", db=b.due||"9999"; return da<db?-1:da>db?1:String(a.r.orderNo).localeCompare(String(b.r.orderNo), undefined, { numeric:true }); });
+  if(__of.stage===8) list.reverse();
+  var lg=__of.log, ls=host.querySelector("#of-logst"); if(ls) ls.innerHTML=lg?('MES 공정 기록: '+ofE_(lg.since||"?")+'부터 · 마지막 확인 '+ofE_(lg.day||"?")):(__of.logLoading?'MES 공정 기록 불러오는 중…':'MES 공정 기록 없음 (업로드 PC 기록 전)');
+  host.querySelector("#of-cnt").textContent=list.length+"건"+(__of.stage>=0?(" · "+OF_STAGES[__of.stage].t+" 단계"):"")+(list.length>__of.limit?(" (앞 "+__of.limit+"건 표시)"):"")+" · 납기 빠른 순";
+  host.querySelector("#of-list").innerHTML=list.slice(0, __of.limit).map(function(x){ var r=x.r, k=ofE_(r.orderNo);
+      var dd=x.dd===null?'':(x.st==="완료"?'':('<span class="dd'+(x.late?' l':'')+'">'+(x.dd<0?('D+'+(-x.dd)+' 지연'):(x.dd===0?'D-day':('D-'+x.dd)))+'</span>'));
+      return '<div class="of-row'+(x.late?' late':'')+'"><div class="of-info" data-k="'+k+'"><span class="on">'+k+'</span><span>'+ofE_(r.customer||"")+'</span><span>'+ofE_(r.oldDrawingNo||r.partNo||"")+'</span><span>'+ofE_(r.partName||"")+'</span><span>수량 <b>'+ofE_(r.qty)+'</b></span>'
+        +(r.prpo?'<span>PO '+ofE_(r.prpo)+'</span>':'')+dd+'<span class="tg">'+(__of.open[r.orderNo]?'▲ 닫기':'▼ 공정 이력')+'</span></div>'
+        +'<div class="of-chain">'+OF_STAGES.map(function(S,i){ return ofChip_(x,i); }).join("")+'</div>'+(__of.open[r.orderNo]?ofDetail_(x):'')+'</div>'; }).join("")
+    +(list.length>__of.limit?'<button type="button" class="of-more">더 보기 ('+(list.length-__of.limit)+'건 남음)</button>':'')
+    +(list.length?'':'<div class="of-note" style="padding:30px;text-align:center;">조건에 맞는 건이 없습니다</div>');
 }
 /* ==================== 📢 업데이트 안내 (버전별 1번 표시) ====================
    다음 버전부터는 QMS_RELEASE_NOTE 의 ver·title·items 만 바꾸면 됨. 사람마다(이 PC 브라우저) 그 버전에서 처음 열 때 한 번 뜸 */
