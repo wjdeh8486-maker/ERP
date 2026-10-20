@@ -5554,7 +5554,7 @@ function mainRenderTable(data){
       <td>${dwgLink(r.oldDrawingNo)}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
       <td class="${overdue?'cell-overdue':''}">${r.dueDate||''}${(typeof dclTag_==="function")?dclTag_(r.orderNo):''}${(typeof sdTagFor_==="function")?(sdTagFor_(r.orderNo)||(typeof sdTagDoneFor_==="function"?sdTagDoneFor_(r.orderNo):'')):''}</td>
-      <td>${r.shipDate||''}</td><td>${r.shipped||''}</td><td>${getCurrentProcess(r.orderNo)}</td>
+      <td>${r.shipDate||''}</td><td>${r.shipped||''}</td><td>${getCurrentProcessDisp_(r.orderNo)}</td>
       <td class="${wDeliver>0?'cell-wait-hi':''}">${wDeliver}</td>
       <td class="${wIncoming>0?'cell-wait-hi':''}">${wIncoming}</td>
       <td class="${wMeasure>0?'cell-wait-hi':''}">${wMeasure}</td>
@@ -5849,7 +5849,7 @@ function mainCustRow_(r){
   const shipped = String(r.shipped||"").trim();
   const notIn = shipped === "납품완료" ? 0 : (Number(r.qty)||0);
   const __cd = (typeof cleanDatesFor_==="function") ? cleanDatesFor_(r.orderNo) : [];   // [추가] 코미코 세정LIST에 있으면 세정 납품일
-  const proc = __cd.length ? ("세정납품 "+__cd.join(", ")) : ((typeof getCurrentProcess==="function") ? (getCurrentProcess(r.orderNo)||"") : "");
+  const proc = __cd.length ? ("세정납품 "+__cd.join(", ")) : (getCurrentProcessDisp_(r.orderNo)||"");
   const st = computeProductStatus(r), note = (st === "출고") ? mainCustOutDate_(r) : "";   // 출고품: 특이사항에 출고일자
   return [ st, r.orderNo||"", r.purchaser||"", r.vendor||"", r.prNo||"", (r.prpo==null?"":String(r.prpo)), r.partNo||"", r.oldDrawingNo||"", r.matSpec||"",
            r.partName||"", "(주)엔티엘", r.orderDate||"", Number(r.qty)||0, r.dueDate||"", notIn, "", "", note, proc, mainCustLateDays_(r) ];   // 코미코인계·최종납기 = 수기 기재용 빈칸 · 특이사항 = 출고품이면 출고일자, 아니면 빈칸
@@ -10106,6 +10106,17 @@ let invData = INV_SAMPLE.slice();
 let processMap = {};
 function getCurrentProcess(orderNo){
   return processMap[orderNo] || "";
+}
+// [추가] 화면·인쇄·엑셀 표시용 현재진행공정: 코미코 세정LIST에 있는 ORDER는 "세정납품 YYYY-MM-DD" (계산용 getCurrentProcess는 그대로)
+//   세정LIST는 처음 쓰일 때 한 번 불러오고, 다 불러오면 MAIN 목록을 다시 그림
+function getCurrentProcessDisp_(orderNo){
+  try{
+    if(typeof __cleanLoad!=="undefined" && __cleanLoad.state===0 && typeof cleanEnsureLoaded_==="function"){
+      cleanEnsureLoaded_(function(){ try{ if(Object.keys(__cleanData.map||{}).length && typeof mainListRevealed!=="undefined" && mainListRevealed && typeof mainApplySearch==="function") mainApplySearch(); }catch(_){} }); }
+    var d=(typeof cleanDatesFor_==="function")?cleanDatesFor_(orderNo):[];
+    if(d.length) return "세정납품 "+d.join(", ");
+  }catch(_){}
+  return getCurrentProcess(orderNo);
 }
 function buildProcessMap(rows){
   const map = {};
@@ -16566,7 +16577,7 @@ function overdueRenderTable(rows){
       <td style="text-align:center;">${r.vendor||''}</td>
       <td>${dwgLink(r.oldDrawingNo)}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
-      <td>${getCurrentProcess(r.orderNo)}</td>
+      <td>${getCurrentProcessDisp_(r.orderNo)}</td>
       <td class="cell-overdue">${r.dueDate||''}${(typeof dclTag_==="function")?dclTag_(r.orderNo):''}${(typeof sdTagFor_==="function")?(sdTagFor_(r.orderNo)||(typeof sdTagDoneFor_==="function"?sdTagDoneFor_(r.orderNo):'')):''}</td>
     `;
     tbody.appendChild(tr);
@@ -16598,7 +16609,7 @@ document.getElementById("overdue-printBtn").addEventListener("click", ()=>runBus
       <td style="text-align:center;">${r.vendor||''}</td>
       <td>${dwgLink(r.oldDrawingNo)}</td>
       <td style="text-align:center;">${r.partName}</td><td>${r.qty}</td>
-      <td>${getCurrentProcess(r.orderNo)}</td>
+      <td>${getCurrentProcessDisp_(r.orderNo)}</td>
       <td>${r.dueDate||''}</td>
     </tr>`;
   }).join("");
@@ -16622,7 +16633,7 @@ document.getElementById("overdue-excelBtn").addEventListener("click", ()=>runBus
       overdueDaysLate(r.dueDate) + "일",
       computeProductStatus(r),
       r.orderNo||'', r.customer||'', r.vendor||'',
-      r.oldDrawingNo||'', r.partName||'', r.qty||0, getCurrentProcess(r.orderNo)||'', r.dueDate||''
+      r.oldDrawingNo||'', r.partName||'', r.qty||0, getCurrentProcessDisp_(r.orderNo)||'', r.dueDate||''
     ]);
   });
   const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -17043,7 +17054,7 @@ function renderSummaryView(){
   }
   const overdueTop5 = overdueRows.slice(0,10);
   document.getElementById("summary-overdueList").innerHTML = overdueTop5.length ? overdueTop5.map(r=>
-    `<tr><td style="text-align:center;">${r.orderNo}</td><td style="text-align:center;">${r.vendor||''}</td><td style="text-align:center;">${dwgLink(r.oldDrawingNo)}</td><td style="text-align:center;">${r.partName}</td><td style="text-align:center;">${getCurrentProcess(r.orderNo)||''}</td><td>${r.qty}</td><td class="cell-overdue">${overdueDaysLate(r.dueDate)}일</td></tr>`
+    `<tr><td style="text-align:center;">${r.orderNo}</td><td style="text-align:center;">${r.vendor||''}</td><td style="text-align:center;">${dwgLink(r.oldDrawingNo)}</td><td style="text-align:center;">${r.partName}</td><td style="text-align:center;">${getCurrentProcessDisp_(r.orderNo)||''}</td><td>${r.qty}</td><td class="cell-overdue">${overdueDaysLate(r.dueDate)}일</td></tr>`
   ).join("") : `<tr><td colspan="7" style="padding:16px;color:var(--text-mute);">지연 건이 없습니다.</td></tr>`;
 
   // 이번달 매출(현재까지) vs 저번달 매출 비교
@@ -20189,7 +20200,7 @@ else if(proc === "재고"){
       + '<td class="qp-stockcol" style="padding:8px;text-align:center;background:#EAF3FC;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+(r.stockQty>0?'<b style="color:#0B5CAB;">'+r.stockQty+'</b>':'<span style="color:#AEB9CC;">·</span>')+'</td>'
 + '<td style="padding:8px;text-align:center;font-weight:700;color:'+(r.requestType==="재고"?"#0B5CAB":"#E02424")+';">'+r.requestType+'</td>'
 + '<td style="padding:8px;text-align:center;font-weight:700;">'+r.requestQty+'</td>'
-+ '<td style="padding:8px;text-align:center;white-space:nowrap;color:#0B5CAB;font-weight:'+(r.requestType==="재고"?"700":"400")+';">'+(r.requestType==="재고" ? (function(){ var L=invPartLoc_(r.partNo||"")||invPartLoc_(r.oldDrawingNo||""); return L?("📍 "+L):"-"; })() : qcEsc(getCurrentProcess(r.orderNo)||"-"))+'</td>'
++ '<td style="padding:8px;text-align:center;white-space:nowrap;color:#0B5CAB;font-weight:'+(r.requestType==="재고"?"700":"400")+';">'+(r.requestType==="재고" ? (function(){ var L=invPartLoc_(r.partNo||"")||invPartLoc_(r.oldDrawingNo||""); return L?("📍 "+L):"-"; })() : qcEsc(getCurrentProcessDisp_(r.orderNo)||"-"))+'</td>'
       + '</tr>';
   }).join("");
   listEl.innerHTML =
