@@ -15927,7 +15927,7 @@ var OF_STAGES=[
   { k:"order", t:"수주·작업대기" }, { k:"prod", t:"가공(MES)" }, { k:"inc", t:"수입검사" }, { k:"meas", t:"측정" },
   { k:"vis", t:"비젼" }, { k:"clean", t:"외관(크린룸)" }, { k:"stock", t:"재고" }, { k:"out", t:"출고" }, { k:"done", t:"납품완료" } ];
 var OF_ST2IDX={ "생산":1, "수입":2, "측정":3, "비젼":4, "외관":5, "재고":6, "출고":7, "완료":8, "OK":2 };
-var __of={ q:"", cust:"", stage:-1, late:false, done:false, limit:200, open:{}, log:null, logLoading:false };
+var __of={ q:"", cust:"", stage:-1, late:false, done:false, limit:100, open:{}, log:null, logLoading:false };
 function ofE_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function ofToday_(){ var d=new Date(), z=function(n){ return String(n).padStart(2,"0"); }; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
 function ofDays_(a, b){ var x=Date.parse(a), y=Date.parse(b); return (isNaN(x)||isNaN(y))?null:Math.round((y-x)/864e5); }
@@ -15944,7 +15944,7 @@ function ofRow_(r){
   if(idx===1 && (!proc || /^대기/.test(proc))) idx=0;   // MES 작업 시작 전(대기) → 수주 단계
   var ev=(__of.log && __of.log.e && __of.log.e[r.orderNo])||[], last=ev.length?ev[ev.length-1]:null;
   var today=ofToday_(), due=String(r.dueDate||"").slice(0,10), dd=due?ofDays_(today, due):null;
-  var outD=""; try{ outD=(typeof mainCustOutDate_==="function")?mainCustOutDate_(r):""; }catch(_){}
+  var od=__of.outIdx && __of.outIdx[String(r.orderNo||"").trim()], outD=od?Object.keys(od).sort().join(", "):"";   // 출고일 = 미리 만든 색인 (건마다 재고 전체를 훑으면 멈춤)
   var isSH=/SHOWER\s*HEAD/i.test(String(r.partName||"")) || st==="비젼";
   return { r:r, st:st, idx:idx, mixed:st==="OK", proc:proc, ev:ev, last:last, due:due, dd:dd, late:(st!=="완료" && dd!==null && dd<0), outD:outD, isSH:isSH };
 }
@@ -15956,7 +15956,7 @@ function ofChip_(x, i){
   if(S.k==="order") sub=(x.r.orderDate?("발주 "+ofMD_(x.r.orderDate)):"")+(x.due?((x.r.orderDate?" · ":"")+"납기 "+ofMD_(x.due)):"");
   else if(S.k==="prod"){ sub=x.proc||(i<x.idx?"종료":"");
     if(x.last && i===x.idx) sub+=' <span class="of-since">'+ofMD_(x.last[0])+'~'+(function(){ var n=ofDays_(x.last[0], ofToday_()); return n!==null?(' '+n+'일'):''; })()+'</span>'; }
-  else if(S.k==="out") sub=x.outD?("출고 "+x.outD.split(", ").map(ofMD_).join(", ")):"";
+  else if(S.k==="out"){ var ods=x.outD?x.outD.split(", "):[]; sub=ods.length?("출고 "+ofMD_(ods[ods.length-1])+(ods.length>1?(" 외 "+(ods.length-1)+"회"):"")):""; }   // 분할 출고는 마지막 날짜 + 횟수
   else if(S.k==="done") sub=x.r.shipDate?("납품 "+ofMD_(x.r.shipDate)):"";
   else if(skip) sub="해당 없음";
   return '<div class="'+cls+'"><b>'+ofE_(S.t)+'</b>'+(sub?'<span>'+(S.k==="prod"?sub.replace(/^([^<]*)/, function(m){ return ofE_(m); }):ofE_(sub))+'</span>':'')+'</div>';
@@ -15969,6 +15969,17 @@ function ofDetail_(x){
     +x.ev.map(function(e){ return '<tr><td>'+ofE_(e[0])+(e[3]&&e[3]!==e[0]?('<small> ('+ofE_(ofMD_(e[3]))+' 이후)</small>'):'')+'</td><td>'+ofE_(e[4]||"")+'</td><td>→</td><td><b>'+ofE_(e[1]||"-")+'</b></td><td>'+ofE_(e[2]||"")+'</td></tr>'; }).join("")+'</tbody></table>'
     +'<div class="of-note">날짜는 MES 파일을 내려받은 날 기준입니다 (하루 1번 → 그 전날 내려받기 이후 언젠가 바뀜). 기록 시작 '+ofE_(lg.since||"?")+'</div>';
   return '<div class="of-det">'+h+'</div>';
+}
+// 무거운 계산(단계·출고일 색인·검색 글자)은 데이터가 바뀔 때만 1번
+function ofSig_(data, inv){ return [data.length, inv.length, __of.log?(__of.log.ts||1):0, (typeof processMap!=="undefined" && processMap)?Object.keys(processMap).length:0, (typeof mainStatusMapDirty!=="undefined" && mainStatusMapDirty)?1:0].join("|"); }
+function ofBuild_(data, inv){
+  try{ if(typeof mainStatusMapDirty!=="undefined" && mainStatusMapDirty && typeof computeAllStatuses==="function"){ mainStatusMap=computeAllStatuses(mainData); mainStatusMapDirty=false; } }catch(_){}
+  var oi={}; inv.forEach(function(iv){ if(!((Number(iv.outQty)||0)>0)) return; var o=String(iv.ctrlNo||"").trim(); if(!o) return;
+    var d=(typeof insplistYmd_==="function")?insplistYmd_(iv.outDate):String(iv.outDate||"").slice(0,10); if(d) (oi[o]=oi[o]||{})[d]=1; });
+  __of.outIdx=oi;
+  var rows=data.filter(function(r){ return (Number(r.qty)||0)>0 && (typeof mainHasPRPO!=="function" || mainHasPRPO(r)); }).map(ofRow_);
+  rows.forEach(function(x){ var r=x.r; x.txt=[r.orderNo,r.vendor,r.prpo,r.oldDrawingNo,r.partNo,r.partName,r.vendorName].join(" ").toLowerCase(); x.cust=String(r.customer||"").trim(); });
+  __of.rows=rows; __of.dataRef=data; __of.invRef=inv; __of.sig=ofSig_(data, inv);
 }
 function ofRender_(){
   var host=document.getElementById("of-root"); if(!host) return;
@@ -16006,28 +16017,38 @@ function ofRender_(){
     host.innerHTML='<div class="of-head"><div><div class="of-crumb">MAIN › 수주~출하 흐름</div><div class="of-title">🔀 수주~출하 흐름</div>'
       +'<div class="of-sub">관리번호별로 지금 어느 단계인지 보여줍니다 · 단계는 MAIN 제품상태 기준 · 가공 공정은 MES · 줄을 누르면 MES 공정 변경 이력</div></div><div class="of-sub" id="of-logst"></div></div>'
       +'<div class="of-pipe" id="of-pipe"></div>'
-      +'<div class="of-tool"><input type="text" id="of-q" placeholder="관리번호 · PROJECT NO. · PO · 기존도번 · 품번 · 품명 검색 (쉼표로 여러 개)"><select id="of-cust"><option value="">전체 고객사</option></select>'
+      +'<div class="of-tool"><input type="text" id="of-q" placeholder="관리번호 · PROJECT NO. · PO · 기존도번 · 품번 · 품명 (쉼표로 여러 개) → Enter 또는 검색"><button type="button" id="of-go" style="padding:8px 16px;border:0;border-radius:9px;background:#1F2A44;color:#fff;font-weight:700;cursor:pointer;">🔍 검색</button><button type="button" id="of-clr" style="padding:8px 12px;border:1.5px solid #D0D5DD;border-radius:9px;background:#fff;color:#475467;font-weight:700;cursor:pointer;">초기화</button><select id="of-cust"><option value="">전체 고객사</option></select>'
       +'<label><input type="checkbox" id="of-late"> 납기 지연만</label><label><input type="checkbox" id="of-done"> 납품완료 포함</label></div>'
       +'<div class="of-cnt" id="of-cnt"></div><div id="of-list"></div>';
-    var tmr=null;
-    host.querySelector("#of-q").addEventListener("input", function(e){ clearTimeout(tmr); tmr=setTimeout(function(){ __of.q=e.target.value.trim().toLowerCase(); __of.limit=200; ofRender_(); }, 200); });
-    host.querySelector("#of-cust").addEventListener("change", function(e){ __of.cust=e.target.value; __of.limit=200; ofRender_(); });
-    host.querySelector("#of-late").addEventListener("change", function(e){ __of.late=e.target.checked; __of.limit=200; ofRender_(); });
-    host.querySelector("#of-done").addEventListener("change", function(e){ __of.done=e.target.checked; __of.limit=200; ofRender_(); });
+    // [수정] 글자마다 검색하지 않음 — Enter 또는 [검색] 버튼으로만
+    var qIn=host.querySelector("#of-q"), go=function(){ __of.q=qIn.value.trim().toLowerCase(); __of.limit=100; ofRender_(); };
+    qIn.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); go(); } });
+    host.querySelector("#of-go").addEventListener("click", go);
+    host.querySelector("#of-clr").addEventListener("click", function(){ qIn.value=""; __of.q=""; __of.stage=-1; __of.cust=""; __of.late=false; __of.limit=100;
+      var c=host.querySelector("#of-cust"); if(c) c.value=""; var l=host.querySelector("#of-late"); if(l) l.checked=false; ofRender_(); });
+    host.querySelector("#of-cust").addEventListener("change", function(e){ __of.cust=e.target.value; __of.limit=100; ofRender_(); });
+    host.querySelector("#of-late").addEventListener("change", function(e){ __of.late=e.target.checked; __of.limit=100; ofRender_(); });
+    host.querySelector("#of-done").addEventListener("change", function(e){ __of.done=e.target.checked; __of.limit=100; ofRender_(); });
     host.addEventListener("click", function(e){
-      var p=e.target.closest(".of-p"); if(p){ var i=Number(p.getAttribute("data-i")); __of.stage=(__of.stage===i)?-1:i; __of.limit=200; ofRender_(); return; }
+      var p=e.target.closest(".of-p"); if(p){ var i=Number(p.getAttribute("data-i")); __of.stage=(__of.stage===i)?-1:i; __of.limit=100; ofRender_(); return; }
       var inf=e.target.closest(".of-info"); if(inf){ var k=inf.getAttribute("data-k"); __of.open[k]=!__of.open[k]; ofRender_(); return; }
-      if(e.target.closest(".of-more")){ __of.limit+=200; ofRender_(); } });
+      if(e.target.closest(".of-more")){ __of.limit+=100; ofRender_(); } });
   }
   var data=(typeof mainData!=="undefined" && Array.isArray(mainData))?mainData:[];
   if(!data.length){ host.querySelector("#of-list").innerHTML='<div class="of-note" style="padding:30px;text-align:center;">MAIN 데이터를 불러오는 중입니다…</div>'; return; }
-  try{ if(typeof mainStatusMapDirty!=="undefined" && mainStatusMapDirty && typeof computeAllStatuses==="function"){ mainStatusMap=computeAllStatuses(mainData); mainStatusMapDirty=false; } }catch(_){}
-  var rows=data.filter(function(r){ return (Number(r.qty)||0)>0 && (typeof mainHasPRPO!=="function" || mainHasPRPO(r)); }).map(ofRow_);
+  var inv=(typeof invData!=="undefined" && Array.isArray(invData))?invData:[];
+  if(!(__of.rows && __of.dataRef===data && __of.invRef===inv && __of.sig===ofSig_(data, inv))){
+    if(!__of.building){ __of.building=true;   // 화면을 먼저 띄우고 계산 (메뉴 누르면 바로 열림)
+      host.querySelector("#of-list").innerHTML='<div class="of-note" style="padding:30px;text-align:center;">단계 계산 중…</div>';
+      setTimeout(function(){ var t0=Date.now(); try{ ofBuild_(data, inv); }catch(e){ try{ console.warn("ofBuild_", e); }catch(_){} if(!__of.rows) __of.rows=[]; __of.dataRef=data; __of.invRef=inv; __of.sig=ofSig_(data, inv); }
+        __of.buildMs=Date.now()-t0; __of.building=false; ofRender_(); }, 30); }
+    return; }
+  var rows=__of.rows;
   // 고객사 목록
   var cs=host.querySelector("#of-cust"); if(cs && cs.options.length<=1){ var cu={}; rows.forEach(function(x){ var c=String(x.r.customer||"").trim(); if(c) cu[c]=(cu[c]||0)+1; });
     Object.keys(cu).sort(function(a,b){ return cu[b]-cu[a]; }).forEach(function(c){ var o=document.createElement("option"); o.value=c; o.textContent=c+" ("+cu[c]+")"; cs.appendChild(o); }); }
-  var base=rows.filter(function(x){ if(__of.cust && String(x.r.customer||"").trim()!==__of.cust) return false;
-    if(__of.q){ var t=[x.r.orderNo,x.r.vendor,x.r.prpo,x.r.oldDrawingNo,x.r.partNo,x.r.partName,x.r.vendorName].join(" ").toLowerCase();   // vendor = PROJECT NO.
+  var base=rows.filter(function(x){ if(__of.cust && x.cust!==__of.cust) return false;
+    if(__of.q){ var t=x.txt;   // 관리번호·PROJECT NO.(vendor)·PO·도번·품번·품명·외주발주 / 쉼표=또는, 슬래시=그리고
       if(!__of.q.split(",").some(function(g){ g=g.trim(); return g && g.split("/").every(function(w){ w=w.trim(); return !w || t.indexOf(w)>=0; }); })) return false; } return true; });
   // 단계별 건수 (납품완료는 최근 30일)
   var cnt=OF_STAGES.map(function(){ return { n:0, l:0 }; }), today=ofToday_();
@@ -16040,6 +16061,14 @@ function ofRender_(){
   list.sort(function(a,b){ var da=a.due||"9999", db=b.due||"9999"; return da<db?-1:da>db?1:String(a.r.orderNo).localeCompare(String(b.r.orderNo), undefined, { numeric:true }); });
   if(__of.stage===8) list.reverse();
   var lg=__of.log, ls=host.querySelector("#of-logst"); if(ls) ls.innerHTML=lg?('MES 공정 기록: '+ofE_(lg.since||"?")+'부터 · 마지막 확인 '+ofE_(lg.day||"?")):(__of.logLoading?'MES 공정 기록 불러오는 중…':'MES 공정 기록 없음 (업로드 PC 기록 전)');
+  // [성능] 검색 우선: 검색·단계·고객사·지연 중 하나라도 고르기 전에는 목록을 그리지 않음 (단계별 건수만)
+  if(!(__of.q || __of.stage>=0 || __of.late || __of.cust)){
+    var lateN=base.filter(function(x){ return x.late; }).length;
+    host.querySelector("#of-cnt").textContent="진행 중 "+base.filter(function(x){ return x.st!=="완료"; }).length+"건"+(__of.buildMs!=null?(" · 계산 "+__of.buildMs+"ms"):"");
+    host.querySelector("#of-list").innerHTML='<div class="of-note" style="padding:28px;text-align:center;font-size:13.5px;">위의 <b>단계 상자</b>를 누르거나 <b>검색</b>하면 목록이 나옵니다.'
+      +(lateN?('<br><button type="button" class="of-more" id="of-showlate" style="border-color:#C0392B;color:#C0392B;">⚠ 납기 지연 '+lateN+'건 보기</button>'):'')+'</div>';
+    var sl=host.querySelector("#of-showlate"); if(sl) sl.onclick=function(){ __of.late=true; var cb=host.querySelector("#of-late"); if(cb) cb.checked=true; ofRender_(); };
+    return; }
   host.querySelector("#of-cnt").textContent=list.length+"건"+(__of.stage>=0?(" · "+OF_STAGES[__of.stage].t+" 단계"):"")+(list.length>__of.limit?(" (앞 "+__of.limit+"건 표시)"):"")+" · 납기 빠른 순";
   host.querySelector("#of-list").innerHTML=list.slice(0, __of.limit).map(function(x){ var r=x.r, k=ofE_(r.orderNo);
       var dd=x.dd===null?'':(x.st==="완료"?'':('<span class="dd'+(x.late?' l':'')+'">'+(x.dd<0?('D+'+(-x.dd)+' 지연'):(x.dd===0?'D-day':('D-'+x.dd)))+'</span>'));
