@@ -3402,6 +3402,15 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         </div>
       </div>
       <div style="background:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 2px 10px rgba(0,0,0,0.06);margin-bottom:16px;">
+        <div style="font-size:16px;font-weight:800;color:#1F2A44;margin-bottom:4px;">🧼 코미코 세정LIST 업로드</div>
+        <div style="font-size:12px;color:#7A8598;margin-bottom:12px;">세정LIST(2026년).xlsx를 올리면 <b>NTL관리번호·납품일</b>을 읽어 공유 저장소에 올립니다. MAIN <b>발주 현황</b> 인쇄·다운로드에서 세정LIST에 있는 ORDER는 <b>현재진행공정 칸에 세정 납품일</b>이 나옵니다. 파일 위치: <code>\\Ntl\3.생산팀\정혜정\코미코\세정LIST(2026년)</code> <span id="clean-status" style="font-weight:700;color:#5A6478;"></span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#F7FAFF;border:1px solid #E1E8F0;border-radius:10px;padding:12px;">
+          <input id="clean-file" type="file" accept=".xlsx,.xls,.xlsm" style="display:none;">
+          <button type="button" onclick="document.getElementById('clean-file').click()" style="background:#0EA5E9;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">🧼 세정LIST 엑셀 선택</button>
+          <span style="font-size:11.5px;color:#8A93A6;">※ "NTL관리번호"·"납품일" 열을 자동으로 찾아 읽습니다. 같은 관리번호가 여러 날이면 날짜를 모두 표시합니다.</span>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 2px 10px rgba(0,0,0,0.06);margin-bottom:16px;">
         <div style="font-size:16px;font-weight:800;color:#1F2A44;margin-bottom:4px;">📐 측정이력 폴더 스캔</div>
         <div style="font-size:12px;color:#7A8598;margin-bottom:12px;">측정보고서 폴더를 선택하면 하위 폴더까지 읽어 <b>도번(폴더명)·S/N·측정일(저장일)</b>을 뽑아 공유 저장소에 올립니다. 스캔·업로드는 PC에서만 되고(모바일 브라우저는 폴더 선택 미지원), 올린 결과는 <b>측정이력 화면·모바일에서 자동으로 조회</b>됩니다.</div>
         <div style="display:flex;flex-direction:column;gap:8px;background:#F7FAFF;border:1px solid #E1E8F0;border-radius:10px;padding:12px;margin-bottom:14px;">
@@ -5081,6 +5090,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="upload"){
       if(typeof mhBind_==="function") mhBind_();   // 옮겨온 측정이력 폴더 스캔 바인딩
       if(typeof stockBind_==="function") stockBind_();   // 공정재고 업로드 바인딩
+      if(typeof cleanBind_==="function") cleanBind_();   // [추가] 코미코 세정LIST 업로드 바인딩
     }
     if(target==="quality"){
       if(typeof ncInit==="function" && !window.__ncInited){ window.__ncInited = true; ncInit(); }
@@ -5838,12 +5848,13 @@ function mainCustOutDate_(r){
 function mainCustRow_(r){
   const shipped = String(r.shipped||"").trim();
   const notIn = shipped === "납품완료" ? 0 : (Number(r.qty)||0);
-  const proc = (typeof getCurrentProcess==="function") ? (getCurrentProcess(r.orderNo)||"") : "";
+  const __cd = (typeof cleanDatesFor_==="function") ? cleanDatesFor_(r.orderNo) : [];   // [추가] 코미코 세정LIST에 있으면 세정 납품일
+  const proc = __cd.length ? ("세정납품 "+__cd.join(", ")) : ((typeof getCurrentProcess==="function") ? (getCurrentProcess(r.orderNo)||"") : "");
   const st = computeProductStatus(r), note = (st === "출고") ? mainCustOutDate_(r) : "";   // 출고품: 특이사항에 출고일자
   return [ st, r.orderNo||"", r.purchaser||"", r.vendor||"", r.prNo||"", (r.prpo==null?"":String(r.prpo)), r.partNo||"", r.oldDrawingNo||"", r.matSpec||"",
            r.partName||"", "(주)엔티엘", r.orderDate||"", Number(r.qty)||0, r.dueDate||"", notIn, "", "", note, proc, mainCustLateDays_(r) ];   // 코미코인계·최종납기 = 수기 기재용 빈칸 · 특이사항 = 출고품이면 출고일자, 아니면 빈칸
 }
-document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy(()=>{
+document.getElementById("main-printBtn").addEventListener("click", ()=>cleanEnsureLoaded_(()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
   const E = (typeof qmsEsc_==="function") ? qmsEsc_ : (t=>String(t==null?"":t));
   const rowsHtml = filtered.map(r=>{
@@ -5867,8 +5878,8 @@ document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy((
     </table>
   `;
   window.print();
-}, "인쇄 준비 중..."));
-document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>runBusy(()=>{
+}, "인쇄 준비 중...")));
+document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>cleanEnsureLoaded_(()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
   const aoa = [MAIN_CUST_HEAD.slice()];
   const cleanRows = [];
@@ -5886,7 +5897,7 @@ document.getElementById("main-listDownloadBtn").addEventListener("click", ()=>ru
   XLSX.utils.book_append_sheet(wb, ws, "발주 현황");
   const dateStr = new Date().toISOString().slice(0,10);
   qmsXlsxSaveLandscape_(wb, `발주현황_${dateStr}.xlsx`);   // A4 가로 · 가로 1페이지 맞춤
-}, "엑셀 생성 중..."));
+}, "엑셀 생성 중...")));
 // 검색 버튼을 누르면 잠시 "검색 중..." 표시를 보여주고, 실제 검색(무거울 수 있는 필터링/렌더링)은
 // 화면이 그 표시를 그릴 시간을 준 다음 실행합니다.
 function withSearchIndicator(btn, fn){
@@ -7738,6 +7749,70 @@ function stockHandleFile_(file){
 function stockSave_(){
   try{ if(typeof idbSet==="function") idbSet("stockIndex", __stockData); }catch(_){}
   try{ if(typeof qShareSave_==="function") qShareSave_("stockIndex", __stockData, "stock-status"); }catch(_){}
+}
+/* ===== [추가] 🧼 코미코 세정LIST (생산팀 세정LIST(2026년).xlsx) — NTL관리번호 → 세정 납품일 =====
+   · 업로드: 머리글에서 "관리번호"·"납품일" 열을 찾아 {ORDER NO.: [납품일…]} 로 저장 (이 PC + 공유 저장소)
+   · 사용: MAIN 발주 현황 인쇄·다운로드의 현재진행공정 칸 → "세정납품 YYYY-MM-DD"
+   · 불러오기: 이 PC 저장본으로 바로 쓰고, 공유 저장소에 더 최신본이 있으면 그것으로 바꿈 */
+var __cleanData={ map:{}, at:"", ts:0 }, __cleanLoad={ state:0, cbs:[] };
+function cleanYmd_(v){
+  if(v instanceof Date && !isNaN(v)) return v.getFullYear()+"-"+String(v.getMonth()+1).padStart(2,"0")+"-"+String(v.getDate()).padStart(2,"0");
+  if(typeof v==="number" && v>30000 && v<80000){ var d=new Date(Math.round((v-25569)*86400000)); return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")+"-"+String(d.getUTCDate()).padStart(2,"0"); }
+  return (typeof insplistYmd_==="function")?insplistYmd_(v):"";
+}
+function cleanApply_(sv){ if(sv && sv.map && typeof sv.map==="object" && Object.keys(sv.map).length && (Number(sv.ts)||0)>=(Number(__cleanData.ts)||0)){ __cleanData=sv; return true; } return false; }
+function cleanRenderStatus_(){ var st=document.getElementById("clean-status"); if(!st) return; var n=Object.keys(__cleanData.map||{}).length; st.textContent=n?("현재 "+n+"개 관리번호"+(__cleanData.at?(" · "+__cleanData.at):"")):"아직 업로드 안 됨"; st.style.color=n?"#1E7A46":"#8A93A6"; }
+function cleanEnsureLoaded_(cb){
+  if(cb) __cleanLoad.cbs.push(cb);
+  if(__cleanLoad.state===2){ var l0=__cleanLoad.cbs.splice(0); l0.forEach(function(f){ try{ f(); }catch(_){} }); return; }
+  if(__cleanLoad.state===1) return; __cleanLoad.state=1;
+  var fin=function(){ if(__cleanLoad.state===2) return; __cleanLoad.state=2; cleanRenderStatus_(); var l=__cleanLoad.cbs.splice(0); l.forEach(function(f){ try{ f(); }catch(_){} }); };
+  var timer=setTimeout(fin, 6000);   // 공유 저장소가 늦으면 6초 뒤 있는 것으로 진행
+  var shared=function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("cleanList", function(sv){ if(cleanApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("cleanList", __cleanData); }catch(_){} } clearTimeout(timer); fin(); }); } else { clearTimeout(timer); fin(); } }catch(_){ clearTimeout(timer); fin(); } };
+  try{ if(typeof idbGet==="function"){ idbGet("cleanList").then(function(v){ cleanApply_(v); shared(); }).catch(shared); } else shared(); }catch(_){ shared(); }
+}
+function cleanDatesFor_(orderNo){ var o=String(orderNo||"").trim(); var a=(__cleanData.map||{})[o]; return Array.isArray(a)?a:[]; }
+function cleanHandleFile_(file){
+  if(!file) return;
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 시도하세요."); return; }
+  var st=document.getElementById("clean-status"); var setSt=function(m,c){ if(st){ st.textContent=m; if(c) st.style.color=c; } };
+  setSt("엑셀 읽는 중…","#5A6478");
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result), { type:"array", cellDates:true });
+      var map={}, rowsN=0;
+      wb.SheetNames.forEach(function(sn){
+        var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn], { header:1, defval:"", raw:true });
+        var hr=-1, oi=-1, di=-1;
+        for(var r=0;r<Math.min(aoa.length,20);r++){ var row=(aoa[r]||[]).map(function(x){ return String(x==null?"":x).replace(/\s/g,""); }); var _o=-1,_d=-1;
+          for(var c=0;c<row.length;c++){ if(_o<0 && row[c].indexOf("관리번호")>=0) _o=c; if(_d<0 && row[c].indexOf("납품일")>=0) _d=c; }
+          if(_o>=0 && _d>=0){ hr=r; oi=_o; di=_d; break; } }
+        if(hr<0) return;
+        for(var r2=hr+1;r2<aoa.length;r2++){ var rw=aoa[r2]||[]; var o=String(rw[oi]==null?"":rw[oi]).trim();
+          if(!/^\d{2}-\d+-\d+$/.test(o)) continue;   // "-" 빈 줄 등 제외
+          var d=cleanYmd_(rw[di]); if(!d) continue;
+          (map[o]=map[o]||[]); if(map[o].indexOf(d)<0) map[o].push(d); rowsN++; }
+      });
+      var n=Object.keys(map).length;
+      if(!n){ setSt("⚠ 'NTL관리번호'·'납품일' 열을 못 찾았습니다. 시트 형식을 확인하세요.","#B02A2A"); return; }
+      Object.keys(map).forEach(function(k){ map[k].sort(); });
+      __cleanData={ map:map, at:new Date().toLocaleString("ko-KR"), ts:Date.now() }; __cleanLoad.state=2;
+      try{ if(typeof idbSet==="function") idbSet("cleanList", __cleanData); }catch(_){}
+      try{ if(typeof qShareSave_==="function") qShareSave_("cleanList", __cleanData, "clean-status"); }catch(_){}
+      setSt("✅ 세정LIST "+n+"개 관리번호("+rowsN+"줄) 저장 · "+__cleanData.at,"#1E7A46");
+      try{ alert("세정LIST "+n+"개 관리번호를 읽어 저장했습니다."); }catch(_){}
+    }catch(err){ setSt("⚠ 엑셀 읽기 실패: "+(err&&err.message?err.message:err),"#B02A2A"); }
+  };
+  reader.onerror=function(){ setSt("⚠ 파일 읽기 실패","#B02A2A"); };
+  reader.readAsArrayBuffer(file);
+  try{ var fe=document.getElementById("clean-file"); if(fe) fe.value=""; }catch(_){}
+}
+function cleanBind_(){
+  cleanEnsureLoaded_();
+  if(window.__cleanBound) return; window.__cleanBound=true;
+  var f=document.getElementById("clean-file");
+  if(f) f.addEventListener("change", function(){ cleanHandleFile_(f.files&&f.files[0]); });
 }
 function stockApply_(sv){ if(sv && sv.map && typeof sv.map==="object"){ __stockData=sv; return Object.keys(sv.map).length>0; } return false; }
 function stockEnsureLoaded_(){
