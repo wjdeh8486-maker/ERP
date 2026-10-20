@@ -16006,7 +16006,7 @@ function ofRender_(){
     host.innerHTML='<div class="of-head"><div><div class="of-crumb">MAIN › 수주~출하 흐름</div><div class="of-title">🔀 수주~출하 흐름</div>'
       +'<div class="of-sub">관리번호별로 지금 어느 단계인지 보여줍니다 · 단계는 MAIN 제품상태 기준 · 가공 공정은 MES · 줄을 누르면 MES 공정 변경 이력</div></div><div class="of-sub" id="of-logst"></div></div>'
       +'<div class="of-pipe" id="of-pipe"></div>'
-      +'<div class="of-tool"><input type="text" id="of-q" placeholder="관리번호 · PO · 기존도번 · 품번 · 품명 검색"><select id="of-cust"><option value="">전체 고객사</option></select>'
+      +'<div class="of-tool"><input type="text" id="of-q" placeholder="관리번호 · PROJECT NO. · PO · 기존도번 · 품번 · 품명 검색 (쉼표로 여러 개)"><select id="of-cust"><option value="">전체 고객사</option></select>'
       +'<label><input type="checkbox" id="of-late"> 납기 지연만</label><label><input type="checkbox" id="of-done"> 납품완료 포함</label></div>'
       +'<div class="of-cnt" id="of-cnt"></div><div id="of-list"></div>';
     var tmr=null;
@@ -16027,7 +16027,8 @@ function ofRender_(){
   var cs=host.querySelector("#of-cust"); if(cs && cs.options.length<=1){ var cu={}; rows.forEach(function(x){ var c=String(x.r.customer||"").trim(); if(c) cu[c]=(cu[c]||0)+1; });
     Object.keys(cu).sort(function(a,b){ return cu[b]-cu[a]; }).forEach(function(c){ var o=document.createElement("option"); o.value=c; o.textContent=c+" ("+cu[c]+")"; cs.appendChild(o); }); }
   var base=rows.filter(function(x){ if(__of.cust && String(x.r.customer||"").trim()!==__of.cust) return false;
-    if(__of.q){ var t=[x.r.orderNo,x.r.prpo,x.r.oldDrawingNo,x.r.partNo,x.r.partName,x.r.vendor].join(" ").toLowerCase(); if(t.indexOf(__of.q)<0) return false; } return true; });
+    if(__of.q){ var t=[x.r.orderNo,x.r.vendor,x.r.prpo,x.r.oldDrawingNo,x.r.partNo,x.r.partName,x.r.vendorName].join(" ").toLowerCase();   // vendor = PROJECT NO.
+      if(!__of.q.split(",").some(function(g){ g=g.trim(); return g && g.split("/").every(function(w){ w=w.trim(); return !w || t.indexOf(w)>=0; }); })) return false; } return true; });
   // 단계별 건수 (납품완료는 최근 30일)
   var cnt=OF_STAGES.map(function(){ return { n:0, l:0 }; }), today=ofToday_();
   base.forEach(function(x){ if(x.st==="완료"){ var sd=String(x.r.shipDate||"").slice(0,10), g=sd?ofDays_(sd, today):null; if(g!==null && g<=30) cnt[8].n++; return; }
@@ -16043,7 +16044,7 @@ function ofRender_(){
   host.querySelector("#of-list").innerHTML=list.slice(0, __of.limit).map(function(x){ var r=x.r, k=ofE_(r.orderNo);
       var dd=x.dd===null?'':(x.st==="완료"?'':('<span class="dd'+(x.late?' l':'')+'">'+(x.dd<0?('D+'+(-x.dd)+' 지연'):(x.dd===0?'D-day':('D-'+x.dd)))+'</span>'));
       return '<div class="of-row'+(x.late?' late':'')+'"><div class="of-info" data-k="'+k+'"><span class="on">'+k+'</span><span>'+ofE_(r.customer||"")+'</span><span>'+ofE_(r.oldDrawingNo||r.partNo||"")+'</span><span>'+ofE_(r.partName||"")+'</span><span>수량 <b>'+ofE_(r.qty)+'</b></span>'
-        +(r.prpo?'<span>PO '+ofE_(r.prpo)+'</span>':'')+dd+'<span class="tg">'+(__of.open[r.orderNo]?'▲ 닫기':'▼ 공정 이력')+'</span></div>'
+        +(r.vendor?'<span>PJT '+ofE_(r.vendor)+'</span>':'')+(r.prpo?'<span>PO '+ofE_(r.prpo)+'</span>':'')+dd+'<span class="tg">'+(__of.open[r.orderNo]?'▲ 닫기':'▼ 공정 이력')+'</span></div>'
         +'<div class="of-chain">'+OF_STAGES.map(function(S,i){ return ofChip_(x,i); }).join("")+'</div>'+(__of.open[r.orderNo]?ofDetail_(x):'')+'</div>'; }).join("")
     +(list.length>__of.limit?'<button type="button" class="of-more">더 보기 ('+(list.length-__of.limit)+'건 남음)</button>':'')
     +(list.length?'':'<div class="of-note" style="padding:30px;text-align:center;">조건에 맞는 건이 없습니다</div>');
