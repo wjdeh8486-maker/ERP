@@ -23589,7 +23589,26 @@ function insPickSaveFolder(){
 // [추가] 저장 결과 기록 — 자동 다운로드 결과에 "어디에 저장됐는지" 표시용
 var __insSaveLog=[];
 function insSaveLog_(name, where){ __insSaveLog.push({ name:name, where:where, dir:(insSaveDirHandle&&insSaveDirHandle.name)||"", t:Date.now() }); if(__insSaveLog.length>50) __insSaveLog.shift(); }
+// [추가] 검사일보 엑셀(자동 다운로드·수동 내보내기 공통): 수량 칸의 숫자를 텍스트 → 숫자로
+//   머리글(위쪽 8행 안)이 수량 계열(검사수·양품수·부적합·기스·찍힘·얼룩·누락·기타·치수·재검·체결수·LEAK·수량·No.)인 열만 변환
+//   도번·S/N·출고 No·날짜·검사자 등은 그대로 글자. 앞자리 0이 있는 값(예: 0140)도 그대로 둠
+var INS_NUM_HEAD_RE = /(검사수|양품수|양품|부적합수|부적합|불량수|수량|S\.P수|재검수|체결수|기스|찍힘|얼룩|누락|기타|일반치수|공차치수|LEAK)$|^No\.$/i;
+function insXlsxNumify_(wb){
+  try{ if(!wb || wb.__numified) return; wb.__numified=true;
+    (wb.SheetNames||[]).forEach(function(nm){ var ws=wb.Sheets[nm]; if(!ws || !ws["!ref"]) return;
+      var rg=XLSX.utils.decode_range(ws["!ref"]), topEnd=Math.min(rg.e.r, rg.s.r+7);
+      for(var C=rg.s.c; C<=rg.e.c; C++){
+        var hr=-1; for(var R=rg.s.r; R<=topEnd; R++){ var hc=ws[XLSX.utils.encode_cell({r:R,c:C})]; if(hc && hc.t==="s" && INS_NUM_HEAD_RE.test(String(hc.v||"").replace(/\s+/g,""))) hr=R; }
+        if(hr<0) continue;
+        for(var R2=hr+1; R2<=rg.e.r; R2++){ var c=ws[XLSX.utils.encode_cell({r:R2,c:C})]; if(!c || c.t!=="s") continue;
+          var v=String(c.v==null?"":c.v).trim(); if(!/^-?\d+(\.\d+)?$/.test(v) || /^-?0\d/.test(v)) continue;
+          c.t="n"; c.v=Number(v); delete c.w; }
+      }
+    });
+  }catch(_){}
+}
 function insWriteXlsx(wb, filename){
+  insXlsxNumify_(wb);   // [추가] 수량 칸 숫자로
   function dl(){ try{ XLSX.writeFile(wb, filename); insSaveLog_(filename, "dl"); }catch(e){} }
   if(!window.showDirectoryPicker){ dl(); return; }
   // [수정] 시작할 때 저장 폴더 정보를 못 읽었으면(DB가 바빠 3초 안에 못 읽는 경우) 한 번 더 읽어 봄 → 조용히 다운로드 폴더로 새는 것 방지
