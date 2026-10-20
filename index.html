@@ -7735,7 +7735,7 @@ function stockHandleFile_(file){
         }
       });
       if(!cnt){ setSt("⚠ '도면번호'·'보유수' 열을 못 찾았습니다. 시트 형식을 확인하세요.","#B02A2A"); return; }
-      __stockData={ map:map, at:new Date().toLocaleString("ko-KR") };
+      __stockData={ map:map, at:new Date().toLocaleString("ko-KR"), ts:Date.now() };   // ts: 공유본과 최신 비교용
       stockSave_();
       setSt("✅ 공정재고 "+cnt+"개 도번 저장 · "+__stockData.at,"#1E7A46");
       try{ alert("공정재고 "+cnt+"개 도번을 읽어 저장했습니다."); }catch(_){}
@@ -7817,8 +7817,13 @@ function cleanBind_(){
 function stockApply_(sv){ if(sv && sv.map && typeof sv.map==="object"){ __stockData=sv; return Object.keys(sv.map).length>0; } return false; }
 function stockEnsureLoaded_(){
   if(window.__stockLoaded) return; window.__stockLoaded=true;
-  var tryShared=function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("stockIndex", function(sv){ if(stockApply_(sv)) stockRenderStatus_(); }); } }catch(_){} };
-  try{ if(typeof idbGet==="function"){ idbGet("stockIndex").then(function(v){ if(stockApply_(v)){ stockRenderStatus_(); } else { tryShared(); } }).catch(tryShared); } else { tryShared(); } }catch(_){ tryShared(); }
+  // [수정] 이 PC 저장본으로 먼저 보여주고, 공유 저장소에 더 최신본(PC 자동 업로드 등)이 있으면 그것으로 바꿈
+  //        (전에는 이 PC에 저장본이 있으면 공유본을 안 봐서, 다른 곳에서 새로 올린 공정재고가 반영되지 않았음)
+  var tryShared=function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("stockIndex", function(sv){
+    if(!(sv && sv.map && Object.keys(sv.map).length)) return;
+    var cur=(__stockData&&__stockData.map&&Object.keys(__stockData.map).length)?(Number(__stockData.ts)||0):-1;
+    if(cur<0 || (Number(sv.ts)||0)>cur){ if(stockApply_(sv)){ try{ if(typeof idbSet==="function") idbSet("stockIndex", __stockData); }catch(_){} stockRenderStatus_(); } } }); } }catch(_){} };
+  try{ if(typeof idbGet==="function"){ idbGet("stockIndex").then(function(v){ if(stockApply_(v)) stockRenderStatus_(); tryShared(); }).catch(tryShared); } else { tryShared(); } }catch(_){ tryShared(); }
 }
 function stockRenderStatus_(){
   var st=document.getElementById("stock-status"); if(!st) return;
