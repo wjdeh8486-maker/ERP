@@ -16067,6 +16067,7 @@ function ofRender_(){
       var inf=e.target.closest(".of-info"); if(inf && !e.target.closest("a")){ var k=inf.getAttribute("data-k"); __of.open[k]=!__of.open[k]; ofRender_(); return; }
       var dr=e.target.closest(".of-dr"); if(dr){ __of.dr=dr.getAttribute("data-dr"); __of.limit=100; ofRender_(); return; }
       if(e.target.closest("a")) return;   // 도번(도면 PDF) 링크는 그대로 열림
+      if(e.target.closest(".of-stx")){ __of.stage=-1; __of.limit=100; ofRender_(); return; }
       if(e.target.closest(".of-more")){ __of.limit+=100; ofRender_(); } });
     ["of-d1","of-d2"].forEach(function(id){ host.querySelector("#"+id).addEventListener("change", function(e){ __of[id==="of-d1"?"d1":"d2"]=e.target.value; __of.limit=100; ofRender_(); }); });
   }
@@ -16110,7 +16111,7 @@ function ofRender_(){
       +(lateN?('<br><button type="button" class="of-more" id="of-showlate" style="border-color:#C0392B;color:#C0392B;">⚠ 납기 지연 '+lateN+'건 보기</button>'):'')+'</div>';
     var sl=host.querySelector("#of-showlate"); if(sl) sl.onclick=function(){ __of.late=true; var cb=host.querySelector("#of-late"); if(cb) cb.checked=true; ofRender_(); };
     return; }
-  host.querySelector("#of-cnt").textContent=(RG?("납기 "+RG[2]+" · "):"")+list.length+"건"+(__of.stage>=0?(" · "+OF_STAGES[__of.stage].t+" 단계"):"")+(list.length>__of.limit?(" (앞 "+__of.limit+"건 표시)"):"")+" · 납기 빠른 순";
+  host.querySelector("#of-cnt").innerHTML=ofE_((RG?("납기 "+RG[2]+" · "):"")+list.length+"건")+(__of.stage>=0?(' · <button type="button" class="of-stx" title="단계 선택을 풀고 전체 단계 보기" style="border:1.5px solid #1D4ED8;background:#EFF4FF;color:#1D4ED8;border-radius:999px;padding:2px 10px;font-weight:700;font-size:12px;cursor:pointer;">'+ofE_(OF_STAGES[__of.stage].t)+' 단계만 ✕</button>'):"")+ofE_((list.length>__of.limit?(" (앞 "+__of.limit+"건 표시)"):"")+" · 납기 빠른 순");
   host.querySelector("#of-list").innerHTML=list.slice(0, __of.limit).map(function(x){ var r=x.r, k=ofE_(r.orderNo);
       var dd=x.dd===null?'':(x.st==="완료"?'':('<span class="dd'+(x.late?' l':(x.risk?' r':''))+'">'+(x.risk?'⚠ 수입검사 전 · ':'')+(x.dd<0?('D+'+(-x.dd)+' 지연'):(x.dd===0?'D-day':('D-'+x.dd)))+'</span>'));
       return '<div class="of-row'+(x.late?' late':(x.risk?' risk':''))+'"><div class="of-info" data-k="'+k+'"><span class="on">'+k+'</span><span>'+ofE_(r.customer||"")+'</span><span>'+(r.oldDrawingNo&&typeof dwgLink==="function"?dwgLink(r.oldDrawingNo):ofE_(r.oldDrawingNo||r.partNo||""))+'</span><span>'+ofE_(r.partName||"")+'</span><span>수량 <b>'+ofE_(r.qty)+'</b></span>'
