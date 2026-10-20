@@ -1732,7 +1732,7 @@
 </style>
 <script>
 // [추가] 빌드 표시 — 버전 번호와 별개로, 어떤 파일이 올라가 있는지 확인용 (좌하단 버전 배지에 마우스를 올리면 보임)
-window.QMS_BUILD="2026-10-08 · V10.8 협력사 NCR 대리 작성(검토)"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
+window.QMS_BUILD="2026-10-20 · V10.9 성적서 자동 작성"; try{ console.log("%cQMS 빌드: "+window.QMS_BUILD,"color:#2563EB;font-weight:bold"); }catch(_){}
 </script>
 <script>
 // [추가] 온습도·HOLE체크: 누를 때마다 새 탭에서 처음부터 다시 시작하던 문제 → 이미 열어 둔 탭이 있으면 그 탭으로 이동만(작업 내용 유지)
@@ -1893,7 +1893,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
   <div class="gs-splash-box">
     <div class="gs-splash-logo">NTL QMS Portal</div>
     <div class="gs-splash-sub">Quality Management System</div>
-    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V10.8</div>
+    <div style="margin-top:10px;font-size:13px;color:#7fd0ff;font-weight:800;letter-spacing:2px;">V10.9</div>
     <div class="gs-splash-status" id="gs-splashStatus">데이터 동기화 준비 중…</div>
     <div class="gs-splash-bar"><div class="gs-splash-fill" id="gs-splashFill"></div></div>
     <div class="gs-splash-meter">
@@ -15915,6 +15915,40 @@ function qmsRenderMorning_(force, key){
     ov.addEventListener("click",function(e){ if(e.target===ov && ov.parentNode) ov.parentNode.removeChild(ov); });
   }catch(e){}
 }
+/* ==================== 📢 업데이트 안내 (버전별 1번 표시) ====================
+   다음 버전부터는 QMS_RELEASE_NOTE 의 ver·title·items 만 바꾸면 됨. 사람마다(이 PC 브라우저) 그 버전에서 처음 열 때 한 번 뜸 */
+var QMS_RELEASE_NOTE = {
+  ver:"10.9", date:"2026-10-20", title:"📏 성적서 자동 작성", where:"검사 › 성적서 작성",
+  items:[
+    "과거 성적서(양식)를 고르고 S/N을 입력하면 측정이력 폴더에서 3차원 측정 데이터를 찾아 자동으로 작성합니다.",
+    "도번·S/N이 일치하는 측정 파일만 사용하고, 상/하 측정도 지원합니다.",
+    "측정 데이터는 원본 형식 그대로 S/N 이름의 시트로 들어가며, 매크로 없이 계산됩니다. (공차 벗어난 값은 빨간색)",
+    "LEAK·FLOW·가압·TAP 시트의 검사 일자는 검사이력조회 날짜로 넣고, 검사 사진은 지웁니다. (합격 도장은 유지)",
+    "처음 한 번은 측정이력 폴더(NAS) 연결이 필요합니다."
+  ],
+  action:{ label:"📏 성적서 작성 열기", run:function(){ if(typeof coaFillOpen_==="function") coaFillOpen_(); } }
+};
+function qmsReleaseNoteShow_(force){
+  var R=QMS_RELEASE_NOTE, key="qmsReleaseSeen"; if(!R) return;
+  if(!force){ try{ if(localStorage.getItem(key)===R.ver) return; }catch(_){} }
+  if(document.getElementById("qms-relnote")) return;
+  var E=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+  var ov=document.createElement("div"); ov.id="qms-relnote";
+  ov.style.cssText="position:fixed;inset:0;z-index:100040;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;";
+  ov.innerHTML='<div style="background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:86vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.35);">'
+    +'<div style="background:linear-gradient(135deg,#1F2A44,#2B5BB5);color:#fff;padding:16px 20px;border-radius:16px 16px 0 0;">'
+    +  '<div style="font-size:12px;opacity:.85;letter-spacing:1px;">📢 업데이트 안내 · V'+E(R.ver)+' · '+E(R.date)+'</div>'
+    +  '<div style="font-size:19px;font-weight:800;margin-top:4px;">'+E(R.title)+'</div>'
+    +  (R.where?'<div style="font-size:12.5px;margin-top:4px;color:#CFE0FF;">메뉴: '+E(R.where)+'</div>':'')+'</div>'
+    +'<ul style="margin:0;padding:16px 20px 6px 38px;color:#1F2A44;font-size:14px;line-height:1.6;">'+R.items.map(function(t){ return '<li style="margin-bottom:6px;">'+E(t)+'</li>'; }).join("")+'</ul>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;padding:10px 20px 18px;flex-wrap:wrap;">'
+    +  (R.action?'<button type="button" data-x="go" style="background:#1D6F42;color:#fff;border:0;border-radius:9px;padding:10px 16px;font-weight:700;cursor:pointer;">'+E(R.action.label)+'</button>':'')
+    +  '<button type="button" data-x="ok" style="background:#1F2A44;color:#fff;border:0;border-radius:9px;padding:10px 18px;font-weight:700;cursor:pointer;">확인</button></div></div>';
+  var close=function(){ try{ localStorage.setItem(key, R.ver); }catch(_){} try{ ov.remove(); }catch(_){} };
+  ov.addEventListener("click", function(e){ var x=e.target.closest("[data-x]"); if(e.target===ov || (x && x.getAttribute("data-x")==="ok")){ close(); return; }
+    if(x && x.getAttribute("data-x")==="go"){ close(); try{ R.action.run(); }catch(_){} } });
+  document.body.appendChild(ov);
+}
 /* ==================== 📢 팀 공지사항 (날짜 지정 → 그날 크게 표시) ==================== */
 var __noticeData = null;   // [{id, date, text, author, ts}]
 function noticeEsc_(t){ return qmsEsc_(t); }
@@ -17858,10 +17892,11 @@ window.__qualityInited = true;
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("approvalIndex", function(sv){ if(typeof apvIndexApply_==="function") apvIndexApply_(sv); }); } }catch(e){} }, 1800);
     setTimeout(function(){ try{ if(typeof qShareLoad_==="function"){ qShareLoad_("ncAttach", function(sv){ if(sv&&typeof sv==="object"&&Object.keys(sv).length){ if(typeof ncAttachApply_==="function"){ ncAttachApply_(sv); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } } else { try{ if(typeof idbGet==="function") idbGet("ncAttach").then(function(v){ if(v&&typeof ncAttachApply_==="function"){ ncAttachApply_(v); if(typeof ncRender==="function" && window.__ncInited) ncRender(); } }).catch(function(){}); }catch(_){}} }); } }catch(e){} }, 2000);
     // ===== 버전 점검(구버전 감지 경고) =====
-    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=10.8;
+    if(typeof window.APP_VER_NUM==="undefined") window.APP_VER_NUM=10.9;
     window.versionShowOutdated_=function(latest){ var b=document.getElementById("ver-outdated"); if(!b){ b=document.createElement("div"); b.id="ver-outdated"; b.style.cssText="position:fixed;top:0;left:0;right:0;z-index:100050;background:#C0392B;color:#fff;text-align:center;padding:11px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.35);cursor:pointer;"; document.body.appendChild(b); } b.innerHTML="\u26A0 \uC0C8 \uBC84\uC804(V"+latest+")\uC774 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uD654\uBA74\uC740 \uAD6C\uBC84\uC804(V"+window.APP_VER_NUM+")\uB77C \uC800\uC7A5 \uBB38\uC81C\uAC00 \uC0DD\uAE38 \uC218 \uC788\uC5B4\uC694 \u2014 <u>\uC5EC\uAE30\uB97C \uD074\uB9AD</u>\uD558\uAC70\uB098 Ctrl+Shift+R\uB85C \uC0C8\uB85C\uACE0\uCE68\uD558\uC138\uC694"; b.onclick=function(){ try{ location.reload(true); }catch(e){ location.reload(); } }; };
     window.versionCheck_=function(){ try{ if(typeof qShareGet_!=="function") return; qShareGet_("appVersion").then(function(str){ var latest=parseFloat(str)||0; if(latest>window.APP_VER_NUM+0.001){ window.versionShowOutdated_(latest); } else if(window.APP_VER_NUM>latest+0.001){ try{ if(typeof qShareSave_==="function") qShareSave_("appVersion", window.APP_VER_NUM); }catch(e){} } }).catch(function(){}); }catch(e){} };
     setTimeout(function(){ try{ window.versionCheck_(); }catch(e){} }, 2200);
+    setTimeout(function(){ try{ if(typeof qmsReleaseNoteShow_==="function") qmsReleaseNoteShow_(false); }catch(e){} }, 3200);   // [추가] 새 버전 처음 열 때 업데이트 안내 1번
     try{ if(!window.__verTimer){ window.__verTimer=setInterval(function(){ if(document.hidden) return; try{ window.versionCheck_(); }catch(e){} }, 300000); } }catch(e){}   /* [최적화] 백그라운드에선 버전체크 멈춤 */
     // 용량 보호: 이미지/대용량 잔여물을 localStorage에서 제거(IndexedDB로 이전됨)
     try{ ["ntlNcAttach","ntlSigStore","cache_invData"].forEach(function(k){ try{ localStorage.removeItem(k); }catch(_){} });
@@ -28553,8 +28588,8 @@ function reqClearAll(){
   })();
 </script>
 <div id="notice-btn" title="팀 공지사항" style="position:fixed;left:10px;bottom:40px;z-index:99980;background:#0B7A8A;color:#fff;font-size:12px;font-weight:800;letter-spacing:0.5px;padding:6px 12px;border-radius:14px;cursor:pointer;user-select:none;box-shadow:0 3px 10px rgba(0,0,0,0.2);">📢 공지</div>
-<!-- QMS-BUILD: 2026-10-08 · V10.8 협력사 NCR 대리 작성(검토) -->
-<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-08 · V10.8 협력사 NCR 대리 작성(검토)" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.8 🔔</div>
+<!-- QMS-BUILD: 2026-10-20 · V10.9 성적서 자동 작성 -->
+<div id="app-version" title="오늘 챙길 것 보기 · 빌드 2026-10-20 · V10.9 성적서 자동 작성" style="position:fixed;left:10px;bottom:10px;z-index:99980;background:rgba(31,42,68,0.82);color:#cfe0ff;font-size:11px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:12px;cursor:pointer;user-select:none;">V10.9 🔔</div>
 <script>
 /* 도면 조회 배치: PC(>1024px)=기존 별도 카드 / 모바일·태블릿(≤1024px)=생산 진행률 카드 안 컴팩트.
    같은 요소(입력창·버튼·상태·안내링크)를 옮기기만 하므로 기존 조회 동작은 그대로. 기준 폭을 바꾸려면 DWG_COMPACT_MQ 만 수정 */
