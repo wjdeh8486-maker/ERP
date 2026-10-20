@@ -5827,12 +5827,21 @@ function mainCustLateDays_(r){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(due) || due >= today) return "";
   return Math.round((new Date(today+"T00:00:00") - new Date(due+"T00:00:00"))/86400000);
 }
+// [추가] 출고품 특이사항 = 재고관리 출고일자 (관리번호=ORDER NO., 출고수량>0 인 기록의 출고일, 여러 번이면 쉼표로)
+function mainCustOutDate_(r){
+  try{ const o=String(r.orderNo||"").trim(); if(!o || typeof invData==="undefined" || !invData) return "";
+    const ds={}; invData.forEach(iv=>{ if(String(iv.ctrlNo||"").trim()!==o || !((Number(iv.outQty)||0)>0)) return;
+      const d=(typeof insplistYmd_==="function")?insplistYmd_(iv.outDate):String(iv.outDate||"").slice(0,10); if(d) ds[d]=1; });
+    return Object.keys(ds).sort().join(", ");
+  }catch(_){ return ""; }
+}
 function mainCustRow_(r){
   const shipped = String(r.shipped||"").trim();
   const notIn = shipped === "납품완료" ? 0 : (Number(r.qty)||0);
   const proc = (typeof getCurrentProcess==="function") ? (getCurrentProcess(r.orderNo)||"") : "";
-  return [ computeProductStatus(r), r.orderNo||"", r.purchaser||"", proc, r.vendor||"", r.prNo||"", (r.prpo==null?"":String(r.prpo)), r.partNo||"", r.oldDrawingNo||"", r.matSpec||"",
-           r.partName||"", "(주)엔티엘", r.orderDate||"", Number(r.qty)||0, r.dueDate||"", notIn, "", "", "", mainCustLateDays_(r) ];   // 코미코인계·최종납기·특이사항 = 수기 기재용 빈칸
+  const st = computeProductStatus(r), note = (st === "출고") ? mainCustOutDate_(r) : "";   // 출고품: 특이사항에 출고일자
+  return [ st, r.orderNo||"", r.purchaser||"", proc, r.vendor||"", r.prNo||"", (r.prpo==null?"":String(r.prpo)), r.partNo||"", r.oldDrawingNo||"", r.matSpec||"",
+           r.partName||"", "(주)엔티엘", r.orderDate||"", Number(r.qty)||0, r.dueDate||"", notIn, "", "", note, mainCustLateDays_(r) ];   // 코미코인계·최종납기 = 수기 기재용 빈칸 · 특이사항 = 출고품이면 출고일자, 아니면 빈칸
 }
 document.getElementById("main-printBtn").addEventListener("click", ()=>runBusy(()=>{
   const filtered = mainGetPrintListRows();
