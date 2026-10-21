@@ -14870,7 +14870,7 @@ function coaFillPlan_(buf, extras, skip){ skip=skip||{};
   var wb=XLSX.read(new Uint8Array(buf), { type:"array" });
   var data={}, reports=[];
   (extras||[]).forEach(function(ex){ try{ var w2=XLSX.read(new Uint8Array(ex.buf), { type:"array" });
-    w2.SheetNames.forEach(function(sn){ var m=coaFillDataMap_(XLSX.utils.sheet_to_json(w2.Sheets[sn], { header:1, raw:true, defval:"" })); if(m && Object.keys(m.map).length){ m.ext=true; data[ex.name+" › "+sn]=m; } }); }catch(_){} });
+    w2.SheetNames.forEach(function(sn){ var m=coaFillDataMap_(XLSX.utils.sheet_to_json(w2.Sheets[sn], { header:1, raw:true, defval:"" })); if(m && Object.keys(m.map).length){ m.ext=true; if(ex.forSn!=null) m.forSn=String(ex.forSn); data[ex.name+" › "+sn]=m; } }); }catch(_){} });
   wb.SheetNames.forEach(function(sn){ var ws=wb.Sheets[sn], aoa=XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:"" }), rg=ws["!ref"]?XLSX.utils.decode_range(ws["!ref"]):{s:{r:0,c:0}};   // 시트가 A1이 아닌 곳(예: B2)부터 시작하면 그만큼 위치 보정
     var m=coaFillDataMap_(aoa); if(m && Object.keys(m.map).length) data[sn]=m; else reports.push({ name:sn, aoa:aoa, rOff:rg.s.r, cOff:rg.s.c }); });
   var plans=[];
@@ -14879,6 +14879,7 @@ function coaFillPlan_(buf, extras, skip){ skip=skip||{};
     if(r0<0 || rm<0) return;
     var tPart0=""; for(var q=0;q<Math.min(aoa.length,r0) && !tPart0;q++){ var rq=aoa[q]||[]; for(var qc=0;qc<rq.length;qc++){ var qt=coaFillNorm_(rq[qc]); if(qt==="partcode" || qt==="partno." || qt==="partno"){ for(var q2=qc+1;q2<Math.min(rq.length,qc+12);q2++){ var qv=String(rq[q2]==null?"":rq[q2]).trim(); if(qv){ tPart0=qv; break; } } break; } } }
     var findData=function(v){ var keys=Object.keys(data), tail=coaFillSnTail_(v);
+      var forced=keys.filter(function(k){ return data[k].forSn!=null && String(data[k].forSn)===String(v).trim(); }); if(forced.length) return forced[0];   // [추가] 직접 지정한 측정 파일 → 그 열
       var byHead=keys.filter(function(k){ return data[k].sn && coaFillSnTail_(data[k].sn)===tail; });   // 측정 탭 안에 적힌 S/N이 같은 것
       if(byHead.length){ var pm=byHead.filter(function(k){ return !tPart0 || !data[k].part || coaFillPartNorm_(data[k].part)===coaFillPartNorm_(tPart0); }); return (pm.length?pm:byHead)[0]; }
       return keys.find(function(n){ return coaFillSnMatch_(v, n.replace(/^.* › /,"")); }); };
@@ -14889,7 +14890,7 @@ function coaFillPlan_(buf, extras, skip){ skip=skip||{};
     var tPart=""; for(var rr=0;rr<Math.min(aoa.length,r0) && !tPart;rr++){ var rw1=aoa[rr]||[]; for(var cc=0;cc<rw1.length;cc++){ var tt=coaFillNorm_(rw1[cc]); if(tt==="partcode" || tt==="partno." || tt==="partno"){ for(var k2=cc+1;k2<Math.min(rw1.length,cc+12);k2++){ var vv=String(rw1[k2]==null?"":rw1[k2]).trim(); if(vv){ tPart=vv; break; } } break; } } }
     // [추가] 도번·S/N 일치 확인 — 측정 탭 머리의 품번·S/N이 양식의 Part Code·S/N과 다르면 그 열은 채우지 않음
     var bad=[]; sns=sns.filter(function(x){ var d=data[x.sheet], why=[];
-      if(d.sn && coaFillSnTail_(d.sn)!==coaFillSnTail_(x.sn)) why.push("S/N "+d.sn.trim());
+      if(d.sn && d.forSn==null && coaFillSnTail_(d.sn)!==coaFillSnTail_(x.sn)) why.push("S/N "+d.sn.trim());
       if(d.part && tPart && coaFillPartNorm_(d.part)!==coaFillPartNorm_(tPart)) why.push("품번 "+d.part.trim());
       if(why.length){ bad.push(x.sn+"열 ← 탭 "+x.sheet+" 안의 "+why.join(", ")); return false; } return true; });
     if(!sns.length){ plans.push({ sheet:rp.name, cells:[], missing:[], sns:[], unmatched:unmatched, bad:bad, part:tPart }); return; }
@@ -15192,7 +15193,7 @@ function coaXlsxOpen_(buf){
            out:function(){ return XLSX.CFB.write(cfb, { fileType:"zip", type:"array", compression:true }); } };
 }
 // 성적서 양식을 새 S/N에 맞게 고친 파일 만들기 (모든 페이지)
-function coaTplPrepare_(buf, infos, prefix, tails){
+function coaTplPrepare_(buf, infos, prefix, tails, opt){ opt=opt||{};
   if(!Array.isArray(infos)) infos=[infos];
   var X=coaXlsxOpen_(buf);
   infos.forEach(function(info){
@@ -15207,7 +15208,8 @@ function coaTplPrepare_(buf, infos, prefix, tails){
         else if(i>0 && v0!=="" && v0!=null && typeof v0==="string") x=coaXmlCell_(x, R(r,sc), "s", v0); }
       info.rows3d.forEach(function(r){ x=coaXmlCell_(x, R(r,sc), "x"); });   // 측정치(값 칸)는 비운 뒤 새 데이터로 — 수식 칸은 그대로
     });
-    if(info.snCell) x=coaXmlCell_(x, R(info.snCell.r, info.snCell.c), "s", (prefix?prefix+"-":"")+tails.join(","));
+    if(info.snCell && !opt.keepSn) x=coaXmlCell_(x, R(info.snCell.r, info.snCell.c), "s", (prefix?prefix+"-":"")+tails.join(","));
+    else if(info.snCell && /\d{3,}/.test(String(info.snCell.v||""))) x=coaXmlCell_(x, R(info.snCell.r, info.snCell.c), "s", "-");   // S/N 없는 제품(직접 지정·번호 자동): 양식에 옛 S/N이 적혀 있으면 "-"로, 아니면 양식 그대로
     if(info.qtyCell) x=coaXmlCell_(x, R(info.qtyCell.r, info.qtyCell.c), "n", tails.length);
     // 수식 칸의 예전 계산값(기존 S/N 결과)은 지움 → 보호된 보기에서도 옛 숫자가 보이지 않고, 열 때 새로 계산됨
     x=x.replace(/<c ([^>]*)>(<f[^>]*\/>|<f[^>]*>[^<]*<\/f>)<v>[^<]*<\/v><\/c>/g, function(a, at, f){ return "<c "+at.replace(/\s+t="(str|e|b|n)"/,"")+">"+f+"</c>"; });
@@ -15586,6 +15588,36 @@ function coaGenNameSync_(ov){
   var seg=(pre?pre+"-":"")+p.tails.join("");
   nm.value=/\d{5}-[\d,]+(?=\.[^.]+$)/.test(t.name) ? t.name.replace(/\d{5}-[\d,]+(?=\.[^.]+$)/, seg) : t.name.replace(/(\.[^.]+)$/, "_"+seg+"$1");
 }
+// [추가] S/N 없는 제품: 측정 파일을 직접 지정 (여러 개) — 파일마다 측정 데이터 탭·품번·상/하를 읽어 둠
+async function coaGenManualAdd_(files, ov){
+  var L=__coaGen.manual||[], box=ov.querySelector("#cg-mlist"); if(box) box.innerHTML='<span style="color:#5A6478;">읽는 중…</span>';
+  for(const f of files){
+    try{ var buf=await f.arrayBuffer(), w=XLSX.read(new Uint8Array(buf), { type:"array" }), ok=null, okWs=null;
+      for(const sn of w.SheetNames){ var m=coaFillDataMap_(XLSX.utils.sheet_to_json(w.Sheets[sn], { header:1, raw:true, defval:"" })); if(m && Object.keys(m.map).length){ ok=m; okWs=w.Sheets[sn]; break; } }
+      var side=ok?(/^(상|하)$/.test(ok.side)?ok.side:((f.name.replace(/\.[^.]+$/,"").match(/(상|하)(?!.*(상|하))/)||[])[1]||"")):"";
+      L.push({ name:f.name, path:"(직접 지정) "+f.name, buf:buf, m:ok, ws:okWs, mt:f.lastModified||0, side:side, bad:ok?"":"측정 데이터(No.·Actual) 탭 없음" });
+    }catch(e){ L.push({ name:f.name, bad:"읽기 실패: "+(e&&e.message||e) }); } }
+  L.sort(function(a,b){ return String(a.name).localeCompare(String(b.name), undefined, { numeric:true }); });
+  __coaGen.manual=L.length?L:null; coaGenManualList_(ov);
+}
+function coaGenManualList_(ov){
+  var box=ov.querySelector("#cg-mlist"); if(!box) return; var L=__coaGen.manual||[], E=coaXmlEsc_;
+  if(!L.length){ box.innerHTML=""; return; }
+  var draw=String((ov.querySelector("#cg-draw")||{}).value||"").trim();
+  box.innerHTML='<div style="border:1px solid #E1E8F0;border-radius:8px;overflow:hidden;">'+L.map(function(f,i){
+      var pw=(f.m && f.m.part && draw && coaFillPartNorm_(f.m.part)!==coaFillPartNorm_(draw))?(' <span style="color:#B42318;font-weight:700;">⚠ 파일 안 품번 '+E(f.m.part.trim())+'</span>'):'';
+      return '<div style="display:flex;gap:6px;align-items:center;padding:4px 8px;border-top:'+(i?'1px solid #EEF1F5':'0')+';">'
+        +'<b style="width:22px;text-align:center;">'+(i+1)+'</b><span style="flex:1;min-width:0;word-break:break-all;">'+E(f.name)+(f.side?(' <b style="color:#0B5CAB;">['+E(f.side)+']</b>'):'')+(f.m&&f.m.sn?(' <span style="color:#667085;">S/N '+E(String(f.m.sn).trim())+'</span>'):'')+pw+(f.bad?(' <span style="color:#B42318;">'+E(f.bad)+'</span>'):'')+'</span>'
+        +'<button type="button" data-x="mup" data-i="'+i+'" style="border:1px solid #D0D5DD;background:#fff;border-radius:6px;padding:1px 7px;cursor:pointer;">▲</button><button type="button" data-x="mdn" data-i="'+i+'" style="border:1px solid #D0D5DD;background:#fff;border-radius:6px;padding:1px 7px;cursor:pointer;">▼</button><button type="button" data-x="mdel" data-i="'+i+'" style="border:1px solid #D0D5DD;background:#fff;border-radius:6px;padding:1px 7px;cursor:pointer;color:#B42318;">✕</button></div>'; }).join("")+'</div>'
+    +'<div style="font-size:11.5px;color:#667085;margin-top:4px;">'+L.length+'개 · 상/하 파일은 각각 순서대로 짝지어 한 열에 넣습니다. S/N 칸을 비워 두면 열 번호(1, 2, 3…)로 작성하고 양식의 S/N 칸은 그대로 둡니다.</div>';
+}
+// 직접 지정 파일 → 열(시료)별 묶음: 상/하는 각 순서대로 짝, 상/하 표시 없는 파일은 한 개씩
+function coaGenManualGroups_(L){
+  var up=L.filter(function(f){ return f.side==="상"; }), dn=L.filter(function(f){ return f.side==="하"; }), no=L.filter(function(f){ return !f.side; }), G=[];
+  for(var i=0;i<Math.max(up.length, dn.length);i++){ var g={}; if(up[i]) g["상"]=up[i]; if(dn[i]) g["하"]=dn[i]; G.push(g); }
+  no.forEach(function(f){ G.push({ "":f }); });
+  return G;
+}
 async function coaGenRun_(ov){
   var res=ov.querySelector("#cg-res"), E=coaXmlEsc_;
   var fail=function(m){ res.innerHTML='<div style="color:#B42318;font-weight:700;">⚠ '+E(m)+'</div>'; };
@@ -15594,20 +15626,33 @@ async function coaGenRun_(ov){
     var tpl=__coaGen.tpl; if(!tpl) return fail("성적서(양식)를 먼저 고르세요.");
     var info=tpl.info, draw=String(ov.querySelector("#cg-draw").value||"").trim(), p=coaParseSnInput_(ov.querySelector("#cg-sn").value);
     if(!draw) return fail("도번이 비어 있습니다.");
-    if(!p.tails.length) return fail("S/N을 입력하세요. (예: 10768-366,367,369 또는 366~369)");
+    var man=(__coaGen.manual||[]).filter(function(f){ return f.m && f.ws; }), manual=man.length>0, autoNo=false;
+    if(manual){   // [추가] 측정 파일 직접 지정 (S/N 없는 제품)
+      var wp=man.filter(function(f){ return f.m.part && coaFillPartNorm_(f.m.part)!==coaFillPartNorm_(draw); });
+      if(wp.length) return fail("도번이 다른 측정 파일이 있습니다: "+wp.map(function(f){ return f.name+" (품번 "+String(f.m.part).trim()+")"; }).join(", ")+" — 빼고 다시 작성하세요.");
+      var G=coaGenManualGroups_(man);
+      if(!p.tails.length){ p.tails=G.map(function(_,i){ return String(i+1); }); p.prefix=""; autoNo=true; }
+      else if(p.tails.length!==G.length) return fail("S/N "+p.tails.length+"개와 측정 파일 묶음 "+G.length+"개 수가 다릅니다. S/N 칸을 비우면 1, 2, 3…으로 작성합니다.");
+    }
+    if(!p.tails.length) return fail("S/N을 입력하세요. (예: 10768-366,367,369 또는 366~369) — S/N 없는 제품은 '측정 파일 지정'으로 파일을 고르세요.");
     if(p.tails.length>info.slots.length) return fail("이 양식은 한 장에 S/N "+info.slots.length+"개까지입니다. (입력 "+p.tails.length+"개) — 나눠서 작성하세요.");
+    var fm;
+    if(manual){ fm={ dirs:[{ path:"(측정 파일 직접 지정 "+man.length+"개)" }], found:{}, why:{} };
+      coaGenManualGroups_(man).forEach(function(g, i){ var t=p.tails[i], ks=Object.keys(g), first=g[ks[0]];
+        fm.found[t]=Object.assign({ others:0, sides:{} }, first); ks.forEach(function(k){ fm.found[t].sides[k]=g[k]; }); });
+    } else {
     if(!__coaMeasDir) await coaMeasDirLoad_();
     if(!__coaMeasDir) return fail("측정이력 폴더를 먼저 연결하세요. (📁 측정이력 폴더 연결)");
     if(!(await coaMeasPerm_(__coaMeasDir))) return fail("측정이력 폴더 읽기가 허용되지 않았습니다. 다시 눌러 '허용'을 선택하세요.");
     coaGenDirLabel_(ov);
     res.innerHTML='<div style="color:#5A6478;">🔎 측정이력에서 '+E(draw)+' · S/N '+E(p.tails.join(", "))+' 찾는 중… (처음엔 폴더 목록을 읽느라 조금 걸릴 수 있습니다)</div>';
-    var fm=await coaFindMeas_(__coaMeasDir, draw, p.tails);
+    fm=await coaFindMeas_(__coaMeasDir, draw, p.tails); }
     if(!fm.dirs.length){ res.innerHTML='<div style="color:#B42318;font-weight:700;">⚠ 측정이력 폴더('+E(__coaMeasDir.name)+')에서 도번 \''+E(draw)+'\' 폴더·파일을 찾지 못했습니다.</div>'
       +'<div style="font-size:12.5px;color:#475467;margin-top:8px;">살펴본 폴더 (이 화면을 캡처해 주시면 구조에 맞게 고치겠습니다):</div>'
       +'<div style="font-size:12px;background:#F9FAFB;border:1px solid #EAECF0;border-radius:8px;padding:8px 10px;margin-top:4px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all;">'+E((fm.diag||[]).join("\n")||"(폴더 목록을 읽지 못함)")+'</div>'; return; }
-    var prefix=p.prefix || ((info.snCell&&String(info.snCell.v).match(/^(\d{5})-/))||[])[1] || "";
-    var infos=tpl.infos||[info], newBuf=coaTplPrepare_(tpl.buf, infos, prefix, p.tails), fi=coaFormulaInfo_(newBuf, infos);
-    var extras=p.tails.filter(function(t){ return fm.found[t]; }).map(function(t){ return { name:fm.found[t].name, buf:fm.found[t].buf }; });
+    var prefix=autoNo?"":(p.prefix || ((info.snCell&&String(info.snCell.v).match(/^(\d{5})-/))||[])[1] || "");
+    var infos=tpl.infos||[info], newBuf=coaTplPrepare_(tpl.buf, infos, prefix, p.tails, { keepSn:autoNo }), fi=coaFormulaInfo_(newBuf, infos);
+    var extras=p.tails.filter(function(t){ return fm.found[t]; }).map(function(t){ return { name:fm.found[t].name, buf:fm.found[t].buf, forSn:manual?t:null }; });
     var skip={}; fi.refs.forEach(function(r){ skip[r.sheet+"!"+r.ref]=1; });
     var plan=coaFillPlan_(newBuf, extras, skip), w=coaFillWrite_(newBuf, plan);
     // [추가] 측정 데이터 시트를 S/N 이름(366 등)으로 성적서에 넣음 → 양식의 INDIRECT 수식이 매크로 없이 계산됨
@@ -15678,7 +15723,8 @@ function coaFillOpen_(){
     +    '<b>① 측정이력 폴더</b><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><span id="cg-dir">확인 중…</span><button type="button" data-x="dir" style="'+btn("#0B5CAB")+'">📁 측정이력 폴더 연결</button><span style="font-size:11.5px;color:#8A93A6;">\\\\Ntl\\5.품질팀\\품질문서\\측정보고서 (경로가 복사됨 → 선택창 주소창에 붙여넣기)</span></div>'
     +    '<b>② 성적서(양식)</b><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><input type="file" id="cg-tpl" accept=".xlsx,.xlsm" style="display:none;"><button type="button" data-x="tpl" style="'+btn("#1F2A44")+'">📂 성적서 선택</button><span id="cg-tplname" style="font-size:12.5px;color:#475467;">같은 도번의 지난 성적서를 고르세요</span></div>'
     +    '<b>도번</b><input id="cg-draw" placeholder="성적서를 고르면 자동 (Part Code)" style="'+inp+'width:260px;">'
-    +    '<b>③ S/N</b><input id="cg-sn" placeholder="예: 10768-366,367,369  /  366,367,369  /  366~369" style="'+inp+'width:100%;">'
+    +    '<b>③ S/N</b><input id="cg-sn" placeholder="예: 10768-366,367,369  /  366,367,369  /  366~369  (S/N 없는 제품은 비워 두고 아래에서 측정 파일 지정)" style="'+inp+'width:100%;">'
+    +    '<b>측정 파일 직접</b><div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><input type="file" id="cg-mfile" accept=".xlsx,.xlsm,.xls" multiple style="display:none;"><button type="button" data-x="mpick" style="'+btn("#475467")+'">📎 측정 파일 지정 (여러 개)</button><button type="button" data-x="mclr" style="border:1px solid #D0D5DD;background:#fff;border-radius:8px;padding:7px 12px;cursor:pointer;">지우기</button><span style="font-size:11.5px;color:#8A93A6;">S/N 없는 제품 · 폴더 검색 대신 고른 파일로 작성 (파일 이름 순서 = 성적서 열 순서)</span></div><div id="cg-mlist" style="margin-top:6px;font-size:12.5px;"></div></div>'
     +    '<b>저장 파일명</b><input id="cg-name" style="'+inp+'width:100%;">'
     +  '</div>'
     +  '<div style="margin-top:12px;"><button type="button" data-x="gen" style="'+btn("#C0392B")+'">📝 측정 데이터 찾아 작성</button></div>'
@@ -15695,7 +15741,13 @@ function coaFillOpen_(){
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute&&e.target.getAttribute("data-x");
     if(x==="close"||e.target===ov) ov.remove(); else if(x==="pick") fi.click(); else if(x==="tpl") ft.click();
     else if(x==="dir") coaMeasDirPick_().then(function(){ coaGenDirLabel_(ov); });
-    else if(x==="gen") coaGenRun_(ov); });
+    else if(x==="gen") coaGenRun_(ov);
+    else if(x==="mpick") ov.querySelector("#cg-mfile").click();
+    else if(x==="mclr"){ __coaGen.manual=null; coaGenManualList_(ov); }
+    else if(x==="mdel"){ var i=Number(e.target.getAttribute("data-i")); if(__coaGen.manual){ __coaGen.manual.splice(i,1); if(!__coaGen.manual.length) __coaGen.manual=null; } coaGenManualList_(ov); }
+    else if(x==="mup"||x==="mdn"){ var j=Number(e.target.getAttribute("data-i")), L=__coaGen.manual||[], k=x==="mup"?j-1:j+1; if(k>=0 && k<L.length){ var t=L[j]; L[j]=L[k]; L[k]=t; } coaGenManualList_(ov); } });
+  ov.querySelector("#cg-mfile").addEventListener("change", function(e){ var fs=Array.prototype.slice.call(e.target.files||[]); e.target.value=""; if(fs.length) coaGenManualAdd_(fs, ov); });
+  coaGenManualList_(ov);
   ov.querySelector("#cg-sn").addEventListener("input", function(){ coaGenNameSync_(ov); });
   ov.querySelector("#cg-sn").addEventListener("keydown", function(e){ if(e.key==="Enter") coaGenRun_(ov); });
   ft.addEventListener("change", function(){ var f=ft.files&&ft.files[0]; ft.value=""; if(f) coaGenLoadTpl_(f, ov); });
