@@ -15669,6 +15669,52 @@ function coaEugPick_(subs, spec, occ){
   if(!isNaN(sp)){ var hit=subs.filter(function(x){ return !isNaN(x.nom) && Math.abs(Math.abs(x.nom)-sp)<1e-6; }); if(hit.length) return hit[Math.min(occ, hit.length-1)]; }
   return subs[Math.min(occ, subs.length-1)];
 }
+// [추가] 양식 줄 ↔ 측정 항목 짝짓기 — 측정 프로그램 번호가 바뀌어 CMM NUMBER와 측정 No.가 어긋나도 맞춤
+
+//   1) 양식 SPEC 숫자 = 측정 Nominal(절댓값)인 항목만 후보 (각도 ∠25 → 25, 위치도 0.005 → Nominal 0.005)
+
+//   2) 후보가 하나뿐인 줄들로 번호 차이(측정 No. − CMM NUMBER)의 대표값을 구함 (예: +2 → 대부분 -2 등)
+
+//   3) 후보가 여럿이면 'CMM NUMBER + 번호 차이'에 가장 가까운 No.를 고르고, 이미 쓴 항목은 피함
+
+//   SPEC에 숫자가 없으면 같은 No.에서 순서대로 (기존 방식)
+
+function coaEugMatch_(tRows, pos){
+
+  var items=[]; Object.keys(pos).forEach(function(no){ pos[no].forEach(function(x, k){ items.push({ no:Number(no), k:k, ref:x.ref, item:x.item, nom:x.nom, val:x.val }); }); });
+
+  var specNum=function(s){ s=String(s==null?"":s); var m=s.replace(/[∠°˚]/g,"").match(/-?\d+(\.\d+)?/); return m?Math.abs(Number(m[0])):NaN; };
+
+  var gdt=function(s){ s=String(s==null?"":s); var k=s.match(COA_GDT_RE); if(k) return k[1]; var hit=null; Object.keys(COA_EUG_GDT).some(function(sym){ if(s.indexOf(sym)>=0){ hit=COA_EUG_GDT[sym]; return true; } return false; }); return hit; };
+
+  var cand=function(t){ var sp=specNum(t.spec), g=gdt(t.spec);
+
+    var c=isNaN(sp)?[]:items.filter(function(x){ return !isNaN(x.nom) && Math.abs(Math.abs(x.nom)-sp)<1e-6; });
+
+    if(g){ var cg=c.filter(function(x){ return x.item.indexOf(g)>=0; }); if(cg.length) c=cg; }
+
+    return c; };
+
+  var deltas={}; tRows.forEach(function(t){ var c=cand(t); if(c.length===1){ var d=c[0].no-Number(t.no); deltas[d]=(deltas[d]||0)+1; } });
+
+  var dl=0, dn=0; Object.keys(deltas).forEach(function(d){ if(deltas[d]>dn || (deltas[d]===dn && Math.abs(d)<Math.abs(dl))){ dn=deltas[d]; dl=Number(d); } });
+
+  var used={}, out={};
+
+  tRows.forEach(function(t){ var c=cand(t), pick=null;
+
+    if(c.length){ var want=Number(t.no)+dl; c=c.slice().sort(function(a,b){ var ua=used[a.ref]?1:0, ub=used[b.ref]?1:0; if(ua!==ub) return ua-ub; var da=Math.abs(a.no-want), db=Math.abs(b.no-want); if(da!==db) return da-db; return a.no-b.no || a.k-b.k; });
+
+      pick=c[0]; if(Math.abs(pick.no-want)>30 && used[pick.ref]) pick=null; }
+
+    if(!pick){ var l=pos[String(Number(t.no)+dl)]||(dl?null:pos[t.no]); if(l && l.length){ var x=l[Math.min(t.occ, l.length-1)]; if(!used[x.ref]) pick={ ref:x.ref, no:Number(t.no)+dl, loose:!isNaN(specNum(t.spec)), nom:x.nom }; } }   // SPEC와 Nominal이 달라도 번호로 (확인 표시)
+
+    if(pick){ used[pick.ref]=1; out[t.r]=pick; } });
+
+  return { map:out, delta:dl };
+
+}
+
 // 측정이력에서 새 S/N 파일 찾기: 파일 이름에 '로트-번호'(26112-1)가 있고 상부/하부 구분
 async function coaEugFind_(root, draw, items){
   var diag=[], dirs=await coaFindDrawDirs_(root, draw, diag); if(!dirs.length) return { dirs:[], found:{}, why:{}, diag:diag };
@@ -15707,7 +15753,7 @@ async function coaEugRun_(ov, tpl){
   res.innerHTML='<div style="color:#5A6478;">🔎 측정이력에서 '+E(draw)+' · '+E(P.text)+' 상부·하부 파일 찾는 중…</div>';
   var fm=await coaEugFind_(__coaMeasDir, draw, P.items);
   if(!fm.dirs.length) return fail("측정이력 폴더에서 도번 '"+draw+"' 폴더를 찾지 못했습니다. ("+(fm.diag||[]).slice(0,8).join(" · ")+")");
-  var X=coaXlsxOpen_(tpl.buf), addList=[], used={}, miss=[], warn=[], nCell=0, posCache={}, slot0=0;
+  var X=coaXlsxOpen_(tpl.buf), addList=[], used={}, miss=[], warn=[], nCell=0, posCache={}, slot0=0, matchCache={}, deltaNote={}, loose=[], looseSeen={};
   P.items.forEach(function(it){ var F=fm.found[it.key]; if(F) Object.keys(F.sides).forEach(function(sd){ if(F.sides[sd].warn) warn.push(F.sides[sd].name+": "+F.sides[sd].warn); }); });
   var setF=function(xml, ref, f){ var re=new RegExp('<c r="'+ref+'"((?:\\s[^>]*?)?)(\\/>|>([\\s\\S]*?)<\\/c>)'), m=xml.match(re);
     if(!m){ if(f===null) return xml; var nx=coaFillSetCell_(xml, ref, 0); return nx?setF(nx, ref, f):xml; }
@@ -15720,8 +15766,11 @@ async function coaEugRun_(ov, tpl){
       if(!e){ miss.push(it.key+cl.side+" 파일 없음"); x=setF(x, cl.ref, null); return; }
       var shName=it.key+(e.side||cl.side), key=it.key+"|"+(e.side||cl.side);
       if(!posCache[key]){ posCache[key]=coaEugPos_(e.ws); if(!used[shName]){ used[shName]=1; addList.push({ name:shName, ws:e.ws }); } }
-      var sub=coaEugPick_(posCache[key][cl.no], cl.spec, cl.occ);
-      if(!sub){ miss.push(it.key+cl.side+" No."+cl.no); x=setF(x, cl.ref, null); return; }
+      var mk=pg.sheet+"|"+key; if(!matchCache[mk]){   // 이 장의 같은 면(상/하) 양식 줄 전체 ↔ 측정 항목 짝짓기 (S/N 파일마다 1번)
+        var seenR={}, tRows=pg.cells.filter(function(c){ if(c.side!==cl.side || seenR[c.r]) return false; seenR[c.r]=1; return true; });
+        matchCache[mk]=coaEugMatch_(tRows, posCache[key]); if(matchCache[mk].delta) deltaNote[cl.side+" "+(matchCache[mk].delta>0?"+":"")+matchCache[mk].delta]=1; }
+      var sub=matchCache[mk].map[cl.r]; if(sub && sub.loose && !looseSeen[cl.side+cl.label]){ looseSeen[cl.side+cl.label]=1; loose.push(cl.label+" (SPEC "+String(cl.spec)+" / 측정 Nominal "+sub.nom+")"); }
+      if(!sub){ miss.push(it.key+cl.side+" "+cl.label); x=setF(x, cl.ref, null); return; }
       x=setF(x, cl.ref, "'"+shName+"'!"+sub.ref); nCell++; });
     if(pg.serial && pg.serial.ref) x=coaXmlCell_(x, pg.serial.ref, "s", P.text);
     if(pg.qty && pg.qty.ref) x=coaXmlCell_(x, pg.qty.ref, "n", P.items.length);
@@ -15742,6 +15791,8 @@ async function coaEugRun_(ov, tpl){
   var mf=P.items.filter(function(it){ return !fm.found[it.key]; }), bad=mf.length||miss.length;
   var html='<div style="background:'+(bad?'#FFF6E5':'#ECFDF3')+';border:1px solid '+(bad?'#FEC84B':'#ABEFC6')+';border-radius:10px;padding:10px 14px;margin-bottom:10px;"><b>✅ 유지너스 양식 · 치수 '+nCell+'칸을 측정 시트로 연결</b> · 도번 '+E(draw)+' · S/N '+E(P.text)+' ('+P.items.length+'개 · '+I.pages.length+'장)</div>';
   if(addList.length) html+='<div style="font-size:12.5px;color:#1E7A46;margin-bottom:6px;">📄 측정 데이터 시트 추가: '+E(addList.map(function(a){ return a.name; }).join(", "))+' (성적서 안 시트로 계산 · 공차 벗어난 줄은 빨간색)</div>';
+  if(loose.length) html+='<div style="font-size:12.5px;color:#B54708;margin-bottom:6px;">⚠ SPEC과 측정 Nominal이 달라 번호로만 넣은 칸: '+E(loose.slice(0,8).join(", "))+(loose.length>8?" …":"")+' — 확인하세요</div>';
+  if(Object.keys(deltaNote).length) html+='<div style="font-size:12.5px;color:#0B5CAB;margin-bottom:6px;">ℹ 양식 CMM NUMBER와 측정 파일 No.가 다릅니다 ('+E(Object.keys(deltaNote).join(", "))+') — 측정 프로그램 번호가 바뀐 것으로 보고 SPEC = Nominal인 항목으로 맞췄습니다. 몇 칸 확인해 주세요</div>';
   if(mf.length) html+='<div style="font-size:12.5px;color:#B42318;font-weight:700;margin-bottom:6px;">⛔ 측정 파일 없음: '+E(mf.map(function(it){ return it.key+" ("+(fm.why[it.key]||"")+")"; }).join(" / "))+'</div>';
   if(miss.length) html+='<div style="font-size:12.5px;color:#B42318;margin-bottom:6px;">빈칸 '+miss.length+'개: '+E(miss.slice(0,15).join(", "))+(miss.length>15?" …":"")+'</div>';
   if(warn.length) html+='<div style="font-size:12.5px;color:#B54708;margin-bottom:6px;">⚠ '+E(warn.slice(0,6).join(" / "))+(warn.length>6?" …":"")+' — 파일 이름·S/N으로 찾았습니다. 측정 파일의 품번을 확인하세요</div>';
