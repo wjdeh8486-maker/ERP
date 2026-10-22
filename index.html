@@ -16948,12 +16948,18 @@ function ofRender_(){
 /* ==================== 🧭 공정도 (교육용) — 도번·품명별 생산 공정 흐름 ====================
    · 공정도 1개 = 이름 + 적용 품명 키워드·도번 + 공정 순서(공정명·구분·외주·설비·교육 포인트·사진)
    · 찾기: 도번을 넣으면 ① 그 도번이 등록된 공정도 ② MAIN 품명에 키워드가 들어간 공정도 순으로 보여줌
-   · 저장: 공유 저장소 procFlow (공정도 글) · pfImg_<id> (공정 사진, 열 때만 읽음) */
+   · 저장: 구글시트 'ProcFlow_Master' 탭 (공정도 1개 = 1줄, 고친 것만 올림) · 사진은 구글 드라이브 'QMS_공정도_사진' 폴더 (시트엔 파일 ID만)
+     ※ 사진 올리기는 GS에 pfImgUpload / pfImgFind 가 있어야 함 */
 var PF_KEY="procFlow", PF_TYPES=[
   { k:"가공", c:"#0F6E56", bg:"#E1F5EE" }, { k:"용접", c:"#993C1D", bg:"#FAECE7" }, { k:"후처리", c:"#5F5E5A", bg:"#F1EFE8" },
   { k:"식별", c:"#3C3489", bg:"#EEEDFE" }, { k:"검사", c:"#185FA5", bg:"#E6F1FB" }, { k:"세정·포장", c:"#3B6D11", bg:"#EAF3DE" } ];
 var PF_NAMES=["MCT","선반","밀링","E-BEAM 용접","메뉴얼 용접","TIG 용접","각인","레이저 마킹","사상","C.P","E.P","마스킹","연마","폴리싱","도금","아노다이징","열처리","세정","포장","수입검사","공정검사","측정검사","외관검사","최종검사","LEAK 검사","출하검사"];
-var __pf={ items:null, loading:false, q:"", sel:"", edit:null, img:{}, imgLoading:{}, open:-1 };
+var __pf={ items:null, loading:false, q:"", sel:"", edit:null, open:-1 };
+var PF_TAB="ProcFlow_Master", PF_COLS=[["title","공정도 이름"],["namesTxt","적용 품명"],["drawsTxt","적용 도번"],["flowTxt","공정 순서"],["n","공정 수"],["by","작성자"],["updated","수정일"],["ts","_ts"],["del","_del"]];
+function pfImgUrl_(s){ var m=s && s.img; if(!m) return ""; if(m.id) return "https://drive.google.com/thumbnail?id="+encodeURIComponent(m.id)+"&sz=w1200"; return m.url||""; }
+function pfRowOf_(it){ var r=JSON.parse(JSON.stringify(it)); delete r._img; delete r._new; delete r.seed;
+  r.namesTxt=(it.names||[]).join(", "); r.drawsTxt=(it.draws||[]).join(", "); r.flowTxt=(it.steps||[]).map(function(s){ return s.name+(s.out?"(외주)":""); }).join(" → "); r.n=(it.steps||[]).length; return r; }
+function pfClean_(r){ ["namesTxt","drawsTxt","flowTxt","n"].forEach(function(k){ delete r[k]; }); r.del=(r.del===true||String(r.del)==="1"||String(r.del)==="true"); r.names=r.names||[]; r.draws=r.draws||[]; r.steps=r.steps||[]; return r; }
 function pfE_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function pfType_(k){ return PF_TYPES.filter(function(t){ return t.k===k; })[0]||PF_TYPES[2]; }
 function pfGuess_(name){ var n=String(name||"").toUpperCase().replace(/\s+/g,"");
@@ -16969,25 +16975,49 @@ function pfLive_(){ return (__pf.items||[]).filter(function(x){ return !x.del; }
 function pfSeed_(){ var st=[["MCT"],["E-BEAM 용접"],["메뉴얼 용접"],["MCT"],["각인","완료품 각인"],["사상"],["C.P"],["검사"],["마스킹"],["선반"],["검사","최종"]];
   return { id:"pfseed-chamber", title:"CHAMBER 기본 공정", names:["CHAMBER"], draws:[], note:"", seed:true, ts:0,
     steps:st.map(function(s){ return { id:pfId_(), name:s[0], type:pfGuess_(s[0]), out:pfGuessOut_(s[0]), vendor:"", equip:"", point:s[1]||"" }; }) }; }
+function pfCache_(){ try{ localStorage.setItem("pfCache2", JSON.stringify({ items:(__pf.items||[]).filter(function(x){ return !x.seed; }) })); }catch(_){} }
 function pfLoad_(cb){
-  if(__pf.items){ cb&&cb(); return; } if(__pf.loading){ (__pf.wait=__pf.wait||[]).push(cb); return; } __pf.loading=true; if(cb) (__pf.wait=__pf.wait||[]).push(cb);
-  var fin=function(){ __pf.loading=false; if(!__pf.items) __pf.items=[]; if(!__pf.items.length) __pf.items=[pfSeed_()]; var w=__pf.wait||[]; __pf.wait=[]; w.forEach(function(f){ try{ f&&f(); }catch(_){} }); };
-  try{ var c=JSON.parse(localStorage.getItem("pfCache")||"null"); if(c && Array.isArray(c.items)) __pf.items=c.items; }catch(_){}
-  if(typeof qShareLoad_!=="function"){ fin(); return; }
-  qShareLoad_(PF_KEY, function(v){ if(v && Array.isArray(v.items)) __pf.items=pfMerge_(__pf.items, v.items); fin(); });
+  if(__pf.items){ cb&&cb(); return; } if(cb) (__pf.wait=__pf.wait||[]).push(cb); if(__pf.loading) return; __pf.loading=true;
+  var fin=function(){ __pf.loading=false; if(!__pf.items) __pf.items=[]; if(!pfLive_().length) __pf.items.push(pfSeed_()); var w=__pf.wait||[]; __pf.wait=[]; w.forEach(function(f){ try{ f&&f(); }catch(_){} }); };
+  var cache=[]; try{ var c=JSON.parse(localStorage.getItem("pfCache2")||"null"); if(c && Array.isArray(c.items)) cache=c.items; }catch(_){}
+  if(typeof qmsRowRead_!=="function"){ __pf.items=cache; fin(); return; }
+  qmsRowRead_(PF_TAB, PF_COLS, function(map){
+    if(!map){ __pf.items=cache; __pf.offline=true; fin(); return; }   // 시트를 못 읽음 → 이 PC 사본으로 표시
+    var rows=Object.keys(map).map(function(k){ return pfClean_(map[k]); });
+    // 이 PC에만 있는 더 최신 사본(전송 실패분) → 다시 올림
+    var resend=cache.filter(function(x){ var r=map[x.id]; return !r || (Number(x.ts)||0)>(Number(r.ts)||0); });
+    __pf.items=pfMerge_(rows, cache); pfCache_();
+    if(resend.length) try{ qmsRowPost_(PF_TAB, PF_COLS, resend.map(pfRowOf_), { json:true }); }catch(_){}
+    pfMigrate_(); fin(); }, { json:true });
 }
+// 예전(공유 저장소 procFlow)에 저장된 공정도가 있으면 시트로 1번 옮김
+function pfMigrate_(){ if(__pf.migrated || typeof qShareLoad_!=="function") return; __pf.migrated=true;
+  qShareLoad_("procFlow", function(v){ if(!v || !Array.isArray(v.items) || !v.items.length) return; var have={}; (__pf.items||[]).forEach(function(x){ have[x.id]=1; });
+    var mv=v.items.filter(function(x){ return x && x.id && !have[x.id]; }); if(!mv.length) return;
+    mv.forEach(function(x){ (x.steps||[]).forEach(function(s){ delete s.img; }); x.ts=x.ts||Date.now(); });
+    __pf.items=pfMerge_(__pf.items, mv); pfCache_(); try{ qmsRowPost_(PF_TAB, PF_COLS, mv.map(pfRowOf_), { json:true }); }catch(_){} try{ pfRender_(); }catch(_){} }); }
 function pfSave_(item, cb){
   item.ts=Date.now(); item.updated=(typeof qmsToday_==="function"?qmsToday_():new Date().toISOString().slice(0,10)); item.by=pfWho_()||item.by||""; delete item.seed;
-  __pf.items=pfMerge_(__pf.items, [item]);
-  try{ localStorage.setItem("pfCache", JSON.stringify({ items:__pf.items })); }catch(_){}
-  var push=function(){ var live=__pf.items.filter(function(x){ return !x.seed; }); try{ qShareSave_(PF_KEY, { items:live }, "pf-st"); }catch(_){} cb&&cb(); };
-  if(typeof qShareLoad_==="function") qShareLoad_(PF_KEY, function(v){ if(v && Array.isArray(v.items)) __pf.items=pfMerge_(__pf.items, v.items); push(); }); else push();
+  __pf.items=pfMerge_((__pf.items||[]).filter(function(x){ return !x.seed; }), [item]); pfCache_();
+  var st=function(t, c){ var el=document.getElementById("pf-st"); if(el){ el.textContent=t; el.style.color=c||"#667085"; } };
+  st("☁ 시트에 저장 중…");
+  Promise.resolve(qmsRowPost_(PF_TAB, PF_COLS, [pfRowOf_(item)], { json:true })).then(function(){
+    setTimeout(function(){ qmsRowRead_(PF_TAB, PF_COLS, function(map){ var r=map && map[item.id];   // 되읽어 확인
+      if(r && Number(r.ts)===Number(item.ts)) st("☁ 시트 저장 확인됨","#1E7A46"); else st("⚠ 시트 저장 확인 안 됨 — 이 PC에 보관, 다음에 열 때 다시 보냄","#B42318"); }, { json:true }); }, 4000); });
+  cb&&cb();
 }
-function pfImgLoad_(id, cb){ if(__pf.img[id]){ cb&&cb(); return; } if(__pf.imgLoading[id]) return; __pf.imgLoading[id]=true;
-  var done=function(v){ __pf.img[id]=(v && typeof v==="object")?v:{}; __pf.imgLoading[id]=false; cb&&cb(); };
-  try{ idbGet("pfImg_"+id).then(function(v){ if(v && !__pf.img[id]) __pf.img[id]=v; }).catch(function(){}); }catch(_){}
-  if(typeof qShareLoad_==="function") qShareLoad_("pfImg_"+id, function(v){ if(v){ try{ idbSet("pfImg_"+id, v); }catch(_){} } done(v||__pf.img[id]); }); else done(null); }
-function pfImgSave_(id){ var v=__pf.img[id]||{}; try{ idbSet("pfImg_"+id, v); }catch(_){} try{ qShareSave_("pfImg_"+id, v, "pf-st"); }catch(_){} }
+// 사진 → 구글 드라이브 (GS: pfImgUpload 저장 / pfImgFind 키로 파일 ID 찾기)
+function pfImgUpload_(dataURL, name){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return Promise.reject(new Error("백엔드 URL 없음"));
+  var key="pfimg_"+Date.now().toString(36)+Math.random().toString(36).slice(2,8), mime=(String(dataURL).match(/^data:([^;]+);/)||[])[1]||"image/jpeg";
+  var body=JSON.stringify({ mode:"pfImgUpload", key:key, name:name||key, mime:mime, dataB64:String(dataURL).split(",")[1]||"" });
+  var find=function(n){ return new Promise(function(res, rej){ var tries=0; (function go(){ tries++;
+      fetch(url+"?mode=pfImgFind&key="+encodeURIComponent(key)+"&_t="+Date.now(), { cache:"no-store" }).then(function(r){ return r.json(); }).then(function(j){ if(j && j.id) res({ id:j.id }); else if(tries<n) setTimeout(go, 2500); else rej(new Error("업로드 확인 안 됨 (GS에 pfImgUpload가 없을 수 있음)")); })
+        .catch(function(){ if(tries<n) setTimeout(go, 2500); else rej(new Error("업로드 확인 실패")); }); })(); }); };
+  return fetch(url, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:body }).then(function(r){ return r.json(); })
+    .then(function(j){ if(j && j.id) return { id:j.id }; return find(6); })
+    .catch(function(){ return fetch(url, { method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:body }).catch(function(){}).then(function(){ return find(8); }); });
+}
 // 도번·품명으로 공정도 찾기
 function pfFind_(q){
   q=String(q||"").trim(); if(!q) return { list:pfLive_(), how:"" };
@@ -17001,15 +17031,15 @@ function pfFind_(q){
   return { list:byTitle, how:byTitle.length?"공정도 이름":"", name:name, none:!byTitle.length };
 }
 // 흐름 그림 (화면·출력 공용)
-function pfFlowHtml_(it, opt){ opt=opt||{}; var E=pfE_, st=it.steps||[], img=__pf.img[it.id]||{};
+function pfFlowHtml_(it, opt){ opt=opt||{}; var E=pfE_, st=it.steps||[];
   return '<div class="pf-flow">'+st.map(function(s, i){ var T=pfType_(s.type);
     return (i?'<div class="pf-ar">→</div>':'')+'<div class="pf-st'+(s.out?' out':'')+(opt.click&&__pf.open===i?' on':'')+'" data-i="'+i+'" style="background:'+T.bg+';color:'+T.c+';border-color:'+T.c+';">'
       +'<div class="pf-no">'+(i+1)+'</div><b>'+E(s.name||"-")+'</b><small>'+E(s.type||"")+(s.out?' · 외주'+(s.vendor?(' ('+E(s.vendor)+')'):''):'')+'</small>'
-      +(s.point?'<i class="pf-pt" title="교육 포인트 있음">●</i>':'')+(img[s.id]?'<i class="pf-ph" title="사진 있음">📷</i>':'')+'</div>'; }).join("")+'</div>'
+      +(s.point?'<i class="pf-pt" title="교육 포인트 있음">●</i>':'')+(pfImgUrl_(s)?'<i class="pf-ph" title="사진 있음">📷</i>':'')+'</div>'; }).join("")+'</div>'
     +'<div class="pf-lg">'+PF_TYPES.map(function(t){ return '<span><i style="background:'+t.bg+';border-color:'+t.c+';"></i>'+t.k+'</span>'; }).join("")+'<span><i style="background:#fff;border:2px dashed #667085;"></i>외주</span></div>'; }
-function pfTableHtml_(it){ var E=pfE_, img=__pf.img[it.id]||{};
+function pfTableHtml_(it){ var E=pfE_;
   return '<table class="pf-tb"><thead><tr><th style="width:36px;">No.</th><th style="width:120px;">공정</th><th style="width:70px;">구분</th><th style="width:110px;">설비 / 외주처</th><th>교육 포인트 (하는 일 · 주의할 점 · 확인 방법)</th><th style="width:150px;">사진</th></tr></thead><tbody>'
-    +(it.steps||[]).map(function(s, i){ return '<tr><td>'+(i+1)+'</td><td><b>'+E(s.name)+'</b></td><td>'+E(s.type)+'</td><td>'+(s.out?('<b style="color:#B54708;">외주</b> '+E(s.vendor||"")):E(s.equip||""))+'</td><td style="text-align:left;white-space:pre-wrap;">'+E(s.point||"")+'</td><td>'+(img[s.id]?'<img src="'+img[s.id]+'" style="max-width:140px;max-height:100px;">':'')+'</td></tr>'; }).join("")+'</tbody></table>'; }
+    +(it.steps||[]).map(function(s, i){ return '<tr><td>'+(i+1)+'</td><td><b>'+E(s.name)+'</b></td><td>'+E(s.type)+'</td><td>'+(s.out?('<b style="color:#B54708;">외주</b> '+E(s.vendor||"")):E(s.equip||""))+'</td><td style="text-align:left;white-space:pre-wrap;">'+E(s.point||"")+'</td><td>'+(pfImgUrl_(s)?'<img src="'+E(pfImgUrl_(s))+'" style="max-width:140px;max-height:100px;" referrerpolicy="no-referrer">':'')+'</td></tr>'; }).join("")+'</tbody></table>'; }
 function pfCss_(){ return '.pf-flow{display:flex;flex-wrap:wrap;gap:8px 4px;align-items:center;}'
   +'.pf-st{position:relative;min-width:104px;border:1.5px solid;border-radius:10px;padding:16px 10px 8px;text-align:center;cursor:pointer;}.pf-st b{display:block;font-size:13.5px;}.pf-st small{display:block;font-size:11px;opacity:.85;margin-top:2px;}'
   +'.pf-st.out{border-style:dashed;border-width:2px;background:#fff !important;}.pf-st.on{box-shadow:0 0 0 3px #1D4ED8;}'
@@ -17019,12 +17049,12 @@ function pfCss_(){ return '.pf-flow{display:flex;flex-wrap:wrap;gap:8px 4px;alig
   +'.pf-lg{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:#475467;margin-top:10px;}.pf-lg i{display:inline-block;width:12px;height:12px;border:1.5px solid;border-radius:3px;margin-right:4px;vertical-align:-2px;}'
   +'.pf-tb{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px;}.pf-tb th{background:#1F2A44;color:#fff;padding:6px;border:1px solid #98A2B3;}.pf-tb td{border:1px solid #98A2B3;padding:6px;text-align:center;vertical-align:top;}'; }
 function pfPrint_(id){ var it=pfLive_().filter(function(x){ return x.id===id; })[0]; if(!it) return;
-  pfImgLoad_(id, function(){ var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; }
+  (function(){ var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; }
     w.document.write('<html><head><meta charset="utf-8"><title>공정도 '+pfE_(it.title)+'</title><style>@page{size:A4 landscape;margin:12mm;}body{font-family:sans-serif;color:#1F2A44;-webkit-print-color-adjust:exact;print-color-adjust:exact;}h2{margin:0 0 4px;}'+pfCss_()+'.pf-st{cursor:default;}</style></head><body>'
       +'<h2>🧭 공정도 (교육용) · '+pfE_(it.title)+'</h2><div style="font-size:12px;color:#667085;margin-bottom:14px;">적용 품명: '+pfE_((it.names||[]).join(", ")||"-")+' · 적용 도번: '+pfE_((it.draws||[]).join(", ")||"-")+' · 작성 '+pfE_(it.by||"")+' '+pfE_(it.updated||"")+'</div>'
       +pfFlowHtml_(it)+(it.note?'<div style="margin-top:10px;font-size:12.5px;white-space:pre-wrap;"><b>비고</b> '+pfE_(it.note)+'</div>':'')+pfTableHtml_(it)
       +'<table style="margin-top:16px;margin-left:auto;border-collapse:collapse;font-size:12px;"><tr><th style="border:1px solid #999;padding:4px 18px;">교육일</th><th style="border:1px solid #999;padding:4px 18px;">교육자</th><th style="border:1px solid #999;padding:4px 18px;">교육 대상자 (서명)</th></tr><tr><td style="border:1px solid #999;height:40px;width:110px;"></td><td style="border:1px solid #999;width:110px;"></td><td style="border:1px solid #999;width:300px;"></td></tr></table>'
-      +'</body></html>'); w.document.close(); setTimeout(function(){ try{ w.print(); }catch(_){} }, 500); }); }
+      +'</body></html>'); w.document.close(); setTimeout(function(){ try{ w.print(); }catch(_){} }, 1500); })(); }
 
 /* ---------- 화면 ---------- */
 function pfRender_(){
@@ -17043,12 +17073,11 @@ function pfRender_(){
   var E=pfE_, f=pfFind_(__pf.q), list=f.list.slice().sort(function(a,b){ return String(a.title).localeCompare(String(b.title)); });
   if(!list.some(function(x){ return x.id===__pf.sel; })) __pf.sel=list.length?list[0].id:"";
   var it=list.filter(function(x){ return x.id===__pf.sel; })[0];
-  if(it && !__pf.img[it.id] && !it.seed) pfImgLoad_(it.id, pfRender_);
   var h='<div style="font-size:12px;color:#667085;">생산 › 공정도</div><div style="font-size:24px;font-weight:800;margin-top:2px;">🧭 공정도 <span style="font-size:13px;font-weight:600;color:#667085;">· 도번·품명별 생산 공정 흐름 (교육용)</span></div>'
     +'<div class="pf-tool"><input id="pf-q" value="'+E(__pf.q)+'" placeholder="도번 또는 품명 (예: 61031-00, CHAMBER) → Enter"><button class="pf-btn" data-x="find">🔍 찾기</button><button class="pf-btn g" data-x="all">전체</button><button class="pf-btn b" data-x="new">➕ 새 공정도</button><span id="pf-st" style="font-size:12px;color:#667085;"></span></div>';
   if(__pf.q) h+='<div class="pf-sub">'+(f.none?('<b style="color:#B42318;">\''+E(__pf.q)+'\'에 맞는 공정도가 없습니다.</b>'+(f.name?(' (품명: '+E(f.name)+')'):'')+' — ➕ 새 공정도로 등록하세요.'):('찾은 기준: '+E(f.how)+' · '+list.length+'건'))+'</div>';
   if(list.length>1 || !__pf.q) h+='<div class="pf-chips">'+list.map(function(x){ return '<button class="pf-chip'+(x.id===__pf.sel?' on':'')+'" data-sel="'+E(x.id)+'">'+E(x.title)+' <span style="font-weight:400;opacity:.8;">('+(x.steps||[]).length+')</span></button>'; }).join("")+'</div>';
-  if(it){ var s=(__pf.open>=0 && it.steps[__pf.open])?it.steps[__pf.open]:null, img=(__pf.img[it.id]||{});
+  if(it){ var s=(__pf.open>=0 && it.steps[__pf.open])?it.steps[__pf.open]:null;
     h+='<div class="pf-card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><div><h3>'+E(it.title)+(it.seed?' <span style="font-size:11.5px;color:#B54708;">(예시 · 수정 후 저장하면 등록)</span>':'')+'</h3>'
       +'<div class="pf-sub">적용 품명: '+E((it.names||[]).join(", ")||"-")+' · 적용 도번: '+E((it.draws||[]).join(", ")||"-")+(it.by||it.updated?(' · 작성 '+E(it.by||"")+' '+E(it.updated||"")):'')+'</div></div>'
       +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;"><button class="pf-btn g" data-x="edit">✏️ 수정</button><button class="pf-btn g" data-x="copy">📄 복사해서 새로</button><button class="pf-btn" data-x="print">🖨 교육 자료 출력</button></div></div>'
@@ -17056,7 +17085,7 @@ function pfRender_(){
       +'<div style="font-size:12px;color:#667085;margin-top:6px;">공정을 누르면 교육 포인트·사진이 보입니다 (<span style="color:#D92D20;">●</span> 교육 포인트 있음 · 📷 사진 있음)</div>'
       +(s?('<div class="pf-det"><div style="flex:1;min-width:240px;"><b style="font-size:15px;">'+(__pf.open+1)+'. '+E(s.name)+'</b> <span style="color:#667085;">'+E(s.type)+(s.out?(' · 외주'+(s.vendor?(' '+E(s.vendor)):'')):(s.equip?(' · '+E(s.equip)):''))+'</span>'
         +'<div style="white-space:pre-wrap;margin-top:6px;font-size:13.5px;line-height:1.6;">'+(s.point?E(s.point):'<span style="color:#98A2B3;">교육 포인트가 아직 없습니다 — ✏️ 수정에서 적어 주세요.</span>')+'</div></div>'
-        +(img[s.id]?'<img src="'+img[s.id]+'">':'')+'</div>'):'')
+        +(pfImgUrl_(s)?'<a href="'+E(pfImgUrl_(s).replace("&sz=w1200","&sz=w2400"))+'" target="_blank" rel="noopener"><img src="'+E(pfImgUrl_(s))+'" referrerpolicy="no-referrer"></a>':'')+'</div>'):'')
       +(it.note?'<div style="margin-top:10px;font-size:12.5px;white-space:pre-wrap;"><b>비고</b> '+E(it.note)+'</div>':'')+'</div>';
   } else if(!__pf.q) h+='<div class="pf-card" style="text-align:center;color:#667085;">등록된 공정도가 없습니다. ➕ 새 공정도로 시작하세요.</div>';
   host.innerHTML=h;
@@ -17069,20 +17098,20 @@ function pfRender_(){
       if(a==="find"){ __pf.q=(document.getElementById("pf-q")||{}).value||""; __pf.q=__pf.q.trim(); __pf.open=-1; pfRender_(); }
       else if(a==="all"){ __pf.q=""; __pf.open=-1; pfRender_(); }
       else if(a==="new"){ var q=__pf.q, f=q?pfFind_(q):{}; var nf=!!(q && f.none); __pf.edit={ id:pfId_(), title:nf?(f.name||q):"", names:(nf && !f.name && !/\d{4,}/.test(q))?[q]:[], draws:(nf && /\d{4,}/.test(q))?[q]:[], steps:[], note:"", _new:true }; pfRender_(); }
-      else if(a==="edit" && cur){ __pf.edit=JSON.parse(JSON.stringify(cur)); __pf.edit._img=Object.assign({}, __pf.img[cur.id]||{}); pfRender_(); }
-      else if(a==="copy" && cur){ var c=JSON.parse(JSON.stringify(cur)), nid=pfId_(), im=__pf.img[cur.id]||{}, ni={}; c.id=nid; c.title=cur.title+" (복사)"; c.draws=[]; delete c.seed; c._new=true;
-        c.steps.forEach(function(s){ var o=s.id; s.id=pfId_(); if(im[o]) ni[s.id]=im[o]; }); c._img=ni; __pf.edit=c; pfRender_(); }
+      else if(a==="edit" && cur){ __pf.edit=JSON.parse(JSON.stringify(cur)); __pf.edit._img={}; pfRender_(); }
+      else if(a==="copy" && cur){ var c=JSON.parse(JSON.stringify(cur)), nid=pfId_(); c.id=nid; c.title=cur.title+" (복사)"; c.draws=[]; delete c.seed; c._new=true;
+        c.steps.forEach(function(s){ s.id=pfId_(); }); c._img={}; __pf.edit=c; pfRender_(); }
       else if(a==="print" && cur) pfPrint_(cur.id); }); }
 }
 function pfEditRender_(host){
-  var E=pfE_, ed=__pf.edit, img=ed._img||(ed._img={});
+  var E=pfE_, ed=__pf.edit, img=ed._img||(ed._img={}), pv=function(s){ return img[s.id]||pfImgUrl_(s); };
   var row=function(s, i){ return '<tr data-r="'+i+'"><td style="text-align:center;font-weight:800;">'+(i+1)+'</td>'
     +'<td><input data-f="name" value="'+E(s.name)+'" list="pf-names"></td>'
     +'<td><select data-f="type">'+PF_TYPES.map(function(t){ return '<option'+(t.k===s.type?' selected':'')+'>'+t.k+'</option>'; }).join("")+'</select></td>'
     +'<td style="text-align:center;"><input type="checkbox" data-f="out"'+(s.out?' checked':'')+' style="width:auto;"></td>'
     +'<td><input data-f="'+(s.out?'vendor':'equip')+'" value="'+E(s.out?s.vendor:s.equip)+'" placeholder="'+(s.out?'외주처':'설비')+'"></td>'
     +'<td><textarea data-f="point" rows="2" placeholder="하는 일 · 주의할 점 · 다음 공정으로 넘기는 기준">'+E(s.point)+'</textarea></td>'
-    +'<td style="text-align:center;">'+(img[s.id]?'<img src="'+img[s.id]+'" style="max-width:70px;max-height:50px;display:block;margin:0 auto 3px;"><button class="pf-x" data-a="imgdel">사진 삭제</button>':'<button class="pf-x" data-a="img">📷 사진</button>')+'</td>'
+    +'<td style="text-align:center;">'+(pv(s)?'<img src="'+E(pv(s))+'" referrerpolicy="no-referrer" title="'+(img[s.id]?'저장할 때 올라감':'')+'" style="max-width:70px;max-height:50px;display:block;margin:0 auto 3px;"><button class="pf-x" data-a="imgdel">사진 삭제</button>':'<button class="pf-x" data-a="img">📷 사진</button>')+'</td>'
     +'<td style="white-space:nowrap;"><button class="pf-x" data-a="up">↑</button><button class="pf-x" data-a="dn">↓</button><button class="pf-x" data-a="ins" title="아래에 공정 추가">＋</button><button class="pf-x" data-a="del" style="color:#B42318;">✕</button></td></tr>'; };
   host.innerHTML='<div style="font-size:12px;color:#667085;">생산 › 공정도 › '+(ed._new?'새 공정도':'수정')+'</div><div style="font-size:22px;font-weight:800;margin:2px 0 12px;">✏️ '+E(ed.title||"새 공정도")+'</div>'
     +'<datalist id="pf-names">'+PF_NAMES.map(function(n){ return '<option value="'+E(n)+'">'; }).join("")+'</datalist>'
@@ -17112,25 +17141,29 @@ function pfEditRender_(host){
       parts.forEach(function(p){ ed.steps.push(mk(p)); }); pfEditRender_(host); }
     else if(a==="add"){ ed.steps.push(mk("")); pfEditRender_(host); var ins=host.querySelectorAll('#pf-rows [data-f="name"]'); if(ins.length) ins[ins.length-1].focus(); }
     else if(a==="ins"){ ed.steps.splice(i+1, 0, mk("")); pfEditRender_(host); }
-    else if(a==="del"){ var s0=ed.steps[i]; if((s0.point||img[s0.id]) && !confirm((i+1)+"번 '"+(s0.name||"")+"' 공정을 지울까요? (교육 포인트·사진도 함께 지워짐)")) return; ed.steps.splice(i,1); pfEditRender_(host); }
+    else if(a==="del"){ var s0=ed.steps[i]; if((s0.point||pv(s0)) && !confirm((i+1)+"번 '"+(s0.name||"")+"' 공정을 지울까요? (교육 포인트·사진도 함께 지워짐)")) return; ed.steps.splice(i,1); pfEditRender_(host); }
     else if(a==="up" && i>0){ var t1=ed.steps[i]; ed.steps[i]=ed.steps[i-1]; ed.steps[i-1]=t1; pfEditRender_(host); }
     else if(a==="dn" && i<ed.steps.length-1){ var t2=ed.steps[i]; ed.steps[i]=ed.steps[i+1]; ed.steps[i+1]=t2; pfEditRender_(host); }
     else if(a==="img"){ var fi=document.createElement("input"); fi.type="file"; fi.accept="image/*"; fi.onchange=function(){ var f=fi.files&&fi.files[0]; if(!f) return; var rd=new FileReader(); rd.onload=function(){
         var put=function(u){ img[ed.steps[i].id]=u; pfEditRender_(host); }; if(typeof ncImgCompress_==="function") ncImgCompress_(rd.result, put); else put(rd.result); }; rd.readAsDataURL(f); }; fi.click(); }
-    else if(a==="imgdel"){ delete img[ed.steps[i].id]; pfEditRender_(host); }
+    else if(a==="imgdel"){ delete img[ed.steps[i].id]; ed.steps[i].img=null; pfEditRender_(host); }
     else if(a==="cancel"){ if(confirm("저장하지 않고 나갈까요?")){ __pf.edit=null; pfRender_(); } }
     else if(a==="remove"){ if(!confirm("'"+ed.title+"' 공정도를 삭제할까요?")) return; var dd=JSON.parse(JSON.stringify(ed)); delete dd._img; delete dd._new; dd.del=true; pfSave_(dd, function(){ __pf.edit=null; __pf.sel=""; pfRender_(); }); }
     else if(a==="save"){
       if(!ed.title){ alert("공정도 이름을 넣어 주세요."); return; }
       ed.steps=ed.steps.filter(function(s){ return String(s.name||"").trim(); }); if(!ed.steps.length){ alert("공정을 1개 이상 넣어 주세요."); return; }
       if(!ed.names.length && !ed.draws.length && !confirm("적용 품명 키워드·도번이 없으면 도번으로 찾을 때 나오지 않습니다 (이름으로만 찾기). 그래도 저장할까요?")) return;
-      var keep={}; ed.steps.forEach(function(s){ if(img[s.id]) keep[s.id]=img[s.id]; });
-      var prevImg=JSON.stringify(__pf.img[ed.id]||{}), imgChanged=JSON.stringify(keep)!==prevImg;
       var rec=JSON.parse(JSON.stringify(ed)); delete rec._img; delete rec._new;
       if(ed.id==="pfseed-chamber") rec.id=pfId_();   // 예시를 고쳐 저장하면 새 공정도로
-      if(rec.id!==ed.id){ __pf.items=(__pf.items||[]).filter(function(x){ return x.id!=="pfseed-chamber"; }); }
-      __pf.img[rec.id]=keep; if(imgChanged || rec.id!==ed.id) pfImgSave_(rec.id);
-      pfSave_(rec, function(){ __pf.edit=null; __pf.sel=rec.id; __pf.items=(__pf.items||[]).filter(function(x){ return x.id!=="pfseed-chamber"; }); pfRender_(); }); } };
+      var pend=rec.steps.filter(function(s){ return img[s.id]; }), fails=[], bt=b; bt.disabled=true;
+      var stEl=document.getElementById("pf-st");
+      var up=function(k){ if(k>=pend.length) return Promise.resolve();
+        if(stEl) stEl.textContent="📷 사진 올리는 중… ("+(k+1)+"/"+pend.length+")";
+        var s=pend[k]; return pfImgUpload_(img[s.id], (rec.title||"공정도")+"_"+(rec.steps.indexOf(s)+1)+"_"+(s.name||"")).then(function(r){ s.img={ id:r.id }; })
+          .catch(function(e){ fails.push((rec.steps.indexOf(s)+1)+". "+s.name+" — "+(e&&e.message||e)); }).then(function(){ return up(k+1); }); };
+      up(0).then(function(){ bt.disabled=false;
+        if(fails.length) alert("사진 "+fails.length+"장을 올리지 못했습니다 (공정도 글은 저장합니다):\n"+fails.join("\n"));
+      pfSave_(rec, function(){ __pf.edit=null; __pf.sel=rec.id; __pf.items=(__pf.items||[]).filter(function(x){ return x.id!=="pfseed-chamber"; }); pfRender_(); }); }); } };
 }
 /* ==================== 📢 업데이트 안내 (버전별 1번 표시) ====================
    다음 버전부터는 QMS_RELEASE_NOTE 의 ver·title·items 만 바꾸면 됨. 사람마다(이 PC 브라우저) 그 버전에서 처음 열 때 한 번 뜸 */
