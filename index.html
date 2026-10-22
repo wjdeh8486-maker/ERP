@@ -1968,6 +1968,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         <div class="nav-item nav-sub" data-view="management"><span class="qnav-i">🔎</span><span class="qnav-t"><b>도번 조회</b><small>도번별 주문·진행 상황</small></span></div>
         <div class="nav-item nav-sub" data-view="mnshort"><span class="qnav-i">🧩</span><span class="qnav-t"><b>반제품 현황</b><small>공정재고·미납 비교</small></span></div>
         <div class="nav-item nav-sub" data-view="waitinsp"><span class="qnav-i">⏳</span><span class="qnav-t"><b>검사대기현황</b><small>입고 후 검사 대기</small></span></div>
+        <div class="nav-item nav-sub" data-view="procflow" title="도번·품명별 생산 공정 흐름 · 교육 포인트 · 교육 자료 출력"><span class="qnav-i">🧭</span><span class="qnav-t"><b>공정도</b><small>도번·품명별 공정 흐름 (교육용)</small></span></div>
       </div></div>
     <div class="qnav-cat" data-cat="insp"><button type="button" class="qnav-btn"><span class="qnav-ico">🧾</span>검사<span class="qnav-caret">▾</span></button>
       <div class="qnav-panel">
@@ -2341,6 +2342,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
     <!-- ===================== 📊 품질 대시보드 VIEW (내용은 qdRender_()가 그림) ===================== -->
     <div class="view" id="view-qdash"><div id="qd-root"></div></div>
     <div class="view" id="view-orderflow"><div id="of-root"></div></div>
+    <div class="view" id="view-procflow"><div id="pf-root"></div></div>
     <!-- ===================== ⭐ 특별납기 관리 VIEW (내용은 sdRender_()가 그림) ===================== -->
     <div class="view" id="view-specdue"><div id="sd-root"></div></div>
     <div class="view" id="view-specduelog"><div id="sdl-root"></div></div>
@@ -4064,7 +4066,7 @@ function qxLayout_(){
       return false; };
     var views=[].slice.call(document.querySelectorAll(".main-area > .view[id^='view-']"));
     views.forEach(function(view){
-      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="specdue" || v==="specduelog" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
+      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="procflow" || v==="specdue" || v==="specduelog" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
       var inf=info(v) || (v==="history"?info("management"):null);
       var tb=document.getElementById("topbar-"+v);
       if(tb){
@@ -5128,6 +5130,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     }
     if(target==="qdash" && typeof qdRender_==="function"){ qdRender_(); }   // 품질 대시보드
     if(target==="orderflow" && typeof ofRender_==="function"){ ofRender_(); }   // [추가] 수주~출하 흐름
+    if(target==="procflow" && typeof pfRender_==="function"){ pfRender_(); }   // [추가] 공정도(교육용)
     if(target==="specdue" && typeof sdRender_==="function"){ sdRender_(); }   // 특별납기 관리
     if(target==="specduelog" && typeof sdlRender_==="function"){ sdlRender_(); }   // 특별납기 변경·근거 이력
     if(target==="duechg" && typeof dclRender_==="function"){ dclRender_(); }   // 최종납기 변경 이력
@@ -5374,6 +5377,7 @@ function refreshActiveViewAfterData(){
     else if(id === "view-main" && typeof mainInitialRender === "function" && mainData){ mainInitialRender(mainData); }
     else if(id === "view-qdash" && typeof qdRender_ === "function"){ qdRender_(); }
     else if(id === "view-orderflow" && typeof ofRender_ === "function"){ ofRender_(); }
+    else if(id === "view-procflow" && typeof pfRender_ === "function"){ pfRender_(); }
     else if(id === "view-specdue" && typeof sdRender_ === "function"){ sdRender_(); }
   }catch(_){ }
 }
@@ -16848,7 +16852,7 @@ function ofRender_(){
       +'.of-row.late{border:1.5px solid #F04438;border-left:7px solid #D92D20;background:#FEF3F2;}.of-row.risk{border:1.5px solid #F79009;border-left:7px solid #F79009;background:#FFFAEB;}.of-row.ok{border-left:7px solid #1570EF;}'
       +'.of-info .dd{padding:2px 10px;border-radius:999px;background:#EAECF0;color:#344054;}.of-info .dd.l{background:#D92D20;color:#fff;}.of-info .dd.r{background:#F79009;color:#fff;}.of-info .dd.o{background:#1570EF;color:#fff;}'
       +'.of-ch.of-cur.of-risk{background:#F79009;border-color:#DC6803;color:#fff;box-shadow:0 2px 8px rgba(247,144,9,.45);}.of-ch.of-cur.of-late{background:#D92D20;border-color:#B42318;}'
-      +'.of-info .est{font-weight:700;color:#1F2A44;background:#F2F4F7;border-radius:6px;padding:1px 8px;}.of-info .est.r{color:#B54708;background:#FEF0C7;}.of-info .sdb{font-size:12px;color:#6941C6;background:#F4F3FF;border-radius:6px;padding:1px 8px;}.of-info .sdb s{color:#98A2B3;}'
+      +'.of-info .est{font-weight:400;font-size:12px;color:#475467;background:#F2F4F7;border-radius:6px;padding:1px 8px;}.of-info .est.r{color:#B54708;background:#FEF0C7;}.of-info .sdb{font-size:13.5px;font-weight:800;color:#fff;background:#6941C6;border-radius:999px;padding:3px 12px;box-shadow:0 1px 4px rgba(105,65,198,.35);}.of-info .sdb s{color:#D9D6FE;font-weight:400;font-size:12px;margin-left:4px;}'
       +'.of-p .l .r{color:#DC6803;}'
       +'.of-lg{display:inline-flex;gap:10px;align-items:center;font-size:12px;color:#475467;}.of-lg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:3px;vertical-align:-1px;}'
       +'@media (max-width:900px){.of-pipe,.of-chain{grid-template-columns:repeat(3,minmax(0,1fr));}.of-p:not(:last-child)::after{display:none;}}';
@@ -16933,13 +16937,200 @@ function ofRender_(){
   host.querySelector("#of-cnt").innerHTML=ofE_((RG?("납기 "+RG[2]+" · "):"")+list.length+"건")+(__of.stage>=0?(' · <button type="button" class="of-stx" title="단계 선택을 풀고 전체 단계 보기" style="border:1.5px solid #1D4ED8;background:#EFF4FF;color:#1D4ED8;border-radius:999px;padding:2px 10px;font-weight:700;font-size:12px;cursor:pointer;">'+ofE_(OF_STAGES[__of.stage].t)+' 단계만 ✕</button>'):"")+ofE_((list.length>__of.limit?(" (앞 "+__of.limit+"건 표시)"):"")+" · 납기 빠른 순");
   host.querySelector("#of-list").innerHTML=list.slice(0, __of.limit).map(function(x){ var r=x.r, k=ofE_(r.orderNo);
       var dd=x.dd===null?'':(x.st==="완료"?'':('<span class="dd'+(x.late?' l':(x.risk?' r':(x.ok?' o':'')))+'">'+(x.late?'지연 · ':(x.risk?(x.riskEst?'위험 · ':('⚠ 수입검사 전'+(x.riskDays===5?'(기능·세정 D-5 기준)':'')+' · ')):(x.ok?'가능 · ':'')))+(x.dd<0?('D+'+(-x.dd)):(x.dd===0?'D-day':('D-'+x.dd)))+'</span>'));
+      if(x.sdi) dd='<span class="sdb">⭐ 특별납기 '+ofMD_(x.due)+(x.due0 && x.due0!==x.due?(' <s>원 '+ofMD_(x.due0)+'</s>'):'')+'</span>'+dd;
       if(x.st!=="완료"){ if(x.est) dd+='<span class="est'+(x.riskEst?' r':'')+'">예상 '+(x.isWash?'납품 ':'출하 ')+ofMD_(x.est)+(x.isWash?' (세정 '+OF_DAYS.wash+'일 포함)':'')+'</span>'; else if(x.estNote) dd+='<span class="est'+(x.riskEst?' r':'')+'">예상: '+ofE_(x.estNote)+(x.riskEst?(' → 빨라도 '+ofMD_(x.minE)):'')+'</span>'; }
-      if(x.sdi && x.due0 && x.due0!==x.due) dd+='<span class="sdb">특별납기 '+ofMD_(x.due)+' <s>원 '+ofMD_(x.due0)+'</s></span>'; else if(x.sdi) dd+='<span class="sdb">특별납기 '+ofMD_(x.due)+'</span>';
       return '<div class="of-row'+(x.late?' late':(x.risk?' risk':(x.ok?' ok':'')))+'"><div class="of-info" data-k="'+k+'"><span class="on">'+k+'</span><span>'+ofE_(r.customer||"")+'</span><span>'+(r.oldDrawingNo&&typeof dwgLink==="function"?dwgLink(r.oldDrawingNo):ofE_(r.oldDrawingNo||r.partNo||""))+'</span><span>'+ofE_(r.partName||"")+'</span><span>수량 <b>'+ofE_(r.qty)+'</b></span>'
         +(r.vendor?'<span>PJT '+ofE_(r.vendor)+'</span>':'')+(r.prpo?'<span>PO '+ofE_(r.prpo)+'</span>':'')+dd+'<span class="tg">'+(__of.open[r.orderNo]?'▲ 닫기':'▼ 공정 이력')+'</span></div>'
         +'<div class="of-chain">'+OF_STAGES.map(function(S,i){ return ofChip_(x,i); }).join("")+'</div>'+(__of.open[r.orderNo]?ofDetail_(x):'')+'</div>'; }).join("")
     +(list.length>__of.limit?'<button type="button" class="of-more">더 보기 ('+(list.length-__of.limit)+'건 남음)</button>':'')
     +(list.length?'':'<div class="of-note" style="padding:30px;text-align:center;">조건에 맞는 건이 없습니다</div>');
+}
+/* ==================== 🧭 공정도 (교육용) — 도번·품명별 생산 공정 흐름 ====================
+   · 공정도 1개 = 이름 + 적용 품명 키워드·도번 + 공정 순서(공정명·구분·외주·설비·교육 포인트·사진)
+   · 찾기: 도번을 넣으면 ① 그 도번이 등록된 공정도 ② MAIN 품명에 키워드가 들어간 공정도 순으로 보여줌
+   · 저장: 공유 저장소 procFlow (공정도 글) · pfImg_<id> (공정 사진, 열 때만 읽음) */
+var PF_KEY="procFlow", PF_TYPES=[
+  { k:"가공", c:"#0F6E56", bg:"#E1F5EE" }, { k:"용접", c:"#993C1D", bg:"#FAECE7" }, { k:"후처리", c:"#5F5E5A", bg:"#F1EFE8" },
+  { k:"식별", c:"#3C3489", bg:"#EEEDFE" }, { k:"검사", c:"#185FA5", bg:"#E6F1FB" }, { k:"세정·포장", c:"#3B6D11", bg:"#EAF3DE" } ];
+var PF_NAMES=["MCT","선반","밀링","E-BEAM 용접","메뉴얼 용접","TIG 용접","각인","레이저 마킹","사상","C.P","E.P","마스킹","연마","폴리싱","도금","아노다이징","열처리","세정","포장","수입검사","공정검사","측정검사","외관검사","최종검사","LEAK 검사","출하검사"];
+var __pf={ items:null, loading:false, q:"", sel:"", edit:null, img:{}, imgLoading:{}, open:-1 };
+function pfE_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function pfType_(k){ return PF_TYPES.filter(function(t){ return t.k===k; })[0]||PF_TYPES[2]; }
+function pfGuess_(name){ var n=String(name||"").toUpperCase().replace(/\s+/g,"");
+  if(/검사|LEAK|FLOW|측정|INSP/.test(n)) return "검사"; if(/용접|E-?BEAM|TIG|WELD/.test(n)) return "용접";
+  if(/MCT|선반|밀링|가공|CNC|드릴|탭|보링|LATHE/.test(n)) return "가공"; if(/각인|마킹|MARK/.test(n)) return "식별";
+  if(/세정|포장|CLEAN/.test(n)) return "세정·포장"; return "후처리"; }
+function pfGuessOut_(name){ return /^(C\.?P|E\.?P)$|도금|아노다이징|열처리|코팅/i.test(String(name||"").trim()); }
+function pfId_(){ return "pf"+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function pfWho_(){ try{ return (typeof ncrWho_==="function"?ncrWho_():"")||""; }catch(_){ return ""; } }
+function pfMerge_(a, b){ var m={}; (a||[]).concat(b||[]).forEach(function(x){ if(!x||!x.id) return; if(!m[x.id] || (x.ts||0)>(m[x.id].ts||0)) m[x.id]=x; }); return Object.keys(m).map(function(k){ return m[k]; }); }
+function pfLive_(){ return (__pf.items||[]).filter(function(x){ return !x.del; }); }
+// 처음 쓸 때 보기용 1건 (이팀장 예시) — 저장하면 공유됨
+function pfSeed_(){ var st=[["MCT"],["E-BEAM 용접"],["메뉴얼 용접"],["MCT"],["각인","완료품 각인"],["사상"],["C.P"],["검사"],["마스킹"],["선반"],["검사","최종"]];
+  return { id:"pfseed-chamber", title:"CHAMBER 기본 공정", names:["CHAMBER"], draws:[], note:"", seed:true, ts:0,
+    steps:st.map(function(s){ return { id:pfId_(), name:s[0], type:pfGuess_(s[0]), out:pfGuessOut_(s[0]), vendor:"", equip:"", point:s[1]||"" }; }) }; }
+function pfLoad_(cb){
+  if(__pf.items){ cb&&cb(); return; } if(__pf.loading){ (__pf.wait=__pf.wait||[]).push(cb); return; } __pf.loading=true; if(cb) (__pf.wait=__pf.wait||[]).push(cb);
+  var fin=function(){ __pf.loading=false; if(!__pf.items) __pf.items=[]; if(!__pf.items.length) __pf.items=[pfSeed_()]; var w=__pf.wait||[]; __pf.wait=[]; w.forEach(function(f){ try{ f&&f(); }catch(_){} }); };
+  try{ var c=JSON.parse(localStorage.getItem("pfCache")||"null"); if(c && Array.isArray(c.items)) __pf.items=c.items; }catch(_){}
+  if(typeof qShareLoad_!=="function"){ fin(); return; }
+  qShareLoad_(PF_KEY, function(v){ if(v && Array.isArray(v.items)) __pf.items=pfMerge_(__pf.items, v.items); fin(); });
+}
+function pfSave_(item, cb){
+  item.ts=Date.now(); item.updated=(typeof qmsToday_==="function"?qmsToday_():new Date().toISOString().slice(0,10)); item.by=pfWho_()||item.by||""; delete item.seed;
+  __pf.items=pfMerge_(__pf.items, [item]);
+  try{ localStorage.setItem("pfCache", JSON.stringify({ items:__pf.items })); }catch(_){}
+  var push=function(){ var live=__pf.items.filter(function(x){ return !x.seed; }); try{ qShareSave_(PF_KEY, { items:live }, "pf-st"); }catch(_){} cb&&cb(); };
+  if(typeof qShareLoad_==="function") qShareLoad_(PF_KEY, function(v){ if(v && Array.isArray(v.items)) __pf.items=pfMerge_(__pf.items, v.items); push(); }); else push();
+}
+function pfImgLoad_(id, cb){ if(__pf.img[id]){ cb&&cb(); return; } if(__pf.imgLoading[id]) return; __pf.imgLoading[id]=true;
+  var done=function(v){ __pf.img[id]=(v && typeof v==="object")?v:{}; __pf.imgLoading[id]=false; cb&&cb(); };
+  try{ idbGet("pfImg_"+id).then(function(v){ if(v && !__pf.img[id]) __pf.img[id]=v; }).catch(function(){}); }catch(_){}
+  if(typeof qShareLoad_==="function") qShareLoad_("pfImg_"+id, function(v){ if(v){ try{ idbSet("pfImg_"+id, v); }catch(_){} } done(v||__pf.img[id]); }); else done(null); }
+function pfImgSave_(id){ var v=__pf.img[id]||{}; try{ idbSet("pfImg_"+id, v); }catch(_){} try{ qShareSave_("pfImg_"+id, v, "pf-st"); }catch(_){} }
+// 도번·품명으로 공정도 찾기
+function pfFind_(q){
+  q=String(q||"").trim(); if(!q) return { list:pfLive_(), how:"" };
+  var U=function(v){ return String(v||"").toUpperCase().replace(/\s+/g,""); }, uq=U(q), live=pfLive_(), name="";
+  var byDraw=live.filter(function(x){ return (x.draws||[]).some(function(d){ return U(d)===uq; }); });
+  if(byDraw.length) return { list:byDraw, how:"도번 "+q+" 등록" };
+  try{ var r=(mainData||[]).filter(function(m){ return U(m.oldDrawingNo)===uq || U(m.partNo)===uq; })[0]; if(r) name=String(r.partName||""); }catch(_){}
+  var nm=U(name||q), byName=live.filter(function(x){ return (x.names||[]).some(function(k){ k=U(k); return k && nm.indexOf(k)>=0; }); });
+  if(byName.length) return { list:byName, how:name?("도번 "+q+" → 품명 '"+name+"'"):("품명 '"+q+"'") , name:name };
+  var byTitle=live.filter(function(x){ return U(x.title).indexOf(uq)>=0; });
+  return { list:byTitle, how:byTitle.length?"공정도 이름":"", name:name, none:!byTitle.length };
+}
+// 흐름 그림 (화면·출력 공용)
+function pfFlowHtml_(it, opt){ opt=opt||{}; var E=pfE_, st=it.steps||[], img=__pf.img[it.id]||{};
+  return '<div class="pf-flow">'+st.map(function(s, i){ var T=pfType_(s.type);
+    return (i?'<div class="pf-ar">→</div>':'')+'<div class="pf-st'+(s.out?' out':'')+(opt.click&&__pf.open===i?' on':'')+'" data-i="'+i+'" style="background:'+T.bg+';color:'+T.c+';border-color:'+T.c+';">'
+      +'<div class="pf-no">'+(i+1)+'</div><b>'+E(s.name||"-")+'</b><small>'+E(s.type||"")+(s.out?' · 외주'+(s.vendor?(' ('+E(s.vendor)+')'):''):'')+'</small>'
+      +(s.point?'<i class="pf-pt" title="교육 포인트 있음">●</i>':'')+(img[s.id]?'<i class="pf-ph" title="사진 있음">📷</i>':'')+'</div>'; }).join("")+'</div>'
+    +'<div class="pf-lg">'+PF_TYPES.map(function(t){ return '<span><i style="background:'+t.bg+';border-color:'+t.c+';"></i>'+t.k+'</span>'; }).join("")+'<span><i style="background:#fff;border:2px dashed #667085;"></i>외주</span></div>'; }
+function pfTableHtml_(it){ var E=pfE_, img=__pf.img[it.id]||{};
+  return '<table class="pf-tb"><thead><tr><th style="width:36px;">No.</th><th style="width:120px;">공정</th><th style="width:70px;">구분</th><th style="width:110px;">설비 / 외주처</th><th>교육 포인트 (하는 일 · 주의할 점 · 확인 방법)</th><th style="width:150px;">사진</th></tr></thead><tbody>'
+    +(it.steps||[]).map(function(s, i){ return '<tr><td>'+(i+1)+'</td><td><b>'+E(s.name)+'</b></td><td>'+E(s.type)+'</td><td>'+(s.out?('<b style="color:#B54708;">외주</b> '+E(s.vendor||"")):E(s.equip||""))+'</td><td style="text-align:left;white-space:pre-wrap;">'+E(s.point||"")+'</td><td>'+(img[s.id]?'<img src="'+img[s.id]+'" style="max-width:140px;max-height:100px;">':'')+'</td></tr>'; }).join("")+'</tbody></table>'; }
+function pfCss_(){ return '.pf-flow{display:flex;flex-wrap:wrap;gap:8px 4px;align-items:center;}'
+  +'.pf-st{position:relative;min-width:104px;border:1.5px solid;border-radius:10px;padding:16px 10px 8px;text-align:center;cursor:pointer;}.pf-st b{display:block;font-size:13.5px;}.pf-st small{display:block;font-size:11px;opacity:.85;margin-top:2px;}'
+  +'.pf-st.out{border-style:dashed;border-width:2px;background:#fff !important;}.pf-st.on{box-shadow:0 0 0 3px #1D4ED8;}'
+  +'.pf-no{position:absolute;top:-9px;left:8px;background:#1F2A44;color:#fff;border-radius:999px;font-size:11px;font-weight:800;min-width:20px;height:18px;line-height:18px;padding:0 5px;}'
+  +'.pf-pt{position:absolute;top:3px;right:6px;font-style:normal;font-size:9px;color:#D92D20;}.pf-ph{position:absolute;bottom:2px;right:4px;font-style:normal;font-size:10px;}'
+  +'.pf-ar{color:#98A2B3;font-weight:800;font-size:16px;}'
+  +'.pf-lg{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:#475467;margin-top:10px;}.pf-lg i{display:inline-block;width:12px;height:12px;border:1.5px solid;border-radius:3px;margin-right:4px;vertical-align:-2px;}'
+  +'.pf-tb{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px;}.pf-tb th{background:#1F2A44;color:#fff;padding:6px;border:1px solid #98A2B3;}.pf-tb td{border:1px solid #98A2B3;padding:6px;text-align:center;vertical-align:top;}'; }
+function pfPrint_(id){ var it=pfLive_().filter(function(x){ return x.id===id; })[0]; if(!it) return;
+  pfImgLoad_(id, function(){ var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; }
+    w.document.write('<html><head><meta charset="utf-8"><title>공정도 '+pfE_(it.title)+'</title><style>@page{size:A4 landscape;margin:12mm;}body{font-family:sans-serif;color:#1F2A44;-webkit-print-color-adjust:exact;print-color-adjust:exact;}h2{margin:0 0 4px;}'+pfCss_()+'.pf-st{cursor:default;}</style></head><body>'
+      +'<h2>🧭 공정도 (교육용) · '+pfE_(it.title)+'</h2><div style="font-size:12px;color:#667085;margin-bottom:14px;">적용 품명: '+pfE_((it.names||[]).join(", ")||"-")+' · 적용 도번: '+pfE_((it.draws||[]).join(", ")||"-")+' · 작성 '+pfE_(it.by||"")+' '+pfE_(it.updated||"")+'</div>'
+      +pfFlowHtml_(it)+(it.note?'<div style="margin-top:10px;font-size:12.5px;white-space:pre-wrap;"><b>비고</b> '+pfE_(it.note)+'</div>':'')+pfTableHtml_(it)
+      +'<table style="margin-top:16px;margin-left:auto;border-collapse:collapse;font-size:12px;"><tr><th style="border:1px solid #999;padding:4px 18px;">교육일</th><th style="border:1px solid #999;padding:4px 18px;">교육자</th><th style="border:1px solid #999;padding:4px 18px;">교육 대상자 (서명)</th></tr><tr><td style="border:1px solid #999;height:40px;width:110px;"></td><td style="border:1px solid #999;width:110px;"></td><td style="border:1px solid #999;width:300px;"></td></tr></table>'
+      +'</body></html>'); w.document.close(); setTimeout(function(){ try{ w.print(); }catch(_){} }, 500); }); }
+
+/* ---------- 화면 ---------- */
+function pfRender_(){
+  var host=document.getElementById("pf-root"); if(!host) return;
+  if(!document.getElementById("pf-style")){ var css=document.createElement("style"); css.id="pf-style"; css.textContent='#pf-root{padding:18px 20px 40px;color:#1F2A44;}'+pfCss_()
+    +'.pf-tool{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0;}.pf-tool input{flex:1;min-width:240px;padding:8px 12px;border:1.5px solid #D0D5DD;border-radius:9px;font-size:13.5px;}'
+    +'.pf-btn{padding:8px 14px;border:0;border-radius:9px;background:#1F2A44;color:#fff;font-weight:700;cursor:pointer;}.pf-btn.g{background:#fff;color:#344054;border:1.5px solid #D0D5DD;}.pf-btn.b{background:#1D4ED8;}.pf-btn.r{background:#fff;color:#B42318;border:1.5px solid #FECDCA;}'
+    +'.pf-card{background:#fff;border:1.5px solid #D0D5DD;border-radius:12px;padding:14px 16px;margin-bottom:12px;}.pf-card h3{margin:0 0 4px;font-size:17px;}.pf-sub{font-size:12px;color:#667085;margin-bottom:12px;}'
+    +'.pf-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}.pf-chip{padding:5px 12px;border:1.5px solid #D0D5DD;border-radius:999px;background:#fff;cursor:pointer;font-size:12.5px;font-weight:700;}.pf-chip.on{background:#1F2A44;color:#fff;border-color:#1F2A44;}'
+    +'.pf-det{margin-top:12px;border-top:1px dashed #D0D5DD;padding-top:10px;display:flex;gap:14px;flex-wrap:wrap;}.pf-det img{max-width:320px;max-height:240px;border-radius:8px;border:1px solid #D0D5DD;}'
+    +'.pf-ed td,.pf-ed th{border:1px solid #D0D5DD;padding:4px;font-size:12.5px;}.pf-ed th{background:#F2F4F7 !important;color:#344054 !important;font-weight:700;}.pf-ed input,.pf-ed select,.pf-ed textarea{width:100%;box-sizing:border-box;padding:5px;border:1px solid #D0D5DD;border-radius:6px;font-size:12.5px;}.pf-ed{border-collapse:collapse;width:100%;}'
+    +'.pf-x{border:1px solid #D0D5DD;background:#fff;border-radius:6px;cursor:pointer;padding:3px 7px;}';
+    document.head.appendChild(css); }
+  if(!__pf.items){ host.innerHTML='<div style="padding:30px;text-align:center;color:#667085;">공정도 불러오는 중…</div>'; pfLoad_(pfRender_); return; }
+  if(__pf.edit) return pfEditRender_(host);
+  var E=pfE_, f=pfFind_(__pf.q), list=f.list.slice().sort(function(a,b){ return String(a.title).localeCompare(String(b.title)); });
+  if(!list.some(function(x){ return x.id===__pf.sel; })) __pf.sel=list.length?list[0].id:"";
+  var it=list.filter(function(x){ return x.id===__pf.sel; })[0];
+  if(it && !__pf.img[it.id] && !it.seed) pfImgLoad_(it.id, pfRender_);
+  var h='<div style="font-size:12px;color:#667085;">생산 › 공정도</div><div style="font-size:24px;font-weight:800;margin-top:2px;">🧭 공정도 <span style="font-size:13px;font-weight:600;color:#667085;">· 도번·품명별 생산 공정 흐름 (교육용)</span></div>'
+    +'<div class="pf-tool"><input id="pf-q" value="'+E(__pf.q)+'" placeholder="도번 또는 품명 (예: 61031-00, CHAMBER) → Enter"><button class="pf-btn" data-x="find">🔍 찾기</button><button class="pf-btn g" data-x="all">전체</button><button class="pf-btn b" data-x="new">➕ 새 공정도</button><span id="pf-st" style="font-size:12px;color:#667085;"></span></div>';
+  if(__pf.q) h+='<div class="pf-sub">'+(f.none?('<b style="color:#B42318;">\''+E(__pf.q)+'\'에 맞는 공정도가 없습니다.</b>'+(f.name?(' (품명: '+E(f.name)+')'):'')+' — ➕ 새 공정도로 등록하세요.'):('찾은 기준: '+E(f.how)+' · '+list.length+'건'))+'</div>';
+  if(list.length>1 || !__pf.q) h+='<div class="pf-chips">'+list.map(function(x){ return '<button class="pf-chip'+(x.id===__pf.sel?' on':'')+'" data-sel="'+E(x.id)+'">'+E(x.title)+' <span style="font-weight:400;opacity:.8;">('+(x.steps||[]).length+')</span></button>'; }).join("")+'</div>';
+  if(it){ var s=(__pf.open>=0 && it.steps[__pf.open])?it.steps[__pf.open]:null, img=(__pf.img[it.id]||{});
+    h+='<div class="pf-card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><div><h3>'+E(it.title)+(it.seed?' <span style="font-size:11.5px;color:#B54708;">(예시 · 수정 후 저장하면 등록)</span>':'')+'</h3>'
+      +'<div class="pf-sub">적용 품명: '+E((it.names||[]).join(", ")||"-")+' · 적용 도번: '+E((it.draws||[]).join(", ")||"-")+(it.by||it.updated?(' · 작성 '+E(it.by||"")+' '+E(it.updated||"")):'')+'</div></div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;"><button class="pf-btn g" data-x="edit">✏️ 수정</button><button class="pf-btn g" data-x="copy">📄 복사해서 새로</button><button class="pf-btn" data-x="print">🖨 교육 자료 출력</button></div></div>'
+      +pfFlowHtml_(it, { click:true })
+      +'<div style="font-size:12px;color:#667085;margin-top:6px;">공정을 누르면 교육 포인트·사진이 보입니다 (<span style="color:#D92D20;">●</span> 교육 포인트 있음 · 📷 사진 있음)</div>'
+      +(s?('<div class="pf-det"><div style="flex:1;min-width:240px;"><b style="font-size:15px;">'+(__pf.open+1)+'. '+E(s.name)+'</b> <span style="color:#667085;">'+E(s.type)+(s.out?(' · 외주'+(s.vendor?(' '+E(s.vendor)):'')):(s.equip?(' · '+E(s.equip)):''))+'</span>'
+        +'<div style="white-space:pre-wrap;margin-top:6px;font-size:13.5px;line-height:1.6;">'+(s.point?E(s.point):'<span style="color:#98A2B3;">교육 포인트가 아직 없습니다 — ✏️ 수정에서 적어 주세요.</span>')+'</div></div>'
+        +(img[s.id]?'<img src="'+img[s.id]+'">':'')+'</div>'):'')
+      +(it.note?'<div style="margin-top:10px;font-size:12.5px;white-space:pre-wrap;"><b>비고</b> '+E(it.note)+'</div>':'')+'</div>';
+  } else if(!__pf.q) h+='<div class="pf-card" style="text-align:center;color:#667085;">등록된 공정도가 없습니다. ➕ 새 공정도로 시작하세요.</div>';
+  host.innerHTML=h;
+  if(!host.__bound){ host.__bound=true;
+    host.addEventListener("keydown", function(e){ if(e.target.id==="pf-q" && e.key==="Enter"){ __pf.q=e.target.value.trim(); __pf.open=-1; pfRender_(); } });
+    host.addEventListener("click", function(e){ if(__pf.edit) return; var x=e.target.closest("[data-x]"), sel=e.target.closest("[data-sel]"), st=e.target.closest(".pf-st");
+      if(sel){ __pf.sel=sel.getAttribute("data-sel"); __pf.open=-1; pfRender_(); return; }
+      if(st){ var i=Number(st.getAttribute("data-i")); __pf.open=(__pf.open===i)?-1:i; pfRender_(); return; }
+      if(!x) return; var a=x.getAttribute("data-x"), cur=pfLive_().filter(function(z){ return z.id===__pf.sel; })[0];
+      if(a==="find"){ __pf.q=(document.getElementById("pf-q")||{}).value||""; __pf.q=__pf.q.trim(); __pf.open=-1; pfRender_(); }
+      else if(a==="all"){ __pf.q=""; __pf.open=-1; pfRender_(); }
+      else if(a==="new"){ var q=__pf.q, f=q?pfFind_(q):{}; var nf=!!(q && f.none); __pf.edit={ id:pfId_(), title:nf?(f.name||q):"", names:(nf && !f.name && !/\d{4,}/.test(q))?[q]:[], draws:(nf && /\d{4,}/.test(q))?[q]:[], steps:[], note:"", _new:true }; pfRender_(); }
+      else if(a==="edit" && cur){ __pf.edit=JSON.parse(JSON.stringify(cur)); __pf.edit._img=Object.assign({}, __pf.img[cur.id]||{}); pfRender_(); }
+      else if(a==="copy" && cur){ var c=JSON.parse(JSON.stringify(cur)), nid=pfId_(), im=__pf.img[cur.id]||{}, ni={}; c.id=nid; c.title=cur.title+" (복사)"; c.draws=[]; delete c.seed; c._new=true;
+        c.steps.forEach(function(s){ var o=s.id; s.id=pfId_(); if(im[o]) ni[s.id]=im[o]; }); c._img=ni; __pf.edit=c; pfRender_(); }
+      else if(a==="print" && cur) pfPrint_(cur.id); }); }
+}
+function pfEditRender_(host){
+  var E=pfE_, ed=__pf.edit, img=ed._img||(ed._img={});
+  var row=function(s, i){ return '<tr data-r="'+i+'"><td style="text-align:center;font-weight:800;">'+(i+1)+'</td>'
+    +'<td><input data-f="name" value="'+E(s.name)+'" list="pf-names"></td>'
+    +'<td><select data-f="type">'+PF_TYPES.map(function(t){ return '<option'+(t.k===s.type?' selected':'')+'>'+t.k+'</option>'; }).join("")+'</select></td>'
+    +'<td style="text-align:center;"><input type="checkbox" data-f="out"'+(s.out?' checked':'')+' style="width:auto;"></td>'
+    +'<td><input data-f="'+(s.out?'vendor':'equip')+'" value="'+E(s.out?s.vendor:s.equip)+'" placeholder="'+(s.out?'외주처':'설비')+'"></td>'
+    +'<td><textarea data-f="point" rows="2" placeholder="하는 일 · 주의할 점 · 다음 공정으로 넘기는 기준">'+E(s.point)+'</textarea></td>'
+    +'<td style="text-align:center;">'+(img[s.id]?'<img src="'+img[s.id]+'" style="max-width:70px;max-height:50px;display:block;margin:0 auto 3px;"><button class="pf-x" data-a="imgdel">사진 삭제</button>':'<button class="pf-x" data-a="img">📷 사진</button>')+'</td>'
+    +'<td style="white-space:nowrap;"><button class="pf-x" data-a="up">↑</button><button class="pf-x" data-a="dn">↓</button><button class="pf-x" data-a="ins" title="아래에 공정 추가">＋</button><button class="pf-x" data-a="del" style="color:#B42318;">✕</button></td></tr>'; };
+  host.innerHTML='<div style="font-size:12px;color:#667085;">생산 › 공정도 › '+(ed._new?'새 공정도':'수정')+'</div><div style="font-size:22px;font-weight:800;margin:2px 0 12px;">✏️ '+E(ed.title||"새 공정도")+'</div>'
+    +'<datalist id="pf-names">'+PF_NAMES.map(function(n){ return '<option value="'+E(n)+'">'; }).join("")+'</datalist>'
+    +'<div class="pf-card"><div style="display:grid;grid-template-columns:130px 1fr;gap:8px 10px;align-items:center;font-size:13px;">'
+    +'<b>공정도 이름</b><input id="pf-title" value="'+E(ed.title)+'" placeholder="예: CHAMBER 기본 공정" style="padding:7px;border:1px solid #D0D5DD;border-radius:7px;">'
+    +'<b>적용 품명 키워드</b><input id="pf-names-in" value="'+E((ed.names||[]).join(", "))+'" placeholder="쉼표로 여러 개 (예: CHAMBER, LID) — 품명에 이 글자가 들어가면 이 공정도를 보여줌" style="padding:7px;border:1px solid #D0D5DD;border-radius:7px;">'
+    +'<b>적용 도번</b><input id="pf-draws-in" value="'+E((ed.draws||[]).join(", "))+'" placeholder="쉼표로 여러 개 (도번 지정이 품명보다 우선)" style="padding:7px;border:1px solid #D0D5DD;border-radius:7px;">'
+    +'<b>빠른 입력</b><div style="display:flex;gap:6px;"><input id="pf-quick" placeholder="MCT -> E-BEAM 용접 -> 메뉴얼 용접 -> MCT -> 각인 -> 사상 -> C.P -> 검사" style="flex:1;padding:7px;border:1px solid #D0D5DD;border-radius:7px;"><button class="pf-btn g" data-a="quick" title="→, ->, 쉼표, 줄바꿈으로 나눠 공정을 만듦 (구분·외주는 자동 추정, 아래에서 고치면 됨)">공정 만들기</button></div>'
+    +'</div></div>'
+    +'<div class="pf-card"><table class="pf-ed"><thead><tr><th style="width:34px;">No.</th><th style="width:150px;">공정</th><th style="width:100px;">구분</th><th style="width:44px;">외주</th><th style="width:130px;">설비 / 외주처</th><th>교육 포인트</th><th style="width:90px;">사진</th><th style="width:120px;"></th></tr></thead><tbody id="pf-rows">'
+    +(ed.steps||[]).map(row).join("")+'</tbody></table><button class="pf-btn g" data-a="add" style="margin-top:8px;">＋ 공정 추가</button></div>'
+    +'<div class="pf-card"><b style="font-size:13px;">비고</b><textarea id="pf-note" rows="2" style="width:100%;box-sizing:border-box;margin-top:4px;padding:7px;border:1px solid #D0D5DD;border-radius:7px;">'+E(ed.note||"")+'</textarea></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="pf-btn b" data-a="save">💾 저장 (공유)</button><button class="pf-btn g" data-a="cancel">취소</button>'+(ed._new?'':'<button class="pf-btn r" data-a="remove" style="margin-left:auto;">🗑 공정도 삭제</button>')+'<span id="pf-st" style="font-size:12px;color:#667085;align-self:center;"></span></div>';
+  var sync=function(){ ed.title=document.getElementById("pf-title").value.trim(); ed.note=document.getElementById("pf-note").value;
+    var sp=function(v){ return String(v||"").split(/[,，\n]/).map(function(x){ return x.trim(); }).filter(Boolean); };
+    ed.names=sp(document.getElementById("pf-names-in").value); ed.draws=sp(document.getElementById("pf-draws-in").value);
+    host.querySelectorAll("#pf-rows tr").forEach(function(tr){ var s=ed.steps[Number(tr.getAttribute("data-r"))]; if(!s) return;
+      tr.querySelectorAll("[data-f]").forEach(function(el){ var k=el.getAttribute("data-f"); s[k]=el.type==="checkbox"?el.checked:el.value; }); }); };
+  var mk=function(name){ return { id:pfId_(), name:name||"", type:pfGuess_(name), out:pfGuessOut_(name), vendor:"", equip:"", point:"" }; };
+  host.onchange=function(e){ var tr=e.target.closest("#pf-rows tr"); if(!tr) return; sync(); var s=ed.steps[Number(tr.getAttribute("data-r"))];
+    if(e.target.getAttribute("data-f")==="name" && s){ s.type=pfGuess_(s.name); if(pfGuessOut_(s.name)) s.out=true; pfEditRender_(host); }
+    else if(e.target.getAttribute("data-f")==="out") pfEditRender_(host); };
+  host.onclick=function(e){ var b=e.target.closest("[data-a]"); if(!b) return; var a=b.getAttribute("data-a"), tr=b.closest("#pf-rows tr"), i=tr?Number(tr.getAttribute("data-r")):-1; sync();
+    if(a==="quick"){ var t=document.getElementById("pf-quick").value, parts=t.split(/\s*(?:->|→|=>|,|\n|＞|>)\s*/).map(function(x){ return x.trim(); }).filter(Boolean);
+      if(!parts.length){ alert("공정을 → 또는 -> 로 이어서 적어 주세요."); return; }
+      if(ed.steps.length && !confirm("지금 있는 공정 "+ed.steps.length+"개 뒤에 이어 붙일까요?\n[취소]를 누르면 바꾸지 않습니다.")) return;
+      parts.forEach(function(p){ ed.steps.push(mk(p)); }); pfEditRender_(host); }
+    else if(a==="add"){ ed.steps.push(mk("")); pfEditRender_(host); var ins=host.querySelectorAll('#pf-rows [data-f="name"]'); if(ins.length) ins[ins.length-1].focus(); }
+    else if(a==="ins"){ ed.steps.splice(i+1, 0, mk("")); pfEditRender_(host); }
+    else if(a==="del"){ var s0=ed.steps[i]; if((s0.point||img[s0.id]) && !confirm((i+1)+"번 '"+(s0.name||"")+"' 공정을 지울까요? (교육 포인트·사진도 함께 지워짐)")) return; ed.steps.splice(i,1); pfEditRender_(host); }
+    else if(a==="up" && i>0){ var t1=ed.steps[i]; ed.steps[i]=ed.steps[i-1]; ed.steps[i-1]=t1; pfEditRender_(host); }
+    else if(a==="dn" && i<ed.steps.length-1){ var t2=ed.steps[i]; ed.steps[i]=ed.steps[i+1]; ed.steps[i+1]=t2; pfEditRender_(host); }
+    else if(a==="img"){ var fi=document.createElement("input"); fi.type="file"; fi.accept="image/*"; fi.onchange=function(){ var f=fi.files&&fi.files[0]; if(!f) return; var rd=new FileReader(); rd.onload=function(){
+        var put=function(u){ img[ed.steps[i].id]=u; pfEditRender_(host); }; if(typeof ncImgCompress_==="function") ncImgCompress_(rd.result, put); else put(rd.result); }; rd.readAsDataURL(f); }; fi.click(); }
+    else if(a==="imgdel"){ delete img[ed.steps[i].id]; pfEditRender_(host); }
+    else if(a==="cancel"){ if(confirm("저장하지 않고 나갈까요?")){ __pf.edit=null; pfRender_(); } }
+    else if(a==="remove"){ if(!confirm("'"+ed.title+"' 공정도를 삭제할까요?")) return; var dd=JSON.parse(JSON.stringify(ed)); delete dd._img; delete dd._new; dd.del=true; pfSave_(dd, function(){ __pf.edit=null; __pf.sel=""; pfRender_(); }); }
+    else if(a==="save"){
+      if(!ed.title){ alert("공정도 이름을 넣어 주세요."); return; }
+      ed.steps=ed.steps.filter(function(s){ return String(s.name||"").trim(); }); if(!ed.steps.length){ alert("공정을 1개 이상 넣어 주세요."); return; }
+      if(!ed.names.length && !ed.draws.length && !confirm("적용 품명 키워드·도번이 없으면 도번으로 찾을 때 나오지 않습니다 (이름으로만 찾기). 그래도 저장할까요?")) return;
+      var keep={}; ed.steps.forEach(function(s){ if(img[s.id]) keep[s.id]=img[s.id]; });
+      var prevImg=JSON.stringify(__pf.img[ed.id]||{}), imgChanged=JSON.stringify(keep)!==prevImg;
+      var rec=JSON.parse(JSON.stringify(ed)); delete rec._img; delete rec._new;
+      if(ed.id==="pfseed-chamber") rec.id=pfId_();   // 예시를 고쳐 저장하면 새 공정도로
+      if(rec.id!==ed.id){ __pf.items=(__pf.items||[]).filter(function(x){ return x.id!=="pfseed-chamber"; }); }
+      __pf.img[rec.id]=keep; if(imgChanged || rec.id!==ed.id) pfImgSave_(rec.id);
+      pfSave_(rec, function(){ __pf.edit=null; __pf.sel=rec.id; __pf.items=(__pf.items||[]).filter(function(x){ return x.id!=="pfseed-chamber"; }); pfRender_(); }); } };
 }
 /* ==================== 📢 업데이트 안내 (버전별 1번 표시) ====================
    다음 버전부터는 QMS_RELEASE_NOTE 의 ver·title·items 만 바꾸면 됨. 사람마다(이 PC 브라우저) 그 버전에서 처음 열 때 한 번 뜸 */
