@@ -16674,6 +16674,16 @@ var OF_INSP_LBL={ "수입":"수입검사", "측정":"공정(측정)", "외관":"
 // 기능검사: 검사 MASTER에서 이 도번이 받아야 할 기능 (수압/가압은 1건)
 var OF_FUNC=[ { k:"leak", t:"LEAK" }, { k:"flow", t:"FLOW" }, { k:"pressure", t:"수압/가압" }, { k:"vacuum", t:"진공" } ];
 var __of={ dr:"", d1:"", d2:"", q:"", cust:"", stage:-1, late:false, done:false, limit:100, open:{}, log:null, logLoading:false };
+// [추가] 예상 출하일: 남은 단계 표준 일수(영업일, 주말·공휴일 제외) — 검사 2 · 기능 2 · 세정 5
+var OF_DAYS={ insp:2, func:2, wash:5 };
+function ofAddWork_(ymd, n){ var d=new Date(String(ymd).slice(0,10)+"T00:00:00"); if(isNaN(d)) return ""; var k=0, g=0;
+  while(k<n && g++<400){ d.setDate(d.getDate()+1); if(typeof qmsIsWorkday_!=="function" || qmsIsWorkday_(d)) k++; }
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+// [추가] 특별납기(출고 일정) 색인: 관리번호 → 회신 가능일 (미완료 중 가장 빠른 날, 다 끝났으면 마지막 날)
+function ofSdIndex_(){ var m={}; try{ if(typeof __sd==="undefined" || !__sd.items) return m;
+    __sd.items.forEach(function(x){ if(!x || x.del || !x.ord || !x.avail) return; var o=String(x.ord).trim(), dn=!!x.done, a=String(x.avail).slice(0,10), c=m[o]||(m[o]={ open:"", last:"", n:0, due0:"" }); c.n++;
+      if(!dn){ if(!c.open || a<c.open) c.open=a; } if(!c.last || a>c.last) c.last=a; if(x.due && !c.due0) c.due0=String(x.due).slice(0,10); });
+    Object.keys(m).forEach(function(o){ m[o].avail=m[o].open||m[o].last; }); }catch(_){} return m; }
 function ofE_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function ofToday_(){ var d=new Date(), z=function(n){ return String(n).padStart(2,"0"); }; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
 function ofDays_(a, b){ var x=Date.parse(a), y=Date.parse(b); return (isNaN(x)||isNaN(y))?null:Math.round((y-x)/864e5); }
@@ -16720,21 +16730,33 @@ function ofRow_(r){
   if(idx===1 && !mesHold && (!proc || /^대기/.test(proc))) idx=0;   // MES 작업 시작 전(대기) → 수주 단계
   if(st==="출고" && isWash) idx=wash.length?8:7;   // 세정품: 출고(코미코 인계) 뒤 세정 단계 · 세정LIST 납품일이 있으면 납품완료 대기
   var ev=(__of.log && __of.log.e && __of.log.e[r.orderNo])||[], last=ev.length?ev[ev.length-1]:null;
-  var today=ofToday_(), due=String(r.dueDate||"").slice(0,10), dd=due?ofDays_(today, due):null;
+  var today=ofToday_(), due0=String(r.dueDate||"").slice(0,10), sdi=__of.sdIdx && __of.sdIdx[String(r.orderNo||"").trim()], due=(sdi && sdi.avail)||due0, dd=due?ofDays_(today, due):null;
   var od=__of.outIdx && __of.outIdx[String(r.orderNo||"").trim()], outD=od?Object.keys(od).sort().join(", "):"";   // 출고일 = 미리 만든 색인 (건마다 재고 전체를 훑으면 멈춤)
   var isSH=/SHOWER\s*HEAD/i.test(String(r.partName||"")) || st==="비젼";
   // 기능검사 필요 항목 (MASTER 'Y') — 수압/가압 1건
   var fm=null, fn=null; if(__of.master){ var mk=String(r.oldDrawingNo||"").trim(), m=__of.master[mk]||__of.master[String(r.partNo||"").trim()];
     fn=[]; if(m) OF_FUNC.forEach(function(f){ if(String(m[f.k]||"").toUpperCase()==="Y") fn.push(f.t); }); fm=!!m; }
-  return { r:r, st:st, idx:idx, mesHold:mesHold, proc:proc, wash:wash, isWash:isWash, fn:fn, fm:fm, ev:ev, last:last, due:due, dd:dd,
-    late:(st!=="완료" && dd!==null && dd<0), risk:(st!=="완료" && dd!==null && dd>=0 && dd<=(((fn && fn.length) || isWash)?5:3) && idx<2), riskDays:(((fn && fn.length) || isWash)?5:3), outD:outD, isSH:isSH };
+  // 예상 출하(세정품은 세정 후 납품) — 지금 단계부터 남은 표준 일수
+  var nF=(fn && fn.length)?OF_DAYS.func:0, nW=isWash?OF_DAYS.wash:0, ship="", deliv="", estNote="", minE="", lastOut=outD?outD.split(", ").pop():"";
+  if(st!=="완료" && idx<8){
+    if(idx<=1){ estNote="가공 끝나고 +"+(OF_DAYS.insp+nF+nW)+"일"; minE=ofAddWork_(today, OF_DAYS.insp+nF+nW); }
+    else if(idx<=3) ship=ofAddWork_(today, OF_DAYS.insp+nF);
+    else if(idx===4) ship=ofAddWork_(today, OF_DAYS.func);
+    else if(idx===5) ship=today;
+    else ship=lastOut||today;
+    if(ship && isWash){ deliv=ofAddWork_(ship, nW); if(deliv<today) deliv=today; } }
+  var est=isWash?deliv:ship, late=(st!=="완료" && dd!==null && dd<0), riskD=(((fn && fn.length) || isWash)?5:3);
+  var riskOld=(st!=="완료" && dd!==null && dd>=0 && dd<=riskD && idx<2), riskEst=(!late && st!=="완료" && due && ((est && est>due) || (minE && minE>due)));
+  var risk=!late && (riskOld || riskEst), ok=!late && !risk && st!=="완료" && !!est && !!due && est<=due;
+  return { r:r, st:st, idx:idx, mesHold:mesHold, proc:proc, wash:wash, isWash:isWash, fn:fn, fm:fm, ev:ev, last:last, due:due, due0:due0, sdi:sdi||null, dd:dd,
+    late:late, risk:risk, ok:ok, riskOld:riskOld, riskEst:riskEst, riskDays:riskD, ship:ship, deliv:deliv, est:est, estNote:estNote, minE:minE, outD:outD, isSH:isSH };
 }
 function ofChip_(x, i){
   var S=OF_STAGES[i], cls="of-ch", sub="";
   var skip=(S.k==="vis" && !x.isSH) || (S.k==="func" && x.fn && !x.fn.length) || (S.k==="wash" && !x.isWash);
   if(x.st==="완료" || i<x.idx) cls+=" of-done"; else if(i===x.idx) cls+=" of-cur"+(x.late?" of-late":(x.risk?" of-risk":"")); else cls+=" of-next";
   if(skip && i!==x.idx) cls+=" of-skip";
-  if(S.k==="order") sub=(x.r.orderDate?("발주 "+ofMD_(x.r.orderDate)):"")+(x.due?((x.r.orderDate?" · ":"")+"납기 "+ofMD_(x.due)):"");
+  if(S.k==="order") sub=(x.r.orderDate?("발주 "+ofMD_(x.r.orderDate)):"")+(x.due?((x.r.orderDate?" · ":"")+(x.sdi?"특별납기 ":"납기 ")+ofMD_(x.due)):"");
   else if(S.k==="prod"){ sub=x.proc||(i<x.idx?"종료":"");
     if(x.mesHold && i===x.idx){ cls+=" of-mes"; sub=(x.proc||"MES 기록 없음")+" · ⚠ MES 미진행 ("+(OF_INSP_LBL[x.st]||x.st)+" 대기 수량 있음)"; }
     if(x.last && i===x.idx) sub+=' <span class="of-since">'+ofMD_(x.last[0])+'~'+(function(){ var n=ofDays_(x.last[0], ofToday_()); return n!==null?(' '+n+'일'):''; })()+'</span>'; }
@@ -16756,19 +16778,41 @@ function ofDetail_(x){
   return '<div class="of-det">'+h+'</div>';
 }
 // 무거운 계산(단계·출고일 색인·검색 글자)은 데이터가 바뀔 때만 1번
-function ofSig_(data, inv){ return [data.length, inv.length, __of.master?1:0, __of.log?(__of.log.ts||1):0, (typeof processMap!=="undefined" && processMap)?Object.keys(processMap).length:0, (typeof mainStatusMapDirty!=="undefined" && mainStatusMapDirty)?1:0].join("|"); }
+function ofSig_(data, inv){ return [data.length, inv.length, __of.master?1:0, __of.log?(__of.log.ts||1):0, (typeof processMap!=="undefined" && processMap)?Object.keys(processMap).length:0, (typeof mainStatusMapDirty!=="undefined" && mainStatusMapDirty)?1:0, __of.sdVer||0, ofToday_()].join("|"); }
 function ofBuild_(data, inv){
   try{ if(typeof mainStatusMapDirty!=="undefined" && mainStatusMapDirty && typeof computeAllStatuses==="function"){ mainStatusMap=computeAllStatuses(mainData); mainStatusMapDirty=false; } }catch(_){}
   var oi={}; inv.forEach(function(iv){ if(!((Number(iv.outQty)||0)>0)) return; var o=String(iv.ctrlNo||"").trim(); if(!o) return;
     var d=(typeof insplistYmd_==="function")?insplistYmd_(iv.outDate):String(iv.outDate||"").slice(0,10); if(d) (oi[o]=oi[o]||{})[d]=1; });
-  __of.outIdx=oi;
+  __of.outIdx=oi; __of.sdIdx=ofSdIndex_();
   var rows=data.filter(function(r){ return (Number(r.qty)||0)>0 && (typeof mainHasPRPO!=="function" || mainHasPRPO(r)); }).map(ofRow_);
   rows.forEach(function(x){ var r=x.r; x.txt=[r.orderNo,r.vendor,r.prpo,r.oldDrawingNo,r.partNo,r.partName,r.vendorName].join(" ").toLowerCase(); x.cust=String(r.customer||"").trim(); });
   __of.rows=rows; __of.dataRef=data; __of.invRef=inv; __of.sig=ofSig_(data, inv);
 }
+// [추가] 엑셀 내보내기 — 화면 조건(검색·단계·고객·납기 기간·지연)에 맞는 전체 건 (조건이 없으면 진행 중 전체)
+function ofExcel_(){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 누르세요."); return; }
+  var list=__of.lastList; if(!list){ alert("목록 계산 중입니다. 잠시 후 다시 누르세요."); return; }
+  if(!list.length){ alert("내보낼 건이 없습니다."); return; }
+  var H=["상태","관리번호","고객","PROJECT NO.","PO","기존도번","품번","품명","수량","발주일","원 납기","특별납기","적용 납기","D-day","현재 단계","MES 공정","기능검사","세정","출고일","예상 출하일","예상 납품일(세정)","비고"];
+  var stName=function(x){ return x.st==="완료"?"납품완료":(x.late?"지연":(x.risk?"위험":(x.ok?"가능":""))); };
+  var aoa=[H].concat(list.map(function(x){ var r=x.r, S=OF_STAGES[x.idx]||{};
+    var cur=x.st==="완료"?"납품완료":((S.t||"")+(x.idx===2&&OF_INSP_LBL[x.st]?(" ("+OF_INSP_LBL[x.st]+")"):"")+(x.mesHold?" · MES 미진행":""));
+    var note=[]; if(x.riskEst) note.push("예상일이 납기보다 늦음"); else if(x.riskOld) note.push("수입검사 전 D-"+x.riskDays+" 이내"); if(!x.est && x.estNote) note.push("예상: "+x.estNote);
+    return [stName(x), r.orderNo||"", r.customer||"", r.vendor||"", r.prpo||"", r.oldDrawingNo||"", r.partNo||"", r.partName||"", Number(r.qty)||r.qty||"", String(r.orderDate||"").slice(0,10),
+      x.due0||"", x.sdi?(x.due||""):"", x.due||"", x.dd===null||x.st==="완료"?"":(x.dd<0?("D+"+(-x.dd)):(x.dd===0?"D-day":("D-"+x.dd))), cur, x.proc||"",
+      x.fn===null?"":(x.fn&&x.fn.length?x.fn.join("·"):"해당 없음"), x.isWash?(x.wash.length?("세정납품 "+x.wash.join(", ")):"세정품"):"", x.outD||"", x.isWash?"":(x.ship||""), x.isWash?(x.deliv||""):"", note.join(" / ")]; }));
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=[6,12,12,13,12,14,14,26,6,11,11,11,11,8,18,16,14,16,14,11,13,24].map(function(w){ return { wch:w }; });
+  var C={ "지연":["D92D20","FFFFFF"], "위험":["F79009","FFFFFF"], "가능":["1570EF","FFFFFF"] };
+  for(var i=1;i<aoa.length;i++){ var c=C[aoa[i][0]]; if(!c) continue; var a=XLSX.utils.encode_cell({ r:i, c:0 }); if(ws[a]) ws[a].s={ fill:{ patternType:"solid", fgColor:{ rgb:c[0] } }, font:{ bold:true, color:{ rgb:c[1] } }, alignment:{ horizontal:"center" } }; }
+  ws["!autofilter"]={ ref:"A1:"+XLSX.utils.encode_cell({ r:aoa.length-1, c:H.length-1 }) };
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "수주출하흐름");
+  XLSX.writeFile(wb, "수주출하흐름_"+(__of.cust?(__of.cust.replace(/[\\\/:*?"<>|]/g,"_")+"_"):"")+ofToday_()+".xlsx");
+}
 function ofRender_(){
   var host=document.getElementById("of-root"); if(!host) return;
   ofLoadLog_(); ofLoadMaster_();
+  try{ if(typeof __sd!=="undefined" && typeof sdLoad_==="function" && !__sd.loaded && !__of.sdLoading){ __of.sdLoading=true; sdLoad_(function(){ __of.sdVer=(__of.sdVer||0)+1; ofRender_(); }); } }catch(_){}
   if(!host.__built){ host.__built=true;
     if(!document.getElementById("of-style")){ var css=document.createElement("style"); css.id="of-style"; css.textContent=
       '#of-root{padding:18px 20px 40px;color:#1F2A44;}'
@@ -16801,20 +16845,28 @@ function ofRender_(){
       +'.of-det{margin-top:8px;border-top:1px dashed #D0D5DD;padding-top:8px;}.of-note{font-size:12px;color:#667085;margin-top:4px;}'
       +'.of-tb{border-collapse:collapse;font-size:12.5px;}.of-tb th,.of-tb td{border:1px solid #98A2B3;padding:4px 10px;text-align:center;}.of-tb th{background:#1F2A44;color:#fff;}'
       +'.of-more{display:block;margin:10px auto;padding:9px 20px;border:1.5px solid #1D4ED8;background:#fff;color:#1D4ED8;border-radius:9px;font-weight:700;cursor:pointer;}'
+      +'.of-row.late{border:1.5px solid #F04438;border-left:7px solid #D92D20;background:#FEF3F2;}.of-row.risk{border:1.5px solid #F79009;border-left:7px solid #F79009;background:#FFFAEB;}.of-row.ok{border-left:7px solid #1570EF;}'
+      +'.of-info .dd{padding:2px 10px;border-radius:999px;background:#EAECF0;color:#344054;}.of-info .dd.l{background:#D92D20;color:#fff;}.of-info .dd.r{background:#F79009;color:#fff;}.of-info .dd.o{background:#1570EF;color:#fff;}'
+      +'.of-ch.of-cur.of-risk{background:#F79009;border-color:#DC6803;color:#fff;box-shadow:0 2px 8px rgba(247,144,9,.45);}.of-ch.of-cur.of-late{background:#D92D20;border-color:#B42318;}'
+      +'.of-info .est{font-weight:700;color:#1F2A44;background:#F2F4F7;border-radius:6px;padding:1px 8px;}.of-info .est.r{color:#B54708;background:#FEF0C7;}.of-info .sdb{font-size:12px;color:#6941C6;background:#F4F3FF;border-radius:6px;padding:1px 8px;}.of-info .sdb s{color:#98A2B3;}'
+      +'.of-p .l .r{color:#DC6803;}'
+      +'.of-lg{display:inline-flex;gap:10px;align-items:center;font-size:12px;color:#475467;}.of-lg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:3px;vertical-align:-1px;}'
       +'@media (max-width:900px){.of-pipe,.of-chain{grid-template-columns:repeat(3,minmax(0,1fr));}.of-p:not(:last-child)::after{display:none;}}';
       document.head.appendChild(css); }
     host.innerHTML='<div class="of-head"><div><div class="of-crumb">MAIN › 수주~출하 흐름</div><div class="of-title">🔀 수주~출하 흐름</div>'
       +'<div class="of-sub">관리번호별로 지금 어느 단계인지 보여줍니다 · 단계는 MAIN 제품상태 기준 · 가공 공정은 MES · 줄을 누르면 MES 공정 변경 이력</div></div><div class="of-sub" id="of-logst"></div></div>'
       +'<div class="of-pipe" id="of-pipe"></div>'
-      +'<div class="of-tool"><input type="text" id="of-q" placeholder="관리번호 · PROJECT NO. · PO · 기존도번 · 품번 · 품명 (쉼표로 여러 개) → Enter 또는 검색"><button type="button" id="of-go" style="padding:8px 16px;border:0;border-radius:9px;background:#1F2A44;color:#fff;font-weight:700;cursor:pointer;">🔍 검색</button><button type="button" id="of-clr" style="padding:8px 12px;border:1.5px solid #D0D5DD;border-radius:9px;background:#fff;color:#475467;font-weight:700;cursor:pointer;">초기화</button><select id="of-cust"><option value="">전체 고객사</option></select>'
+      +'<div class="of-tool"><input type="text" id="of-q" placeholder="관리번호 · PROJECT NO. · PO · 기존도번 · 품번 · 품명 (쉼표로 여러 개) → Enter 또는 검색"><button type="button" id="of-go" style="padding:8px 16px;border:0;border-radius:9px;background:#1F2A44;color:#fff;font-weight:700;cursor:pointer;">🔍 검색</button><button type="button" id="of-clr" style="padding:8px 12px;border:1.5px solid #D0D5DD;border-radius:9px;background:#fff;color:#475467;font-weight:700;cursor:pointer;">초기화</button><button type="button" id="of-xl" title="지금 보이는 조건의 목록(더 보기 전 건 포함)을 엑셀로" style="padding:8px 12px;border:0;border-radius:9px;background:#1D6F42;color:#fff;font-weight:700;cursor:pointer;">📥 엑셀</button><select id="of-cust"><option value="">전체 고객사</option></select>'
       +'<label><input type="checkbox" id="of-late"> 납기 지연만</label><label title="도번 검사대기 수량은 있는데 이 관리번호 MES가 가공 단계인 건"><input type="checkbox" id="of-mes"> MES 확인 필요만</label><label><input type="checkbox" id="of-done"> 납품완료 포함</label></div>'
       +'<div class="of-tool"><b style="color:#475467;">📅 납기</b>'+[["","전체"],["tw","이번 주"],["nw","다음 주"],["tm","이번 달"],["upto","이번 주까지(지연 포함)"],["rng","기간 지정"]].map(function(o){ return '<button type="button" class="of-dr" data-dr="'+o[0]+'">'+o[1]+'</button>'; }).join("")
-      +'<span id="of-rng" style="display:none;align-items:center;gap:4px;"><input type="date" id="of-d1"> ~ <input type="date" id="of-d2"></span><span id="of-drlbl" style="color:#1D4ED8;font-weight:700;"></span></div>'
+      +'<span id="of-rng" style="display:none;align-items:center;gap:4px;"><input type="date" id="of-d1"> ~ <input type="date" id="of-d2"></span><span id="of-drlbl" style="color:#1D4ED8;font-weight:700;"></span>'
+      +'<span class="of-lg" style="margin-left:auto;"><span><i style="background:#D92D20;"></i>지연</span><span><i style="background:#F79009;"></i>위험(납기 못 맞출 수 있음)</span><span><i style="background:#1570EF;"></i>가능</span><span style="color:#8A93A6;">예상 = 검사 '+OF_DAYS.insp+'·기능 '+OF_DAYS.func+'·세정 '+OF_DAYS.wash+'일(영업일) · 납기는 특별납기 우선</span></span></div>'
       +'<div class="of-cnt" id="of-cnt"></div><div id="of-list"></div>';
     // [수정] 글자마다 검색하지 않음 — Enter 또는 [검색] 버튼으로만
     var qIn=host.querySelector("#of-q"), go=function(){ __of.q=qIn.value.trim().toLowerCase(); __of.limit=100; ofRender_(); };
     qIn.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); go(); } });
     host.querySelector("#of-go").addEventListener("click", go);
+    host.querySelector("#of-xl").addEventListener("click", function(){ ofExcel_(); });
     host.querySelector("#of-clr").addEventListener("click", function(){ qIn.value=""; __of.q=""; __of.stage=-1; __of.cust=""; __of.late=false; __of.mes=false; var mcb=host.querySelector("#of-mes"); if(mcb) mcb.checked=false; __of.dr=""; __of.d1=""; __of.d2=""; __of.limit=100;
       ["of-d1","of-d2"].forEach(function(id){ var d=host.querySelector("#"+id); if(d) d.value=""; });
       var c=host.querySelector("#of-cust"); if(c) c.value=""; var l=host.querySelector("#of-late"); if(l) l.checked=false; ofRender_(); });
@@ -16857,7 +16909,7 @@ function ofRender_(){
   base.forEach(function(x){ if(x.st==="완료"){ var sd=String(x.r.shipDate||"").slice(0,10), g=sd?ofDays_(sd, today):null; if(g!==null && g<=30) cnt[8].n++; return; }
     if(x.idx===8){ cnt[8].w=(cnt[8].w||0)+1; }   // 세정납품 뒤 납품 대기 (완료 아님)
     cnt[x.idx].n++; if(x.late) cnt[x.idx].l++; else if(x.risk) cnt[x.idx].r++; if(x.mesHold) cnt[x.idx].m++; });
-  host.querySelector("#of-pipe").innerHTML=OF_STAGES.map(function(S,i){ return '<div class="of-p'+(__of.stage===i?' on':'')+'" data-i="'+i+'"><b>'+ofE_(S.t)+'</b><div class="n">'+cnt[i].n+'</div><div class="l">'+(i===8?('<span style="color:#667085;font-weight:400;">최근 30일'+(cnt[8].w?(' · 대기 '+cnt[8].w):'')+'</span>'):((cnt[i].l?('지연 '+cnt[i].l):'')+(cnt[i].r?((cnt[i].l?' · ':'')+'<span class="r">임박 '+cnt[i].r+'</span>'):'')+(cnt[i].m?(((cnt[i].l||cnt[i].r)?' · ':'')+'<span class="m">MES 확인 '+cnt[i].m+'</span>'):'')))+'</div></div>'; }).join("");
+  host.querySelector("#of-pipe").innerHTML=OF_STAGES.map(function(S,i){ return '<div class="of-p'+(__of.stage===i?' on':'')+'" data-i="'+i+'"><b>'+ofE_(S.t)+'</b><div class="n">'+cnt[i].n+'</div><div class="l">'+(i===8?('<span style="color:#667085;font-weight:400;">최근 30일'+(cnt[8].w?(' · 대기 '+cnt[8].w):'')+'</span>'):((cnt[i].l?('지연 '+cnt[i].l):'')+(cnt[i].r?((cnt[i].l?' · ':'')+'<span class="r">위험 '+cnt[i].r+'</span>'):'')+(cnt[i].m?(((cnt[i].l||cnt[i].r)?' · ':'')+'<span class="m">MES 확인 '+cnt[i].m+'</span>'):'')))+'</div></div>'; }).join("");
   var list=base.filter(function(x){ if(__of.stage>=0){ if(__of.stage===8){ if(x.st!=="완료" && x.idx!==8) return false; } else if(x.idx!==__of.stage || x.st==="완료") return false; }
       else if(!__of.done && x.st==="완료") return false;
       if(__of.late && !x.late) return false; if(__of.mes && !x.mesHold) return false; return true; });
@@ -16865,6 +16917,7 @@ function ofRender_(){
   if(__of.stage===8) list.reverse();
   var lg=__of.log, ls=host.querySelector("#of-logst"); if(ls) ls.innerHTML=lg?('MES 공정 기록: '+ofE_(lg.since||"?")+'부터 · 마지막 확인 '+ofE_(lg.day||"?")):(__of.logLoading?'MES 공정 기록 불러오는 중…':'MES 공정 기록 없음 (업로드 PC 기록 전)');
   // [성능] 검색 우선: 검색·단계·고객사·지연 중 하나라도 고르기 전에는 목록을 그리지 않음 (단계별 건수만)
+  __of.lastList=list; __of.lastFilter=!!(__of.q || __of.stage>=0 || __of.late || __of.mes || __of.cust || RG);
   if(!(__of.q || __of.stage>=0 || __of.late || __of.mes || __of.cust || RG)){
     var lateN=base.filter(function(x){ return x.late; }).length;
     host.querySelector("#of-cnt").textContent="진행 중 "+base.filter(function(x){ return x.st!=="완료"; }).length+"건"+(__of.buildMs!=null?(" · 계산 "+__of.buildMs+"ms"):"");
@@ -16874,8 +16927,10 @@ function ofRender_(){
     return; }
   host.querySelector("#of-cnt").innerHTML=ofE_((RG?("납기 "+RG[2]+" · "):"")+list.length+"건")+(__of.stage>=0?(' · <button type="button" class="of-stx" title="단계 선택을 풀고 전체 단계 보기" style="border:1.5px solid #1D4ED8;background:#EFF4FF;color:#1D4ED8;border-radius:999px;padding:2px 10px;font-weight:700;font-size:12px;cursor:pointer;">'+ofE_(OF_STAGES[__of.stage].t)+' 단계만 ✕</button>'):"")+ofE_((list.length>__of.limit?(" (앞 "+__of.limit+"건 표시)"):"")+" · 납기 빠른 순");
   host.querySelector("#of-list").innerHTML=list.slice(0, __of.limit).map(function(x){ var r=x.r, k=ofE_(r.orderNo);
-      var dd=x.dd===null?'':(x.st==="완료"?'':('<span class="dd'+(x.late?' l':(x.risk?' r':''))+'">'+(x.risk?('⚠ 수입검사 전'+(x.riskDays===5?'(기능·세정 D-5 기준)':'')+' · '):'')+(x.dd<0?('D+'+(-x.dd)+' 지연'):(x.dd===0?'D-day':('D-'+x.dd)))+'</span>'));
-      return '<div class="of-row'+(x.late?' late':(x.risk?' risk':''))+'"><div class="of-info" data-k="'+k+'"><span class="on">'+k+'</span><span>'+ofE_(r.customer||"")+'</span><span>'+(r.oldDrawingNo&&typeof dwgLink==="function"?dwgLink(r.oldDrawingNo):ofE_(r.oldDrawingNo||r.partNo||""))+'</span><span>'+ofE_(r.partName||"")+'</span><span>수량 <b>'+ofE_(r.qty)+'</b></span>'
+      var dd=x.dd===null?'':(x.st==="완료"?'':('<span class="dd'+(x.late?' l':(x.risk?' r':(x.ok?' o':'')))+'">'+(x.late?'지연 · ':(x.risk?(x.riskEst?'위험 · ':('⚠ 수입검사 전'+(x.riskDays===5?'(기능·세정 D-5 기준)':'')+' · ')):(x.ok?'가능 · ':'')))+(x.dd<0?('D+'+(-x.dd)):(x.dd===0?'D-day':('D-'+x.dd)))+'</span>'));
+      if(x.st!=="완료"){ if(x.est) dd+='<span class="est'+(x.riskEst?' r':'')+'">예상 '+(x.isWash?'납품 ':'출하 ')+ofMD_(x.est)+(x.isWash?' (세정 '+OF_DAYS.wash+'일 포함)':'')+'</span>'; else if(x.estNote) dd+='<span class="est'+(x.riskEst?' r':'')+'">예상: '+ofE_(x.estNote)+(x.riskEst?(' → 빨라도 '+ofMD_(x.minE)):'')+'</span>'; }
+      if(x.sdi && x.due0 && x.due0!==x.due) dd+='<span class="sdb">특별납기 '+ofMD_(x.due)+' <s>원 '+ofMD_(x.due0)+'</s></span>'; else if(x.sdi) dd+='<span class="sdb">특별납기 '+ofMD_(x.due)+'</span>';
+      return '<div class="of-row'+(x.late?' late':(x.risk?' risk':(x.ok?' ok':'')))+'"><div class="of-info" data-k="'+k+'"><span class="on">'+k+'</span><span>'+ofE_(r.customer||"")+'</span><span>'+(r.oldDrawingNo&&typeof dwgLink==="function"?dwgLink(r.oldDrawingNo):ofE_(r.oldDrawingNo||r.partNo||""))+'</span><span>'+ofE_(r.partName||"")+'</span><span>수량 <b>'+ofE_(r.qty)+'</b></span>'
         +(r.vendor?'<span>PJT '+ofE_(r.vendor)+'</span>':'')+(r.prpo?'<span>PO '+ofE_(r.prpo)+'</span>':'')+dd+'<span class="tg">'+(__of.open[r.orderNo]?'▲ 닫기':'▼ 공정 이력')+'</span></div>'
         +'<div class="of-chain">'+OF_STAGES.map(function(S,i){ return ofChip_(x,i); }).join("")+'</div>'+(__of.open[r.orderNo]?ofDetail_(x):'')+'</div>'; }).join("")
     +(list.length>__of.limit?'<button type="button" class="of-more">더 보기 ('+(list.length-__of.limit)+'건 남음)</button>':'')
