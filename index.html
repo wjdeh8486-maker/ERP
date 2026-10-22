@@ -6398,7 +6398,7 @@ var NCR_COLS=[
   ["src","구분"],["draw","도번"],["sn","S/N"],["customer","고객"],["date","발생일"],["types","불량유형/내용"],["grade","등급"],
   ["temp","임시조치(D3)"],["cause","발생원인"],["escape","유출원인"],["why","근본원인(5Why)"],
   ["corrective","시정조치"],["preventive","재발방지"],["horiz","수평전개·문서개정(D7)"],["effect","효과확인"],
-  ["by","작성자"],["appr","승인자"],["apprDate","승인일"],["created","최초작성일"],["updated","최종수정일"],["ts","_ts"]
+  ["by","작성자"],["appr","승인자"],["apprDate","승인일"],["created","최초작성일"],["updated","최종수정일"],["cap","대책서(JSON)"],["ts","_ts"]
 ];
 var __ncrMeta={}, __ncrOpenTs=0, __ncrSheetLoaded=false;
 function ncrNowStr_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return ncrToday_()+" "+z(d.getHours())+":"+z(d.getMinutes()); }
@@ -6776,7 +6776,7 @@ function ncrOpen_(key){
   var inp=function(id,ph,val,type){ return '<label style="flex:1;min-width:140px;font-size:12px;color:#5A6478;font-weight:700;">'+ph+'<input id="'+id+'" type="'+(type||"text")+'" value="'+E(val||"")+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"></label>'; };
   var sub=[d.src==="고객"?("고객: "+(d.customer||"-")):"", d.sn?("S/N: "+d.sn):"", d.date?("발생일: "+d.date):""].filter(Boolean).join(" · ");
   var html='<div id="ncr-ov" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100070;display:flex;align-items:center;justify-content:center;padding:16px;">'
-    +'<div style="background:#fff;border-radius:14px;max-width:600px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
+    +'<div style="background:#fff;border-radius:14px;max-width:'+(d.src==="고객"?820:600)+'px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
     +'<div style="background:'+(d.src==="고객"?"#7A3E9A":"#8A1F1F")+';color:#fff;padding:13px 18px;font-weight:800;position:sticky;top:0;z-index:1;">\uD83D\uDCDD NCR 부적합 보고서 ('+E(d.src||"내부")+') · '+E(d.draw)
     +'<div style="font-weight:400;font-size:12px;opacity:.9;margin-top:2px;">'+E(d.types)+(sub?(" · "+E(sub)):"")+'</div></div>'
     +'<div style="padding:16px;display:flex;flex-direction:column;gap:11px;">'
@@ -6789,6 +6789,7 @@ function ncrOpen_(key){
     + ta("ncr-preventive","⑤ 재발 방지 대책 (근본)", d.preventive,2)
     + ta("ncr-horiz","⑥ 수평전개 · 문서개정 (유사 도번·공정 적용, 개정 문서번호)", d.horiz,2)
     + ta("ncr-effect","⑦ 효과 확인 (검증 결과)", d.effect,2)
+    +((d.src==="고객" && typeof capSectionHtml_==="function")?capSectionHtml_(key, d):"")
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;">'+inp("ncr-by","작성자",d.by||ncrWho_())+inp("ncr-appr","승인자",d.appr)+inp("ncr-apprDate","승인일",d.apprDate,"date")+'</div>'
     +'<div style="font-size:11px;color:#8A93A6;">최초작성 '+E(d.created||"-")+' · 최종수정 '+E(d.updated||"-")+' · 저장 위치: 구글시트 \''+NCR_TAB+'\' 탭</div>'
     +'<div style="display:flex;gap:8px;margin-top:4px;">'
@@ -6799,6 +6800,7 @@ function ncrOpen_(key){
   var old=document.getElementById("ncr-ov"); if(old) old.remove();
   var w=document.createElement("div"); w.innerHTML=html; document.body.appendChild(w.firstChild);
   var ov=document.getElementById("ncr-ov"); if(ov) ov.addEventListener("click",function(e){ if(e.target===ov) ov.remove(); });
+  try{ if(typeof capBindSection_==="function") capBindSection_(key); }catch(_){}
   if(!ncrHasKey_(key) && !String((__ncrDetail[key]||{}).temp||"").trim()) ncrFillDraft_(key);   // [추가] 처음 여는 NCR은 초안 자동 채움
 }
 function ncrCommit_(key){
@@ -6808,6 +6810,7 @@ function ncrCommit_(key){
   var grade=""; try{ if(typeof ncGradeOfTypes_==="function") grade=ncGradeOfTypes_(base.types)||""; }catch(_){}
   var rec=Object.assign({}, base, { grade:grade, temp:g("ncr-temp"), cause:g("ncr-cause"), escape:g("ncr-escape"), why:g("ncr-why"), corrective:g("ncr-corrective"), preventive:g("ncr-preventive"), horiz:g("ncr-horiz"), effect:g("ncr-effect"),
     by:g("ncr-by")||ncrWho_(), appr:g("ncr-appr"), apprDate:g("ncr-apprDate"), created:base.created||ncrNowStr_(), updated:ncrNowStr_(), ts:Date.now() });
+  try{ var capC=(typeof capCollect_==="function")?capCollect_():null; if(capC) rec.cap=JSON.stringify(capC); }catch(_){}
   var btn=document.getElementById("ncr-save-btn"); if(btn){ btn.disabled=true; btn.textContent="저장 중…"; }
   var doSave=function(){
     __ncrDetail[key]=rec; ncrSave_(); ncrPostRows_([ncrRowFromRec_(key,rec)]);
@@ -16197,6 +16200,324 @@ function coaCheck_(id, btn){
       r.chk={}; r.sns.forEach(function(sn){ var ks=Object.keys(insSnSet_(sn)); r.chk[sn]=ks.length?ks.every(function(k){ return have[k]; }):false; }); next(); })
     .catch(function(){ next(); }); })();
 }
+/* ==================== [검토] 📄 유진테크 재발방지 대책서 (불량 원인분석 및 재발방지대책서 R0) ====================
+   NCR 창의 '대책서 항목'에 적은 내용 + QMS 데이터(고객부적합·첨부 사진·재고 출고·부적합 이력)로 유진테크 양식 4장을 채워 엑셀로 만듦
+   · 양식 파일은 처음 한 번 등록 → 공유 저장소(capTpl)에 보관 (고객 양식이 바뀌면 다시 등록)
+   · 대책서 항목은 NCR_Master '대책서(JSON)' 열에 저장 · 대책 사진 4장은 고객부적합 첨부 저장소에 'CAP|NCR키|rb/ra/eb/ea'로 저장
+   · 유효성: 대책 완료일 이후 1차(30일)·2차(31~90일) 출하 수량과 같은 도번 부적합·고객 유출 건수를 자동 집계
+   · 빈칸·확인 필요 칸은 엑셀에서 노란색 + 화면에 목록 */
+var CAP_MTYPES=["표준개정","Poka-Yoke","설계개선","검사기준 강화","교육","횡전개","기타"], CAP_STATUS=["미착수","진행중","완료","지연"];
+var __capTpl=null;
+function capE_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function capToday_(){ return (typeof qmsToday_==="function")?qmsToday_():new Date().toISOString().slice(0,10); }
+function capAddDays_(ymd, n){ var m=String(ymd||"").match(/(\d{4})\D?(\d{1,2})\D?(\d{1,2})/); if(!m) return ""; var d=new Date(+m[1], +m[2]-1, +m[3]+n), z=function(x){ return String(x).padStart(2,"0"); }; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
+function capYmd_(v){ var m=String(v||"").match(/(\d{4})\D?(\d{1,2})\D?(\d{1,2})/); return m?(m[1]+"-"+String(m[2]).padStart(2,"0")+"-"+String(m[3]).padStart(2,"0")):""; }
+function capGet_(key){ var d=(typeof __ncrDetail!=="undefined" && __ncrDetail[key])||{}; try{ var o=d.cap?JSON.parse(d.cap):{}; return (o && typeof o==="object")?o:{}; }catch(_){ return {}; } }
+function capCustRow_(key){ try{ if(__qd8dRows[key]) return __qd8dRows[key]; }catch(_){} var hit=null; try{ (ncData||[]).some(function(r){ if(ncrCustKey_(r)===key){ hit=r; return true; } return false; }); }catch(_){} return hit; }
+function capPhotoKey_(key, slot){ return "CAP|"+key+"|"+slot; }
+function capPhotos_(key, slot){ try{ return (ncAttachGet_()[capPhotoKey_(key, slot)]||[]).filter(function(a){ return a && a.kind!=="file" && /^data:image/.test(String(a.url||"")); }); }catch(_){ return []; } }
+function capDefectPhotos_(r){ try{ return r?ncAttachList_(r).filter(function(a){ return a && a.kind!=="file" && /^data:image/.test(String(a.url||"")); }):[]; }catch(_){ return []; } }
+// 5Why 글(1) … → … 2) …)을 단계별로 나눔
+function capSplitWhy_(txt){ var t=String(txt||"").split(/\n/).map(function(l){ return l.replace(/^\s*\d+[\).:]\s*/,"").replace(/^\s*why\s*\d*\s*[:.)]?\s*/i,"").replace(/→\s*$/,"").trim(); }).filter(function(l){ return l && !/^※/.test(l); });
+  if(t.length===1) t=t[0].split(/\s*→\s*/).filter(Boolean); return t.slice(0,6); }
+
+/* ---------- NCR 창 안의 '대책서 항목' ---------- */
+function capSectionHtml_(key, d){
+  var c=capGet_(key), r=capCustRow_(key)||{}, m=(c.m||[{},{}]), v=(c.v||[{},{}]), E=capE_;
+  var IN=function(id,ph,val,w,type){ return '<label style="flex:'+(w||1)+';min-width:120px;font-size:11.5px;color:#5A6478;font-weight:700;">'+ph+'<input id="'+id+'" type="'+(type||"text")+'" value="'+E(val||"")+'" style="width:100%;padding:6px;border:1px solid #D6DEE8;border-radius:6px;margin-top:2px;box-sizing:border-box;font-size:12.5px;"></label>'; };
+  var TA=function(id,ph,val,h){ return '<label style="display:block;font-size:11.5px;color:#5A6478;font-weight:700;">'+ph+'<textarea id="'+id+'" rows="'+(h||2)+'" style="width:100%;padding:6px;border:1px solid #D6DEE8;border-radius:6px;margin-top:2px;box-sizing:border-box;font-size:12.5px;resize:vertical;">'+E(val||"")+'</textarea></label>'; };
+  var SEL=function(id,ph,val,opts){ return '<label style="flex:1;min-width:110px;font-size:11.5px;color:#5A6478;font-weight:700;">'+ph+'<select id="'+id+'" style="width:100%;padding:6px;border:1px solid #D6DEE8;border-radius:6px;margin-top:2px;font-size:12.5px;"><option value=""></option>'+opts.map(function(o){ return '<option'+(o===val?' selected':'')+'>'+E(o)+'</option>'; }).join("")+'</select></label>'; };
+  var ROW=function(x){ return '<div style="display:flex;gap:6px;flex-wrap:wrap;">'+x+'</div>'; };
+  var H=function(t){ return '<div style="font-weight:800;color:#1F2A44;font-size:12.5px;margin-top:6px;border-left:3px solid #2F6FB0;padding-left:6px;">'+t+'</div>'; };
+  var why=function(p, w, prob, ev, judge, label){ w=w||[]; return H(label)+TA("cap-"+p+"0","문제 / 현상", prob, 1)
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;">'+[1,2,3,4,5].map(function(i){ return TA("cap-"+p+i,"Why "+i, w[i-1], 2); }).join("")+'</div>'
+    +ROW(IN("cap-"+p+"ev","검증 근거 (현장 재현·표준서·검사기록·측정 Data)", ev, 3)+SEL("cap-"+p+"j","근본 원인 판정", judge, ["Why 1","Why 2","Why 3","Why 4","Why 5","추가 분석 필요"])); };
+  var meas=function(i, label){ var x=m[i]||{}; return H(label)
+    +ROW(SEL("cap-m"+i+"type","대책 유형", x.type, CAP_MTYPES)+IN("cap-m"+i+"dept","담당 부서", x.dept)+IN("cap-m"+i+"owner","담당자", x.owner)+IN("cap-m"+i+"target","목표일", x.target,1,"date")+IN("cap-m"+i+"done","완료일 (= 유효성 집계 시작)", x.done,1,"date")+SEL("cap-m"+i+"st","진행 상태", x.status, CAP_STATUS))
+    +TA("cap-m"+i+"txt","대책 내용 (비우면 NCR "+(i?"④ 시정 조치":"⑤ 재발 방지")+" 사용)", x.text, 2)
+    +ROW(IN("cap-m"+i+"horiz","횡전개 대상 (유사 모델·공정)", x.horiz, 2)+IN("cap-m"+i+"doc","관련 자료 (표준서·Check Sheet 등)", x.doc)+IN("cap-m"+i+"docno","관련 자료 No. / Rev.", x.docNo))
+    +TA("cap-m"+i+"det","변경 상세 (위치 / 전·후 차이 / 적용 범위 / 작업 방법 / 주의사항)", x.detail, 2)
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;">'+["b","a"].map(function(ba){ var slot=(i?"e":"r")+ba; return '<div class="cap-ph" data-slot="'+slot+'" tabindex="0" style="flex:1;min-width:150px;border:2px dashed #9AA7BC;border-radius:8px;padding:6px;text-align:center;font-size:11.5px;color:#5A6478;background:#F7F9FC;cursor:pointer;outline:none;"><b>'+(ba==="b"?"Before":"After")+' 사진</b> · 칸 클릭 후 Ctrl+V 또는 <u class="cap-ph-file" style="color:#2F6FB0;cursor:pointer;">📁 파일 선택</u><div class="cap-ph-list" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-top:4px;"></div></div>'; }).join("")+'</div>'; };
+  var val=function(i, label){ var x=v[i]||{}; return ROW(IN("cap-v"+i+"item","검증 항목 ("+label+")", x.item, 2)+IN("cap-v"+i+"how","검증 방법", x.how, 2)+IN("cap-v"+i+"crit","판정 기준 (수치)", x.crit)+IN("cap-v"+i+"per","검증 기간 / 수량", x.per)); };
+  var phen=c.phen||[r.content||d.types, (r.qty?("수량 "+r.qty+"EA"):"")].filter(Boolean).join(" · ");
+  return '<details id="cap-sec" open style="border:1px solid #C9D7EA;border-radius:10px;background:#F8FBFF;padding:8px 10px;">'
+    +'<summary style="cursor:pointer;font-weight:800;color:#1F4E8C;">📋 유진테크 재발방지 대책서 항목 <span style="font-weight:400;font-size:11.5px;color:#667085;">(검토 중 기능 · 저장하면 함께 저장)</span></summary>'
+    +'<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">'
+    + H("1. 기본 정보 · 현상")
+    + ROW(IN("cap-rno","Report No.", c.rno)+IN("cap-place","발생처 / 공정 (예: 고객사 입고검사)", c.place, 2)+IN("cap-dtype","불량 유형", c.dtype||d.types))
+    + TA("cap-phen","불량 현상 (발견 단계·위치·부위·수량·실제 상태)", phen, 2)
+    + ROW(IN("cap-imp","영향 범위 (의심 재고·재공·출하 수량) — 비우면 QMS 재고로 자동", c.imp, 2)+IN("cap-impc","고객 / 공정 영향", c.impc, 2))
+    + H("3. 긴급 / 임시 조치 결과 (조치 내용 = NCR ⓪)")
+    + ROW(IN("cap-ttarget","대상 / 범위", c.tTarget)+IN("cap-towner","담당자", c.tOwner||(r.owner||""))+IN("cap-tdone","완료일", c.tDone||capYmd_(r.doneDate),1,"date")+IN("cap-tres","결과 (확인 수량 / 추가 NG 수량)", c.tRes, 2))
+    + '<div style="display:flex;gap:6px;align-items:center;"><button type="button" onclick="capWhyFromText_()" style="border:1px solid #2F6FB0;background:#fff;color:#2F6FB0;border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">③ 5Why 글을 Why 1~5 칸으로 나눠 넣기</button><span style="font-size:11px;color:#8A93A6;">줄마다 1) 2) … 또는 → 로 나눠 적은 경우</span></div>'
+    + why("wo", c.wo, c.wo0||(c.wo?"":(r.content||d.types)), c.woEv, c.woJ, "2. 발생 원인 분석 (왜 불량을 만들었나?)")
+    + why("we", c.we, c.we0, c.weEv, c.weJ, "2. 유출 원인 분석 (왜 검사에서 못 잡았나?)")
+    + meas(0, "3. 근본 원인 대책")
+    + meas(1, "3. 유출 원인 대책")
+    + H("4. 유효성 확인 계획 (결과는 완료일 이후 QMS 자동 집계)")
+    + val(0, "근본 대책") + val(1, "유출 대책")
+    + TA("cap-risk","잔여 Risk / 후속관리", c.risk, 1)
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px;"><button type="button" onclick="capMake_(\''+ncrEscAttr_(key)+'\')" style="background:#1F4E8C;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:800;cursor:pointer;">📄 유진테크 대책서 만들기 (엑셀)</button>'
+    + '<button type="button" onclick="capTplPick_()" style="border:1px solid #D6DEE8;background:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:12px;">양식 등록·변경</button><span id="cap-tplst" style="font-size:11.5px;color:#667085;"></span></div>'
+    + '<div id="cap-res" style="font-size:12px;"></div>'
+    +'</div></details>';
+}
+function capBindSection_(key){
+  var sec=document.getElementById("cap-sec"); if(!sec) return;
+  capTplLoad_(function(t){ var s=document.getElementById("cap-tplst"); if(s) s.textContent=t?("등록된 양식: "+(t.name||"")+" ("+(t.at||"")+")"):"양식이 아직 없습니다 — '양식 등록·변경'으로 유진테크 양식 엑셀을 한 번 등록하세요"; });
+  sec.querySelectorAll(".cap-ph").forEach(function(box){
+    var slot=box.getAttribute("data-slot"), pk=capPhotoKey_(key, slot), list=box.querySelector(".cap-ph-list");
+    var draw=function(){ var a=capPhotos_(key, slot); list.innerHTML=a.map(function(p,i){ return '<span style="position:relative;"><img src="'+p.url+'" style="width:64px;height:48px;object-fit:cover;border-radius:4px;border:1px solid #D6DEE8;"><b data-i="'+i+'" class="cap-ph-del" style="position:absolute;top:-6px;right:-6px;background:#B42318;color:#fff;border-radius:50%;width:16px;height:16px;line-height:16px;font-size:10px;cursor:pointer;">✕</b></span>'; }).join("") || '<span style="color:#98A2B3;">(없음)</span>'; };
+    var add=function(dataURL, name){ ncImgCompress_(dataURL, function(curl){ var st=ncAttachGet_(); st[pk]=st[pk]||[]; st[pk].push({ name:name||slot, url:curl }); ncAttachSetAll_(st); draw(); }); };
+    box.addEventListener("click", function(e){ var del=e.target.closest(".cap-ph-del"); if(del){ e.stopPropagation(); var st=ncAttachGet_(); (st[pk]||[]).splice(Number(del.getAttribute("data-i")),1); ncAttachSetAll_(st); draw(); return; }
+      if(e.target.tagName==="IMG") return; box.focus();
+      if(!box.__fi){ box.__fi=document.createElement("input"); box.__fi.type="file"; box.__fi.accept="image/*"; box.__fi.multiple=true; box.__fi.addEventListener("change", function(){ Array.prototype.forEach.call(box.__fi.files||[], function(f){ var rd=new FileReader(); rd.onload=function(){ add(rd.result, f.name); }; rd.readAsDataURL(f); }); box.__fi.value=""; }); }
+      if(e.target.closest(".cap-ph-file")) box.__fi.click(); });
+    box.addEventListener("paste", function(e){ var items=(e.clipboardData||{}).items||[]; for(var i=0;i<items.length;i++){ if(items[i].type && items[i].type.indexOf("image")===0){ var f=items[i].getAsFile(); if(f){ var rd=new FileReader(); rd.onload=function(){ add(rd.result); }; rd.readAsDataURL(f); } } } e.preventDefault(); });
+    draw(); });
+}
+function capWhyFromText_(){ var t=capSplitWhy_((document.getElementById("ncr-why")||{}).value); if(!t.length){ alert("③ 근본 원인(5Why)에 적힌 내용이 없습니다."); return; }
+  for(var i=1;i<=5;i++){ var el=document.getElementById("cap-wo"+i); if(el && !String(el.value).trim() && t[i-1]) el.value=t[i-1]; } }
+function capCollect_(){
+  var g=function(id){ return String((document.getElementById(id)||{}).value||"").trim(); }; if(!document.getElementById("cap-sec")) return null;
+  var c={ rno:g("cap-rno"), place:g("cap-place"), dtype:g("cap-dtype"), phen:g("cap-phen"), imp:g("cap-imp"), impc:g("cap-impc"),
+    tTarget:g("cap-ttarget"), tOwner:g("cap-towner"), tDone:g("cap-tdone"), tRes:g("cap-tres"),
+    wo0:g("cap-wo0"), wo:[1,2,3,4,5].map(function(i){ return g("cap-wo"+i); }), woEv:g("cap-woev"), woJ:g("cap-woj"),
+    we0:g("cap-we0"), we:[1,2,3,4,5].map(function(i){ return g("cap-we"+i); }), weEv:g("cap-weev"), weJ:g("cap-wej"),
+    m:[0,1].map(function(i){ return { type:g("cap-m"+i+"type"), dept:g("cap-m"+i+"dept"), owner:g("cap-m"+i+"owner"), target:g("cap-m"+i+"target"), done:g("cap-m"+i+"done"), status:g("cap-m"+i+"st"), text:g("cap-m"+i+"txt"), horiz:g("cap-m"+i+"horiz"), doc:g("cap-m"+i+"doc"), docNo:g("cap-m"+i+"docno"), detail:g("cap-m"+i+"det") }; }),
+    v:[0,1].map(function(i){ return { item:g("cap-v"+i+"item"), how:g("cap-v"+i+"how"), crit:g("cap-v"+i+"crit"), per:g("cap-v"+i+"per") }; }), risk:g("cap-risk") };
+  return c;
+}
+
+/* ---------- 양식 파일 (공유 저장) ---------- */
+function capTplLoad_(cb){
+  if(__capTpl){ cb(__capTpl); return; }
+  var done=false, fin=function(t){ if(done) return; if(t && t.b64){ __capTpl=t; done=true; cb(t); } };
+  try{ if(typeof idbGet==="function") idbGet("capTpl").then(function(v){ fin(v); }).catch(function(){}); }catch(_){}
+  try{ if(typeof qShareLoad_==="function") qShareLoad_("capTpl", function(sv){ if(sv && sv.b64){ fin(sv); try{ idbSet("capTpl", sv); }catch(_){} } else if(!done){ done=true; cb(null); } }); else cb(null); }catch(_){ cb(null); }
+}
+function capTplPick_(){
+  var fi=document.createElement("input"); fi.type="file"; fi.accept=".xlsx";
+  fi.addEventListener("change", function(){ var f=fi.files&&fi.files[0]; if(!f) return;
+    f.arrayBuffer().then(function(buf){ var u=new Uint8Array(buf), s=""; for(var i=0;i<u.length;i+=0x8000) s+=String.fromCharCode.apply(null, u.subarray(i,i+0x8000));
+      var ok=false; try{ var wb=XLSX.read(u, { type:"array" }); ok=wb.SheetNames.some(function(n){ return /종합/.test(n); }) && wb.SheetNames.some(function(n){ return /대책/.test(n); }); }catch(_){}
+      if(!ok && !confirm("'01_종합 Report'·'03_대책 상세' 시트가 보이지 않습니다. 그래도 이 파일을 양식으로 등록할까요?")) return;
+      var t={ name:f.name, at:capToday_(), b64:btoa(s) }; __capTpl=t; try{ idbSet("capTpl", t); }catch(_){} try{ qShareSave_("capTpl", t, "cap-tplst"); }catch(_){}
+      var st=document.getElementById("cap-tplst"); if(st) st.textContent="등록됨: "+f.name+" (공유 저장 중…)"; }); });
+  fi.click();
+}
+
+/* ---------- 유효성 자동 집계 ---------- */
+function capEffect_(d, c, key){
+  var today=capToday_(), pn=ncrNorm_(d.draw), out={ apply:"", w:[], kpi:[], notes:[] };
+  var apply=capYmd_(((c.m||[])[0]||{}).done) || capYmd_(((c.m||[])[1]||{}).done) || capYmd_(d.apprDate); out.apply=apply;
+  var dnum=function(s){ return (typeof ncrDateNum_==="function")?ncrDateNum_(s):String(capYmd_(s)).replace(/-/g,""); };
+  var origN=dnum(d.date);
+  var all=[]; try{ all=ncrAllRows_().filter(function(x){ return ncrNorm_(x.part)===pn; }); }catch(_){}
+  var cust=[]; try{ cust=(ncData||[]).filter(function(x){ return !(typeof trashIsDeleted==="function" && trashIsDeleted(x)) && String(x._deleted||"")!=="1" && ncrNorm_(x.partNo)===pn; }); }catch(_){}
+  // 도번 → 재고 키 (품번·기존도번 둘 다)
+  var keys={}; keys[(typeof invKey_==="function")?invKey_(d.draw):pn]=1;
+  try{ (mainData||[]).forEach(function(r){ if(ncrNorm_(r.partNo)===pn || ncrNorm_(r.oldDrawingNo)===pn){ if(r.partNo) keys[invKey_(r.partNo)]=1; if(r.oldDrawingNo) keys[invKey_(r.oldDrawingNo)]=1; } }); }catch(_){}
+  var ship=function(a,b){ var n=0; try{ (invData||[]).forEach(function(iv){ var q=Number(iv.outQty)||0; if(q<=0 || !keys[invKey_(iv.partNo)]) return; var od=capYmd_((typeof insplistYmd_==="function")?insplistYmd_(iv.outDate):iv.outDate); if(od && od>=a && od<b) n+=q; }); }catch(_){} return n; };
+  var cnt=function(arr, a, b, dk){ return arr.filter(function(x){ var n=dnum(x[dk]); var y=n?(n.slice(0,4)+"-"+n.slice(4,6)+"-"+n.slice(6,8)):""; return y && y>=a && y<b && !(n===origN); }).length; };
+  if(!apply){ out.notes.push("대책 완료일이 없어 유효성 결과를 집계하지 않았습니다"); }
+  else {
+    [[0,30],[30,90]].forEach(function(p, i){ var a=capAddDays_(apply, p[0]+1), b=capAddDays_(apply, p[1]+1), started=today>=a, complete=today>=b;
+      out.w.push({ a:a, b:capAddDays_(apply, p[1]), started:started, complete:complete, ship:started?ship(a, complete?b:capAddDays_(today,1)):0,
+        def:started?cnt(all, a, complete?b:capAddDays_(today,1), "date"):0, esc:started?cnt(cust, a, complete?b:capAddDays_(today,1), "date"):0, day:started?Math.min(p[1]-p[0], Math.round((Date.parse(today)-Date.parse(a))/864e5)+1):0 }); });
+    var bA=capAddDays_(apply,-90), aB=capAddDays_(apply,91), aDone=today>=aB, aE=aDone?aB:capAddDays_(today,1);
+    var before=all.filter(function(x){ var n=dnum(x.date); var y=n?(n.slice(0,4)+"-"+n.slice(4,6)+"-"+n.slice(6,8)):""; return y && y>bA && y<=apply; }).length || 1;
+    var beforeC=cust.filter(function(x){ var n=dnum(x.date); var y=n?(n.slice(0,4)+"-"+n.slice(4,6)+"-"+n.slice(6,8)):""; return y && y>bA && y<=apply; }).length || 1;
+    var aS=capAddDays_(apply,1), span=aDone?"3개월":(Math.max(0,Math.round((Date.parse(today)-Date.parse(apply))/864e5))+"일"), started=today>aS;
+    out.kpi=[{ name:"동일 불량 건수 (같은 도번)", before:before+"건/3개월", target:"0건/3개월", after:started?(cnt(all, aS, aE, "date")+"건/"+span):"", done:aDone },
+             { name:"고객 유출 건수 (같은 도번)", before:beforeC+"건/3개월", target:"0건/3개월", after:started?(cnt(cust, aS, aE, "date")+"건/"+span):"", done:aDone }]; }
+  return out;
+}
+
+/* ---------- 엑셀 만들기 ---------- */
+function capPkg_(buf){
+  var cfb=XLSX.CFB.read(new Uint8Array(buf), { type:"array" }), dec=new TextDecoder("utf-8"), enc=new TextEncoder();
+  var idx=function(p){ return cfb.FullPaths.findIndex(function(x){ return x.replace(/^Root Entry\//,"")===p; }); };
+  var P={ get:function(p){ var i=idx(p); return i>=0?dec.decode(cfb.FileIndex[i].content):null; },
+    set:function(p, s){ var i=idx(p), b=(typeof s==="string")?enc.encode(s):s; if(i>=0){ cfb.FileIndex[i].content=b; cfb.FileIndex[i].size=b.length; } else XLSX.CFB.utils.cfb_add(cfb, p, b); },
+    out:function(){ return XLSX.CFB.write(cfb, { fileType:"zip", type:"array", compression:true }); } };
+  var wbx=P.get("xl/workbook.xml"), rel=P.get("xl/_rels/workbook.xml.rels");
+  P.sheet=function(name){ var esc=String(name).replace(/&/g,"&amp;").replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); var sm=wbx.match(new RegExp('<sheet [^>]*name="'+esc+'"[^>]*r:id="([^"]+)"')); if(!sm) return null;
+    var tm=rel.match(new RegExp('<Relationship [^>]*Id="'+sm[1]+'"[^>]*/>')), tg=tm&&(tm[0].match(/Target="([^"]+)"/)||[])[1]; return tg?("xl/"+tg.replace(/^\/?xl\//,"").replace(/^\//,"")):null; };
+  P.names=function(){ return (wbx.match(/<sheet [^>]*name="([^"]+)"/g)||[]).map(function(t){ return t.match(/name="([^"]+)"/)[1].replace(/&amp;/g,"&"); }); };
+  return P;
+}
+// 셀 서식에 노란 배경을 더한 서식 번호 (확인 필요 칸)
+function capYellowMaker_(P){ var cache={}, x=null, fillId=-1;
+  return { get:function(s){ s=+s||0; if(cache[s]!==undefined) return cache[s]; if(x===null) x=P.get("xl/styles.xml");
+      var fm=x.match(/<fills count="(\d+)"([^>]*)>([\s\S]*?)<\/fills>/); if(!fm){ cache[s]=s; return s; }
+      if(fillId<0){ fillId=(fm[3].match(/<fill>|<fill\s/g)||[]).length; x=x.replace(fm[0], '<fills count="'+(fillId+1)+'"'+fm[2]+'>'+fm[3]+'<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill></fills>'); }
+      var xm=x.match(/<cellXfs count="(\d+)"([^>]*)>([\s\S]*?)<\/cellXfs>/), xfs=xm[3].match(/<xf\b[^>]*\/>|<xf\b[^>]*>[\s\S]*?<\/xf>/g)||[], xf=xfs[s]; if(!xf){ cache[s]=s; return s; }
+      var nx=xf.replace(/fillId="\d+"/,'fillId="'+fillId+'"'); if(!/fillId=/.test(nx)) nx=nx.replace(/^<xf\b/,'<xf fillId="'+fillId+'"'); nx=/applyFill=/.test(nx)?nx.replace(/applyFill="\d"/,'applyFill="1"'):nx.replace(/^<xf\b/,'<xf applyFill="1"');
+      x=x.replace(xm[0], '<cellXfs count="'+(xfs.length+1)+'"'+xm[2]+'>'+xm[3]+nx+'</cellXfs>'); cache[s]=xfs.length; return cache[s]; },
+    save:function(){ if(x!==null) P.set("xl/styles.xml", x); } }; }
+function capCellStyle_(xml, ref){ var m=xml.match(new RegExp('<c r="'+ref+'"(\\s[^>]*?)?(\\/>|>)')); return m&&m[1]?((m[1].match(/\bs="(\d+)"/)||[])[1]||"0"):"0"; }
+function capSetStyle_(xml, ref, s){ return xml.replace(new RegExp('<c r="'+ref+'"((?:\\s[^>]*?)?)(\\/?>)'), function(a, at, end){ at=/\bs="\d+"/.test(at)?at.replace(/\bs="\d+"/,'s="'+s+'"'):(at+' s="'+s+'"'); return '<c r="'+ref+'"'+at+end; }); }
+// 사진 넣기: 시트에 drawing이 있으면 거기에, 없으면 새로 만듦 · 영역(병합 칸) 안에 비율 유지
+function capImgSize_(url){ return new Promise(function(res){ var im=new Image(); im.onload=function(){ res({ w:im.naturalWidth||im.width, h:im.naturalHeight||im.height }); }; im.onerror=function(){ res({ w:400, h:300 }); }; im.src=url; }); }
+function capAreaPx_(sx, c0, r0, c1, r1){
+  var dw=8.43; var df=sx.match(/<sheetFormatPr[^>]*defaultColWidth="([\d.]+)"/); if(df) dw=+df[1]; var dh=15; var dr=sx.match(/<sheetFormatPr[^>]*defaultRowHeight="([\d.]+)"/); if(dr) dh=+dr[1];
+  var cols=[]; (sx.match(/<col [^>]*\/>/g)||[]).forEach(function(t){ var mn=+(t.match(/min="(\d+)"/)||[])[1], mx=+(t.match(/max="(\d+)"/)||[])[1], w=+(t.match(/width="([\d.]+)"/)||[])[1]; for(var i=mn;i<=mx && i<=300;i++) cols[i-1]=w; });
+  var cw=function(c){ return Math.round(((cols[c]!=null?cols[c]:dw))*7+5); }, rh=function(r){ var m=sx.match(new RegExp('<row r="'+(r+1)+'"[^>]*\\bht="([\\d.]+)"')); return Math.round((m?+m[1]:dh)*96/72); };
+  var w=0, h=0, offX=[], offY=[]; for(var c=c0;c<=c1;c++){ offX.push(w); w+=cw(c); } for(var r=r0;r<=r1;r++){ offY.push(h); h+=rh(r); }
+  return { w:w, h:h, cw:cw, rh:rh };
+}
+async function capAddImages_(P, sheetName, list){   // list: [{ url, area:"J11:M14" }]
+  list=list.filter(function(x){ return x && x.url; }); if(!list.length) return 0;
+  var sp=P.sheet(sheetName); if(!sp) return 0; var sx=P.get(sp), sRelP=sp.replace(/([^\/]+)$/,"_rels/$1.rels"), sRel=P.get(sRelP)||'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+  var ct=P.get("[Content_Types].xml");
+  var dId=(sx.match(/<drawing r:id="([^"]+)"/)||[])[1], dPath=null;
+  if(dId){ var dm=sRel.match(new RegExp('<Relationship [^>]*Id="'+dId+'"[^>]*/>')); var tg=dm&&(dm[0].match(/Target="([^"]+)"/)||[])[1]; if(tg) dPath="xl/drawings/"+tg.split("/").pop(); }
+  if(!dPath){ var n=1; while(P.get("xl/drawings/drawing"+n+".xml")!=null) n++; dPath="xl/drawings/drawing"+n+".xml";
+    P.set(dPath,'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"></xdr:wsDr>');
+    var rid=1; while(new RegExp('Id="rId'+rid+'"').test(sRel)) rid++; dId="rId"+rid;
+    sRel=sRel.replace("</Relationships>",'<Relationship Id="'+dId+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/'+dPath.split("/").pop()+'"/></Relationships>');
+    var tag='<drawing r:id="'+dId+'"/>'; sx=/<legacyDrawing /.test(sx)?sx.replace(/<legacyDrawing /, tag+'<legacyDrawing '):(/<tableParts|<extLst/.test(sx)?sx.replace(/<tableParts|<extLst/, function(m){ return tag+m; }):sx.replace("</worksheet>", tag+"</worksheet>"));
+    if(!/xmlns:r=/.test(sx.slice(0,600))) sx=sx.replace(/<worksheet /,'<worksheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ');
+    ct=ct.replace("</Types>",'<Override PartName="/'+dPath+'" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>'); }
+  var dx=P.get(dPath), dRelP=dPath.replace(/([^\/]+)$/,"_rels/$1.rels"), dRel=P.get(dRelP)||'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+  var pre=/<xdr:wsDr/.test(dx)?"xdr:":"", nsFix=!pre && !/xmlns:xdr=/.test(dx);
+  if(nsFix) dx=dx.replace(/<wsDr /,'<wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" ');
+  if(!/xmlns:a=/.test(dx.slice(0,800))) dx=dx.replace(/<(xdr:)?wsDr /, function(m){ return m+'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '; });
+  if(!/xmlns:r=/.test(dx.slice(0,800))) dx=dx.replace(/<(xdr:)?wsDr /, function(m){ return m+'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '; });
+  var idN=100, added=0;
+  for(const it of list){
+    var m=String(it.area).match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/); if(!m) continue;
+    var c0=XLSX.utils.decode_col(m[1]), r0=+m[2]-1, c1=XLSX.utils.decode_col(m[3]), r1=+m[4]-1, A=capAreaPx_(sx, c0, r0, c1, r1);
+    var bin=atob(String(it.url).split(",")[1]||""), u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+    var ext=/^data:image\/png/.test(it.url)?"png":"jpeg", mn=1; while(P.get("xl/media/cap"+mn+"."+ext)!=null) mn++; var mp="xl/media/cap"+mn+"."+ext; P.set(mp, u);
+    if(ext==="jpeg" && !/Extension="jpeg"/.test(ct)) ct=ct.replace("<Default ",'<Default Extension="jpeg" ContentType="image/jpeg"/><Default ');
+    var rr=1; while(new RegExp('Id="rIdC'+rr+'"').test(dRel)) rr++; var rid2="rIdC"+rr;
+    dRel=dRel.replace("</Relationships>",'<Relationship Id="'+rid2+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/'+mp.split("/").pop()+'"/></Relationships>');
+    var sz=await capImgSize_(it.url), pad=6, bw=(it.w||1)*(A.w-pad*2)/(it.of||1), bh=A.h-pad*2, sc=Math.min(bw/sz.w, bh/sz.h), w=Math.max(10,Math.round(sz.w*sc)), h=Math.max(10,Math.round(sz.h*sc));
+    var x0=pad+(it.x||0)*(A.w-pad*2)/(it.of||1)+Math.max(0,(bw-w)/2), y0=pad+Math.max(0,(bh-h)/2);
+    // 시작 칸 찾기 (오프셋 → 칸 + 칸 안 오프셋)
+    var col=c0, ox=x0; while(col<c1 && ox>=A.cw(col)){ ox-=A.cw(col); col++; } var row=r0, oy=y0; while(row<r1 && oy>=A.rh(row)){ oy-=A.rh(row); row++; }
+    var E9=9525, X=pre;
+    dx=dx.replace(new RegExp("</"+pre+"wsDr>"), '<'+X+'oneCellAnchor><'+X+'from><'+X+'col>'+col+'</'+X+'col><'+X+'colOff>'+Math.round(ox*E9)+'</'+X+'colOff><'+X+'row>'+row+'</'+X+'row><'+X+'rowOff>'+Math.round(oy*E9)+'</'+X+'rowOff></'+X+'from><'+X+'ext cx="'+(w*E9)+'" cy="'+(h*E9)+'"/>'
+      +'<'+X+'pic><'+X+'nvPicPr><'+X+'cNvPr id="'+(idN++)+'" name="대책서 사진 '+(added+1)+'"/><'+X+'cNvPicPr><a:picLocks noChangeAspect="1"/></'+X+'cNvPicPr></'+X+'nvPicPr><'+X+'blipFill><a:blip r:embed="'+rid2+'"/><a:stretch><a:fillRect/></a:stretch></'+X+'blipFill>'
+      +'<'+X+'spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="'+(w*E9)+'" cy="'+(h*E9)+'"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></'+X+'spPr></'+X+'pic><'+X+'clientData/></'+X+'oneCellAnchor></'+pre+'wsDr>');
+    added++; }
+  P.set(dPath, dx); P.set(dRelP, dRel); P.set(sp, sx); P.set(sRelP, sRel); P.set("[Content_Types].xml", ct);
+  return added;
+}
+async function capBuild_(key, over){
+  var tpl=await new Promise(function(res){ capTplLoad_(res); }); if(!tpl) throw new Error("유진테크 양식이 등록되지 않았습니다 — '양식 등록·변경'으로 먼저 등록하세요");
+  var bin=atob(tpl.b64), u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+  var d=ncrFillFromKey_(key, Object.assign({}, __ncrMeta[key]||{}, __ncrDetail[key]||{}, over||{})), c=(over&&over.cap)?JSON.parse(over.cap):capGet_(key), r=capCustRow_(key)||{}, ef=capEffect_(d, c, key);
+  var P=capPkg_(u.buffer), Y=capYellowMaker_(P), gaps=[], names=P.names();
+  var SH=function(re){ return names.filter(function(n){ return re.test(n); })[0]; };
+  var S1=SH(/종합/), S2=SH(/분석/), S3=SH(/대책/), S4=SH(/유효성/);
+  if(!S1||!S2||!S3||!S4) throw new Error("양식 시트(종합·분석·대책·유효성)를 찾지 못했습니다: "+names.join(", "));
+  var X={}; [S1,S2,S3,S4].forEach(function(n){ X[n]=P.get(P.sheet(n)); });
+  // 값이 있으면 글자로, 없으면 비움 · 빈칸은 노란색+목록 (gapWhy=null이면 표시 안 함, "!"로 시작하면 값이 있어도 확인 필요)
+  var put=function(sh, ref, val, gapWhy){ var v=(val==null)?"":String(val); var x=X[sh];
+    if(v) x=coaXmlCell_(x, ref, "s", v);
+    else { x=coaXmlCell_(x, ref, "x"); if(!new RegExp('<c r="'+ref+'"[\\s/>]').test(x)){ var y=coaFillSetCell_(x, ref, 0); if(y) x=coaXmlCell_(y, ref, "x"); } }
+    var force=/^!/.test(gapWhy||"");
+    if(force || (!v && gapWhy!==null)){ x=capSetStyle_(x, ref, Y.get(capCellStyle_(x, ref))); gaps.push(sh.replace(/^\d+_/,"")+" "+ref+": "+(String(gapWhy||"").replace(/^!/,"")||"빈칸")); }
+    X[sh]=x; };
+  var putF=function(sh, ref, f){ var x=X[sh], re=new RegExp('<c r="'+ref+'"((?:\\s[^>]*?)?)(\\/>|>([\\s\\S]*?)<\\/c>)'), m=x.match(re); if(!m) return; var at=(m[1]||"").replace(/\s+t="[^"]*"/,"").replace(/\/$/,""); X[sh]=x.replace(re,'<c r="'+ref+'"'+at+'><f>'+coaXmlEsc_(f)+'</f></c>'); };
+  var md=(c.m||[{},{}]), m0=md[0]||{}, m1=md[1]||{}, today=capToday_();
+  // ── 01 종합
+  put(S1,"D5", c.rno, c.rno?"":"Report No. (고객사 부여 번호 또는 사내 관리번호)");
+  put(S1,"J5","(주)엔티엘 / 품질팀");
+  var by=d.by||((typeof ncrWho_==="function")?ncrWho_():""); put(S1,"D6", by, by?"":"작성자");
+  put(S1,"J6", capYmd_(d.created)||today);
+  put(S1,"D7", [r.partName||"", d.draw].filter(Boolean).join(" / ")+(d.sn?(" (S/N "+d.sn+")"):""));
+  put(S1,"J7", c.place||"", "발생처 / 공정");
+  put(S1,"D8", c.dtype||d.types||"");
+  var grade=(typeof ncGradeOfTypes_==="function")?ncGradeOfTypes_(d.types):""; put(S1,"J8", grade==="A"?"Critical":(grade==="C"?"Minor":"Major"), grade?"":"!중요도 확인 (불량 유형으로 등급을 못 정함)");
+  put(S1,"D11", c.phen||[r.content||d.types, r.qty?("수량 "+r.qty+"EA"):""].filter(Boolean).join(" · "));
+  var defP=capDefectPhotos_(r); put(S1,"J11","", defP.length?null:"현상 사진 (고객부적합 첨부에 사진을 넣으면 자동)");
+  // 영향 범위: 같은 도번 재고 (QMS)
+  var imp=c.imp; if(!imp){ try{ var pn=ncrNorm_(d.draw), stock=0, ks={}; ks[invKey_(d.draw)]=1; (mainData||[]).forEach(function(m){ if(ncrNorm_(m.partNo)===pn||ncrNorm_(m.oldDrawingNo)===pn){ if(m.oldDrawingNo) ks[invKey_(m.oldDrawingNo)]=1; if(m.partNo) ks[invKey_(m.partNo)]=1; } });
+      (invData||[]).forEach(function(iv){ if(ks[invKey_(iv.partNo)]) stock+=(Number(iv.inQty)||0)-(Number(iv.outQty)||0); }); imp="불량 "+(r.qty||d.qty||1)+"EA · 같은 도번 사내 재고 "+Math.max(0,stock)+"EA (QMS 재고 "+today+" 기준) 점검 대상"; }catch(_){ imp=""; } }
+  put(S1,"D15", imp, c.imp?"":"!영향 범위 — QMS 재고로 자동 기재, 재공·출하품 수량 확인");
+  put(S1,"J15", c.impc||"", "고객 / 공정 영향");
+  put(S1,"B21","임시조치"); put(S1,"C21", d.temp||r.temp||"", (d.temp||r.temp)?"":"임시조치 내용");
+  put(S1,"H21", c.tTarget||"", "대상 / 범위"); put(S1,"J21", c.tOwner||r.owner||"", (c.tOwner||r.owner)?"":"담당자"); put(S1,"K21", capYmd_(c.tDone)||capYmd_(r.doneDate)||"", (c.tDone||r.doneDate)?"":"완료일"); put(S1,"L21", c.tRes||"", "결과 (확인 수량 / 추가 NG 수량)");
+  put(S1,"D24", d.cause||"", d.cause?"":"근본(발생) 원인"); put(S1,"J24", m0.text||d.preventive||"", (m0.text||d.preventive)?"":"근본 원인 대책");
+  put(S1,"D27", d.escape||"", d.escape?"":"유출 원인"); put(S1,"J27", m1.text||d.corrective||"", (m1.text||d.corrective)?"":"유출 원인 대책");
+  put(S1,"C32", [by, capYmd_(d.created)||today].filter(Boolean).join(" / ")); put(S1,"F32","", "검토 (성명 / 서명 / 일자)"); put(S1,"I32", [d.appr, capYmd_(d.apprDate)].filter(Boolean).join(" / "), d.appr?"":"승인");
+  // ── 02 분석
+  var wo=(c.wo||[]).filter(function(x){ return x; }).length?c.wo:capSplitWhy_(d.why);
+  put(S2,"D7", c.wo0||r.content||d.types||""); [1,2,3,4,5].forEach(function(i){ put(S2, "EFGHI".charAt(i-1)+"7", (wo||[])[i-1]||"", ((wo||[])[i-1])?"":("발생 Why "+i)); });
+  put(S2,"J7", c.woEv||"", "검증 근거"); put(S2,"K7", c.woJ||"", "근본 원인 판정 (Why 몇 단계)"); put(S2,"C7","발생 원인");
+  put(S2,"D11", c.we0||"", "유출 문제 / 현상 (예: 출하검사에서 미검출)"); [1,2,3,4,5].forEach(function(i){ put(S2, "EFGHI".charAt(i-1)+"11", (c.we||[])[i-1]||"", ((c.we||[])[i-1])?"":("유출 Why "+i)); });
+  put(S2,"J11", c.weEv||"", "검증 근거"); put(S2,"K11", c.weJ||"", "근본 원인 판정"); put(S2,"C11","유출 원인");
+  ["K17","K18","K19","K20","K21"].forEach(function(rf){ put(S2, rf, "", "자체 점검 (적합 / 부적합)"); });
+  // ── 03 대책
+  var mrow=function(rw, x, label, dflt){ put(S3,"C"+rw, label); put(S3,"D"+rw, x.type||"", x.type?"":"대책 유형"); put(S3,"E"+rw, x.text||dflt||"", (x.text||dflt)?"":"대책 내용");
+    put(S3,"F"+rw, x.dept||"", x.dept?"":"담당 부서"); put(S3,"G"+rw, x.owner||"", x.owner?"":"담당자"); put(S3,"H"+rw, capYmd_(x.target), x.target?"":"목표일");
+    put(S3,"I"+rw, capYmd_(x.done), x.done?"":"완료일"); put(S3,"J"+rw, x.status||(x.done?"완료":""), (x.status||x.done)?"":"진행 상태"); put(S3,"K"+rw, x.horiz||d.horiz||"", (x.horiz||d.horiz)?"":"횡전개 대상");
+    put(S3,"L"+rw, x.doc||"", x.doc?"":"관련 자료"); put(S3,"M"+rw, x.docNo||"", x.docNo?"":"관련 자료 No. / Rev."); };
+  mrow(7, m0, "근본 원인", d.preventive); mrow(9, m1, "유출 원인", d.corrective);
+  put(S3,"D13", m0.text||d.preventive||""); put(S3,"C20", m0.detail||"", "근본 대책 변경 상세");
+  put(S3,"D23", m1.text||d.corrective||""); put(S3,"C30", m1.detail||"", "유출 대책 변경 상세");
+  var ph={ rb:capPhotos_(key,"rb"), ra:capPhotos_(key,"ra"), eb:capPhotos_(key,"eb"), ea:capPhotos_(key,"ea") };
+  if(!ph.rb.length) ph.rb=defP.slice(0,1);
+  [["rb","근본 Before"],["ra","근본 After"],["eb","유출 Before"],["ea","유출 After"]].forEach(function(p){ if(!ph[p[0]].length) gaps.push("대책 상세 사진: "+p[1]+" 없음"); });
+  // ── 04 유효성
+  var vd=(c.v||[{},{}]);
+  [[7,vd[0]||{},"def","동일 불량"],[9,vd[1]||{},"esc","고객 유출"]].forEach(function(z){ var rw=z[0], x=z[1];
+    put(S4,"C"+rw, x.item||"", x.item?"":"검증 항목"); put(S4,"D"+rw, x.how||"", x.how?"":"검증 방법"); put(S4,"E"+rw, x.crit||"", x.crit?"":"판정 기준 (수치)");
+    put(S4,"F"+rw, x.per||(ef.apply?"적용 후 90일 (1차 30일 · 2차 31~90일)":""), (x.per||ef.apply)?"":"검증 기간 / 수량"); put(S4,"G"+rw, (rw===7?m0.owner:m1.owner)||d.by||"");
+    var res=function(w){ if(!w || !w.started) return ""; return "출하 "+w.ship+"EA · "+z[3]+" "+w[z[2]]+"건"+(w.complete?"":(" (진행 중 "+w.day+"일차)")); };
+    var w1=ef.w[0], w2=ef.w[1];
+    put(S4,"H"+rw, res(w1), (w1&&w1.complete)?"":(ef.apply?("!1차 결과 — "+(w1&&w1.started?"30일 집계 중":("완료일+1("+(w1?w1.a:"")+")부터 자동 집계"))):"대책 완료일을 넣으면 자동 집계"));
+    put(S4,"I"+rw, res(w2), (w2&&w2.complete)?"":(ef.apply?("!2차 결과 — "+(w2?(w2.started?"집계 중":(w2.a+"부터 자동 집계")):"")):"대책 완료일 필요"));
+    var fin=(w1&&w2&&w1.complete&&w2.complete)?((w1[z[2]]+w2[z[2]])===0?"유효":"미흡"):"";
+    put(S4,"J"+rw, fin, fin?"":"최종 판정 (2차 집계 후 자동)"); put(S4,"K"+rw, fin?today:"", fin?"":"확인일"); put(S4,"L"+rw, "QMS 출하·부적합 기록"); });
+  ef.kpi.forEach(function(k, i){ var rw=14+i; put(S4,"B"+rw, k.name); put(S4,"D"+rw, k.before); put(S4,"F"+rw, k.target); put(S4,"H"+rw, k.after, k.done?"":"!개선 후 — 적용 후 3개월 자동 집계"); putF(S4,"J"+rw,'IF(H'+rw+'="","",IF(LEFT(H'+rw+',2)="0건","달성","미달"))'); put(S4,"L"+rw,"QMS 자동 집계"); });
+  if(!ef.kpi.length){ ["D14","F14","H14","D15","F15","H15"].forEach(function(rf){ put(S4, rf, "", "대책 완료일을 넣으면 자동 집계"); }); }
+  var allOk=ef.w.length===2 && ef.w[1].complete && (ef.w[0].def+ef.w[1].def+ef.w[0].esc+ef.w[1].esc)===0;
+  put(S4,"D19", allOk?"O":"", allOk?"":"최종 판정 (유효 / 미흡)");
+  put(S4,"I18", allOk?("대책 적용("+ef.apply+") 후 3개월 출하 "+(ef.w[0].ship+ef.w[1].ship)+"EA에서 동일 불량·고객 유출 0건 (QMS 자동 집계)"):"", allOk?"":"판정 근거");
+  put(S4,"D21", c.risk||("3개월간 월 1회 같은 도번 부적합·고객 클레임 추적 (QMS 자동). 횡전개 대상("+(m0.horiz||d.horiz||"유사 모델")+") 동일 기준 적용 여부 확인."));
+  put(S4,"D25","", "종결 승인 — 품질 검토자 / 서명 / 일자"); put(S4,"I25","", "부서 승인"); put(S4,"M25", allOk?today:"", allOk?"":"종결일");
+  // 저장 + 사진
+  Object.keys(X).forEach(function(n){ P.set(P.sheet(n), X[n]); }); Y.save();
+  var wbx=P.get("xl/workbook.xml"); if(!/fullCalcOnLoad/.test(wbx)){ wbx=/<calcPr/.test(wbx)?wbx.replace(/<calcPr/,'<calcPr fullCalcOnLoad="1"'):wbx.replace("</workbook>",'<calcPr fullCalcOnLoad="1"/></workbook>'); P.set("xl/workbook.xml", wbx); }
+  var nImg=0;
+  nImg+=await capAddImages_(P, S1, defP.slice(0,2).map(function(p, i, a){ return { url:p.url, area:"J11:M14", x:i, w:1, of:a.length }; }));
+  nImg+=await capAddImages_(P, S3, [{ url:(ph.rb[0]||{}).url, area:"C14:G19" }, { url:(ph.ra[0]||{}).url, area:"I14:M19" }, { url:(ph.eb[0]||{}).url, area:"C24:G29" }, { url:(ph.ea[0]||{}).url, area:"I24:M29" }]);
+  return { out:P.out(), gaps:gaps, nImg:nImg, effect:ef, name:"재발방지대책서_"+String(d.draw||"").replace(/[\\\/:*?"<>|]/g,"_")+"_"+(capYmd_(d.date)||today)+".xlsx" };
+}
+async function capMake_(key){
+  var box=document.getElementById("cap-res"), E=capE_;
+  try{ var over={}; if(document.getElementById("cap-sec")){   // 저장 전이라도 지금 화면 값으로 만들기 (저장은 '저장' 버튼)
+      var g=function(id){ var el=document.getElementById(id); return el?String(el.value||"").trim():null; };
+      [["temp","ncr-temp"],["cause","ncr-cause"],["escape","ncr-escape"],["why","ncr-why"],["corrective","ncr-corrective"],["preventive","ncr-preventive"],["horiz","ncr-horiz"],["effect","ncr-effect"],["by","ncr-by"],["appr","ncr-appr"],["apprDate","ncr-apprDate"]].forEach(function(f){ var v=g(f[1]); if(v!=null && v!=="") over[f[0]]=v; });
+      over.cap=JSON.stringify(capCollect_()); }
+    if(box) box.innerHTML='<span style="color:#5A6478;">대책서 만드는 중…</span>';
+    var res=await capBuild_(key, over);
+    var blob=new Blob([res.out], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), a=document.createElement("a");
+    a.href=URL.createObjectURL(blob); a.download=res.name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    if(box) box.innerHTML='<div style="background:#ECFDF3;border:1px solid #ABEFC6;border-radius:8px;padding:8px 10px;margin-top:6px;"><b>✅ '+E(res.name)+'</b> 받음 · 사진 '+res.nImg+'장'+(res.effect.apply?(' · 유효성 집계 기준일(대책 완료) '+E(res.effect.apply)):' · <span style="color:#B42318;">대책 완료일이 없어 유효성 결과 미집계</span>')+'</div>'
+      +(res.gaps.length?('<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 10px;margin-top:6px;"><b style="color:#92400E;">⚠ 확인 필요 '+res.gaps.length+'칸 (엑셀에서 노란색)</b><div style="max-height:160px;overflow:auto;margin-top:4px;line-height:1.5;">'+res.gaps.map(function(g){ return '· '+E(g); }).join("<br>")+'</div></div>'):'');
+  }catch(e){ if(box) box.innerHTML='<div style="color:#B42318;font-weight:700;margin-top:6px;">⚠ '+E(e&&e.message||e)+'</div>'; }
+}
+// 검토 목록: 최근 고객부적합 → NCR(대책서 항목) 열기
+function capPicker_(){
+  var rows=(typeof ncData!=="undefined"?ncData:[]).filter(function(r){ return String(r._deleted||"")!=="1"; }).slice().sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); }).slice(0,60);
+  var ov=document.createElement("div"); ov.id="cap-pick"; ov.style.cssText="position:fixed;inset:0;z-index:100060;background:rgba(15,23,42,.5);display:flex;align-items:flex-start;justify-content:center;padding:30px 12px;overflow:auto;";
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:760px;width:100%;padding:16px 18px;"><div style="display:flex;justify-content:space-between;align-items:center;"><b style="font-size:16px;">📄 유진테크 재발방지 대책서 — 고객부적합 선택</b><button type="button" id="cap-pick-x" style="border:0;background:#F2F4F7;border-radius:8px;padding:6px 12px;cursor:pointer;">닫기</button></div>'
+    +'<div style="font-size:12px;color:#667085;margin:6px 0 10px;">건을 고르면 NCR 창이 열립니다. 아래쪽 <b>📋 대책서 항목</b>을 채우고 <b>📄 유진테크 대책서 만들기</b>를 누르세요.</div>'
+    +(rows.length?('<table style="width:100%;border-collapse:collapse;font-size:12.5px;"><tr style="background:#1F2A44;color:#fff;"><th style="padding:6px;">접수일</th><th>고객</th><th>품번</th><th>내용</th><th></th></tr>'
+      +rows.map(function(r, i){ return '<tr style="border-bottom:1px solid #EAECF0;text-align:center;"><td style="padding:6px;">'+capE_(r.date)+'</td><td>'+capE_(r.customer)+'</td><td>'+capE_(r.partNo)+'</td><td style="text-align:left;">'+capE_(String(r.content||"").slice(0,40))+'</td><td><button type="button" data-i="'+i+'" style="background:#1F4E8C;color:#fff;border:0;border-radius:6px;padding:4px 10px;cursor:pointer;">열기</button></td></tr>'; }).join("")+'</table>')
+      :'<div style="padding:30px;text-align:center;color:#8A93A6;">고객부적합 데이터가 없습니다 (품질분석 › 고객부적합을 먼저 열어 주세요).</div>')+'</div>';
+  document.body.appendChild(ov);
+  ov.addEventListener("click", function(e){ if(e.target===ov || e.target.id==="cap-pick-x"){ ov.remove(); return; } var b=e.target.closest("button[data-i]"); if(!b) return;
+    var r=rows[Number(b.getAttribute("data-i"))], key=ncrCustKey_(r); __qd8dRows[key]=r; __ncrMeta[key]={ src:"고객", draw:r.partNo||"", sn:"", customer:r.customer||"", date:r.date||"", types:r.content||"", qty:r.qty||"" };
+    ov.remove(); ncrEnsure_(function(){ ncrOpen_(key); }); });
+}
+try{ RV_STAGE.push({ title:"📄 유진테크 재발방지 대책서", desc:"고객부적합 NCR + 대책서 항목(Why 단계·대책별 담당/일정·유효성 계획·Before/After 사진)으로 유진테크 양식 4장 자동 작성 · 유효성 결과(출하·재발 건수)는 QMS가 자동 집계", open:function(){ capPicker_(); } }); }catch(_){}
 try{ RV_STAGE.push({ title:"📥 메일 수집함", desc:"qc·jdlee 메일에서 온습도·성적서 요청·납기 회신·양산장비 일정·고객 클레임을 자동으로 모아 확인 후 반영", open:function(){ var nv=document.querySelector('.nav-item[data-view="mailbox"]'); if(nv) nv.click(); } });
      RV_STAGE.push({ title:"📄 성적서 요청", desc:"메일로 받은 성적서(CoA) 요청 목록 · S/N별 검사 기록 확인 · 접수→발행→송부", open:function(){ coaOpen_(); } }); }catch(_){}
 /* [추가] 새로 수집된 메일 알림 — 10분마다 '신규' 건수만 가볍게 확인
