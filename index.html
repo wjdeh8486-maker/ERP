@@ -16949,7 +16949,7 @@ function ofRender_(){
    · 공정도 1개 = 이름 + 적용 품명 키워드·도번 + 공정 순서(공정명·구분·외주·설비·교육 포인트·사진)
    · 찾기: 도번을 넣으면 ① 그 도번이 등록된 공정도 ② MAIN 품명에 키워드가 들어간 공정도 순으로 보여줌
    · 저장: 구글시트 'ProcFlow_Master' 탭 (공정도 1개 = 1줄, 고친 것만 올림) · 사진은 구글 드라이브 'QMS_공정도_사진' 폴더 (시트엔 파일 ID만)
-     ※ 사진 올리기는 GS에 pfImgUpload / pfImgFind 가 있어야 함 */
+     ※ 사진 올리기는 GS UPLOAD_FOLDERS 에 pf: "QMS_공정도_사진" 가 있어야 함 */
 var PF_KEY="procFlow", PF_TYPES=[
   { k:"가공", c:"#0F6E56", bg:"#E1F5EE" }, { k:"용접", c:"#993C1D", bg:"#FAECE7" }, { k:"후처리", c:"#5F5E5A", bg:"#F1EFE8" },
   { k:"식별", c:"#3C3489", bg:"#EEEDFE" }, { k:"검사", c:"#185FA5", bg:"#E6F1FB" }, { k:"세정·포장", c:"#3B6D11", bg:"#EAF3DE" } ];
@@ -17006,18 +17006,23 @@ function pfSave_(item, cb){
       if(r && Number(r.ts)===Number(item.ts)) st("☁ 시트 저장 확인됨","#1E7A46"); else st("⚠ 시트 저장 확인 안 됨 — 이 PC에 보관, 다음에 열 때 다시 보냄","#B42318"); }, { json:true }); }, 4000); });
   cb&&cb();
 }
-// 사진 → 구글 드라이브 (GS: pfImgUpload 저장 / pfImgFind 키로 파일 ID 찾기)
+// 사진 → 구글 드라이브 'QMS_공정도_사진' (GS 기존 fileUpload 사용, 폴더 코드 "pf") — 응답을 못 읽으면 token으로 확인
 function pfImgUpload_(dataURL, name){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return Promise.reject(new Error("백엔드 URL 없음"));
-  var key="pfimg_"+Date.now().toString(36)+Math.random().toString(36).slice(2,8), mime=(String(dataURL).match(/^data:([^;]+);/)||[])[1]||"image/jpeg";
-  var body=JSON.stringify({ mode:"pfImgUpload", key:key, name:name||key, mime:mime, dataB64:String(dataURL).split(",")[1]||"" });
-  var find=function(n){ return new Promise(function(res, rej){ var tries=0; (function go(){ tries++;
-      fetch(url+"?mode=pfImgFind&key="+encodeURIComponent(key)+"&_t="+Date.now(), { cache:"no-store" }).then(function(r){ return r.json(); }).then(function(j){ if(j && j.id) res({ id:j.id }); else if(tries<n) setTimeout(go, 2500); else rej(new Error("업로드 확인 안 됨 (GS에 pfImgUpload가 없을 수 있음)")); })
-        .catch(function(){ if(tries<n) setTimeout(go, 2500); else rej(new Error("업로드 확인 실패")); }); })(); }); };
-  return fetch(url, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:body }).then(function(r){ return r.json(); })
-    .then(function(j){ if(j && j.id) return { id:j.id }; return find(6); })
-    .catch(function(){ return fetch(url, { method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:body }).catch(function(){}).then(function(){ return find(8); }); });
+  var token="PF"+Date.now()+Math.floor(Math.random()*100000), mime=(String(dataURL).match(/^data:([^;]+);/)||[])[1]||"image/jpeg", b64=String(dataURL).split(",")[1]||"";
+  var body=JSON.stringify({ mode:"fileUpload", folder:"pf", token:token, name:(name||token)+(/png/.test(mime)?".png":".jpg"), mime:mime, size:Math.round(b64.length*0.75), dataB64:b64 });
+  return new Promise(function(res, rej){ var done=false, fin=function(o, err){ if(done) return; done=true; if(o && o.id) res({ id:o.id }); else rej(new Error(err||"업로드 실패")); };
+    fetch(url, { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:body }).then(function(r){ return r.json(); })
+      .then(function(j){ if(j && j.success && j.file) fin(j.file); else if(j && j.error && /허용되지 않은 폴더/.test(j.error)) fin(null, "GS에 공정도 사진 폴더(pf)가 등록되지 않음 — GS 새 버전 배포 필요"); }).catch(function(){});
+    var tries=0, poll=function(){ if(done) return; tries++;
+      fetch(url+"?mode=qToolMaster&key="+encodeURIComponent("fup_"+token)+"&_t="+Date.now(), { cache:"no-store" }).then(function(r){ return r.json(); }).then(function(j){
+        var t=(j && j.success && j.json)?j.json:""; if(t){ try{ var o=JSON.parse(t); if(o && o.id){ fin(o); return; } }catch(_){} }
+        if(!done){ if(tries<20) setTimeout(poll, 1500); else fin(null, "업로드 확인 시간 초과"); } }).catch(function(){ if(!done){ if(tries<20) setTimeout(poll, 1500); else fin(null, "업로드 확인 실패"); } }); };
+    setTimeout(poll, 3000); });
 }
+// 바뀌거나 지운 사진은 드라이브 휴지통으로 (GS fileTrash — QMS 첨부 폴더 파일만, 복구 가능)
+function pfImgTrash_(ids){ var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url) return;
+  (ids||[]).forEach(function(id){ if(!id) return; try{ fetch(url, { method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:JSON.stringify({ mode:"fileTrash", id:id }) }); }catch(_){} }); }
 // 도번·품명으로 공정도 찾기
 function pfFind_(q){
   q=String(q||"").trim(); if(!q) return { list:pfLive_(), how:"" };
@@ -17148,7 +17153,7 @@ function pfEditRender_(host){
         var put=function(u){ img[ed.steps[i].id]=u; pfEditRender_(host); }; if(typeof ncImgCompress_==="function") ncImgCompress_(rd.result, put); else put(rd.result); }; rd.readAsDataURL(f); }; fi.click(); }
     else if(a==="imgdel"){ delete img[ed.steps[i].id]; ed.steps[i].img=null; pfEditRender_(host); }
     else if(a==="cancel"){ if(confirm("저장하지 않고 나갈까요?")){ __pf.edit=null; pfRender_(); } }
-    else if(a==="remove"){ if(!confirm("'"+ed.title+"' 공정도를 삭제할까요?")) return; var dd=JSON.parse(JSON.stringify(ed)); delete dd._img; delete dd._new; dd.del=true; pfSave_(dd, function(){ __pf.edit=null; __pf.sel=""; pfRender_(); }); }
+    else if(a==="remove"){ if(!confirm("'"+ed.title+"' 공정도를 삭제할까요?")) return; var dd=JSON.parse(JSON.stringify(ed)); delete dd._img; delete dd._new; dd.del=true; pfImgTrash_((dd.steps||[]).map(function(st){ return st.img && st.img.id; })); pfSave_(dd, function(){ __pf.edit=null; __pf.sel=""; pfRender_(); }); }
     else if(a==="save"){
       if(!ed.title){ alert("공정도 이름을 넣어 주세요."); return; }
       ed.steps=ed.steps.filter(function(s){ return String(s.name||"").trim(); }); if(!ed.steps.length){ alert("공정을 1개 이상 넣어 주세요."); return; }
@@ -17163,6 +17168,8 @@ function pfEditRender_(host){
           .catch(function(e){ fails.push((rec.steps.indexOf(s)+1)+". "+s.name+" — "+(e&&e.message||e)); }).then(function(){ return up(k+1); }); };
       up(0).then(function(){ bt.disabled=false;
         if(fails.length) alert("사진 "+fails.length+"장을 올리지 못했습니다 (공정도 글은 저장합니다):\n"+fails.join("\n"));
+      try{ var prev=(__pf.items||[]).filter(function(x){ return x.id===rec.id; })[0], keepIds={}; rec.steps.forEach(function(st){ if(st.img && st.img.id) keepIds[st.img.id]=1; });
+        if(prev) pfImgTrash_((prev.steps||[]).map(function(st){ return st.img && st.img.id; }).filter(function(id){ return id && !keepIds[id]; })); }catch(_){}
       pfSave_(rec, function(){ __pf.edit=null; __pf.sel=rec.id; __pf.items=(__pf.items||[]).filter(function(x){ return x.id!=="pfseed-chamber"; }); pfRender_(); }); }); } };
 }
 /* ==================== 📢 업데이트 안내 (버전별 1번 표시) ====================
