@@ -6834,16 +6834,26 @@ function ncrCommit_(key){
     doSave();
   });
 }
+// [추가] 인쇄: 새 창(팝업) 대신 화면 안 숨은 틀(iframe)로 인쇄 → 팝업 차단·알림 차단된 PC에서도 인쇄창이 뜸
+function qmsPrintHtml_(html){
+  try{ var old=document.getElementById("qms-print-frame"); if(old) old.remove();
+    var f=document.createElement("iframe"); f.id="qms-print-frame"; f.setAttribute("aria-hidden","true");
+    f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+    document.body.appendChild(f); var d=f.contentWindow.document; d.open(); d.write(html); d.close();
+    var go=function(){ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ qmsPrintPopup_(html); } };
+    if(d.readyState==="complete") setTimeout(go, 300); else f.onload=function(){ setTimeout(go, 300); };
+  }catch(e){ qmsPrintPopup_(html); } }
+function qmsPrintPopup_(html){ var w=window.open("","_blank"); if(!w){ alert("인쇄창을 열 수 없습니다. 브라우저 주소창 오른쪽의 팝업 차단 아이콘에서 이 사이트를 '항상 허용'으로 바꿔 주세요."); return; }
+  w.document.write(html); w.document.close(); setTimeout(function(){ try{ w.print(); }catch(_){} }, 400); }
 function ncrPrintOne_(key){
   var d=ncrFillFromKey_(key, Object.assign({}, __ncrMeta[key]||{}, __ncrDetail[key]||{})); var E=ncrEsc_;
   var row=function(t,v){ return '<tr><th style="width:170px;background:#F0F4F8;text-align:left;padding:8px;border:1px solid #999;vertical-align:top;">'+t+'</th><td style="padding:8px;border:1px solid #999;white-space:pre-wrap;">'+E(v||"")+'</td></tr>'; };
-  var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; }
-  w.document.write('<html><head><title>NCR 부적합 보고서</title><meta charset="utf-8"><style>body{font-family:sans-serif;padding:24px;}table{border-collapse:collapse;width:100%;}h2{margin:0 0 6px;}</style></head><body>'
+  var html=('<html><head><title>NCR 부적합 보고서</title><meta charset="utf-8"><style>body{font-family:sans-serif;padding:24px;}table{border-collapse:collapse;width:100%;}h2{margin:0 0 6px;}</style></head><body>'
     +'<h2>\uD83D\uDCDD NCR 부적합 보고서 ('+E(d.src||"내부")+')</h2><div style="color:#666;font-size:12px;margin-bottom:12px;">도번: '+E(d.draw)+(d.customer?(' · 고객: '+E(d.customer)):'')+(d.sn?(' · S/N: '+E(d.sn)):'')+' · 발생일: '+E(d.date||"")+' · 유형: '+E(d.types)+'<br>작성자: '+E(d.by||"")+' · 최초작성: '+E(d.created||"")+' · 최종수정: '+E(d.updated||"")+'</div>'
     +'<table>'+row("⓪ 임시조치",d.temp)+row("① 발생 원인",d.cause)+row("② 유출 원인",d.escape)+row("③ 근본 원인(5Why)",d.why)+row("④ 시정 조치",d.corrective)+row("⑤ 재발 방지",d.preventive)+row("⑥ 수평전개·문서개정",d.horiz)+row("⑦ 효과 확인",d.effect)+'</table>'
     +'<table style="margin-top:14px;width:320px;margin-left:auto;"><tr><th style="border:1px solid #999;padding:6px;background:#F0F4F8;">작성</th><th style="border:1px solid #999;padding:6px;background:#F0F4F8;">승인</th></tr><tr><td style="border:1px solid #999;height:48px;text-align:center;">'+E(d.by||"")+'</td><td style="border:1px solid #999;text-align:center;">'+E(d.appr||"")+'<div style="font-size:11px;color:#666;">'+E(d.apprDate||"")+'</div></td></tr></table>'
     +'</body></html>');
-  w.document.close(); setTimeout(function(){ try{ w.print(); }catch(e){} }, 400);
+  qmsPrintHtml_(html);
 }
 // [종결 규칙] A등급(크리티컬)은 NCR 완료(발생원인 또는 5Why + 재발방지)해야 종결. 기준일(NCR_CUTOVER) 이후 발생 건만 적용(과거 엑셀 시기 건은 소급 안 함)
 function ncrDoneKey_(key){ var d=__ncrDetail[key]; return !!(d && (d.cause||d.why) && d.preventive); }
@@ -17066,9 +17076,9 @@ function pfFlowHtml_(it, opt){ opt=opt||{}; var E=pfE_, st=it.steps||[];
       +'<div class="pf-no">'+(i+1)+'</div><b>'+E(s.name||"-")+'</b><small>'+E(s.type||"")+(s.out?' · 외주'+(s.vendor?(' ('+E(s.vendor)+')'):''):'')+'</small>'
       +(s.point?'<i class="pf-pt" title="교육 포인트 있음">●</i>':'')+(pfImgUrl_(s)?'<i class="pf-ph" title="사진 있음">📷</i>':'')+'</div>'; }).join("")+'</div>'
     +'<div class="pf-lg">'+PF_TYPES.map(function(t){ return '<span><i style="background:'+t.bg+';border-color:'+t.c+';"></i>'+t.k+'</span>'; }).join("")+'<span><i style="background:#fff;border:2px dashed #667085;"></i>외주</span></div>'; }
-function pfgTableHtml_(it){ var E=pfE_;
-  return '<table class="pf-tb"><thead><tr><th style="width:36px;">No.</th><th style="width:120px;">공정</th><th style="width:70px;">구분</th><th style="white-space:nowrap;">설비 / 외주처</th><th>교육 포인트 (하는 일 · 주의할 점 · 확인 방법)</th><th style="width:150px;">사진</th></tr></thead><tbody>'
-    +(it.steps||[]).map(function(s, i){ return '<tr><td>'+(i+1)+'</td><td><b>'+E(s.name)+'</b></td><td>'+E(s.type)+'</td><td style="white-space:nowrap;">'+(s.out?('<b style="color:#B54708;">외주</b> '+E(s.vendor||"")):E(s.equip||""))+'</td><td style="text-align:left;white-space:pre-wrap;">'+E(s.point||"")+'</td><td>'+(pfImgUrl_(s)?'<img src="'+E(pfImgUrl_(s))+'" style="max-width:140px;max-height:100px;" referrerpolicy="no-referrer">':'')+'</td></tr>'; }).join("")+'</tbody></table>'; }
+function pfgTableHtml_(it){ var E=pfE_, ph=(it.steps||[]).some(function(s){ return !!pfImgUrl_(s); });
+  return '<table class="pf-tb"><thead><tr><th style="width:36px;">No.</th><th style="width:120px;">공정</th><th style="width:70px;">구분</th><th style="white-space:nowrap;">설비 / 외주처</th><th>교육 포인트 (하는 일 · 주의할 점 · 확인 방법)</th>'+(ph?'<th style="width:150px;">사진</th>':'')+'</tr></thead><tbody>'
+    +(it.steps||[]).map(function(s, i){ return '<tr><td>'+(i+1)+'</td><td><b>'+E(s.name)+'</b></td><td>'+E(s.type)+'</td><td style="white-space:nowrap;">'+(s.out?('<b style="color:#B54708;">외주</b> '+E(s.vendor||"")):E(s.equip||""))+'</td><td style="text-align:left;white-space:pre-wrap;">'+E(s.point||"")+'</td>'+(ph?'<td>'+(pfImgUrl_(s)?'<img src="'+E(pfImgUrl_(s))+'" style="max-width:140px;max-height:100px;" referrerpolicy="no-referrer">':'')+'</td>':'')+'</tr>'; }).join("")+'</tbody></table>'; }
 function pfCss_(){ return '.pf-flow{display:flex;flex-wrap:wrap;gap:8px 4px;align-items:center;}'
   +'.pf-st{position:relative;min-width:104px;border:1.5px solid;border-radius:10px;padding:16px 10px 8px;text-align:center;cursor:pointer;}.pf-st b{display:block;font-size:13.5px;}.pf-st small{display:block;font-size:11px;opacity:.85;margin-top:2px;}'
   +'.pf-st.out{border-style:dashed;border-width:2px;background:#fff !important;}.pf-st.on{box-shadow:0 0 0 3px #1D4ED8;}'
@@ -17078,12 +17088,15 @@ function pfCss_(){ return '.pf-flow{display:flex;flex-wrap:wrap;gap:8px 4px;alig
   +'.pf-lg{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:#475467;margin-top:10px;}.pf-lg i{display:inline-block;width:12px;height:12px;border:1.5px solid;border-radius:3px;margin-right:4px;vertical-align:-2px;}'
   +'.pf-tb{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px;}.pf-tb th{background:#1F2A44;color:#fff;padding:6px;border:1px solid #98A2B3;}.pf-tb td{border:1px solid #98A2B3;padding:6px;text-align:center;vertical-align:top;}'; }
 function pfgPrint_(id){ var it=pfLive_().filter(function(x){ return x.id===id; })[0]; if(!it) return;
-  (function(){ var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; }
-    w.document.write('<html><head><meta charset="utf-8"><title>공정도 '+pfE_(it.title)+'</title><style>@page{size:A4 landscape;margin:12mm;}body{font-family:sans-serif;color:#1F2A44;-webkit-print-color-adjust:exact;print-color-adjust:exact;}h2{margin:0 0 4px;}'+pfCss_()+'.pf-st{cursor:default;}</style></head><body>'
-      +'<h2>🧭 공정도 · '+pfE_(it.title)+'</h2><div style="font-size:12px;color:#667085;margin-bottom:14px;">적용 품명: '+pfE_((it.names||[]).join(", ")||"-")+' · 적용 도번: '+pfE_((it.draws||[]).join(", ")||"-")+' · 작성 '+pfE_(it.by||"")+' '+pfE_(it.updated||"")+'</div>'
-      +pfFlowHtml_(it)+(it.note?'<div style="margin-top:10px;font-size:12.5px;white-space:pre-wrap;"><b>비고</b> '+pfE_(it.note)+'</div>':'')+pfgTableHtml_(it)
-      +'</body></html>'); w.document.close(); setTimeout(function(){ try{ w.print(); }catch(_){} }, 1500); })(); }
-
+  // A4 가로 1장에 맞춤: 인쇄용으로 촘촘하게 + 넘치면 내용 전체를 비율대로 줄임 (팝업 없이 숨은 틀로 인쇄)
+  var fit='<script>(function(){ var W=1060, H=690, b=document.body; b.style.width=W+"px"; var z=1;'
+    +'for(var k=0;k<3;k++){ var h=b.scrollHeight*z; if(h<=H) break; z=Math.max(0.45, z*H/h); b.style.zoom=z; b.style.width=(W/z)+"px"; } })();<\/script>';
+  qmsPrintHtml_('<html><head><meta charset="utf-8"><title>공정도 '+pfE_(it.title)+'</title><style>@page{size:A4 landscape;margin:8mm;}html,body{margin:0;}body{font-family:sans-serif;color:#1F2A44;-webkit-print-color-adjust:exact;print-color-adjust:exact;}h2{margin:0 0 2px;font-size:19px;}'+pfCss_()
+    +'.pf-st{cursor:default;min-width:96px;padding:13px 8px 6px;}.pf-st b{font-size:12.5px;}.pf-st small{font-size:10.5px;}.pf-flow{gap:12px 3px;}.pf-lg{margin-top:6px;font-size:10.5px;}'
+    +'.pf-tb{font-size:11.5px;margin-top:8px;}.pf-tb th{padding:4px;}.pf-tb td{padding:3px 6px;}tr{page-break-inside:avoid;}</style></head><body>'
+    +'<h2>🧭 공정도 · '+pfE_(it.title)+'</h2><div style="font-size:11px;color:#667085;margin-bottom:12px;">적용 품명: '+pfE_((it.names||[]).join(", ")||"-")+' · 적용 도번: '+pfE_((it.draws||[]).join(", ")||"-")+' · 작성 '+pfE_(it.by||"")+' '+pfE_(it.updated||"")+'</div>'
+    +pfFlowHtml_(it)+(it.note?'<div style="margin-top:6px;font-size:11.5px;white-space:pre-wrap;"><b>비고</b> '+pfE_(it.note)+'</div>':'')+pfgTableHtml_(it)
+    +fit+'</body></html>'); }
 /* ---------- 화면 ---------- */
 function pfRender_(){
   var host=document.getElementById("pf-root"); if(!host) return;
