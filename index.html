@@ -14653,18 +14653,20 @@ function mailPop_(){
   document.body.appendChild(ov);
   var rows=[], raw="", hash="";
   ov.addEventListener("paste", function(e){ var fs=[].slice.call((e.clipboardData&&e.clipboardData.files)||[]).filter(function(f){ return /^image\//.test(f.type); }); if(fs.length){ e.preventDefault(); ocrRun_(fs[0], ov); } });   // 캡처 이미지 Ctrl+V
-  var paint=function(){ var el=ov.querySelector("#mi-prev"), cls={ "변경":"chg","신규":"reg","동일":"memo","확인":"del","없음":"del","날짜없음":"memo" };
+  var paint=function(){ var el=ov.querySelector("#mi-prev"), sc0=el.querySelector("#mi-scr"), pb0=ov.querySelector(".sd-pb"), keep={ t:sc0?sc0.scrollTop:0, l:sc0?sc0.scrollLeft:0, p:pb0?pb0.scrollTop:0 }, cls={ "변경":"chg","신규":"reg","동일":"memo","확인":"del","없음":"del","날짜없음":"memo" };
     var cnt={}; rows.forEach(function(r){ cnt[r.st]=(cnt[r.st]||0)+1; });
     var di=ov.__dupInfo||{}; el.innerHTML='<div class="m" style="font-size:12.5px;margin-bottom:6px;">'+rows.length+'줄 · '+Object.keys(cnt).map(function(k){ return k+' '+cnt[k]; }).join(' · ')
       +((di.same||di.dupIn)?' · <b style="color:#039855;">중복 제외 '+((di.same||0)+(di.dupIn||0))+'줄</b> <span title="이미 특별납기에 같은 날짜로 등록된 줄, 표 안에서 반복된 줄">(이미 등록 '+(di.same||0)+' · 표 안 반복 '+(di.dupIn||0)+')</span>':'')
       +' — <b>전부 체크</b>되어 있습니다(MAIN에서 못 찾은 \'없음\' 줄 · PO가 다른 줄은 체크 해제). 확인·없음 줄은 관리번호/줄을 고르면 반영, 안 고르면 건너뜁니다.</div>'
-      +'<div style="overflow:auto;max-height:52vh;border:1px solid #EAECF0;border-radius:8px;"><table class="mt-tb"><thead><tr><th></th><th>상태</th><th>PO</th><th>Material</th><th>Document</th><th>Short Text</th><th>고객납기</th><th>예상납기</th><th>관리번호</th><th>판단</th></tr></thead><tbody>'
+      +'<div id="mi-scr" style="overflow:auto;max-height:52vh;border:1px solid #EAECF0;border-radius:8px;"><table class="mt-tb"><thead><tr><th></th><th>상태</th><th>PO</th><th>Material</th><th>Document</th><th>Short Text</th><th>고객납기</th><th>예상납기</th><th>관리번호</th><th>판단</th></tr></thead><tbody>'
       +rows.map(function(r){ var it=r.it, def=(r.st==="변경"||r.st==="신규");
         var ordCell=r.orders.length>1?'<select data-mio="'+r.i+'"><option value="">선택</option>'+r.orders.map(function(o){ return '<option value="'+sdE_(o.orderNo)+'"'+(r.sel===String(o.orderNo).trim()?' selected':'')+'>'+sdE_(o.orderNo)+' ('+sdE_(o.qty)+'개 · '+sdE_(String(o.dueDate||"").slice(5,10))+')</option>'; }).join("")+'</select>'
           :(r.orders.length?'<b>'+sdE_(r.sel||"")+'</b>':'<input data-mii="'+r.i+'" placeholder="관리번호" style="width:100px;height:28px;border:1px solid #D0D5DD;border-radius:6px;">');
         var lineCell=(r.lines.length>1)?' <select data-mil="'+r.i+'"><option value="">줄 선택</option>'+r.lines.map(function(l){ return '<option value="'+sdE_(l.id)+'"'+(r.lineSel===l.id?' selected':'')+'>'+sdMD_(l.avail)+'·'+l.qty+'개</option>'; }).join("")+'</select>':'';
-        return '<tr><td><input type="checkbox" class="mi-chk" data-i="'+r.i+'"'+((r.st==="없음"||r.weak)?'':' checked')+'></td><td><span class="sdl-kind '+(cls[r.st]||"memo")+'">'+r.st+'</span></td><td>'+sdE_(it.po||(it.fmt==="int"?"(엑셀)":""))+'</td><td>'+sdE_(it.mat)+'</td><td>'+sdE_(it.doc)+'</td><td style="max-width:220px;">'+sdE_(it.txt)+'</td><td class="nw">'+sdE_(it.cd||it.cdRaw)+'</td><td class="nw"><b>'+sdE_(it.nd||it.ndRaw)+'</b>'+(it.ndSrc?('<div style="font-size:10.5px;color:#667085;">'+sdE_(it.ndSrc)+'</div>'):'')+'</td><td class="nw">'+ordCell+'</td><td style="font-size:12px;">'+sdE_(r.msg)+lineCell+'</td></tr>'; }).join("")+'</tbody></table></div>';
-    var n=ov.querySelectorAll(".mi-chk:checked").length; ov.querySelector("#mi-sum").textContent="체크 "+n+"줄"; ov.querySelector('[data-x="apply"]').disabled=!n; };
+        return '<tr><td><input type="checkbox" class="mi-chk" data-i="'+r.i+'"'+((r.chk!=null?r.chk:!(r.st==="없음"||r.weak))?' checked':'')+'></td><td><span class="sdl-kind '+(cls[r.st]||"memo")+'">'+r.st+'</span></td><td>'+sdE_(it.po||(it.fmt==="int"?"(엑셀)":""))+'</td><td>'+sdE_(it.mat)+'</td><td>'+sdE_(it.doc)+'</td><td style="max-width:220px;">'+sdE_(it.txt)+'</td><td class="nw">'+sdE_(it.cd||it.cdRaw)+'</td><td class="nw"><b>'+sdE_(it.nd||it.ndRaw)+'</b>'+(it.ndSrc?('<div style="font-size:10.5px;color:#667085;">'+sdE_(it.ndSrc)+'</div>'):'')+'</td><td class="nw">'+ordCell+'</td><td style="font-size:12px;">'+sdE_(r.msg)+lineCell+'</td></tr>'; }).join("")+'</tbody></table></div>';
+    var n=ov.querySelectorAll(".mi-chk:checked").length; ov.querySelector("#mi-sum").textContent="체크 "+n+"줄"; ov.querySelector('[data-x="apply"]').disabled=!n;
+    // [수정] 다시 그려도 보던 위치·체크 상태 유지 (관리번호 고를 때마다 맨 위로 올라가던 문제)
+    var sc1=el.querySelector("#mi-scr"); if(sc1){ sc1.scrollTop=keep.t; sc1.scrollLeft=keep.l; } if(pb0) pb0.scrollTop=keep.p; };
   var run=function(aoa, src, pre){ raw=src; hash=mailHash_(src);
     // [수정] 같은 표 안에서 같은 PO·품번·예상납기가 반복되면 한 줄만, 이미 특별납기에 같은 날짜로 있는 줄(중복)은 목록에서 뺌
     var seenK={}, dupIn=0, parsed=(pre||mailParseTable_(aoa)).filter(function(it){ var k=[it.po,it.ord||"",(it.mat||it.doc).toUpperCase(),it.nd||it.ndRaw,it.qty||""].join("|"); if(seenK[k]){ dupIn++; return false; } seenK[k]=1; return true; });
@@ -14682,10 +14684,10 @@ function mailPop_(){
         if(all.length) { run(null, src.join("|"), all); var st0=ov.querySelector("#mi-st"); if(st0 && !st0.innerHTML) st0.innerHTML='📂 '+sdE_(f.name)+' — '+sdE_(used.join(" · "))+(all.some(function(it){ return it.ndSrc; })?' · <b>변경 납기 = 코미코인계 › 최종납기 › 납기일정</b> 순으로 있는 날짜':''); }
         else { var ws=wb.Sheets[wb.SheetNames[0]], aoa1=XLSX.utils.sheet_to_json(ws,{ header:1, raw:true, defval:"" }); run(aoa1, JSON.stringify(aoa1)); } }catch(err){ alert("엑셀을 읽지 못했습니다: "+err.message); } }; rd.readAsArrayBuffer(f); t.value=""; return; }
     var a=t.getAttribute("data-mio"), b=t.getAttribute("data-mil"), c=t.getAttribute("data-mii");
-    if(a!=null){ var r=rows[+a]; r.sel=t.value; if(r.sel){ mailLineState_(r); } paint(); return; }
+    if(a!=null){ var r=rows[+a]; r.sel=t.value; if(r.sel){ mailLineState_(r); r.chk=true; } paint(); return; }
     if(b!=null){ var r2=rows[+b]; r2.lineSel=t.value; var L=r2.lines.find(function(l){ return l.id===t.value; }); if(L){ r2.msg=(L.avail===r2.it.nd)?"선택한 줄 = 회신 (변경 없음)":("선택 줄 "+sdMD_(L.avail)+" → "+sdMD_(r2.it.nd)); } paint(); return; }
-    if(c!=null){ var r3=rows[+c]; r3.sel=String(t.value||"").trim(); if(r3.sel){ r3.orders=[{ orderNo:r3.sel }]; mailLineState_(r3); } paint(); return; }
-    if(t.classList && t.classList.contains("mi-chk")){ var n=ov.querySelectorAll(".mi-chk:checked").length; ov.querySelector("#mi-sum").textContent="체크 "+n+"줄"; ov.querySelector('[data-x="apply"]').disabled=!n; } });
+    if(c!=null){ var r3=rows[+c]; r3.sel=String(t.value||"").trim(); if(r3.sel){ r3.orders=[{ orderNo:r3.sel }]; mailLineState_(r3); r3.chk=true; } paint(); return; }
+    if(t.classList && t.classList.contains("mi-chk")){ var rr=rows[+t.getAttribute("data-i")]; if(rr) rr.chk=t.checked; var n=ov.querySelectorAll(".mi-chk:checked").length; ov.querySelector("#mi-sum").textContent="체크 "+n+"줄"; ov.querySelector('[data-x="apply"]').disabled=!n; } });
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
     if(e.target===ov || x==="close"){ ov.remove(); return; }
     if(x==="file"){ ov.querySelector("#mi-file").click(); return; }
