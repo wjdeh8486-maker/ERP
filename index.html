@@ -5237,9 +5237,13 @@ function computeWaitDeliverRaw(r){
   return found ? total : (Number(r.waitDeliver)||0);
 }
 
+// [수정] 샤워헤드 등 비젼검사 품목: 측정 후 비젼검사대기로 가는데 크린룸검사대기 시트에도 같은 수량이 올라와 이중 집계됨
+//   → 비젼검사대기가 있는 도번은 크린룸 수량에서 비젼 수량만큼 뺌 (크린룸 = 비젼을 뺀 나머지만)
+function cleanNetOfVision_(clean, vision){ clean=Number(clean)||0; vision=Number(vision)||0; return vision>0 ? Math.max(0, clean-vision) : clean; }
 function computeWaitCleanRaw(r){
   const v = lookupWaitMap(cleanWaitMap, r);
-  return v!==null ? v : (Number(r.waitClean)||0);
+  if(v===null) return (Number(r.waitClean)||0);
+  return cleanNetOfVision_(v, lookupWaitMap(visionWaitMap, r));
 }
 function computeWaitVisionRaw(r){
   const v = lookupWaitMap(visionWaitMap, r);
@@ -5265,7 +5269,14 @@ function groupWaitFromMap(rows, map, fallbackField){
   return total + fallback;
 }
 function groupWaitMeasure(rows){ return groupWaitFromMap(rows, measureWaitMap, "waitMeasure"); }
-function groupWaitClean(rows){ return groupWaitFromMap(rows, cleanWaitMap, "waitClean"); }
+function groupWaitClean(rows){   // [수정] 도번별로 비젼 수량만큼 뺀 크린룸 수량을 합산 (비젼 품목 이중 집계 방지)
+  const keys = new Set(); let fallback = 0;
+  (rows || []).forEach(r => { const a = String(r.oldDrawingNo || "").trim(), b = String(r.partNo || "").trim(); let hit = false;
+    if(a && (a in cleanWaitMap)){ keys.add(a); hit = true; } if(b && (b in cleanWaitMap)){ keys.add(b); hit = true; }
+    if(!hit) fallback += Number(r.waitClean) || 0; });
+  let total = 0; keys.forEach(k => { total += cleanNetOfVision_(cleanWaitMap[k], visionWaitMap[k]); });
+  return total + fallback;
+}
 function groupWaitVision(rows){ return groupWaitFromMap(rows, visionWaitMap, "waitVision"); }
 /* 재고(납품대기) 그룹 집계.
    상태 "재고"는 납품대기 수량이 발주수량 이상일 때 표시되므로,
@@ -21448,6 +21459,9 @@ function fetchWaitInspData(force){
     if(!(cleanRes && cleanRes.success)) warnings.push("크린룸검사대기");
     waitInspData["비젼검사대기"] = (visionRes && visionRes.success) ? waitInspParse(visionRes.rows, ["구분","품번","도번"], ["검사대기","수량"]) : [];
     if(!(visionRes && visionRes.success)) warnings.push("비젼검사대기");
+    // [수정] 출하(크린룸)검사대기에서 비젼검사대기 수량만큼 뺌 — 샤워헤드가 측정 후 비젼으로 가는데 크린룸에도 같이 올라와 이중으로 보이던 문제
+    try{ var vq={}; (waitInspData["비젼검사대기"]||[]).forEach(function(v){ var k=String(v.partNo||"").trim().toUpperCase(); if(k) vq[k]=(vq[k]||0)+(Number(v.qty)||0); });
+      waitInspData["출하검사대기"]=(waitInspData["출하검사대기"]||[]).map(function(c){ var k=String(c.partNo||"").trim().toUpperCase(), take=Math.min(Number(c.qty)||0, vq[k]||0); if(!take) return c; vq[k]-=take; var n=Object.assign({}, c); n.qty=(Number(c.qty)||0)-take; n.visionDup=take; return n; }).filter(function(c){ return (Number(c.qty)||0)>0; }); }catch(_){}
 
     waitInspLoaded = true;
     waitInspSyncedAt = Date.now();
