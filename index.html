@@ -14513,14 +14513,25 @@ function mailParseTable_(rows){   // rows: 2차원 배열
   for(var i=0;i<Math.min(rows.length,10);i++){ var r=rows[i].map(function(x){ return String(x==null?"":x).trim().toLowerCase(); });
     if(r.some(function(x){ return /purch\.?\s*doc|^po$|발주번호/.test(x); })){ head=i; r.forEach(function(x,j){
       if(/purch\.?\s*doc|^po$|발주번호/.test(x)) col.po=j; else if(/purch\.?\s*req|^pr$/.test(x)) col.pr=j; else if(/^material|품목코드|자재/.test(x)) col.mat=j;
-      else if(/^document|도면|도번/.test(x)) col.doc=j; else if(/short\s*text|품명|description/.test(x)) col.txt=j; else if(/엔티엘|예상\s*납기|ntl|회신/.test(x)) col.nd=j; else if(/delivery|납기|due/.test(x)) col.cd=j; }); break; } }
+      else if(/^document|도면|도번/.test(x)) col.doc=j; else if(/short\s*text|품명|description/.test(x)) col.txt=j;
+      else if(/코미코/.test(x)) col.kom=j; else if(/최종\s*납기/.test(x)) col.fin=j; else if(/관리\s*번호/.test(x)) col.ord=j; else if(/미입고/.test(x)) col.rem=j; else if(/특이|비고|remark/.test(x)) col.memo=j;   // [추가] 고객 미납 현황 엑셀(코미코인계·최종납기)
+      else if(/엔티엘|예상\s*납기|ntl|회신/.test(x)) col.nd=j; else if(/delivery|납기|due/.test(x)) col.cd=j; }); break; } }
   if(head<0){
     var hasPo=rows.some(function(r){ return r.some(function(c){ return /^\s*45\d{8}\s*$/.test(String(c==null?"":c)); }); });
     if(!hasPo) return mailParseInternal_(rows);   // [통합] 기존 특별납기 엑셀 붙여넣기 형식
     head=-1; col={ po:1, pr:2, mat:3, doc:4, txt:5, cd:7, nd:8 }; }   // 머리글 없이 붙여넣으면 받은 표 순서로
+  var V=function(r, c){ return (c==null || r[c]==null)?"":String(r[c]).trim(); }, D=function(r, c){ if(c==null) return ""; var v=r[c]; if(v instanceof Date && !isNaN(v)) return sdYmd_(v); return mailDate_(v); };
+  var stat=(col.nd==null);   // [추가] 미납 현황형: 변경 납기 = 코미코인계 > 최종납기 > 납기일정
   var out=[]; for(var k=head+1;k<rows.length;k++){ var r=rows[k]; if(!r || !r.length) continue; var po=mailDigits_(r[col.po]); if(!po || po.length<6) continue;
-    out.push({ po:po, pr:mailDigits_(r[col.pr]), mat:String(r[col.mat]==null?"":r[col.mat]).trim(), doc:String(r[col.doc]==null?"":r[col.doc]).trim(), txt:String(r[col.txt]==null?"":r[col.txt]).trim(),
-      cd:mailDate_(r[col.cd]), cdRaw:String(r[col.cd]==null?"":r[col.cd]).trim(), nd:mailDate_(r[col.nd]), ndRaw:String(r[col.nd]==null?"":r[col.nd]).trim() }); }
+    var it={ po:po, pr:mailDigits_(r[col.pr]), mat:V(r,col.mat), doc:V(r,col.doc), txt:V(r,col.txt), cd:D(r,col.cd), cdRaw:V(r,col.cd), nd:D(r,col.nd), ndRaw:V(r,col.nd) };
+    if(col.ord!=null){ var od=V(r,col.ord); if(/^\d{2}-\d+-\d+/.test(od)) it.ord=od; }
+    if(stat){ var kd=D(r,col.kom), fd=D(r,col.fin);
+      if(kd){ it.nd=kd; it.ndSrc="코미코인계"; } else if(fd){ it.nd=fd; it.ndSrc="최종납기"; } else if(it.cd){ it.nd=it.cd; it.ndSrc="납기일정"; }
+      else { it.nd=""; it.ndRaw=[V(r,col.kom), V(r,col.fin), it.cdRaw].filter(function(x){ return x && !/^0$/.test(x); })[0]||""; }
+      var rem=V(r,col.rem); if(rem!=="" && Number(rem)===0) continue;   // 미입고 0 = 다 들어간 줄
+      if(!it.nd && !it.ndRaw) continue;   // 날짜·내용 없는 줄(취소·대기 이력)은 건너뜀
+      it.memo=V(r,col.memo); }
+    out.push(it); }
   return out;
 }
 // [통합] 기존 "특별납기 엑셀 붙여넣기" 형식: 관리번호 · 품번 · 납기일자 · 가능일자 · 수량 · (비고) — 관리번호 없이 품번부터도 됨
@@ -14538,6 +14549,7 @@ function mailMatch_(it){
     var byD=md0.filter(function(r){ return (U0(r.oldDrawingNo)===U0(it.doc) || U0(r.partNo)===U0(it.doc)) && String(r.shipped||"")!=="납품완료"; });
     return { orders:byD, how:byD.length===1?"품번":"" }; }
   var U=function(v){ return String(v||"").trim().toUpperCase(); }, md=(typeof mainData!=="undefined"&&mainData)||[];
+  if(it.ord){ var mo1=md.find(function(r){ return String(r.orderNo||"").trim()===it.ord; }); if(mo1) return { orders:[mo1], how:"관리번호", allDone:String(mo1.shipped||"")==="납품완료" }; }   // [추가] 표에 관리번호 열이 있으면 우선
   var byPo=md.filter(function(r){ var p=mailDigits_(r.prpo); return p && (p.indexOf(it.po)>=0 || (it.pr && p.indexOf(it.pr)>=0)); });
   var hit=byPo.filter(function(r){ return (it.mat && (U(r.partNo)===U(it.mat))) || (it.doc && (U(r.oldDrawingNo)===U(it.doc) || U(r.partNo)===U(it.doc))); });
   if(!hit.length){ var any=md.filter(function(r){ return (it.mat && U(r.partNo)===U(it.mat)) || (it.doc && U(r.oldDrawingNo)===U(it.doc)); }).filter(function(r){ return String(r.shipped||"")!=="납품완료"; }); if(any.length===1) return { orders:any, how:"품번" }; return { orders:any.length>1?any:[], how:any.length>1?"품번(여러 건)":"" }; }
@@ -14548,7 +14560,9 @@ function mailBuild_(list){
     if(!o.length){ row.st="없음"; row.msg="MAIN에서 PO·품번을 못 찾음 → 관리번호 직접 입력"; return row; }
     if(m.allDone){ row.st="확인"; row.msg="MAIN에서 이미 납품완료"; }
     if(o.length>1){ row.st="확인"; row.msg="같은 PO·품번 주문 "+o.length+"건 → 관리번호 선택"; return row; }
-    row.sel=String(o[0].orderNo||"").trim(); mailLineState_(row); return row; });
+    row.sel=String(o[0].orderNo||"").trim(); mailLineState_(row);
+    if(m.how==="품번" && it.fmt!=="int"){ row.weak=true; row.st="확인"; row.msg="PO가 MAIN과 다름 (품번만 일치) — 맞으면 체크 · "+row.msg; }   // [추가] PO가 다른데 품번만 같은 주문에 붙지 않게
+    return row; });
 }
 function mailLineState_(row){
   var it=row.it, L=sdLive_().filter(function(x){ return x.ord===row.sel && !sdDone_(x); }); row.lines=L;
@@ -14632,17 +14646,17 @@ function mailPop_(){
     var cnt={}; rows.forEach(function(r){ cnt[r.st]=(cnt[r.st]||0)+1; });
     var di=ov.__dupInfo||{}; el.innerHTML='<div class="m" style="font-size:12.5px;margin-bottom:6px;">'+rows.length+'줄 · '+Object.keys(cnt).map(function(k){ return k+' '+cnt[k]; }).join(' · ')
       +((di.same||di.dupIn)?' · <b style="color:#039855;">중복 제외 '+((di.same||0)+(di.dupIn||0))+'줄</b> <span title="이미 특별납기에 같은 날짜로 등록된 줄, 표 안에서 반복된 줄">(이미 등록 '+(di.same||0)+' · 표 안 반복 '+(di.dupIn||0)+')</span>':'')
-      +' — <b>전부 체크</b>되어 있습니다. 확인·없음 줄은 관리번호/줄을 고르면 반영, 안 고르면 건너뜁니다.</div>'
+      +' — <b>전부 체크</b>되어 있습니다(MAIN에서 못 찾은 \'없음\' 줄 · PO가 다른 줄은 체크 해제). 확인·없음 줄은 관리번호/줄을 고르면 반영, 안 고르면 건너뜁니다.</div>'
       +'<div style="overflow:auto;max-height:52vh;border:1px solid #EAECF0;border-radius:8px;"><table class="mt-tb"><thead><tr><th></th><th>상태</th><th>PO</th><th>Material</th><th>Document</th><th>Short Text</th><th>고객납기</th><th>예상납기</th><th>관리번호</th><th>판단</th></tr></thead><tbody>'
       +rows.map(function(r){ var it=r.it, def=(r.st==="변경"||r.st==="신규");
         var ordCell=r.orders.length>1?'<select data-mio="'+r.i+'"><option value="">선택</option>'+r.orders.map(function(o){ return '<option value="'+sdE_(o.orderNo)+'"'+(r.sel===String(o.orderNo).trim()?' selected':'')+'>'+sdE_(o.orderNo)+' ('+sdE_(o.qty)+'개 · '+sdE_(String(o.dueDate||"").slice(5,10))+')</option>'; }).join("")+'</select>'
           :(r.orders.length?'<b>'+sdE_(r.sel||"")+'</b>':'<input data-mii="'+r.i+'" placeholder="관리번호" style="width:100px;height:28px;border:1px solid #D0D5DD;border-radius:6px;">');
         var lineCell=(r.lines.length>1)?' <select data-mil="'+r.i+'"><option value="">줄 선택</option>'+r.lines.map(function(l){ return '<option value="'+sdE_(l.id)+'"'+(r.lineSel===l.id?' selected':'')+'>'+sdMD_(l.avail)+'·'+l.qty+'개</option>'; }).join("")+'</select>':'';
-        return '<tr><td><input type="checkbox" class="mi-chk" data-i="'+r.i+'" checked></td><td><span class="sdl-kind '+(cls[r.st]||"memo")+'">'+r.st+'</span></td><td>'+sdE_(it.po||(it.fmt==="int"?"(엑셀)":""))+'</td><td>'+sdE_(it.mat)+'</td><td>'+sdE_(it.doc)+'</td><td style="max-width:220px;">'+sdE_(it.txt)+'</td><td class="nw">'+sdE_(it.cd||it.cdRaw)+'</td><td class="nw"><b>'+sdE_(it.nd||it.ndRaw)+'</b></td><td class="nw">'+ordCell+'</td><td style="font-size:12px;">'+sdE_(r.msg)+lineCell+'</td></tr>'; }).join("")+'</tbody></table></div>';
+        return '<tr><td><input type="checkbox" class="mi-chk" data-i="'+r.i+'"'+((r.st==="없음"||r.weak)?'':' checked')+'></td><td><span class="sdl-kind '+(cls[r.st]||"memo")+'">'+r.st+'</span></td><td>'+sdE_(it.po||(it.fmt==="int"?"(엑셀)":""))+'</td><td>'+sdE_(it.mat)+'</td><td>'+sdE_(it.doc)+'</td><td style="max-width:220px;">'+sdE_(it.txt)+'</td><td class="nw">'+sdE_(it.cd||it.cdRaw)+'</td><td class="nw"><b>'+sdE_(it.nd||it.ndRaw)+'</b>'+(it.ndSrc?('<div style="font-size:10.5px;color:#667085;">'+sdE_(it.ndSrc)+'</div>'):'')+'</td><td class="nw">'+ordCell+'</td><td style="font-size:12px;">'+sdE_(r.msg)+lineCell+'</td></tr>'; }).join("")+'</tbody></table></div>';
     var n=ov.querySelectorAll(".mi-chk:checked").length; ov.querySelector("#mi-sum").textContent="체크 "+n+"줄"; ov.querySelector('[data-x="apply"]').disabled=!n; };
-  var run=function(aoa, src){ raw=src; hash=mailHash_(src);
+  var run=function(aoa, src, pre){ raw=src; hash=mailHash_(src);
     // [수정] 같은 표 안에서 같은 PO·품번·예상납기가 반복되면 한 줄만, 이미 특별납기에 같은 날짜로 있는 줄(중복)은 목록에서 뺌
-    var seenK={}, dupIn=0, parsed=mailParseTable_(aoa).filter(function(it){ var k=[it.po,it.ord||"",(it.mat||it.doc).toUpperCase(),it.nd||it.ndRaw,it.qty||""].join("|"); if(seenK[k]){ dupIn++; return false; } seenK[k]=1; return true; });
+    var seenK={}, dupIn=0, parsed=(pre||mailParseTable_(aoa)).filter(function(it){ var k=[it.po,it.ord||"",(it.mat||it.doc).toUpperCase(),it.nd||it.ndRaw,it.qty||""].join("|"); if(seenK[k]){ dupIn++; return false; } seenK[k]=1; return true; });
     var built=mailBuild_(parsed), same=built.filter(function(r){ return r.st==="동일"; }).length;
     rows=built.filter(function(r){ return r.st!=="동일"; }); rows.forEach(function(r,i){ r.i=i; }); ov.__dupInfo={ dupIn:dupIn, same:same };
     var dup=(__sdl.list||[]).some(function(e){ return String(e.reason||"").indexOf("#"+hash)>=0 && !e.del; });
@@ -14650,7 +14664,12 @@ function mailPop_(){
     paint(); };
   ov.addEventListener("change", function(e){ var t=e.target;
     if(t.id==="mi-img"){ var fi=t.files&&t.files[0]; if(fi) ocrRun_(fi, ov); t.value=""; return; }
-    if(t.id==="mi-file"){ var f=t.files&&t.files[0]; if(!f) return; var rd=new FileReader(); rd.onload=function(){ try{ var wb=XLSX.read(rd.result,{ type:"array" }), ws=wb.Sheets[wb.SheetNames[0]], aoa=XLSX.utils.sheet_to_json(ws,{ header:1, raw:true, defval:"" }); run(aoa, JSON.stringify(aoa)); }catch(err){ alert("엑셀을 읽지 못했습니다: "+err.message); } }; rd.readAsArrayBuffer(f); t.value=""; return; }
+    if(t.id==="mi-file"){ var f=t.files&&t.files[0]; if(!f) return; var rd=new FileReader(); rd.onload=function(){ try{ var wb=XLSX.read(rd.result,{ type:"array" });
+        // [추가] 시트가 여러 개면(개발·양산·단품 …) 모두 읽어 합침 — 머리글(Purch.Doc.)이 있는 시트만
+        var all=[], used=[], src=[]; wb.SheetNames.forEach(function(sn){ var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{ header:1, raw:true, defval:"" }); if(!aoa.some(function(r){ return (r||[]).some(function(c){ return /purch\.?\s*doc/i.test(String(c)); }); })) return;
+          var L=mailParseTable_(aoa); L.forEach(function(it){ it.sheet=sn; }); if(L.length){ all=all.concat(L); used.push(sn+" "+L.length+"줄"); src.push(JSON.stringify(aoa)); } });
+        if(all.length) { run(null, src.join("|"), all); var st0=ov.querySelector("#mi-st"); if(st0 && !st0.innerHTML) st0.innerHTML='📂 '+sdE_(f.name)+' — '+sdE_(used.join(" · "))+(all.some(function(it){ return it.ndSrc; })?' · <b>변경 납기 = 코미코인계 › 최종납기 › 납기일정</b> 순으로 있는 날짜':''); }
+        else { var ws=wb.Sheets[wb.SheetNames[0]], aoa1=XLSX.utils.sheet_to_json(ws,{ header:1, raw:true, defval:"" }); run(aoa1, JSON.stringify(aoa1)); } }catch(err){ alert("엑셀을 읽지 못했습니다: "+err.message); } }; rd.readAsArrayBuffer(f); t.value=""; return; }
     var a=t.getAttribute("data-mio"), b=t.getAttribute("data-mil"), c=t.getAttribute("data-mii");
     if(a!=null){ var r=rows[+a]; r.sel=t.value; if(r.sel){ mailLineState_(r); } paint(); return; }
     if(b!=null){ var r2=rows[+b]; r2.lineSel=t.value; var L=r2.lines.find(function(l){ return l.id===t.value; }); if(L){ r2.msg=(L.avail===r2.it.nd)?"선택한 줄 = 회신 (변경 없음)":("선택 줄 "+sdMD_(L.avail)+" → "+sdMD_(r2.it.nd)); } paint(); return; }
@@ -14664,7 +14683,7 @@ function mailPop_(){
       var aoa=txt.replace(/\r/g,"").split("\n").filter(function(l){ return l.trim(); }).map(function(l){ return l.indexOf("\t")>=0?l.split("\t"):l.split(/\s{2,}/); }); run(aoa, txt); return; }
     if(x==="apply"){ var today=sdYmd_(sdToday_()), tag="[납기 회신표 "+today+" #"+hash+"] ", n=0, skip=[];
       [].slice.call(ov.querySelectorAll(".mi-chk:checked")).forEach(function(c){ var r=rows[+c.getAttribute("data-i")], it=r.it; if(!r.sel){ skip.push(it.po+" "+it.mat+": 관리번호 없음"); return; }
-        var why=it.fmt==="int"?(tag.replace("납기 회신표","엑셀 붙여넣기")+(it.doc||"")+" / 납기 "+(it.cd||"-")+" / 가능 "+(it.nd||"-")+(it.qty?(" / "+it.qty+"개"):"")):(tag+"PO "+it.po+" / "+(it.mat||it.doc)+" / 고객납기 "+(it.cd||it.cdRaw||"-")+" / 예상납기 "+(it.nd||it.ndRaw||"-"));
+        var why=it.fmt==="int"?(tag.replace("납기 회신표","엑셀 붙여넣기")+(it.doc||"")+" / 납기 "+(it.cd||"-")+" / 가능 "+(it.nd||"-")+(it.qty?(" / "+it.qty+"개"):"")):(tag+"PO "+it.po+" / "+(it.mat||it.doc)+" / 고객납기 "+(it.cd||it.cdRaw||"-")+" / "+(it.ndSrc||"예상납기")+" "+(it.nd||it.ndRaw||"-")+(it.memo?(" / "+it.memo):""));
         var L=r.lines.length>1?r.lines.filter(function(l){ return l.id===r.lineSel; }):r.lines;
         if(r.lines.length>1 && !L.length){ skip.push(r.sel+": 바꿀 줄 선택 안 함"); return; }
         if(!it.nd){ if(!L.length){ skip.push(r.sel+": 특별납기에 없음(날짜 없음)"); return; } var c1=Object.assign({}, L[0], { note:(it.ndRaw+(L[0].note?(" / "+L[0].note):"")).slice(0,80), __reason:why }); sdPut_(c1); n++; return; }
