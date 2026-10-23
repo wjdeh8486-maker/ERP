@@ -17001,7 +17001,7 @@ function pfE_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g
 function pfType_(k){ return PF_TYPES.filter(function(t){ return t.k===k; })[0]||PF_TYPES[2]; }
 function pfGuess_(name){ var n=String(name||"").toUpperCase().replace(/\s+/g,"");
   if(/검사|LEAK|FLOW|측정|INSP/.test(n)) return "검사"; if(/용접|E-?BEAM|TIG|WELD/.test(n)) return "용접";
-  if(/MCT|선반|밀링|가공|CNC|드릴|탭|보링|LATHE/.test(n)) return "가공"; if(/각인|마킹|MARK/.test(n)) return "식별";
+  if(/MCT|선반|밀링|가공|CNC|드릴|탭|보링|LATHE|호리젠탈|HORIZONTAL|머시닝|건드릴/.test(n)) return "가공"; if(/각인|마킹|MARK/.test(n)) return "식별";
   if(/세정|포장|CLEAN/.test(n)) return "세정·포장"; return "후처리"; }
 function pfGuessOut_(name){ return /^(C\.?P|E\.?P)$|도금|아노다이징|열처리|코팅/i.test(String(name||"").trim()); }
 function pfId_(){ return "pf"+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -17093,20 +17093,26 @@ function pfFind_(q){
   return { list:byTitle, how:byTitle.length?"공정도 이름":"", name:name, none:!byTitle.length };
 }
 // 흐름 그림 (화면·출력 공용)
-function pfFlowHtml_(it, opt){ opt=opt||{}; var E=pfE_, st=it.steps||[];
+// [추가] 1공장·2공장 구분: 설비 칸에 'N공장'이 있으면 상자 아래 굵은 띠 + 공장 표시
+var PF_PLANT={ "1":{ c:"#3538CD", bg:"#EEF4FF" }, "2":{ c:"#C4320A", bg:"#FFF4ED" }, "3":{ c:"#087443", bg:"#EDFCF2" } };
+function pfPlant_(s){ if(!s || s.out) return ""; var m=String(s.equip||"").match(/(\d)\s*공장/); return m?m[1]:""; }
+function pfFlowHtml_(it, opt){ opt=opt||{}; var E=pfE_, st=it.steps||[], plants={};
   return '<div class="pf-flow">'+st.map(function(s, i){ var T=pfType_(s.type);
-    return (i?'<div class="pf-ar">→</div>':'')+'<div class="pf-st'+(s.out?' out':'')+(opt.click&&__pf.open===i?' on':'')+'" data-i="'+i+'" style="background:'+T.bg+';color:'+T.c+';border-color:'+T.c+';">'
+    var pl=pfPlant_(s), P=PF_PLANT[pl]||{ c:"#475467", bg:"#F2F4F7" }; if(pl) plants[pl]=1;
+    return (i?'<div class="pf-ar">→</div>':'')+'<div class="pf-st'+(s.out?' out':'')+(pl?' pl':'')+(opt.click&&__pf.open===i?' on':'')+'" data-i="'+i+'" style="background:'+T.bg+';color:'+T.c+';border-color:'+T.c+';'+(pl?('border-bottom:5px solid '+P.c+';'):'')+'">'
       +'<div class="pf-no">'+(i+1)+'</div><b>'+E(s.name||"-")+'</b><small>'+E(s.type||"")+(s.out?' · 외주'+(s.vendor?(' ('+E(s.vendor)+')'):''):'')+'</small>'
+      +(pl?'<span class="pf-plant" style="background:'+P.c+';">'+pl+'공장</span>':'')
       +(s.point?'<i class="pf-pt" title="교육 포인트 있음">●</i>':'')+(pfImgUrl_(s)?'<i class="pf-ph" title="사진 있음">📷</i>':'')+'</div>'; }).join("")+'</div>'
-    +'<div class="pf-lg">'+PF_TYPES.map(function(t){ return '<span><i style="background:'+t.bg+';border-color:'+t.c+';"></i>'+t.k+'</span>'; }).join("")+'<span><i style="background:#fff;border:2px dashed #667085;"></i>외주</span></div>'; }
+    +'<div class="pf-lg">'+PF_TYPES.map(function(t){ return '<span><i style="background:'+t.bg+';border-color:'+t.c+';"></i>'+t.k+'</span>'; }).join("")+'<span><i style="background:#fff;border:2px dashed #667085;"></i>외주</span>'
+      +Object.keys(plants).sort().map(function(k){ var P=PF_PLANT[k]||{ c:"#475467" }; return '<span><i style="background:'+P.c+';border-color:'+P.c+';"></i><b style="color:'+P.c+';">'+k+'공장</b></span>'; }).join("")+'</div>'; }
 function pfgTableHtml_(it){ var E=pfE_, ph=(it.steps||[]).some(function(s){ return !!pfImgUrl_(s); });
   return '<table class="pf-tb"><thead><tr><th style="width:36px;">No.</th><th style="width:120px;">공정</th><th style="width:70px;">구분</th><th style="white-space:nowrap;">설비 / 외주처</th><th>교육 포인트 (하는 일 · 주의할 점 · 확인 방법)</th>'+(ph?'<th style="width:150px;">사진</th>':'')+'</tr></thead><tbody>'
-    +(it.steps||[]).map(function(s, i){ return '<tr><td>'+(i+1)+'</td><td><b>'+E(s.name)+'</b></td><td>'+E(s.type)+'</td><td style="white-space:nowrap;">'+(s.out?('<b style="color:#B54708;">외주</b> '+E(s.vendor||"")):E(s.equip||""))+'</td><td style="text-align:left;white-space:pre-wrap;">'+E(s.point||"")+'</td>'+(ph?'<td>'+(pfImgUrl_(s)?'<img src="'+E(pfImgUrl_(s))+'" style="max-width:140px;max-height:100px;" referrerpolicy="no-referrer">':'')+'</td>':'')+'</tr>'; }).join("")+'</tbody></table>'; }
+    +(it.steps||[]).map(function(s, i){ return '<tr><td>'+(i+1)+'</td><td><b>'+E(s.name)+'</b></td><td>'+E(s.type)+'</td><td style="white-space:nowrap;">'+(s.out?('<b style="color:#B54708;">외주</b> '+E(s.vendor||"")):(pfPlant_(s)?('<b style="color:'+(PF_PLANT[pfPlant_(s)]||{c:"#475467"}).c+';">'+E(s.equip||"")+'</b>'):E(s.equip||"")))+'</td><td style="text-align:left;white-space:pre-wrap;">'+E(s.point||"")+'</td>'+(ph?'<td>'+(pfImgUrl_(s)?'<img src="'+E(pfImgUrl_(s))+'" style="max-width:140px;max-height:100px;" referrerpolicy="no-referrer">':'')+'</td>':'')+'</tr>'; }).join("")+'</tbody></table>'; }
 function pfCss_(){ return '.pf-flow{display:flex;flex-wrap:wrap;gap:8px 4px;align-items:center;}'
   +'.pf-st{position:relative;min-width:104px;border:1.5px solid;border-radius:10px;padding:16px 10px 8px;text-align:center;cursor:pointer;}.pf-st b{display:block;font-size:13.5px;}.pf-st small{display:block;font-size:11px;opacity:.85;margin-top:2px;}'
   +'.pf-st.out{border-style:dashed;border-width:2px;background:#fff !important;}.pf-st.on{box-shadow:0 0 0 3px #1D4ED8;}'
   +'.pf-no{position:absolute;top:-9px;left:8px;background:#1F2A44;color:#fff;border-radius:999px;font-size:11px;font-weight:800;min-width:20px;height:18px;line-height:18px;padding:0 5px;}'
-  +'.pf-pt{position:absolute;top:3px;right:6px;font-style:normal;font-size:9px;color:#D92D20;}.pf-ph{position:absolute;bottom:2px;right:4px;font-style:normal;font-size:10px;}'
+  +'.pf-plant{position:absolute;top:-9px;right:8px;color:#fff;border-radius:999px;font-size:10.5px;font-weight:800;padding:0 7px;height:17px;line-height:17px;font-style:normal;}.pf-st.pl .pf-pt{right:auto;left:34px;top:-4px;}.pf-pt{position:absolute;top:3px;right:6px;font-style:normal;font-size:9px;color:#D92D20;}.pf-ph{position:absolute;bottom:2px;right:4px;font-style:normal;font-size:10px;}'
   +'.pf-ar{color:#98A2B3;font-weight:800;font-size:16px;}'
   +'.pf-lg{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:#475467;margin-top:10px;}.pf-lg i{display:inline-block;width:12px;height:12px;border:1.5px solid;border-radius:3px;margin-right:4px;vertical-align:-2px;}'
   +'.pf-tb{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px;}.pf-tb th{background:#1F2A44;color:#fff;padding:6px;border:1px solid #98A2B3;}.pf-tb td{border:1px solid #98A2B3;padding:6px;text-align:center;vertical-align:top;}'; }
