@@ -5315,13 +5315,14 @@ function computeProductStatusRaw(r){
   const T = computeWaitVisionRaw(r);
   const W = computeWaitIncomingInspection(r);
   if(V - I >= 0) return "출고";
-  if(Q - I >= 0) return "재고";
-  if(S - I >= 0) return "외관";
-  if(T - I >= 0) return "비젼";
-  if(R - I >= 0) return "측정";
-  if(W - I >= 0) return "수입";
-  const sum = Q + R + S + T + V + W;
-  if(sum >= I) return "OK";
+  const N = I - V;   // [수정] 선출고분을 뺀 나머지만 필요 (선출고 6/7이면 1개만 있으면 됨)
+  if(Q - N >= 0) return "재고";
+  if(S - N >= 0) return "외관";
+  if(T - N >= 0) return "비젼";
+  if(R - N >= 0) return "측정";
+  if(W - N >= 0) return "수입";
+  const sum = Q + R + S + T + W;
+  if(sum >= N) return "OK";
   return "생산";
 }
 let mainStatusMap = {};
@@ -5422,29 +5423,32 @@ function computeAllStatuses(data){
         result[r.orderNo] = Object.assign({status:"출고"}, snapshot);
         return;
       }
-      if(qRemain - I >= 0){
+      // [수정] 선출고(V)한 만큼은 이미 나갔으므로 남은 수량(N=I-V)만 대기 물량에서 배정·차감
+      //   (예: 수량 7·선출고 6 → 비젼대기 8개 중 1개만 쓰고 7개는 다음 주문에 배정)
+      const N = I - V;
+      if(qRemain - N >= 0){
         result[r.orderNo] = Object.assign({status:"재고"}, snapshot);
-        qRemain -= I;
+        qRemain -= N;
         return;
       }
-      if(sRemain - I >= 0){
+      if(sRemain - N >= 0){
         result[r.orderNo] = Object.assign({status:"외관"}, snapshot);
-        sRemain -= I;
+        sRemain -= N;
         return;
       }
-      if(tRemain - I >= 0){
+      if(tRemain - N >= 0){
         result[r.orderNo] = Object.assign({status:"비젼"}, snapshot);
-        tRemain -= I;
+        tRemain -= N;
         return;
       }
-      if(rRemain - I >= 0){
+      if(rRemain - N >= 0){
         result[r.orderNo] = Object.assign({status:"측정"}, snapshot);
-        rRemain -= I;
+        rRemain -= N;
         return;
       }
-      if(wRemain - I >= 0){
+      if(wRemain - N >= 0){
         result[r.orderNo] = Object.assign({status:"수입"}, snapshot);
-        wRemain -= I;
+        wRemain -= N;
         return;
       }
       const totalAvail = qRemain + sRemain + tRemain + rRemain + wRemain + V;
