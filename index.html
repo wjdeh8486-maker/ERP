@@ -17011,18 +17011,25 @@ function pfSeed_(){ var st=[["MCT"],["E-BEAM 용접"],["메뉴얼 용접"],["MCT
     steps:st.map(function(s){ return { id:pfId_(), name:s[0], type:pfGuess_(s[0]), out:pfGuessOut_(s[0]), vendor:"", equip:"", point:s[1]||"" }; }) }; }
 function pfCache_(){ try{ localStorage.setItem("pfCache2", JSON.stringify({ items:(__pf.items||[]).filter(function(x){ return !x.seed; }) })); }catch(_){} }
 function pfLoad_(cb){
-  if(__pf.items){ cb&&cb(); return; } if(cb) (__pf.wait=__pf.wait||[]).push(cb); if(__pf.loading) return; __pf.loading=true;
-  var fin=function(){ __pf.loading=false; if(!__pf.items) __pf.items=[]; if(!pfLive_().length) __pf.items.push(pfSeed_()); var w=__pf.wait||[]; __pf.wait=[]; w.forEach(function(f){ try{ f&&f(); }catch(_){} }); };
+  // 시트를 기다리지 않고 이 PC 사본(없으면 예시)으로 바로 그림 → 시트를 다 읽으면 다시 그림
+  if(__pf.items){ cb&&cb(); return; }
   var cache=[]; try{ var c=JSON.parse(localStorage.getItem("pfCache2")||"null"); if(c && Array.isArray(c.items)) cache=c.items; }catch(_){}
-  if(typeof qmsRowRead_!=="function"){ __pf.items=cache; fin(); return; }
-  qmsRowRead_(PF_TAB, PF_COLS, function(map){
-    if(!map){ __pf.items=cache; __pf.offline=true; fin(); return; }   // 시트를 못 읽음 → 이 PC 사본으로 표시
-    var rows=Object.keys(map).map(function(k){ return pfClean_(map[k]); });
-    // 이 PC에만 있는 더 최신 사본(전송 실패분) → 다시 올림
-    var resend=cache.filter(function(x){ var r=map[x.id]; return !r || (Number(x.ts)||0)>(Number(r.ts)||0); });
-    __pf.items=pfMerge_(rows, cache); pfCache_();
-    if(resend.length) try{ qmsRowPost_(PF_TAB, PF_COLS, resend.map(pfRowOf_), { json:true }); }catch(_){}
-    pfMigrate_(); fin(); }, { json:true });
+  __pf.items=cache.slice(); if(!pfLive_().length) __pf.items.push(pfSeed_());
+  cb&&cb(); pfSync_();
+}
+// [추가] 시트에서 최신 공정도 읽기 — 메뉴에 들어올 때마다(20초 간격) + 🔄 버튼. 다른 PC에서 저장한 것이 새로고침 없이 보이게
+function pfSync_(force){
+  if(__pf.syncing || typeof qmsRowRead_!=="function") return; if(!force && __pf.syncAt && Date.now()-__pf.syncAt<20000) return;
+  __pf.syncing=true; __pf.syncAt=Date.now(); var t0=Date.now();
+  var paint=function(){ var v=document.getElementById("view-procflow"); if(v && v.classList.contains("active") && !__pf.edit) pfRender_(); };
+  qmsRowRead_(PF_TAB, PF_COLS, function(map){ __pf.syncing=false; __pf.syncMs=Date.now()-t0;
+    if(!map){ __pf.offline=true; paint(); return; }   // 시트를 못 읽음 → 이 PC 사본 그대로
+    __pf.offline=false; __pf.sheetN=Object.keys(map).length; __pf.syncOk=new Date().toTimeString().slice(0,5);
+    var rows=Object.keys(map).map(function(k){ return pfClean_(map[k]); }), local=(__pf.items||[]).filter(function(x){ return !x.seed; });
+    var resend=local.filter(function(x){ var r=map[x.id]; return !r || (Number(x.ts)||0)>(Number(r.ts)||0); });   // 이 PC에만 있는(전송 실패) 더 최신 것 → 다시 올림
+    __pf.items=pfMerge_(rows, local); if(!pfLive_().length) __pf.items.push(pfSeed_()); pfCache_();
+    if(resend.length){ __pf.resent=resend.length; try{ qmsRowPost_(PF_TAB, PF_COLS, resend.map(pfRowOf_), { json:true }); }catch(_){} }
+    pfMigrate_(); paint(); }, { json:true });
 }
 // 예전(공유 저장소 procFlow)에 저장된 공정도가 있으면 시트로 1번 옮김
 function pfMigrate_(){ if(__pf.migrated || typeof qShareLoad_!=="function") return; __pf.migrated=true;
@@ -17111,11 +17118,12 @@ function pfRender_(){
     document.head.appendChild(css); }
   if(!__pf.items){ host.innerHTML='<div style="padding:30px;text-align:center;color:#667085;">공정도 불러오는 중…</div>'; pfLoad_(pfRender_); return; }
   if(__pf.edit) return pfEditRender_(host);
+  pfSync_();
   var E=pfE_, f=pfFind_(__pf.q), list=f.list.slice().sort(function(a,b){ return String(a.title).localeCompare(String(b.title)); });
   if(!list.some(function(x){ return x.id===__pf.sel; })) __pf.sel=list.length?list[0].id:"";
   var it=list.filter(function(x){ return x.id===__pf.sel; })[0];
   var h='<div style="font-size:12px;color:#667085;">생산 › 공정도</div><div style="font-size:24px;font-weight:800;margin-top:2px;">🧭 공정도 <span style="font-size:13px;font-weight:600;color:#667085;">· 도번·품명별 생산 공정 흐름</span></div>'
-    +'<div class="pf-tool"><input id="pf-q" value="'+E(__pf.q)+'" placeholder="도번 또는 품명 (예: 61031-00, CHAMBER) → Enter"><button class="pf-btn" data-x="find">🔍 찾기</button><button class="pf-btn g" data-x="all">전체</button><button class="pf-btn b" data-x="new">➕ 새 공정도</button><button class="pf-btn g" data-x="xlall" title="등록된 공정도 전체 (목록 + 공정별)">📥 전체 엑셀</button><span id="pf-st" style="font-size:12px;color:#667085;"></span></div>';
+    +'<div class="pf-tool"><input id="pf-q" value="'+E(__pf.q)+'" placeholder="도번 또는 품명 (예: 61031-00, CHAMBER) → Enter"><button class="pf-btn" data-x="find">🔍 찾기</button><button class="pf-btn g" data-x="all">전체</button><button class="pf-btn b" data-x="new">➕ 새 공정도</button><button class="pf-btn g" data-x="xlall" title="등록된 공정도 전체 (목록 + 공정별)">📥 전체 엑셀</button><button class="pf-btn g" data-x="sync" title="다른 PC에서 저장한 공정도 다시 불러오기">🔄</button><span id="pf-st" style="font-size:12px;color:#667085;">'+(__pf.syncing?'☁ 시트에서 최신 공정도 확인 중…':(__pf.offline?'<span style="color:#B42318;font-weight:700;">⚠ 공유 시트를 읽지 못해 이 PC에 저장된 내용만 표시 (GS 새 버전 배포 확인)</span>':(__pf.syncOk?('☁ 공유 시트 '+(__pf.sheetN||0)+'건 · '+__pf.syncOk+' 확인'+(__pf.resent?(' · 이 PC에만 있던 '+__pf.resent+'건 다시 올림'):'')):'')))+'</span></div>';
   if(__pf.q) h+='<div class="pf-sub">'+(f.none?('<b style="color:#B42318;">\''+E(__pf.q)+'\'에 맞는 공정도가 없습니다.</b>'+(f.name?(' (품명: '+E(f.name)+')'):'')+' — ➕ 새 공정도로 등록하세요.'):('찾은 기준: '+E(f.how)+' · '+list.length+'건'))+'</div>';
   if(list.length>1 || !__pf.q) h+='<div class="pf-chips">'+list.map(function(x){ return '<button class="pf-chip'+(x.id===__pf.sel?' on':'')+'" data-sel="'+E(x.id)+'">'+E(x.title)+' <span style="font-weight:400;opacity:.8;">('+(x.steps||[]).length+')</span></button>'; }).join("")+'</div>';
   if(it){ var s=(__pf.open>=0 && it.steps[__pf.open])?it.steps[__pf.open]:null;
@@ -17136,6 +17144,7 @@ function pfRender_(){
       if(sel){ __pf.sel=sel.getAttribute("data-sel"); __pf.open=-1; pfRender_(); return; }
       if(st){ var i=Number(st.getAttribute("data-i")); __pf.open=(__pf.open===i)?-1:i; pfRender_(); return; }
       if(!x) return; var a=x.getAttribute("data-x"), cur=pfLive_().filter(function(z){ return z.id===__pf.sel; })[0];
+      if(a==="sync"){ pfSync_(true); pfRender_(); return; }
       if(a==="find"){ __pf.q=(document.getElementById("pf-q")||{}).value||""; __pf.q=__pf.q.trim(); __pf.open=-1; pfRender_(); }
       else if(a==="all"){ __pf.q=""; __pf.open=-1; pfRender_(); }
       else if(a==="new"){ var q=__pf.q, f=q?pfFind_(q):{}; var nf=!!(q && f.none); __pf.edit={ id:pfId_(), title:nf?(f.name||q):"", names:(nf && !f.name && !/\d{4,}/.test(q))?[q]:[], draws:(nf && /\d{4,}/.test(q))?[q]:[], steps:[], note:"", _new:true }; pfRender_(); }
