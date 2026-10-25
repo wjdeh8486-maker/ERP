@@ -17451,6 +17451,26 @@ function crvSummarySheet_(P){
   P.set("xl/workbook.xml", wbx);
   return true;
 }
+// [추가] REV 받을 때 고객에게 회신한 날짜를 특별납기에 반영 (기존 '엑셀·메일 붙여넣기'와 같은 방식 — 변경·근거 이력에 자동 기록)
+//   대상: 반영 체크 · 관리번호 1건으로 확실히 맞음 · 미완료 · 날짜 있음 · (약속일 지남 / 추가 항목 / 날짜 변경)
+//   특별납기 줄이 1개면 가능일만 변경, 없으면 새로 등록, 분할(2줄 이상)은 건너뜀
+function crvToSd_(rev, cb){
+  var go=function(){ var today=ofToday_(), n={ chg:0, add:0, same:0 }, skip=[];
+    __crv.rows.forEach(function(r){
+      if(r.keep || !r.apply || !r.fin || (r.orders||[]).length!==1 || /PO가|여러 건|MAIN 미등록|납품완료/.test(r.stage||"")) return;
+      if(!(r.late || r.isNew || r.fin!==r.fin0)) return;
+      var ord=r.orders[0], L=sdLive_().filter(function(x){ return x.ord===ord && !sdDone_(x); });
+      var why="[고객송부 REV "+rev+"차 "+today+"] PO "+r.po+" / "+(r.doc||r.mat)+" / "+(r.late?"약속일 지남 ":(r.isNew?"추가 항목 ":"일정 변경 "))+(r.promise?(crvMD_(r.promise)+" → "):"")+crvMD_(r.fin)+(r.isWash && r.kom?(" (코미코 "+crvMD_(r.kom)+")"):"");
+      if(L.length>1){ skip.push(ord+": 특별납기 분할 "+L.length+"줄 → 직접 확인"); return; }
+      if(L.length===1){ if(L[0].avail===r.fin){ n.same++; return; } sdPut_(Object.assign({}, L[0], { avail:r.fin, __reason:why })); n.chg++; return; }
+      var mo=(mainData||[]).find(function(m){ return String(m.orderNo||"").trim()===ord; })||{};
+      sdPut_({ id:"sd"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), ord:ord, draw:String(mo.oldDrawingNo||mo.partNo||r.doc||r.mat||"").trim(), due:String(mo.dueDate||"").slice(0,10)||r.cd||r.fin, avail:r.fin, qty:Number(r.rem)||Number(mo.qty)||1, note:"고객송부 REV", done:false, __reason:why }); n.add++; });
+    if(n.chg || n.add){ sdSave_(); try{ if(document.getElementById("sd-root") && typeof sdRender_==="function") sdRender_(); }catch(_){} }
+    cb && cb(n, skip); };
+  try{ if(typeof __sd!=="undefined" && !__sd.loaded && typeof sdLoad_==="function"){ sdLoad_(function(){ if(typeof __sdl!=="undefined" && !__sdl.loaded && typeof sdlLoad_==="function") sdlLoad_(go); else go(); }); return; }
+    if(typeof __sdl!=="undefined" && !__sdl.loaded && typeof sdlLoad_==="function"){ sdlLoad_(go); return; } }catch(_){}
+  go();
+}
 function crvDownload_(){
   if(!__crv.buf) return; var sel=__crv.rows.filter(function(r){ return r.apply; });
   if(!sel.length && !confirm("반영할 줄이 없습니다 (체크된 줄 0). 원본 그대로 내려받을까요?")) return;
@@ -17461,7 +17481,9 @@ function crvDownload_(){
   var base=String(__crv.name||"미납현황.xlsx").replace(/\.xls[xm]?$/i,"").replace(/_REV\d{6}(_\d+)?$/,""), fn=base+"_REV"+yy+".xlsx";
   var blob=new Blob([res.data], { type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), u=URL.createObjectURL(blob), a=document.createElement("a");
   a.href=u; a.download=fn; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); }, 1500);
+  var revNo=((__crv.prev && __crv.prev.rev)||0)+1;
   crvSavePrev_(); var st=document.getElementById("crv-st"); if(st) st.innerHTML='✅ <b>'+ofE_(fn)+'</b> 받음 · 바뀐 줄 '+res.n+'개(색 표시: 약속일 지남 주황 · 추가 하늘 · 그 밖 노랑)'+(__crv.sum!==false?' · 📋 REV요약 시트 포함':'')+' · 이번 REV를 기준으로 저장 → 다음 파일에서 <b>🆕 추가 항목·🔄 공정 변경</b>을 찾습니다';
+  if(__crv.toSd!==false){ crvToSd_(revNo, function(n, skip){ var el=document.getElementById("crv-st"); if(!el) return; el.innerHTML+='<br>⭐ 특별납기 반영: 변경 <b>'+n.chg+'</b> · 신규 <b>'+n.add+'</b>'+(n.same?(' · 이미 같음 '+n.same):'')+' — 변경·근거 이력에 "고객송부 REV '+revNo+'차" 근거로 기록'+(skip.length?('<br><span style="color:#B54708;">건너뜀 '+skip.length+'건: '+ofE_(skip.slice(0,5).join(' · '))+(skip.length>5?' …':'')+'</span>'):''); }); }
 }
 function crvOpenFile_(f){
   if(!f) return; if(!/\.xls[xm]$/i.test(f.name)){ alert("xlsx 파일을 올려 주세요 (xls는 엑셀에서 xlsx로 저장 후)."); return; }
@@ -17507,7 +17529,7 @@ function crvRender_(){
   host.innerHTML='<div class="hd"><div><h2>📤 고객송부 REV</h2><div class="sub">고객 REV 요청 3가지를 찾아 줍니다: <b>⏰ 약속일 지남</b>(파일의 최종납기가 지난 미완료 → MAIN 단계로 새 날짜) · <b>🆕 추가 항목</b>(코미코인계·최종납기는 직접 기입) · <b>🔄 공정 변경</b>(내부 확인용 — 지난 REV보다 단계가 바뀜, 날짜가 달라질 때만 고객 파일에 반영)<br>'
     +'세정품은 코미코인계를 고치면 최종납기가 +'+OF_DAYS.wash+'일로 자동 · 나머지 줄과 고객 사정 줄은 그대로 · 바뀐 칸만 색(약속일 지남 주황 · 추가 하늘 · 그 밖 노랑)으로 <b>같은 양식</b> 그대로 내려받습니다.</div></div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;"><label class="bt" style="display:inline-block;">📂 미납현황 엑셀 올리기<input type="file" id="crv-file" accept=".xlsx,.xlsm" style="display:none;"></label>'
-    +'<label class="bt" style="font-weight:600;" title="받는 엑셀 맨 뒤에 회신일·차수·요청 3가지 건수·바뀐 줄 상세를 담은 요약 시트를 넣습니다 (고객 시트는 그대로)"><input type="checkbox" id="crv-sum"'+(__crv.sum!==false?' checked':'')+' style="vertical-align:-2px;margin-right:4px;">📋 REV 요약 시트</label>'+'<button type="button" class="bt p" id="crv-dl"'+(__crv.buf?'':' disabled')+'>⬇ REV 엑셀 받기 ('+ap+'줄)</button></div></div>'
+    +'<label class="bt" style="font-weight:600;" title="REV 엑셀을 받을 때 회신한 날짜(약속일 지남·추가 항목·일정 변경)를 특별납기 가능일자에 반영하고 변경·근거 이력에 기록"><input type="checkbox" id="crv-tosd"'+(__crv.toSd!==false?' checked':'')+' style="vertical-align:-2px;margin-right:4px;">⭐ 특별납기에 반영</label>'+'<label class="bt" style="font-weight:600;" title="받는 엑셀 맨 뒤에 회신일·차수·요청 3가지 건수·바뀐 줄 상세를 담은 요약 시트를 넣습니다 (고객 시트는 그대로)"><input type="checkbox" id="crv-sum"'+(__crv.sum!==false?' checked':'')+' style="vertical-align:-2px;margin-right:4px;">📋 REV 요약 시트</label>'+'<button type="button" class="bt p" id="crv-dl"'+(__crv.buf?'':' disabled')+'>⬇ REV 엑셀 받기 ('+ap+'줄)</button></div></div>'
     +(__crv.buf?('<div id="crv-st">📄 <b>'+ofE_(__crv.name)+'</b> — '+ofE_(sheetsInfo)+' · 미입고 '+R.length+'줄 · '+(pv?('지난 REV '+ofE_(String(pv.day||"").slice(5).replace("-","/"))+(pv.by?(' ('+ofE_(pv.by)+')'):'')+' 기준으로 추가 항목·공정 변경 표시'):'<b>첫 REV</b> — 받기를 누르면 이번 파일이 기준이 되어 다음부터 🆕 추가 항목·🔄 공정 변경을 찾습니다')+'</div>'
       +'<div class="tabs">'+T.map(function(t){ return '<button type="button" data-tab="'+t[0]+'" class="'+(__crv.tab===t[0]?'on':'')+'">'+t[1]+' '+cnt[t[0]]+'</button>'; }).join("")
       +'<input id="crv-q" placeholder="PO·도번·품명·관리번호 검색" value="'+ofE_(__crv.q)+'" style="margin-left:auto;border:1px solid #D0D5DD;border-radius:8px;padding:6px 10px;min-width:200px;">'
@@ -17519,7 +17541,7 @@ function crvRender_(){
     :'<div style="margin-top:30px;padding:40px;text-align:center;border:2px dashed #D0D5DD;border-radius:14px;color:#667085;" id="crv-drop">고객 미납현황 엑셀(개발·양산·단품 시트)을 올리거나 여기로 끌어다 놓으세요</div>');
   var fi=host.querySelector("#crv-file"); if(fi) fi.onchange=function(){ crvOpenFile_(fi.files[0]); fi.value=""; };
   var dz=host.querySelector("#crv-drop"); if(dz){ dz.ondragover=function(e){ e.preventDefault(); }; dz.ondrop=function(e){ e.preventDefault(); crvOpenFile_(e.dataTransfer.files[0]); }; }
-  var dl=host.querySelector("#crv-dl"); if(dl) dl.onclick=crvDownload_; var sm=host.querySelector("#crv-sum"); if(sm) sm.onchange=function(){ __crv.sum=sm.checked; };
+  var dl=host.querySelector("#crv-dl"); if(dl) dl.onclick=crvDownload_; var sm=host.querySelector("#crv-sum"); if(sm) sm.onchange=function(){ __crv.sum=sm.checked; }; var ts=host.querySelector("#crv-tosd"); if(ts) ts.onchange=function(){ __crv.toSd=ts.checked; };
   host.querySelectorAll("[data-tab]").forEach(function(b){ b.onclick=function(){ __crv.tab=b.getAttribute("data-tab"); __crv.limit=400; crvRender_(); }; });
   var qi=host.querySelector("#crv-q"); if(qi){ var tq=null; qi.oninput=function(){ clearTimeout(tq); tq=setTimeout(function(){ __crv.q=qi.value; crvRender_(); var n=document.getElementById("crv-q"); if(n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); }; }
   var mo=host.querySelector("#crv-more"); if(mo) mo.onclick=function(){ __crv.limit+=400; crvRender_(); };
