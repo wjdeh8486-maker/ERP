@@ -1615,7 +1615,7 @@
   .ct-form label{ display:flex; flex-direction:column; gap:3px; font-weight:700; color:#344054; } .ct-form label span{ font-weight:400; color:#98A2B3; }
   .ct-form textarea, .ct-form input[type=date]{ border:1px solid #D0D5DD; border-radius:8px; padding:6px 8px; font:inherit; font-weight:400; } .ct-src{ color:#475467; background:#fff; border-radius:8px; padding:5px 8px; }
   .ct-users{ display:flex; flex-wrap:wrap; gap:4px 10px; font-weight:400; } .ct-users label{ flex-direction:row; align-items:center; gap:3px; font-weight:400; }
-  .ct-fb{ display:flex; gap:6px; justify-content:flex-end; } .ct-fb button{ border:1px solid #D0D5DD; background:#fff; border-radius:8px; padding:6px 12px; cursor:pointer; } .ct-fb .chat-pri{ border:0; min-height:32px; }
+  .ct-fb{ display:flex; gap:6px; justify-content:flex-end; } .ct-fb button{ border:1px solid #D0D5DD; background:#fff; border-radius:8px; padding:6px 12px; cursor:pointer; } .ct-fb .chat-pri{ border:0; min-height:32px; background:#2563EB; color:#fff; font-weight:700; }
   .chat-h{ display:flex; align-items:center; gap:8px; padding:12px 14px; background:#1F2A44; color:#fff; }
   .chat-h b{ flex:1; font-size:15px; } .chat-h button{ border:0; background:rgba(255,255,255,.14); color:#fff; border-radius:8px; min-width:30px; height:30px; cursor:pointer; font-size:15px; }
   .chat-me{ font-size:12px; opacity:.8; }
@@ -13829,6 +13829,14 @@ function ctLineHtml_(t, compact){
 // 📋 업무 화면
 function ctPaint_(p){
   var E=chatE_, me=ctMe_(), all=ctLive_(), tab=__ct.tab;
+  // [수정] 자동 새로고침(동기화)으로 다시 그릴 때 작성 중인 업무 요청(내용·담당자 체크·기한)이 지워지던 문제 → 화면 값을 먼저 보관하고, 커서 위치도 되살림
+  var keep=null; if(__ct.form && p.querySelector("#ct-f-title")){ var ae=document.activeElement;
+    __ct.form.title=p.querySelector("#ct-f-title").value; __ct.form.due=(p.querySelector("#ct-f-due")||{}).value||"";
+    __ct.form.to=[].slice.call(p.querySelectorAll(".ct-f-to:checked")).map(function(x){ return x.value; });
+    var lst=p.querySelector(".ct-list"); keep={ id:(ae && p.contains(ae) && ae.id)||"", s:ae&&ae.selectionStart, e:ae&&ae.selectionEnd, top:lst?lst.scrollTop:0 }; }
+  try{ ctPaintIn_(p, E, me, all, tab); }finally{ if(keep){ var l2=p.querySelector(".ct-list"); if(l2) l2.scrollTop=keep.top; var fe=keep.id&&p.querySelector("#"+keep.id); if(fe){ try{ fe.focus({ preventScroll:true }); if(keep.s!=null && fe.setSelectionRange) fe.setSelectionRange(keep.s, keep.e); }catch(_){} } } }
+}
+function ctPaintIn_(p, E, me, all, tab){
   var base=all.filter(function(t){ return tab==="mine"?ctIsMine_(t):(tab==="req"?t.from===me:true); });
   var cnt=function(arr){ return arr.filter(function(t){ return t.status!=="완료"; }).length; };
   var list=base.filter(function(t){ return __ct.showDone || t.status!=="완료"; }).sort(function(a,b){ var da=a.status==="완료"?1:0, db=b.status==="완료"?1:0; if(da!==db) return da-db; if(da) return String(b.doneAt||"").localeCompare(String(a.doneAt||"")); return String(a.due||"9999").localeCompare(String(b.due||"9999")) || (b.ts-a.ts); });
