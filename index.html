@@ -2860,7 +2860,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         <button type="button" id="nc-addBtn" style="background:#0B5CAB;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">➕ 부적합 등록</button>
         <button type="button" id="nc-bulkAddBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;" title="엑셀 대장을 복사해 한 번에 이전">📥 여러 건 추가</button>
         <button type="button" id="nc-refreshBtn" title="구글시트에서 최신 목록을 다시 불러옵니다">🔄 새로고침</button>
-        <button type="button" id="nc-printBtn">🖨️ 인쇄</button>
+        <button type="button" id="nc-printBtn">🖨️ 인쇄</button><button type="button" id="nc-tagBtn" onclick="ncTagOpen_([{ d:(typeof insToday_==='function'?insToday_():''), sn:'', by:'', pr:'고객 부적합', why:'', n:1 }], '고객 부적합품에 붙일 TAG — 내용을 적고 인쇄하세요.')" title="부적합 TAG(70×40mm 라벨) 인쇄">🏷 부적합 TAG</button>
       </div>
       <div style="width:100%;font-size:11.5px;color:#B9C2D6;margin-top:-4px;">※ 접수→조치→대책서→유효성확인으로 진행상태 자동 판정. 미종결 7일 초과 시 <b>지연</b>으로 표시됩니다. <span id="nc-status-text"></span></div>
     </div>
@@ -3039,6 +3039,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         <button type="button" id="insrep-scanBtn" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">📷 카메라</button>
         <input type="text" id="insrep-scanInput" placeholder="🔫 스캐너로 여기 찍기" autocomplete="off" style="width:150px;padding:8px 10px;border:1px solid #0B7A8A;border-radius:8px;font-size:12px;color:#1C2320;" title="USB/블루투스 스캐너로 이 칸을 클릭한 뒤 찍으면 자동으로 행이 추가됩니다">
         <button type="button" id="insrep-outLabelAllBtn" class="ins-ship-only" title="현재 표시된 모든 행의 출고NO를 모아 분출LIST 라벨(70×40mm)을 한 번에 인쇄합니다" style="display:none;background:#8A1F1F;color:#fff;border:none;border-radius:7px;padding:7px 10px;font-weight:700;cursor:pointer;font-size:12px;">🏷️ 출고NO라벨</button>
+        <button type="button" id="insrep-ncTagBtn" onclick="insNcTagOpen_()" title="화면에 보이는 행 중 부적합 수량이 있는 행으로 부적합 TAG(70×40mm 라벨)를 채워 인쇄 — 빈 TAG도 가능" style="background:#111;color:#fff;border:none;border-radius:7px;padding:7px 10px;font-weight:800;cursor:pointer;">🏷 부적합 TAG</button>
         <button type="button" id="insrep-stkLblBtn" onclick="insStkPendPopup_()" title="재고 체크하며 노랗게 표시해 둔 재고 라벨을 한 번에 출력" style="display:none;background:#F5B301;color:#1F2A44;border:none;border-radius:7px;padding:7px 10px;font-weight:800;cursor:pointer;">🏷 재고 라벨 <span id="insrep-stkLblCnt">0</span></button>
       </div>
       <div style="width:100%;text-align:right;font-size:11.5px;color:#8A93A6;margin-top:-2px;"><span id="insrep-status">💾 입력하면 이 기기에 자동 저장됩니다</span></div>
@@ -8650,6 +8651,111 @@ function dispatchLabelsByOutNo_(outNoStr){
   var missing=orders.filter(function(o){ return !byOrder[o]; });
   if(!rows.length){ alert("분출LIST에서 일치하는 관리번호를 찾지 못했습니다: "+missing.join(", ")+"\n(MAIN 대시보드를 한 번 열어 데이터를 불러왔는지 확인하세요)"); return; }
   dispatchLabelSelectPopup_(rows, missing);
+}
+// ===== [추가] 부적합 TAG 인쇄 (70×40mm · 분출 라벨과 같은 프린터 4B-2054N · 흑백) =====
+//   항목: 발생일자 · 시리얼 번호 · 발견자 · 검사공정 · 사유 (관리번호 없음)
+//   흑백으로도 한눈에 부적합임을 알 수 있게: 검은 머리띠(흰 글씨 ✕ 부적합품 NG) + 굵은 테두리 + 빗금 띠(출고 금지)
+function ncTagPrint_(list){
+  var rows=[]; (list||[]).forEach(function(r){ var n=Math.max(0, parseInt(r.n,10)||0); for(var k=0;k<n;k++) rows.push(r); });
+  if(!rows.length){ alert("인쇄할 부적합 TAG가 없습니다. (매수 확인)"); return; }
+  if(rows.length>60 && !confirm("부적합 TAG "+rows.length+"장을 인쇄합니다. 계속할까요?")) return;
+  var E=qcEsc, dt=function(v){ return String(v||"").replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$1. $2. $3."); };
+  var html=rows.map(function(r){
+    return '<div class="lbl"><div class="tg">'
+      +'<div class="hd"><span class="x">✕</span>부 적 합 품<span class="ng">NG</span></div>'
+      +'<div class="bd">'
+      +'<div class="k">발 생 일 자</div><div class="v">'+E(dt(r.d))+'</div>'
+      +'<div class="k">시리얼 번호</div><div class="v">'+E(r.sn||"")+'</div>'
+      +'<div class="k">발 견 자</div><div class="v">'+E(r.by||"")+'</div>'
+      +'<div class="k">검 사 공 정</div><div class="v">'+E(r.pr||"")+'</div>'
+      +'<div class="k r">사 유</div><div class="v r">'+E(r.why||"")+'</div>'
+      +'</div><div class="ft"><span>※ 본 제품은 부적합 이오니 출고 금지 입니다.</span></div></div></div>'; }).join("");
+  var win=qmsPrintWin_(); if(!win) return;
+  win.document.write('<html><head><title>부적합 TAG 라벨</title><meta charset="utf-8"><style>'
+    +'@page{ size:70mm 40mm; margin:0; }'
+    +'*{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
+    +'body{ font-family:"Malgun Gothic",sans-serif; margin:0; color:#000; }'
+    +'.lbl{ width:70mm; height:40mm; padding:1mm 1.2mm; page-break-after:always; overflow:hidden; }'
+    +'.lbl:last-child{ page-break-after:auto; }'
+    +'.tg{ width:100%; height:100%; border:0.7mm solid #000; display:flex; flex-direction:column; }'
+    +'.hd{ height:6.6mm; background:#000; color:#fff; display:flex; align-items:center; justify-content:center; gap:1.8mm; font-weight:900; font-size:11.5pt; letter-spacing:0.9mm; }'
+    +'.hd .x{ display:inline-flex; align-items:center; justify-content:center; width:4.4mm; height:4.4mm; border:0.45mm solid #fff; border-radius:50%; font-size:7.5pt; letter-spacing:0; }'
+    +'.hd .ng{ font-size:7pt; letter-spacing:0.2mm; border:0.35mm solid #fff; border-radius:0.8mm; padding:0 0.9mm; }'
+    +'.bd{ flex:1; display:grid; grid-template-columns:15.5mm 1fr; grid-template-rows:repeat(6,1fr); }'
+    +'.k{ border-bottom:0.25mm solid #000; border-right:0.35mm solid #000; background:#D0D5DD; font-weight:800; font-size:6.4pt; display:flex; align-items:center; justify-content:center; white-space:nowrap; letter-spacing:0.1mm; }'
+    +'.v{ border-bottom:0.25mm solid #000; font-weight:700; font-size:7.6pt; display:flex; align-items:center; padding:0 1.2mm; line-height:1.1; overflow:hidden; white-space:nowrap; }'
+    +'.k.r, .v.r{ grid-row:span 2; border-bottom:0; }'
+    +'.v.r{ white-space:normal; word-break:break-all; font-size:7.2pt; }'
+    +'.ft{ height:4.4mm; border-top:0.35mm solid #000; display:flex; align-items:center; justify-content:center; background:repeating-linear-gradient(-45deg,#000 0 1.1mm,#fff 1.1mm 2.2mm); }'
+    +'.ft span{ background:#fff; font-weight:900; font-size:6pt; padding:0 1.1mm; border:0.25mm solid #000; white-space:nowrap; }'
+    +'</style></head><body>'+html+'</body></html>');
+  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 250);
+}
+// 부적합 TAG 입력 팝업 — list: [{d,sn,by,pr,why,n}] (검사 일보에서 미리 채워 열거나 빈 줄로 열기)
+function ncTagOpen_(list, note){
+  var E=qcEsc, today=(typeof insToday_==="function")?insToday_():new Date().toISOString().slice(0,10);
+  var rows=(list&&list.length)?list.map(function(r){ return Object.assign({ d:"", sn:"", by:"", pr:"", why:"", n:1 }, r); }):[{ d:today, sn:"", by:"", pr:"", why:"", n:1 }];
+  var old=document.getElementById("nctag-ov"); if(old) old.remove();
+  var ov=document.createElement("div"); ov.id="nctag-ov";
+  ov.style.cssText="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100060;display:flex;align-items:center;justify-content:center;padding:16px;";
+  var inS='width:100%;border:1px solid #D0D5DD;border-radius:6px;padding:5px 6px;font-size:12.5px;font-family:inherit;';
+  var body=function(){ return rows.map(function(r,i){ return '<tr>'
+      +'<td><input type="date" data-i="'+i+'" data-f="d" value="'+E(r.d)+'" style="'+inS+'"></td>'
+      +'<td><input data-i="'+i+'" data-f="sn" value="'+E(r.sn)+'" style="'+inS+'"></td>'
+      +'<td><input data-i="'+i+'" data-f="by" value="'+E(r.by)+'" style="'+inS+'"></td>'
+      +'<td><input data-i="'+i+'" data-f="pr" value="'+E(r.pr)+'" list="nctag-procs" style="'+inS+'"></td>'
+      +'<td><input data-i="'+i+'" data-f="why" value="'+E(r.why)+'" style="'+inS+'"></td>'
+      +'<td><input type="number" min="0" max="99" data-i="'+i+'" data-f="n" value="'+E(r.n)+'" style="'+inS+'width:52px;"></td>'
+      +'<td><button type="button" data-del="'+i+'" title="이 줄 빼기" style="border:0;background:none;color:#B42318;cursor:pointer;font-size:14px;">✕</button></td></tr>'; }).join(""); };
+  var total=function(){ return rows.reduce(function(a,r){ return a+Math.max(0, parseInt(r.n,10)||0); },0); };
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:920px;width:100%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 16px 50px rgba(0,0,0,.35);">'
+    +'<div style="background:#1F2A44;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-radius:14px 14px 0 0;">'
+    +'<div style="font-weight:800;font-size:14px;">🏷 부적합 TAG 인쇄 <span style="font-weight:400;font-size:12px;color:#C9D3E0;">70×40mm 라벨 · 한 줄 = TAG 1장 × 매수</span></div>'
+    +'<button type="button" data-x="close" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;">닫기 ✕</button></div>'
+    +(note?'<div style="padding:8px 14px;background:#F5F8FF;color:#1D4ED8;font-size:12px;border-bottom:1px solid #E4E7EC;">'+note+'</div>':'')
+    +'<div style="overflow:auto;padding:10px 14px;"><table style="width:100%;border-collapse:separate;border-spacing:4px 4px;font-size:12.5px;"><thead><tr style="color:#475467;text-align:left;">'
+    +'<th style="width:132px;">발생일자</th><th>시리얼 번호</th><th style="width:90px;">발견자</th><th style="width:100px;">검사공정</th><th>사유</th><th style="width:58px;">매수</th><th style="width:26px;"></th></tr></thead><tbody id="nctag-body">'+body()+'</tbody></table>'
+    +'<datalist id="nctag-procs"><option>수입검사</option><option>공정검사</option><option>치수검사</option><option>기능검사</option><option>외관검사</option><option>출하검사</option><option>고객 반품</option></datalist>'
+    +'<div style="display:flex;gap:6px;margin-top:6px;"><button type="button" data-x="add" style="border:1px solid #C9D3E0;background:#fff;border-radius:7px;padding:6px 12px;cursor:pointer;">＋ 줄 추가</button>'
+    +'<span style="font-size:11.5px;color:#8A93A6;align-self:center;">칸을 비우면 빈칸으로 인쇄되어 손으로 적을 수 있습니다.</span></div></div>'
+    +'<div style="padding:10px 14px;display:flex;justify-content:flex-end;align-items:center;gap:8px;border-top:1px solid #EEF1F6;">'
+    +'<span id="nctag-cnt" style="margin-right:auto;font-size:12.5px;color:#475467;"></span>'
+    +'<button type="button" data-x="close" style="background:#EEF3FA;border:1px solid #C9D3E0;color:#5A6478;border-radius:7px;padding:7px 14px;font-weight:700;cursor:pointer;">취소</button>'
+    +'<button type="button" data-x="print" style="background:#111;color:#fff;border:none;border-radius:7px;padding:7px 16px;font-weight:800;cursor:pointer;">🖨 부적합 TAG 인쇄</button></div></div>';
+  document.body.appendChild(ov);
+  var cnt=function(){ var c=document.getElementById("nctag-cnt"); if(c) c.textContent="TAG "+total()+"장"; };
+  var redraw=function(){ document.getElementById("nctag-body").innerHTML=body(); cnt(); };
+  ov.addEventListener("input", function(e){ var t=e.target, i=t.getAttribute&&t.getAttribute("data-i"); if(i==null) return; rows[+i][t.getAttribute("data-f")]=t.value; cnt(); });
+  ov.addEventListener("click", function(e){ var b=e.target.closest&&e.target.closest("[data-x],[data-del]"); if(!b){ if(e.target===ov) ov.remove(); return; }
+    if(b.hasAttribute("data-del")){ rows.splice(+b.getAttribute("data-del"),1); if(!rows.length) rows.push({ d:today, sn:"", by:"", pr:"", why:"", n:1 }); redraw(); return; }
+    var x=b.getAttribute("data-x");
+    if(x==="close"){ ov.remove(); return; }
+    if(x==="add"){ var l=rows[rows.length-1]||{}; rows.push({ d:l.d||today, sn:"", by:l.by||"", pr:l.pr||"", why:"", n:1 }); redraw(); return; }
+    if(x==="print"){ ncTagPrint_(rows); } });
+  cnt();
+}
+// 검사 일보 → 화면에 보이는 행 중 부적합 수량이 있는 행으로 TAG 미리 채우기
+function insNcTagOpen_(){
+  try{
+    var cfg=(typeof INS_CFG!=="undefined" && INS_CFG[insType])||null, st=insState&&insState[insType];
+    var PR={ incoming:"수입검사", shipping:"출하검사", measureS:"치수검사", measureL:"치수검사" };
+    var meta=(typeof insMetaByType!=="undefined" && insMetaByType[insType])||{}, insp=String((document.getElementById("insrep-inspector")||{}).value||"").trim();
+    var seen={}, vis=[];
+    Array.prototype.slice.call(document.querySelectorAll('#view-insrep [data-ri]')).forEach(function(el){ if(el.offsetParent===null) return; var ri=el.getAttribute("data-ri"); if(ri==null||seen[ri]) return; seen[ri]=1; vis.push(+ri); });
+    var subs=[]; ((cfg&&cfg.groups)||[]).forEach(function(g){ if(g.subs && /부적합/.test(g.label)) g.subs.forEach(function(s){ subs.push({ k:s.key, l:s.label, g:g.label }); }); });
+    var list=[];
+    if(cfg && st && st.rows) vis.forEach(function(ri){ var r=st.rows[ri]; if(!r) return;
+      var parts=[], pr=PR[insType]||"", proc2=false, fn=false;
+      subs.forEach(function(s){ var v=Number(r[s.k])||0; if(v>0){ parts.push(s.l+" "+v); if(/^공정/.test(s.g)) proc2=true; } });
+      var fb=Number(r.fnBad)||0; if(fb>0){ parts.push("기능 부적합 "+fb); fn=true; }
+      if(!parts.length) return;
+      if(insType==="incoming" && proc2 && parts.length===subs.filter(function(s){ return /^공정/.test(s.g) && (Number(r[s.k])||0)>0; }).length) pr="공정검사";
+      if(/^measure/.test(insType) && fn && !subs.some(function(s){ return (Number(r[s.k])||0)>0; })) pr="기능검사";
+      var by=(meta.inspByDate && r.insDate && meta.inspByDate[r.insDate]) || insp;
+      var sn=[String(r.draw||"").trim(), String(r.sn||"").trim()].filter(Boolean).join(" / ");
+      list.push({ d:r.insDate||"", sn:sn, by:by, pr:pr, why:parts.join(" · ")+(r.act?(" ("+String(r.act).trim()+")"):""), n:1 }); });
+    ncTagOpen_(list, list.length?('화면에 보이는 행 중 부적합 수량이 있는 <b>'+list.length+'</b>건을 채웠습니다. 고칠 곳은 고친 뒤 인쇄하세요.'):'화면에 부적합 수량이 있는 행이 없어 빈 줄로 열었습니다. 직접 입력해 인쇄하세요.');
+  }catch(e){ ncTagOpen_([], ""); }
 }
 // 출고NO로 찾은 라벨 인쇄 대상을 보여주고, 원치 않는 항목은 체크 해제한 뒤 인쇄할 수 있는 확인 팝업
 function dispatchLabelSelectPopup_(rows, missing){
