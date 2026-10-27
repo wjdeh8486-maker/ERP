@@ -3295,8 +3295,10 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
           <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">담당자<input id="hold-by" type="text" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;width:100px;"></label>
           <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;">정지 담당<select id="hold-side" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;"><option>품질담당</option><option>고객사</option></select></label>
           <label style="font-size:11px;color:#5A6478;font-weight:700;display:flex;flex-direction:column;gap:2px;flex:1;min-width:180px;">정지 사유<input id="hold-reason" type="text" placeholder="부적합·고객요청 등" onkeydown="if(event.key==='Enter')holdAdd_()" style="padding:6px 8px;border:1px solid #D6DEE8;border-radius:7px;font-size:12.5px;box-sizing:border-box;"></label>
+          <label title="정지 사유 관련 사진·PDF (여러 개 가능 · 10MB 이하) — 끌어 놓기·붙여넣기(Ctrl+V)도 됩니다" style="font-size:12.5px;font-weight:700;color:#1F2A44;background:#fff;border:1px dashed #98A2B3;border-radius:8px;padding:8px 12px;cursor:pointer;white-space:nowrap;">📎 사진·PDF<input id="hold-files" type="file" multiple accept="image/*,application/pdf" onchange="holdFilesPick_(this.files); this.value='';" style="display:none;"></label>
           <button type="button" onclick="holdAdd_()" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;">🔴 출하정지 등록</button>
         </div>
+        <div id="hold-fileList" style="display:none;flex-wrap:wrap;gap:6px;margin:-4px 0 10px;"></div>
         <div id="hold-body"></div>
       </div>
       <div style="display:none;">
@@ -6832,7 +6834,7 @@ function qdocHold_(hd){
   var sumC=0, sumG=0; re.forEach(function(x){ sumC+=Number(x.r.insCnt)||0; sumG+=Number(x.r.goodCnt)||0; });
   var h=qdHead_("출하정지(HOLD) 해제 보고서", "HR-"+String(hd.holdDate||"").replace(/[^0-9]/g,"").slice(0,8)+"-"+String(hd.target||"").replace(/[^A-Za-z0-9]/g,"").slice(-6))
    +'<h2>1. 출하정지 내용</h2><table><tr><th>대상</th><td>'+qdE2_(hd.target||"")+'</td><th>범위</th><td>'+qdE2_(hd.scope||"")+'</td></tr><tr><th>S/N</th><td>'+qdE2_(hd.sn||"")+'</td><th>수량</th><td>'+qdE2_(hd.qty||"")+'</td></tr>'
-   +'<tr><th>정지일</th><td>'+qdE2_(String(hd.holdDate||"").slice(0,10))+'</td><th>정지 담당</th><td>'+qdE2_((hd.by||"")+" "+(hd.side||""))+'</td></tr><tr><th>정지 사유</th><td colspan="3">'+qdEd_(hd.reason||"")+'</td></tr></table>'
+   +'<tr><th>정지일</th><td>'+qdE2_(String(hd.holdDate||"").slice(0,10))+'</td><th>정지 담당</th><td>'+qdE2_((hd.by||"")+" "+(hd.side||""))+'</td></tr><tr><th>정지 사유</th><td colspan="3">'+qdEd_(hd.reason||"")+'</td></tr>'+((hd.files||[]).length?('<tr><th>첨부</th><td colspan="3">'+hd.files.map(function(f){ return qdE2_((f.stage==="해제"?"[해제] ":"")+(f.name||"")); }).join(", ")+'</td></tr>'):'')+'</table>'
    +'<h2>2. 선별·재검사 결과</h2>'+(re.length?'<table><tr><th>검사</th><th>검사일</th><th>도번</th><th>S/N</th><th class="n">검사수</th><th class="n">양품수</th></tr>'+re.map(function(x){ return '<tr><td>'+insTypeLabel(x.t)+'</td><td>'+qdE2_(x.r.insDate)+'</td><td>'+qdE2_(x.r.draw)+'</td><td>'+qdE2_(x.r.sn||"")+'</td><td class="n">'+qdE2_(x.r.insCnt||"")+'</td><td class="n">'+qdE2_(x.r.goodCnt||"")+'</td></tr>'; }).join("")+'<tr><th colspan="4">합계</th><th class="n">'+sumC+'</th><th class="n">'+sumG+'</th></tr></table>':'<table><tr><td>'+qdEd_("선별 결과 기입 (검사일보에 정지일 이후 해당 도번 검사 기록이 없습니다)")+'</td></tr></table>')
    +'<h2>3. 해제 판정</h2><table><tr><th>해제일</th><td>'+qdEd_(String(hd.releaseDate||"").slice(0,10))+'</td><th>해제 담당</th><td>'+qdEd_((hd.releaseBy||"")+" "+(hd.releaseSide||""))+'</td></tr>'
    +'<tr><th>해제 근거</th><td colspan="3">'+qdEd_(hd.releaseNote||"선별 결과 전량 양품 확인 / 원인 조치 완료 확인")+'</td></tr><tr><th>부적합품 처리</th><td colspan="3">'+qdEd_("재작업 / 폐기 / 특채 — 수량 기입")+'</td></tr></table>'+qdSign_();
@@ -7033,8 +7035,10 @@ function holdAdd_(){
   var g=function(id){ return String((document.getElementById(id)||{}).value||"").trim(); };
   var tg=g("hold-target"); if(!tg){ alert("정지할 대상(ORDER/PROJECT/도번)을 입력하세요."); return; }
   var __sn=g("hold-sn");
-  __holdLog.push({ id:"H"+Date.now()+Math.floor(Math.random()*1000), target:tg, reason:g("hold-reason"), holdDate:g("hold-date")||holdToday_(), qty:g("hold-qty"), sn:__sn, by:g("hold-by")||holdWho_(), side:g("hold-side")||"품질담당", scope:(__sn?"부분":"전체"), status:"정지" });
+  var __nh={ id:"H"+Date.now()+Math.floor(Math.random()*1000), target:tg, reason:g("hold-reason"), holdDate:g("hold-date")||holdToday_(), qty:g("hold-qty"), sn:__sn, by:g("hold-by")||holdWho_(), side:g("hold-side")||"품질담당", scope:(__sn?"부분":"전체"), status:"정지", files:[] };
+  __holdLog.push(__nh);
   holdSave_();
+  var __pf=__holdPend.slice(); __holdPend=[]; holdPendDraw_(); if(__pf.length) holdUpload_(__nh.id, __pf, "정지");
   ["hold-target","hold-reason","hold-qty","hold-sn","hold-by"].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=""; });
   var dt=document.getElementById("hold-date"); if(dt) dt.value=holdToday_();
   renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_();
@@ -7049,6 +7053,7 @@ function holdRelease_(id){
     +'<label style="font-size:12px;color:#5A6478;font-weight:700;">해제 담당<select id="holdrel-side" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;box-sizing:border-box;"><option>품질담당</option><option>고객사</option></select></label>'
     +'<label style="font-size:12px;color:#5A6478;font-weight:700;">담당자<input id="holdrel-by" type="text" value="'+holdWho_().replace(/"/g,"")+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;box-sizing:border-box;"></label>'
     +'<label style="font-size:12px;color:#5A6478;font-weight:700;">처리내용<input id="holdrel-note" type="text" placeholder="재검사·선별·조치 등" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;box-sizing:border-box;"></label>'
+    +'<label style="font-size:12px;color:#5A6478;font-weight:700;">해제 근거 사진·PDF <span style="font-weight:400;color:#8A93A6;">(선별·재검사 결과 등, 선택)</span><input id="holdrel-files" type="file" multiple accept="image/*,application/pdf" style="width:100%;padding:6px;border:1px dashed #98A2B3;border-radius:7px;box-sizing:border-box;font-size:12px;"></label>'
     +'<div style="display:flex;gap:8px;margin-top:4px;">'
     +'<button type="button" onclick="holdReleaseCommit_(\''+h.id+'\')" style="flex:1;background:#1D6F42;color:#fff;border:none;border-radius:8px;padding:10px;font-weight:800;cursor:pointer;">해제 등록</button>'
     +'<button type="button" onclick="var o=document.getElementById(\'holdrel-ov\');if(o)o.remove();" style="background:#EEF1F6;border:1px solid #D6DEE8;border-radius:8px;padding:10px 16px;cursor:pointer;">취소</button>'
@@ -7060,8 +7065,41 @@ function holdRelease_(id){
 function holdReleaseCommit_(id){
   var h=null; for(var i=0;i<__holdLog.length;i++){ if(__holdLog[i].id===id){ h=__holdLog[i]; break; } } if(!h) return;
   h.status="해제"; h.releaseDate=(document.getElementById("holdrel-date")||{}).value||holdToday_(); h.releaseSide=(document.getElementById("holdrel-side")||{}).value||"품질담당"; h.releaseBy=(document.getElementById("holdrel-by")||{}).value||""; h.releaseNote=(document.getElementById("holdrel-note")||{}).value||"";
-  holdSave_(); var o=document.getElementById("holdrel-ov"); if(o) o.remove(); renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_();
+  var __rf=Array.prototype.slice.call(((document.getElementById("holdrel-files")||{}).files)||[]);
+  holdSave_(); var o=document.getElementById("holdrel-ov"); if(o) o.remove(); if(__rf.length) holdUpload_(h.id, __rf, "해제"); renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_();
 }
+// [추가] 출하정지 첨부 (사진·PDF) — 드라이브 'QMS_출하정지근거' 폴더에 올리고 링크를 기록에 보관
+var __holdPend=[], __holdUp={};
+function holdFilesPick_(files){ Array.prototype.slice.call(files||[]).forEach(function(f){ if(!/^image\/|pdf/i.test(f.type||"") && !/\.(pdf|jpe?g|png|gif|bmp|webp|heic)$/i.test(f.name||"")){ alert("사진 또는 PDF만 첨부할 수 있습니다: "+f.name); return; } if(f.size>10*1024*1024){ alert("10MB 이하만 가능합니다: "+f.name); return; } __holdPend.push(f); }); holdPendDraw_(); }
+function holdPendDraw_(){ var el=document.getElementById("hold-fileList"); if(!el) return; el.style.display=__holdPend.length?"flex":"none";
+  el.innerHTML=__holdPend.map(function(f,i){ return '<span class="fchip"><span class="sdl-file" style="color:#344054;">'+(/^image\//.test(f.type||"")?"🖼":"📕")+' '+holdEsc_(f.name||"붙여넣은 사진")+'</span><button type="button" class="fchip-x" onclick="__holdPend.splice('+i+',1);holdPendDraw_();" title="빼기">✕</button></span>'; }).join("")+'<span style="font-size:11.5px;color:#8A93A6;align-self:center;">등록하면 함께 올라갑니다</span>'; }
+function holdUpload_(id, files, stage){
+  if(typeof sdUploadFile_!=="function"){ alert("파일 올리기 기능을 찾을 수 없습니다."); return; }
+  __holdUp[id]=(__holdUp[id]||0)+files.length; renderHold_();
+  files.forEach(function(f){ sdUploadFile_(f, function(info, err){
+    __holdUp[id]=Math.max(0,(__holdUp[id]||1)-1);
+    var h=__holdLog.filter(function(x){ return x.id===id; })[0];
+    if(info && h){ h.files=(h.files||[]).concat([{ name:info.name||f.name, url:info.url, id:info.id||"", mime:info.mime||f.type||"", stage:stage||"정지" }]); holdSave_(); }
+    else if(!info) alert("첨부 올리기 실패: "+(f.name||"")+(err?(" — "+err):""));
+    renderHold_(); }, "hd"); });
+}
+function holdAddFiles_(id, inp){ var fs=Array.prototype.slice.call((inp&&inp.files)||[]).filter(function(f){ return f.size<=10*1024*1024; }); if(inp) inp.value=""; if(fs.length) holdUpload_(id, fs, (__holdLog.filter(function(x){ return x.id===id; })[0]||{}).status==="해제"?"해제":"정지"); }
+function holdFileDel_(id, i){ var h=__holdLog.filter(function(x){ return x.id===id; })[0]; if(!h||!h.files||!h.files[i]) return; var f=h.files[i];
+  if(!confirm("첨부 '"+(f.name||"")+"'를 삭제할까요? (드라이브 파일은 휴지통으로)")) return; h.files.splice(i,1); try{ if(typeof qmsFileTrash_==="function") qmsFileTrash_(f); }catch(_){} holdSave_(); renderHold_(); }
+function holdFilesCell_(h){ var fs=h.files||[], up=__holdUp[h.id]||0;
+  return '<div class="sdl-files" style="align-items:center;">'+fs.map(function(f,i){ var a=(typeof sdlFileHtml_==="function")?sdlFileHtml_(f):'<a href="'+holdEsc_(f.url)+'" target="_blank">📎 '+holdEsc_(f.name)+'</a>';
+      if(f.stage==="해제") a=a.replace('class="sdl-file">','class="sdl-file" style="border-color:#ABEFC6;">✅ ');
+      return '<span class="fchip">'+a+'<button type="button" class="fchip-x" onclick="holdFileDel_(\''+h.id+'\','+i+')" title="이 첨부 삭제">✕</button></span>'; }).join("")
+    +(up?'<span style="font-size:11.5px;color:#B54708;">⏳ 올리는 중 '+up+'</span>':'')
+    +'<label title="사진·PDF 추가" style="font-size:11.5px;color:#475467;border:1px dashed #C9D3E0;border-radius:7px;padding:2px 7px;cursor:pointer;white-space:nowrap;">📎 추가<input type="file" multiple accept="image/*,application/pdf" onchange="holdAddFiles_(\''+h.id+'\', this)" style="display:none;"></label></div>'; }
+// 등록 영역에 끌어 놓기 · 붙여넣기(Ctrl+V)로 사진 첨부
+(window.__afterEnter=window.__afterEnter||[]).push(function(){ try{ var v=document.getElementById("view-shipjudge"); if(!v || v.__holdDrop) return; v.__holdDrop=true;
+  var box=document.getElementById("hold-target"); box=box&&box.closest("div[style*='F0C9C4']");
+  if(box){ box.addEventListener("dragover", function(e){ e.preventDefault(); box.style.outline="2px dashed #C0392B"; }); box.addEventListener("dragleave", function(){ box.style.outline=""; });
+    box.addEventListener("drop", function(e){ if(e.target.closest && e.target.closest("#hold-body")) return; e.preventDefault(); box.style.outline=""; holdFilesPick_(e.dataTransfer&&e.dataTransfer.files); }); }
+  document.addEventListener("paste", function(e){ if(!v.classList.contains("active") && v.offsetParent===null) return; var t=e.target; if(t && t.id && !/^hold-/.test(t.id) && t!==document.body) return;
+    var its=(e.clipboardData&&e.clipboardData.items)||[], fs=[]; for(var i=0;i<its.length;i++){ if(its[i].kind==="file"){ var f=its[i].getAsFile(); if(f) fs.push(f.name?f:new File([f], "붙여넣은사진_"+Date.now()+".png", { type:f.type })); } }
+    if(fs.length){ e.preventDefault(); holdFilesPick_(fs); } }); }catch(_){} });
 function holdDelete_(id){ if(!confirm("이 정지 기록을 완전히 삭제할까요?")) return; __holdDel[id]=1; __holdLog=__holdLog.filter(function(h){ return h.id!==id; }); holdSave_(); renderHold_(); if(typeof mainHoldBanner_==="function") mainHoldBanner_(); }
 function holdSideBadge_(side){ var s=side||"품질담당"; var c=(s==="고객사")?"#0B5CAB":"#5A3E7A"; var bg=(s==="고객사")?"#E7F0FA":"#EFEAF7"; return '<span style="background:'+bg+';color:'+c+';border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap;">'+holdEsc_(s)+'</span>'; }
 function holdScopeBadge_(sc){ var s=sc||"전체"; var c=(s==="부분")?"#B0662A":"#C0392B"; var bg=(s==="부분")?"#FFF3E6":"#FDECEC"; return '<span style="background:'+bg+';color:'+c+';border-radius:5px;padding:1px 7px;font-size:11px;font-weight:800;white-space:nowrap;">'+s+'</span>'; }
@@ -7103,7 +7141,7 @@ function renderHold_(){
   var actRows=active.length?active.map(function(h){ return '<tr style="background:#FDECEC;">'
     +'<td style="'+td+'font-weight:700;color:#C0392B;">'+E(h.target)+'</td>'
     +'<td style="'+td+'text-align:center;">'+holdScopeBadge_(h.scope)+'</td>'
-    +'<td style="'+td+'">'+E(h.reason)+'</td>'
+    +'<td style="'+td+'">'+E(h.reason)+holdFilesCell_(h)+'</td>'
     +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(h.holdDate)+'</td>'
     +'<td style="'+td+'text-align:center;">'+E(h.qty)+'</td>'
     +'<td style="'+td+'">'+E(h.sn)+'</td>'
@@ -7113,7 +7151,7 @@ function renderHold_(){
   var relRows=released.slice(0,100).map(function(h){ return '<tr>'
     +'<td style="'+td+'">'+E(h.target)+'</td>'
     +'<td style="'+td+'text-align:center;">'+holdScopeBadge_(h.scope)+'</td>'
-    +'<td style="'+td+'">'+E(h.reason)+'</td>'
+    +'<td style="'+td+'">'+E(h.reason)+holdFilesCell_(h)+'</td>'
     +'<td style="'+td+'text-align:center;white-space:nowrap;">'+E(h.holdDate)+'</td>'
     +'<td style="'+td+'text-align:center;">'+holdSideBadge_(h.side)+'</td>'
     +'<td style="'+td+'text-align:center;white-space:nowrap;color:#1E7A46;">'+E(h.releaseDate)+'</td>'
@@ -14155,13 +14193,13 @@ function sdlAuto_(prev, it){
   }catch(_){}
 }
 // 파일 업로드 (드라이브 QMS_특별납기근거) → cb(info|null, err)
-function sdUploadFile_(file, cb){
+function sdUploadFile_(file, cb, folder){ folder=folder||"sd";
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ cb(null,"서버 연결 없음"); return; }
   if(file.size>10*1024*1024){ cb(null,"10MB 이하만 가능 ("+file.name+")"); return; }
   var go=function(f){ var token="SD"+Date.now()+Math.floor(Math.random()*100000), rd=new FileReader(), done=false;
     rd.onerror=function(){ cb(null,"파일 읽기 실패"); };
-    rd.onload=function(){ var b64=String(rd.result||"").split(",")[1]||"", body=JSON.stringify({ mode:"fileUpload", folder:"sd", token:token, name:f.name||file.name, mime:f.type||file.type||"application/octet-stream", size:f.size, dataB64:b64 });
-      fetch(url,{ method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:body }).then(function(r){ return r.json(); }).then(function(res){ if(!done && res && res.success && res.file){ done=true; cb(res.file); } }).catch(function(){});
+    rd.onload=function(){ var b64=String(rd.result||"").split(",")[1]||"", body=JSON.stringify({ mode:"fileUpload", folder:folder, token:token, name:f.name||file.name, mime:f.type||file.type||"application/octet-stream", size:f.size, dataB64:b64 });
+      fetch(url,{ method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:body }).then(function(r){ return r.json(); }).then(function(res){ if(!done && res && res.success && res.file){ done=true; cb(res.file); } else if(!done && res && res.success===false && /허용/.test(String(res.error||"")) && folder!=="bd"){ done=true; sdUploadFile_(file, cb, "bd"); } }).catch(function(){});   // [추가] 서버(GS)에 새 폴더가 아직 없으면 게시판첨부 폴더로
       var tries=0, poll=function(){ if(done) return; tries++; fetch(url+"?mode=qToolMaster&key="+encodeURIComponent("fup_"+token)+"&_t="+Date.now(),{ cache:"no-store" }).then(function(r){ return r.json(); }).then(function(res){ var j=(res&&res.success&&res.json)?res.json:""; if(j && !done){ try{ var o=JSON.parse(j); if(o && o.url){ done=true; cb(o); return; } }catch(_){} } if(!done){ if(tries<25) setTimeout(poll,1500); else { done=true; cb(null,"업로드 확인 시간 초과"); } } }).catch(function(){ if(!done && tries<25) setTimeout(poll,1500); }); };
       setTimeout(poll, 3000); };
     rd.readAsDataURL(f); };
