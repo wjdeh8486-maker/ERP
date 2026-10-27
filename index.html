@@ -18198,6 +18198,37 @@ function dbCard_(c){
     +(sub?'<div class="db-c5">'+sub+'</div>':'')+mesW
     +(mv?'<div class="db-mv">↗ '+E((DB_COLS.filter(function(z){ return z.k===mv.from; })[0]||{}).t||"")+'에서 이동</div>':'')+'</div>';
 }
+// [추가] 한 건의 공정 위치 (생산~분출 7칸) — 지난 칸 ✓, 지금 칸 강조, 기능검사 없는 품목은 기능 칸 흐리게 · 세정품은 분출 칸에 세정 상태
+function dbChain_(x, col){
+  var ci=DB_COLS.map(function(c){ return c.k; }).indexOf(col), done=(x.st==="완료"), need=!!(x.fn && x.fn.length);
+  return '<div class="db-chain">'+DB_COLS.map(function(c, i){ var cls=(done || i<ci)?"p":(i===ci?"c":"n"), sub="";
+      if(c.k==="func" && !need && x.fn!==null) { cls+=" s"; sub="해당없음"; }
+      if(i===ci && !done){ if(c.k==="prod"||c.k==="post") sub=x.proc||""; else if(x._log) sub=x._log.replace(/ \(검사일보\)/,""); }
+      if(c.k==="out"){ if(done) sub="납품완료 "+ofMD_(x.r.shipDate); else if(i===ci) sub=x.isWash?((x.wash&&x.wash.length)?("세정납품 "+x.wash.map(ofMD_).join(",")):"코미코 세정 중"):("출고 "+(x.outD?ofMD_(x.outD.split(", ").pop()):"")); else if(x.isWash) sub="세정품"; }
+      return '<span class="db-cs '+cls+'"><b>'+c.t+'</b>'+(sub?'<i>'+dbE_(sub)+'</i>':'')+'</span>'; }).join("")+'</div>'; }
+function dbSearch_(q){
+  var qs=String(q||"").split(",").map(function(x){ return x.trim().toUpperCase(); }).filter(Boolean); if(!qs.length) return [];
+  var N=function(v){ return String(v||"").toUpperCase().replace(/\s+/g,""); };
+  return (__of.rows||[]).filter(function(x){ var r=x.r, o=N(r.orderNo), pj=N(r.vendor), dr=N(r.oldDrawingNo), pn=N(r.partNo), nm=N(r.partName);
+      if(x.st==="완료" && String(r.shipDate||"").slice(0,10)<dbPrevWork_(dbPrevWork_(ofToday_()))) return false;   // 오래전 납품완료는 제외
+      return qs.some(function(k){ k=k.replace(/\s+/g,""); return o===k || o.indexOf(k+"-")===0 || (k.length>=3 && (pj.indexOf(k)>=0 || dr.indexOf(k)>=0 || pn.indexOf(k)>=0 || nm.indexOf(k)>=0)); }); })
+    .sort(function(a,b){ return String(a.due||a.due0||"9").localeCompare(String(b.due||b.due0||"9")) || String(a.r.orderNo).localeCompare(String(b.r.orderNo)); }).slice(0,80); }
+function dbSearchHtml_(){
+  var A=dbSearch_(__db.q), E=dbE_, today=ofToday_(); var onB={}; (__db.lastL||[]).forEach(function(c){ onB[c.r.orderNo]=1; });
+  return '<section class="db-sr"><div class="db-srh">🔎 검색 결과 <b>'+A.length+'</b>건 <small>"'+E(__db.q)+'" · 미완료 전체에서 찾음 (최근 납품완료 포함)</small><button type="button" data-db="qclear">닫기 ✕</button></div>'
+    +(A.length?A.map(function(x){ var r=x.r, col=dbCol_(x), due=x.due||x.due0, late=(x.st!=="완료" && due && due<today);
+        return '<div class="db-srr'+(late?' late':'')+'"><div class="db-sri"><b>'+E(r.orderNo)+'</b> <span>'+E(r.oldDrawingNo||r.partNo||"")+'</span> <small>'+E(r.partName||"")+'</small>'
+          +'<span class="db-srm">'+E(r.qty)+'개 · 납기 '+(due?ofMD_(due):"-")+(x.sdi?' <span class="db-tg s">특별</span>':'')+(x.isWash?' <span class="db-tg i">세정품</span>':'')+(late?' <span class="db-tg l">지연 '+ofDays_(due, today)+'일</span>':'')
+          +(onB[r.orderNo]?' <span class="db-tg t">현황판에 있음</span>':(x.st!=="완료"?' <button type="button" class="db-sradd" data-db="qadd" data-o="'+E(r.orderNo)+'">＋ 현황판에 추가</button>':''))+'</span></div>'+dbChain_(x, col)+'</div>'; }).join(""):'<div class="db-none">맞는 건이 없습니다 (관리번호 · PROJECT · 도번 · 품번 · 품명, 쉼표로 여러 개)</div>')+'</section>'; }
+// 품목별 보기 — 도번마다 7칸에 수량(건수)
+function dbItemHtml_(L){
+  var g={}, E=dbE_; L.forEach(function(c){ var k=String(c.r.oldDrawingNo||c.r.partNo||"-").trim(); var e=g[k]||(g[k]={ k:k, name:c.r.partName||"", n:0, q:0, by:{}, late:false, wash:false }); e.n++; e.q+=Number(c.r.qty)||0; if(c.late) e.late=true; if(c.x.isWash) e.wash=true;
+    var b=e.by[c.col]||(e.by[c.col]={ n:0, q:0, o:[] }); b.n++; b.q+=Number(c.r.qty)||0; b.o.push(c.r.orderNo); });
+  var ks=Object.keys(g).sort(function(a,b){ return g[b].q-g[a].q || a.localeCompare(b); });
+  return '<div class="db-itw"><table class="db-it"><thead><tr><th>도번</th><th>품명</th><th class="n">건/수량</th>'+DB_COLS.map(function(c){ return '<th class="h-'+c.k+'">'+c.ic+' '+c.t+'</th>'; }).join("")+'</tr></thead><tbody>'
+    +(ks.length?ks.map(function(k){ var e=g[k]; return '<tr class="'+(e.late?'late':'')+'"><td><b>'+E(k)+'</b>'+(e.wash?' <span class="db-tg i">세정</span>':'')+'</td><td class="nm">'+E(e.name)+'</td><td class="n">'+e.n+'건 · <b>'+e.q+'</b></td>'
+        +DB_COLS.map(function(c){ var b=e.by[c.k]; return b?('<td class="v c-'+c.k+'" title="'+E(b.o.join(", "))+'"><b>'+b.q+'</b><small>'+b.n+'건</small></td>'):'<td class="e">·</td>'; }).join("")+'</tr>'; }).join(""):'<tr><td colspan="10" class="db-none">-</td></tr>')
+    +'</tbody></table></div>'; }
 function dbRender_(){
   var host=document.getElementById("db-root"); if(!host) return;
   if(!host.__built){ host.__built=true; dbStyle_();
@@ -18205,11 +18236,16 @@ function dbRender_(){
       if(a==="full"){ var el=document.getElementById("view-dboard"); try{ if(document.fullscreenElement) document.exitFullscreen(); else if(el && el.requestFullscreen) el.requestFullscreen(); }catch(_){} return; }
       if(a==="past"){ __db.past=!__db.past; dbRender_(); return; }
       if(a==="add"){ dbAddPop_(); return; }
+      if(a==="vstage"||a==="vitem"){ __db.view=(a==="vitem")?"item":"stage"; dbRender_(); return; }
+      if(a==="qclear"){ __db.q=""; dbRender_(); return; }
+      if(a==="qadd"){ var oq=b.getAttribute("data-o"); if(oq) dbPinSet_([oq], "add"); return; }
       if(a==="hide"){ var o=b.getAttribute("data-o"); if(o) dbPinSet_([o], "hide"); return; }
       if(a==="unhide"){ var o2=b.getAttribute("data-o"); if(o2) dbPinSet_([o2], ""); return; }
       if(a==="unadd"){ var o3=b.getAttribute("data-o"); if(o3) dbPinSet_([o3], ""); return; }
       if(a==="reload"){ __db.insTs=0; dbInsLoad_(); dbFetch_(true); return; } });
     host.addEventListener("change", function(e){ if(e.target.id==="db-cust"){ __db.cust=e.target.value; dbRender_(); } });
+    host.addEventListener("keydown", function(e){ if(e.target.id==="db-q" && e.key==="Enter"){ __db.q=String(e.target.value||"").trim(); dbRender_(); var i=document.getElementById("db-q"); if(i){ i.focus(); i.setSelectionRange(i.value.length, i.value.length); } } });
+    host.addEventListener("search", function(e){ if(e.target.id==="db-q" && !e.target.value){ __db.q=""; dbRender_(); } }, true);
   }
   var md=(typeof mainData!=="undefined"&&mainData)||[];
   if(!md.length){ host.innerHTML='<div class="db-empty">MAIN 데이터를 불러오는 중…</div>'; return; }
@@ -18221,12 +18257,16 @@ function dbRender_(){
   var fetchT=__db.lastFetch?new Date(__db.lastFetch):null;
   var h='<div class="db-head"><div><div class="db-title">📺 금일 납품 현황판</div><div class="db-sub">'+d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' ('+wk+') · 생산 → 후처리 → 수입 → 측정 → 기능 → 출하 → 분출</div></div>'
     +'<div class="db-clock">'+z(d.getHours())+':'+z(d.getMinutes())+'</div>'
-    +'<div class="db-act"><select id="db-cust"><option value="">고객 전체</option>'+Object.keys(custs).sort().map(function(c){ return '<option'+(c===__db.cust?' selected':'')+'>'+E(c)+'</option>'; }).join("")+'</select>'
+    +'<div class="db-act"><span class="db-qw"><input id="db-q" type="search" placeholder="🔎 도번·관리번호·PROJECT·품명" value="'+E(__db.q||"")+'" title="미완료 전체에서 찾아 지금 어느 공정인지 표시 (쉼표로 여러 개)"></span>'
+    +'<span class="db-vw"><button type="button" data-db="vstage" class="'+(__db.view!=="item"?"on":"")+'">공정별</button><button type="button" data-db="vitem" class="'+(__db.view==="item"?"on":"")+'">품목별</button></span><select id="db-cust"><option value="">고객 전체</option>'+Object.keys(custs).sort().map(function(c){ return '<option'+(c===__db.cust?' selected':'')+'>'+E(c)+'</option>'; }).join("")+'</select>'
     +'<button type="button" data-db="add" title="관리번호·PROJECT·도번으로 찾아 현황판에 직접 올리기 (오늘 하루, 모든 PC 공유)">＋ 추가</button><button type="button" data-db="reload" title="서버에서 최신 데이터 다시 받기">⟳ 새로고침</button><button type="button" data-db="full" title="전체 화면 (모니터 고정용)">⛶ 전체화면</button></div></div>';
   h+='<div class="db-kpis"><div class="db-k"><span>납품 대상</span><b>'+tot+'<small>건</small></b><i>수량 '+totQ+'개</i></div>'
     +'<div class="db-k ok"><span>분출 완료</span><b>'+outN+'<small>건</small></b><i>수량 '+outQ+'개</i></div>'
     +'<div class="db-k prog"><span>진행률</span><b>'+pct+'<small>%</small></b><div class="db-bar"><i style="width:'+pct+'%"></i></div></div>'
     +'<div class="db-k"><span>남은 공정</span><b>'+(tot-outN)+'<small>건</small></b><i>수량 '+(totQ-outQ)+'개</i></div></div>';
+  __db.lastL=L;
+  if(__db.q) h+=dbSearchHtml_();
+  if(__db.view==="item") h+=dbItemHtml_(L); else
   h+='<div class="db-board">'+DB_COLS.map(function(col, i){ var a=by[col.k];
       return '<section class="db-col c-'+col.k+'"><div class="db-ch"><span>'+col.ic+' '+col.t+'</span><b>'+a.length+'</b><small>'+sumQ(a)+'개</small></div>'
         +'<div class="db-cards">'+(a.length?a.map(dbCard_).join(""):'<div class="db-none">-</div>')+'</div></section>'; }).join("")+'</div>';
@@ -18262,6 +18302,16 @@ function dbStyle_(){ if(document.getElementById("db-style")) return; var s=docum
   +'.db-tg.t{color:#1D4ED8;border-color:#B2CCFF;background:#EFF4FF;} .db-tg.l{color:#fff;border-color:#D92D20;background:#D92D20;} .db-tg.d{color:#067647;border-color:#ABEFC6;background:#ECFDF3;}'
   +'.db-tg.i{color:#B54708;border-color:#FEC84B;background:#FFFAEB;} .db-tg.s{color:#6941C6;border-color:#D9D6FE;background:#F4F3FF;}'
   +'.db-c5{font-size:11.5px;color:#475467;margin-top:2px;word-break:break-all;} .db-w{font-size:11px;color:#B54708;font-weight:700;} .db-mv{font-size:11px;color:#B54708;font-weight:800;}'
+  +'.db-qw input{height:34px;width:230px;border:1.5px solid #84ADFF;border-radius:8px;padding:0 10px;font-size:13px;} .db-vw{display:inline-flex;border:1px solid #D0D5DD;border-radius:8px;overflow:hidden;} .db-vw button{border:0 !important;border-radius:0 !important;height:32px !important;} .db-vw button.on{background:#1F2A44 !important;color:#fff !important;}'
+  +'.db-sr{background:#fff;border:1.5px solid #84ADFF;border-radius:12px;padding:10px 12px;margin-bottom:12px;} .db-srh{display:flex;align-items:baseline;gap:6px;font-weight:800;margin-bottom:6px;} .db-srh small{color:#667085;font-weight:500;} .db-srh button{margin-left:auto;border:1px solid #D0D5DD;background:#fff;border-radius:7px;padding:2px 10px;cursor:pointer;}'
+  +'.db-srr{border-top:1px solid #F2F4F7;padding:8px 2px;} .db-srr.late{background:#FEF3F2;} .db-sri{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px;margin-bottom:5px;} .db-sri small{color:#667085;} .db-srm{margin-left:auto;font-size:12.5px;color:#475467;display:flex;gap:4px;align-items:center;flex-wrap:wrap;}'
+  +'.db-sradd{border:1px solid #344054;background:#fff;border-radius:6px;padding:1px 8px;font-size:11.5px;font-weight:700;cursor:pointer;}'
+  +'.db-chain{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;} .db-cs{border-radius:7px;padding:4px 4px;text-align:center;font-size:11.5px;border:1.5px solid #E4E7EC;background:#F9FAFB;color:#98A2B3;display:flex;flex-direction:column;justify-content:center;min-height:38px;}'
+  +'.db-cs b{font-size:12px;} .db-cs i{font-style:normal;font-size:10.5px;word-break:break-all;} .db-cs.p{background:#ECFDF3;border-color:#ABEFC6;color:#067647;} .db-cs.p b::before{content:"✓ ";}'
+  +'.db-cs.c{background:#1570EF;border-color:#1570EF;color:#fff;box-shadow:0 2px 8px rgba(21,112,239,.35);} .db-cs.s{opacity:.45;} .db-srr.late .db-cs.c{background:#D92D20;border-color:#D92D20;}'
+  +'.db-itw{overflow:auto;background:#fff;border:1px solid #EAECF0;border-radius:12px;} .db-it{width:100%;border-collapse:collapse;font-size:13px;} .db-it th{background:#1F2A44;color:#fff;padding:8px;white-space:nowrap;position:sticky;top:0;} .db-it td{padding:6px 8px;border-bottom:1px solid #F2F4F7;white-space:nowrap;}'
+  +'.db-it td.nm{white-space:normal;max-width:220px;color:#475467;} .db-it td.n{text-align:right;} .db-it td.v{text-align:center;} .db-it td.v b{display:block;font-size:16px;} .db-it td.v small{color:#667085;font-size:11px;} .db-it td.e{text-align:center;color:#D0D5DD;} .db-it tr.late td:first-child{border-left:4px solid #D92D20;}'
+  +'.db-it td.c-prod b{color:#475467;} .db-it td.c-post b{color:#7A5AF8;} .db-it td.c-inc b{color:#0E9384;} .db-it td.c-meas b{color:#1570EF;} .db-it td.c-func b{color:#0086C9;} .db-it td.c-ship b{color:#DC6803;} .db-it td.c-out b{color:#067647;}'
   +'.db-live{color:#067647;} .db-tg.a{color:#fff;border-color:#344054;background:#344054;} .db-x{margin-left:4px;border:0;background:none;color:#98A2B3;cursor:pointer;font-size:12px;padding:0 2px;visibility:hidden;} .db-card:hover .db-x{visibility:visible;} .db-x:hover{color:#B42318;}'
   +'.db-pins{display:flex;flex-direction:column;gap:6px;margin-top:10px;font-size:12.5px;} .db-pl{display:flex;flex-wrap:wrap;gap:5px;align-items:center;color:#475467;font-weight:700;} .db-pc{background:#fff;border:1px solid #D0D5DD;border-radius:999px;padding:1px 4px 1px 9px;font-weight:600;} .db-pc button{border:0;background:none;cursor:pointer;color:#1D4ED8;font-weight:800;}'
   +'#view-dboard:fullscreen .db-x{display:none;} .db-fn{margin-left:4px;font-size:10px;font-weight:800;color:#0086C9;border:1px solid #7CD4FD;border-radius:4px;padding:0 3px;}'
@@ -18278,7 +18328,7 @@ function dbFetch_(force){
 function dbShow_(){
   if(!__db.lastFetch) __db.lastFetch=Date.now();   // 처음 열 때는 이미 받은 데이터로 바로 그림
   dbRender_(); dbInsLoad_(); dbPinsLoad_(dbRender_);
-  if(!__db.timer) __db.timer=setInterval(function(){ var v=document.getElementById("view-dboard"); if(!v || !v.classList.contains("active") || document.hidden) return; dbPinsLoad_(function(){ dbRender_(); }); dbFetch_(false); dbInsLoad_(); }, 60000);
+  if(!__db.timer) __db.timer=setInterval(function(){ var v=document.getElementById("view-dboard"); if(!v || !v.classList.contains("active") || document.hidden) return; var ae=document.activeElement; if(ae && ae.id==="db-q" && ae.value!==(__db.q||"")) return; dbPinsLoad_(function(){ dbRender_(); }); dbFetch_(false); dbInsLoad_(); }, 60000);
 }
 function ofRender_(){
   var host=document.getElementById("of-root"); if(!host) return;
