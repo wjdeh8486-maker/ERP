@@ -18229,6 +18229,17 @@ function dbItemHtml_(L){
     +(ks.length?ks.map(function(k){ var e=g[k]; return '<tr class="'+(e.late?'late':'')+'"><td><b>'+E(k)+'</b>'+(e.wash?' <span class="db-tg i">세정</span>':'')+'</td><td class="nm">'+E(e.name)+'</td><td class="n">'+e.n+'건 · <b>'+e.q+'</b></td>'
         +DB_COLS.map(function(c){ var b=e.by[c.k]; return b?('<td class="v c-'+c.k+'" title="'+E(b.o.join(", "))+'"><b>'+b.q+'</b><small>'+b.n+'건</small></td>'):'<td class="e">·</td>'; }).join("")+'</tr>'; }).join(""):'<tr><td colspan="10" class="db-none">-</td></tr>')
     +'</tbody></table></div>'; }
+// [추가] 0건일 때 이유 — 오늘 납기 건이 어디서 빠졌는지 숫자로
+function dbDiag_(){
+  var md=(typeof mainData!=="undefined"&&mainData)||[], today=ofToday_(), E=dbE_, cust=__db.cust, D=function(v){ var t=String(v||"").trim(); if(v instanceof Date && !isNaN(v)) return v.getFullYear()+"-"+String(v.getMonth()+1).padStart(2,"0")+"-"+String(v.getDate()).padStart(2,"0"); return t.replace(/[./]/g,"-").slice(0,10); };
+  var due=md.filter(function(r){ return (Number(r.qty)||0)>0 && D(r.dueDate)===today; }), dueC=cust?due.filter(function(r){ return String(r.customer||"").indexOf(cust)>=0; }):due;
+  var noPo=dueC.filter(function(r){ return typeof mainHasPRPO==="function" && !mainHasPRPO(r); }).length, shipped=dueC.filter(function(r){ return r.shipped==="납품완료" && D(r.shipDate)!==today; }).length;
+  var sdT=0; try{ (__sd.items||[]).forEach(function(x){ if(x && !x.del && !x.done && String(x.avail||"").slice(0,10)===today) sdT++; }); }catch(_){}
+  var custs={}; due.forEach(function(r){ var c=String(r.customer||"").trim()||"(고객 없음)"; custs[c]=(custs[c]||0)+1; });
+  return '<div class="db-diag">ℹ 오늘 현황판 대상이 없습니다 — MAIN 최종납기 오늘('+ofMD_(today)+'): 전체 <b>'+due.length+'</b>건'+(cust?(' · '+E(cust)+' <b>'+dueC.length+'</b>건'):'')
+    +(noPo?(' · PR/PO 없어 제외 '+noPo+'건'):'')+(shipped?(' · 이미 납품완료 '+shipped+'건'):'')+' · 특별납기 가능일 오늘 '+sdT+'건'
+    +(Object.keys(custs).length?('<br><small>고객별: '+Object.keys(custs).map(function(c){ return E(c)+' '+custs[c]; }).join(" · ")+'</small>'):'')
+    +'<br><small>지연 건은 자동으로 넣지 않습니다 — 필요하면 [＋ 추가]</small></div>'; }
 function dbRender_(){
   var host=document.getElementById("db-root"); if(!host) return;
   if(!host.__built){ host.__built=true; dbStyle_();
@@ -18265,6 +18276,7 @@ function dbRender_(){
     +'<div class="db-k prog"><span>진행률</span><b>'+pct+'<small>%</small></b><div class="db-bar"><i style="width:'+pct+'%"></i></div></div>'
     +'<div class="db-k"><span>남은 공정</span><b>'+(tot-outN)+'<small>건</small></b><i>수량 '+(totQ-outQ)+'개</i></div></div>';
   __db.lastL=L;
+  if(!tot) h+=dbDiag_();
   if(__db.q) h+=dbSearchHtml_();
   if(__db.view==="item") h+=dbItemHtml_(L); else
   h+='<div class="db-board">'+DB_COLS.map(function(col, i){ var a=by[col.k];
@@ -18312,6 +18324,7 @@ function dbStyle_(){ if(document.getElementById("db-style")) return; var s=docum
   +'.db-itw{overflow:auto;background:#fff;border:1px solid #EAECF0;border-radius:12px;} .db-it{width:100%;border-collapse:collapse;font-size:13px;} .db-it th{background:#1F2A44;color:#fff;padding:8px;white-space:nowrap;position:sticky;top:0;} .db-it td{padding:6px 8px;border-bottom:1px solid #F2F4F7;white-space:nowrap;}'
   +'.db-it td.nm{white-space:normal;max-width:220px;color:#475467;} .db-it td.n{text-align:right;} .db-it td.v{text-align:center;} .db-it td.v b{display:block;font-size:16px;} .db-it td.v small{color:#667085;font-size:11px;} .db-it td.e{text-align:center;color:#D0D5DD;} .db-it tr.late td:first-child{border-left:4px solid #D92D20;}'
   +'.db-it td.c-prod b{color:#475467;} .db-it td.c-post b{color:#7A5AF8;} .db-it td.c-inc b{color:#0E9384;} .db-it td.c-meas b{color:#1570EF;} .db-it td.c-func b{color:#0086C9;} .db-it td.c-ship b{color:#DC6803;} .db-it td.c-out b{color:#067647;}'
+  +'.db-diag{background:#FFFAEB;border:1px solid #FEC84B;border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:13px;color:#93370D;line-height:1.6;}'
   +'.db-live{color:#067647;} .db-tg.a{color:#fff;border-color:#344054;background:#344054;} .db-x{margin-left:4px;border:0;background:none;color:#98A2B3;cursor:pointer;font-size:12px;padding:0 2px;visibility:hidden;} .db-card:hover .db-x{visibility:visible;} .db-x:hover{color:#B42318;}'
   +'.db-pins{display:flex;flex-direction:column;gap:6px;margin-top:10px;font-size:12.5px;} .db-pl{display:flex;flex-wrap:wrap;gap:5px;align-items:center;color:#475467;font-weight:700;} .db-pc{background:#fff;border:1px solid #D0D5DD;border-radius:999px;padding:1px 4px 1px 9px;font-weight:600;} .db-pc button{border:0;background:none;cursor:pointer;color:#1D4ED8;font-weight:800;}'
   +'#view-dboard:fullscreen .db-x{display:none;} .db-fn{margin-left:4px;font-size:10px;font-weight:800;color:#0086C9;border:1px solid #7CD4FD;border-radius:4px;padding:0 3px;}'
