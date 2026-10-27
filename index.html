@@ -1418,6 +1418,10 @@
   #view-specdue .sd-btn:hover{ background:#F2F4F7; } #view-specdue .sd-btn.pri{ background:#111827; color:#fff; border-color:#111827; }
   #view-specdue .sd-kpis{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
   #view-specdue .sd-kpi{ background:#fff; border:1px solid #EAECF0; border-radius:14px; padding:14px 16px; }
+  #view-specdue .sd-kpi[data-kp]{ cursor:pointer; transition:box-shadow .15s, transform .15s; } #view-specdue .sd-kpi[data-kp]:hover{ box-shadow:0 4px 14px rgba(16,24,40,.12); transform:translateY(-1px); }
+  #view-specdue .sd-kmore{ float:right; font-size:11.5px; color:#667085; font-weight:600; } #view-specdue .sd-kpi[data-kp]:hover .sd-kmore{ color:#1D4ED8; }
+  .sd-kpt{ width:100%; border-collapse:collapse; font-size:13px; } .sd-kpt th{ background:#F2F4F7; color:#344054; padding:7px 8px; border-bottom:1px solid #EAECF0; white-space:nowrap; text-align:left; } .sd-kpt td{ padding:7px 8px; border-bottom:1px solid #F2F4F7; white-space:nowrap; vertical-align:top; }
+  .sd-kpt td.nm{ white-space:normal; max-width:260px; } .sd-kpt .n{ text-align:right; } .sd-kpt .r{ color:#B42318; } .sd-kpe{ border:1px solid #D0D5DD; background:#fff; border-radius:7px; padding:2px 7px; cursor:pointer; }
   #view-specdue .sd-kl{ font-size:13px; color:#475467; font-weight:600; } #view-specdue .sd-kn{ font-size:26px; font-weight:700; margin:2px 0; } #view-specdue .sd-ks{ font-size:12px; color:#667085; }
   #view-specdue .sd-kpi.warn{ border-color:#FEC84B; background:#FFFCF5; } #view-specdue .sd-kpi.warn .sd-kn{ color:#B54708; }
   #view-specdue .sd-kpi.bad{ border-color:#FDA29B; background:#FFFBFA; } #view-specdue .sd-kpi.bad .sd-kn{ color:#D92D20; }
@@ -13495,7 +13499,7 @@ function sdRender_(){
   try{ sdVisSync_(); }catch(_){}
   try{ sdAutoOut_(); }catch(_){}
   var C=sdCompute_(), today=C.today;
-  var kpi=function(t,v,sub,cls){ return '<div class="sd-kpi '+(cls||"")+'"><div class="sd-kl">'+t+'</div><div class="sd-kn">'+v+'</div><div class="sd-ks">'+sub+'</div></div>'; };
+  var kpi=function(t,v,sub,cls,key){ return '<div class="sd-kpi '+(cls||"")+'"'+(key?' data-kp="'+key+'" role="button" tabindex="0" title="눌러서 목록 보기"':'')+'><div class="sd-kl">'+t+(key?' <span class="sd-kmore">목록 ›</span>':'')+'</div><div class="sd-kn">'+v+'</div><div class="sd-ks">'+sub+'</div></div>'; };
   var sumQ=function(a){ return a.reduce(function(s,x){ return s+x.qty; },0); };
   var shortDraws=Object.keys(C.byDraw).filter(function(k){ return C.byDraw[k].shortFrom; });
   var h='';
@@ -13503,10 +13507,10 @@ function sdRender_(){
     +'<div class="sd-sub">기준: <b>가능일자</b>(고객 약속일) · 보유 = <b>재고(검사 끝남)</b> + 검사 대기 (SHOWERHEAD 종류는 비젼, 그 외 측정+출하) · 재고부터 먼저 배정 · 비젼검사 1일 최대 <input id="sd-cap" type="number" min="1" max="50" value="'+C.cap+'"> 개 · 출고 전날까지 검사 완료 기준</div></div>'
     +'<div class="sd-act"><span id="sd-savest" class="sd-savest"></span><button type="button" class="sd-btn" data-a="paste" title="고객 납기 회신표(메일 표·사진) 또는 우리 엑셀 표를 붙여넣어 특별납기에 반영 — 기존 줄과 맞춰 중복 없이">📋 엑셀·메일 붙여넣기</button><button type="button" class="sd-btn" data-a="xls">⬇ 엑셀</button><button type="button" class="sd-btn" data-a="reload">⟳ 새로고침</button></div></div>';
   h+='<div class="sd-kpis">'
-    +kpi("오늘 출고", C.todayShip.length+"건", "수량 "+sumQ(C.todayShip)+"개", C.todayShip.length?"warn":"")
-    +kpi("가능일 지남 (미완료)", C.overdue.length+"건", "수량 "+sumQ(C.overdue)+"개", C.overdue.length?"bad":"")
-    +kpi("오늘 비젼검사 필요", (C.todayInsp+C.lateInsp)+"개", C.lateInsp?("밀린 "+C.lateInsp+"개 포함 · 1일 "+C.cap+"개"):("1일 최대 "+C.cap+"개"), C.lateInsp?"bad":(C.todayInsp?"warn":""))
-    +kpi("보유 부족 품번", shortDraws.length+"개", shortDraws.length?shortDraws.slice(0,3).join(", ")+(shortDraws.length>3?" 외":""):"없음", shortDraws.length?"bad":"")
+    +kpi("오늘 출고", C.todayShip.length+"건", "수량 "+sumQ(C.todayShip)+"개", C.todayShip.length?"warn":"","ship")
+    +kpi("가능일 지남 (미완료)", C.overdue.length+"건", "수량 "+sumQ(C.overdue)+"개", C.overdue.length?"bad":"","over")
+    +kpi("오늘 비젼검사 필요", (C.todayInsp+C.lateInsp)+"개", C.lateInsp?("밀린 "+C.lateInsp+"개 포함 · 1일 "+C.cap+"개"):("1일 최대 "+C.cap+"개"), C.lateInsp?"bad":(C.todayInsp?"warn":""),"insp")
+    +kpi("보유 부족 품번", shortDraws.length+"개", shortDraws.length?shortDraws.slice(0,3).join(", ")+(shortDraws.length>3?" 외":""):"없음", shortDraws.length?"bad":"","short")
     +'</div>';
   // 품번별 요약
   var ks=Object.keys(C.byDraw).sort(function(a,b){ var A=C.byDraw[a], B=C.byDraw[b]; return (A.start||"9")<(B.start||"9")?-1:1; });
@@ -13549,6 +13553,7 @@ function sdRender_(){
 function sdClick_(e){
   var t=e.target, a=t.closest("[data-a]"), f=t.closest("[data-f]"), del=t.closest("[data-del]"), hs=t.closest("[data-hist]"), ed=t.closest("[data-edit]");
   if(ed){ sdEditPop_(ed.getAttribute("data-edit")); return; }
+  var kp=t.closest("[data-kp]"); if(kp){ sdKpiPop_(kp.getAttribute("data-kp")); return; }
   if(hs){ var go=function(){ sdlPop_(hs.getAttribute("data-hist")); }; if(__sdl.loaded) go(); else sdlLoad_(go); return; }
   var cal=t.closest("[data-cal]"); if(cal){ __sd.calMonth=cal.getAttribute("data-cal"); sdRender_(); return; }
   if(f){ __sd.filter=f.getAttribute("data-f"); sdRender_(); return; }
@@ -13574,6 +13579,44 @@ function sdClick_(e){
   }
 }
 document.addEventListener("keydown", function(e){ if(e.key==="Enter" && e.target && /^sd-s-/.test(e.target.id||"")){ var b=document.querySelector('#sd-root [data-a="search"]'); if(b) b.click(); } });
+// [추가] 위 4개 카드(오늘 출고 · 가능일 지남 · 오늘 비젼검사 · 보유 부족) → 눌러서 해당 품목 목록
+function sdKpiPop_(k){
+  var C=sdCompute_(), today=C.today, E=sdE_, nm=function(x){ return sdNm_(x)||""; };
+  var dd=function(a){ try{ return Math.round((new Date(today+"T00:00:00")-new Date(a+"T00:00:00"))/86400000); }catch(_){ return 0; } };
+  var prep=function(x){ var a=[]; if(x._ready) a.push('재고 '+x._ready); if(x._fromWait) a.push('검사대기 '+x._fromWait); if(x._short>0) a.push('<b class="r">부족 '+x._short+'</b>'); return a.join(' · ')||'-'; };
+  var title="", head="", rows=[], foot="";
+  if(k==="ship"||k==="over"){
+    var L=(k==="ship"?C.todayShip:C.overdue).slice().sort(function(a,b){ return (a.avail||"").localeCompare(b.avail||"")||(a.ord||"").localeCompare(b.ord||""); });
+    title=k==="ship"?("📦 오늘 출고 — "+sdMD_(today)+"("+sdDow_(today)+")"):"⏰ 가능일 지남 (미완료)";
+    head='<tr><th>관리번호</th><th>품번</th><th>품명</th><th class="n">수량</th><th>납기일</th><th>가능일</th>'+(k==="over"?'<th class="n">지남</th>':'')+'<th>준비 (재고·검사대기·부족)</th><th>비고</th><th></th></tr>';
+    rows=L.map(function(x){ return '<tr><td><b>'+E(x.ord||"-")+'</b></td><td>'+sdDwgLink_(x.draw)+'</td><td class="nm">'+E(nm(x))+'</td><td class="n"><b>'+E(x.qty)+'</b></td><td>'+(x.due?sdMD_(x.due):'-')+'</td><td>'+(x.avail?sdMD_(x.avail)+'('+sdDow_(x.avail)+')':'-')+'</td>'
+      +(k==="over"?'<td class="n"><b class="r">'+dd(x.avail)+'일</b></td>':'')+'<td>'+prep(x)+'</td><td class="nm">'+E(x.note||"")+'</td><td><button type="button" class="sd-kpe" data-edit="'+E(x.id)+'" title="이 줄 수정 (가능일 변경 등)">✏️</button></td></tr>'; });
+    foot='합계 '+L.length+'건 · 수량 '+L.reduce(function(s,x){ return s+(Number(x.qty)||0); },0)+'개';
+  } else if(k==="insp"){
+    title="🔍 오늘 비젼검사 필요 — 1일 최대 "+C.cap+"개";
+    var ds=Object.keys(C.plan).filter(function(d){ return d<=today; }).sort(), tot=0;
+    head='<tr><th>배정일</th><th>품번</th><th>품명</th><th class="n">검사 수량</th><th>출고(가능일)</th><th>관리번호</th><th></th></tr>';
+    ds.forEach(function(d){ C.plan[d].forEach(function(p){ tot+=p.q; rows.push('<tr><td>'+(d<today?'<b class="r">밀림 '+sdMD_(d)+'</b>':'<b>오늘</b>')+'</td><td>'+sdDwgLink_(p.x.draw)+'</td><td class="nm">'+E(nm(p.x))+'</td><td class="n"><b>'+p.q+'</b></td><td>'+sdMD_(p.x.avail)+'('+sdDow_(p.x.avail)+')</td><td>'+E(p.x.ord||"-")+'</td><td><button type="button" class="sd-kpe" data-edit="'+E(p.x.id)+'" title="이 줄 수정">✏️</button></td></tr>'); }); });
+    foot='합계 '+tot+'개'+(C.lateInsp?(' (밀린 '+C.lateInsp+'개 포함)'):'')+' · SHOWERHEAD 종류 · 재고분 제외';
+  } else if(k==="short"){
+    title="⚠ 보유 부족 품번";
+    var ks=Object.keys(C.byDraw).filter(function(d){ return C.byDraw[d].shortFrom; }).sort(function(a,b){ return C.byDraw[a].shortFrom.localeCompare(C.byDraw[b].shortFrom); });
+    head='<tr><th>품번</th><th>품명</th><th>검사</th><th class="n">재고</th><th class="n">검사대기</th><th class="n">보유</th><th class="n">출고 합계</th><th class="n">부족</th><th>부족 시작</th><th>부족한 출고 (관리번호 · 가능일 · 부족 수량)</th></tr>';
+    rows=ks.map(function(d){ var g=C.byDraw[d], ln=g.lines.filter(function(x){ return x._short>0; });
+      return '<tr><td>'+sdDwgLink_(d)+'</td><td class="nm">'+E(g.name||"")+'</td><td>'+E(g.kind||"")+'</td><td class="n">'+g.stock+'</td><td class="n">'+g.wait+'</td><td class="n">'+g.hold+'</td><td class="n">'+g.need+'</td><td class="n"><b class="r">'+(g.hold-g.need)+'</b></td><td><b class="r">'+sdMD_(g.shortFrom)+'('+sdDow_(g.shortFrom)+')</b></td>'
+        +'<td class="nm">'+ln.map(function(x){ return E(x.ord||"-")+' · '+sdMD_(x.avail)+' · <b class="r">'+x._short+'</b>'; }).join('<br>')+'</td></tr>'; });
+    foot='부족 품번 '+ks.length+'개 · 제품 입고(생산)가 먼저 필요합니다';
+  } else return;
+  var old=document.querySelector(".sd-ov"); if(old) old.remove();
+  var ov=document.createElement("div"); ov.className="sd-ov";
+  ov.innerHTML='<div class="sd-pop" style="width:min(1100px,96vw);max-height:88vh;display:flex;flex-direction:column;"><div class="sd-ph"><b>'+title+'</b><button type="button" data-x="close">닫기 ✕</button></div>'
+    +'<div class="sd-pb" style="overflow:auto;padding-top:10px;">'+(rows.length?'<table class="sd-tb sd-kpt"><thead>'+head+'</thead><tbody>'+rows.join("")+'</tbody></table>':'<div class="sd-empty">해당 항목이 없습니다</div>')+'</div>'
+    +'<div class="sd-pf" style="justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid #EAECF0;"><span class="m" style="color:#475467;font-size:12.5px;">'+foot+'</span><button type="button" class="sd-btn" data-x="close">닫기</button></div></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener("click", function(e){ var t=e.target, x=t.getAttribute && t.getAttribute("data-x"), ed=t.closest && t.closest("[data-edit]");
+    if(ed){ sdEditPop_(ed.getAttribute("data-edit")); return; }
+    if(t===ov || x==="close") ov.remove(); });
+}
 // [추가] 출고 일정 한 줄 수정/추가 — 바뀐 내용은 변경·근거 이력에 자동 기록(사유 선택 입력)
 function sdEditPop_(id){
   var it=id?__sd.items.find(function(x){ return x.id===id; }):null, isNew=!it; if(id && !it) return;
