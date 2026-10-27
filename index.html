@@ -18099,19 +18099,21 @@ function dbInsLoad_(){ if(__db.insBusy || Date.now()-(__db.insTs||0)<3*60000) re
 function dbCol_(x){
   var st=x.st, U=function(v){ return String(v||"").trim().toUpperCase(); }, L=dbLogIdx_(), r=x.r, need=!!(x.fn && x.fn.length);
   var m=L.meas[U(r.oldDrawingNo)]||L.meas[U(r.partNo)], ic=L.inc[U(r.oldDrawingNo)]||L.inc[U(r.partNo)];
-  x._log="";
+  x._log=""; x._why="";
+  var p=String(x.proc||"").trim(), byMes=function(){ return (p && !/^대기/.test(p) && (DB_POST_RE.test(p) || (typeof isWaitTargetProcess==="function" && isWaitTargetProcess(p))))?"post":"prod"; };
   if(st==="완료" || st==="출고") return "out";
-  if(st==="재고") return "ship";
-  if(st==="측정" || st==="외관" || st==="OK"){
-    if(m && need && m.fn){ x._log="기능검사 완료 "+ofMD_(m.d)+" (검사일보)"; return "ship"; }
-    if(m && need && m.dim>0){ x._log="치수 완료 "+ofMD_(m.d)+" · 기능 대기"; return "func"; }
-    if(m && !need && m.dim>0 && st==="측정"){ x._log="측정 완료 "+ofMD_(m.d)+" (검사일보)"; return "ship"; }
+  // [수정] MES로는 아직 가공 중·작업 대기인데 같은 도번 검사대기/재고 수량이 있어 MAIN이 검사 단계로 본 건
+  //   → 이 관리번호 물량이 아니므로 MES 기준(생산/후처리)으로 둠
+  if(x.mesHold){ x._why="같은 도번 검사대기 물량은 있음(다른 관리번호분)"; return byMes(); }
+  if(st==="재고" || st==="외관") return "ship";   // 외관 = 크린룸 출하검사 대기 · 재고 = 출하검사 끝남(출고 대기)
+  if(st==="측정" || st==="OK"){
+    if(m && need && m.fn){ x._log="기능검사 완료 "+ofMD_(m.d); return "ship"; }
+    if(m && need && m.dim>0){ x._log="치수 완료 "+ofMD_(m.d); return "func"; }
+    if(m && !need && m.dim>0 && st==="측정"){ x._log="측정 완료 "+ofMD_(m.d); return "ship"; }
     return "meas"; }
   if(st==="비젼") return "meas";
-  if(st==="수입"){ if(ic){ x._log="수입검사 완료 "+ofMD_(ic.d)+" (검사일보)"; return "meas"; } return "inc"; }
-  var p=String(x.proc||"").trim();
-  if(p && !/^대기/.test(p) && (DB_POST_RE.test(p) || (typeof isWaitTargetProcess==="function" && isWaitTargetProcess(p)))) return "post";
-  return "prod";
+  if(st==="수입"){ if(ic){ x._log="수입검사 완료 "+ofMD_(ic.d); return "meas"; } return "inc"; }
+  return byMes();
 }
 // [추가] 현황판에 직접 추가 · 빼기 (모든 PC 공유, qShare "dbPins") — 관리번호별 { act:"add"|"hide"|"", ts, by, d:날짜 }
 //   추가 = 자동 대상이 아니어도 오늘 현황판에 올림 · 빼기 = 오늘 현황판에서 숨김 (날짜가 바뀌면 자동으로 풀림)
@@ -18185,14 +18187,16 @@ function dbCard_(c){
   if(c.isSd) tag+='<span class="db-tg s" title="특별납기 가능일 기준">특별</span>';
   if(c.added){ var pi=dbPinsGet_()[k]||{}; tag+='<span class="db-tg a" title="직접 추가'+(pi.by?(' · '+E(pi.by)):'')+'">추가</span>'; }
   var sub="";
-  if(c.col==="prod"||c.col==="post") sub=x.proc?('MES '+E(x.proc)):'MES 기록 없음';
+  var pp=String(x.proc||"").trim();
+  if(c.col==="prod") sub=!pp?"MES 기록 없음":(/^대기/.test(pp)?"가공 시작 전 (MES 대기)":("가공 중: "+E(pp)));
+  else if(c.col==="post") sub="후처리: "+E(pp);
   else if(c.col==="inc") sub="수입검사 대기";
-  else if(c.col==="meas") sub=x._log?E(x._log):(({ "측정":"측정 대기", "비젼":"비젼검사 대기", "외관":"외관(크린룸) 대기", "OK":"검사 단계 나뉨" })[x.st]||"");
-  else if(c.col==="func") sub=E(x._log||"기능 대기")+' · '+E((x.fn||[]).join("·"));
-  else if(c.col==="ship") sub=x._log?('<b class="db-live">'+E(x._log)+'</b>'):"검사 완료 · 출하 대기";
+  else if(c.col==="meas") sub=x._log?('<b class="db-live">'+E(x._log)+'</b> → 측정 대기'):(({ "측정":"측정 대기", "비젼":"비젼검사 대기", "OK":"검사 대기 (단계가 나뉘어 있음)" })[x.st]||"");
+  else if(c.col==="func") sub='<b class="db-live">'+E(x._log||"치수 완료")+'</b> → 기능검사 대기 ('+E((x.fn||[]).join("·"))+')';
+  else if(c.col==="ship") sub=x._log?('<b class="db-live">'+E(x._log)+'</b> → 출하검사 대기'):(x.st==="외관"?"출하검사 대기 (크린룸)":"출하검사 완료 · 출고 대기");
   else if(c.col==="out") sub=c.done?("납품 "+ofMD_(r.shipDate)):(x.isWash && !(x.wash&&x.wash.length)?"출고 · 코미코 세정 중":("출고 "+(x.outD?ofMD_(x.outD.split(", ").pop()):"")));
   var fnB=(x.fn && x.fn.length && c.col!=="func")?'<span class="db-fn" title="기능검사품: '+E(x.fn.join("·"))+'">기능</span>':'';
-  var mesW=x.mesHold?'<div class="db-w">⚠ MES 미진행</div>':'';
+  var mesW=x._why?'<div class="db-w" title="MAIN 제품상태는 같은 도번의 검사대기·재고 수량으로 계산되어 검사 단계로 보이지만, 이 관리번호의 MES는 아직 가공 전·가공 중입니다">ⓘ '+E(x._why)+'</div>':'';
   return '<div class="db-card'+(c.late?' late':'')+(c.done?' done':'')+(mv?' moved':'')+'" title="'+E((r.partName||"")+" · "+(r.customer||"")+" · PROJECT "+(r.vendor||""))+'">'
     +'<div class="db-c1"><b>'+E(k)+'</b><span class="db-q">'+E(r.qty)+'<small>개</small></span><button type="button" class="db-x" data-db="hide" data-o="'+E(k)+'" title="현황판에서 빼기 (오늘만 · 아래 \'뺀 항목\'에서 되돌리기)">✕</button></div>'
     +'<div class="db-c2">'+E(r.oldDrawingNo||r.partNo||"")+fnB+'</div>'
@@ -18289,6 +18293,8 @@ function dbRender_(){
   if(hid.length || adds.length){ h+='<div class="db-pins">'
     +(adds.length?'<span class="db-pl">＋ 직접 추가 '+adds.length+'건: '+adds.map(function(c){ return '<span class="db-pc">'+E(c.r.orderNo)+' <button type="button" data-db="unadd" data-o="'+E(c.r.orderNo)+'" title="추가 취소">✕</button></span>'; }).join("")+'</span>':'')
     +(hid.length?'<span class="db-pl">✕ 뺀 항목 '+hid.length+'건: '+hid.map(function(r){ return '<span class="db-pc">'+E(r.orderNo)+' <button type="button" data-db="unhide" data-o="'+E(r.orderNo)+'" title="현황판에 되돌리기">↩</button></span>'; }).join("")+'</span>':'')+'</div>'; }
+  h+='<div class="db-legend"><b>카드 보는 법</b> · 굵은 숫자 = 수량 · <span class="db-tg t">오늘</span> 오늘 납기 · <span class="db-tg i">검수</span> 검수품(하루 전부터) · <span class="db-tg s">특별</span> 특별납기 · <span class="db-fn">기능</span> 기능검사(LEAK·FLOW 등) 받는 품목'
+    +'<br>맨 아래 글씨 = 지금 상태 · <b class="db-live">초록 글씨</b> = 오늘·어제 검사일보에 입력된 것(MAIN 업로드 전) · 생산/후처리 칸은 MES 현재 공정</div>';
   h+='<div class="db-foot">기준: MAIN 최종납기 오늘 · 특별납기 가능일이 있으면 그 날짜 · 검수품은 하루 전 · 지연 건은 자동으로 넣지 않음([＋ 추가]로 직접) · 기능 = 검사 MASTER 기능검사품 중 측정실 일보에 치수만 끝나고 기능(LEAK·FLOW·진공·가압/수압) 체크가 없는 것 · 검사일보(전 근무일~오늘, 공유저장 3분마다)로 다음 칸 바로 반영 · '
     +'1분마다 다시 계산(단계 바뀐 카드 반짝임) · 서버 데이터 '+(fetchT?(z(fetchT.getHours())+':'+z(fetchT.getMinutes())+' 받음 · '):'')+'10분마다 다시 받음 (MAIN·재고·검사대기는 업로드된 만큼 반영)</div>';
   host.innerHTML=h;
@@ -18324,9 +18330,10 @@ function dbStyle_(){ if(document.getElementById("db-style")) return; var s=docum
   +'.db-chain{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;} .db-cs{border-radius:7px;padding:4px 4px;text-align:center;font-size:11.5px;border:1.5px solid #E4E7EC;background:#F9FAFB;color:#98A2B3;display:flex;flex-direction:column;justify-content:center;min-height:38px;}'
   +'.db-cs b{font-size:12px;} .db-cs i{font-style:normal;font-size:10.5px;word-break:break-all;} .db-cs.p{background:#ECFDF3;border-color:#ABEFC6;color:#067647;} .db-cs.p b::before{content:"✓ ";}'
   +'.db-cs.c{background:#1570EF;border-color:#1570EF;color:#fff;box-shadow:0 2px 8px rgba(21,112,239,.35);} .db-cs.s{opacity:.45;} .db-srr.late .db-cs.c{background:#D92D20;border-color:#D92D20;}'
-  +'.db-itw{overflow:auto;background:#fff;border:1px solid #EAECF0;border-radius:12px;} .db-it{width:100%;border-collapse:collapse;font-size:13px;} .db-it th{background:#1F2A44;color:#fff;padding:8px;white-space:nowrap;position:sticky;top:0;} .db-it td{padding:6px 8px;border-bottom:1px solid #F2F4F7;white-space:nowrap;}'
+  +'.db-itw{overflow:auto;max-height:calc(100vh - 290px);background:#fff;border:1px solid #EAECF0;border-radius:12px;} #view-dboard:fullscreen .db-itw{max-height:calc(100vh - 250px);} .db-it{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;}#view-dboard .db-it thead th{background:#1F2A44 !important;color:#fff !important;font-size:14px !important;font-weight:800 !important;padding:10px 8px !important;white-space:nowrap;position:sticky;top:0;z-index:2;border:0 !important;}#view-dboard .db-it thead th.h-prod{background:#475467 !important;} #view-dboard .db-it thead th.h-post{background:#7A5AF8 !important;} #view-dboard .db-it thead th.h-inc{background:#0E9384 !important;} #view-dboard .db-it thead th.h-meas{background:#1570EF !important;} #view-dboard .db-it thead th.h-func{background:#0086C9 !important;} #view-dboard .db-it thead th.h-ship{background:#DC6803 !important;} #view-dboard .db-it thead th.h-out{background:#067647 !important;} .db-it td{padding:6px 8px;border-bottom:1px solid #F2F4F7;white-space:nowrap;}'
   +'.db-it td.nm{white-space:normal;max-width:220px;color:#475467;} .db-it td.n{text-align:right;} .db-it td.v{text-align:center;} .db-it td.v b{display:block;font-size:16px;} .db-it td.v small{color:#667085;font-size:11px;} .db-it td.e{text-align:center;color:#D0D5DD;} .db-it tr.late td:first-child{border-left:4px solid #D92D20;}'
   +'.db-it td.c-prod b{color:#475467;} .db-it td.c-post b{color:#7A5AF8;} .db-it td.c-inc b{color:#0E9384;} .db-it td.c-meas b{color:#1570EF;} .db-it td.c-func b{color:#0086C9;} .db-it td.c-ship b{color:#DC6803;} .db-it td.c-out b{color:#067647;}'
+  +'.db-legend{margin-top:10px;font-size:12.5px;color:#475467;line-height:1.9;background:#fff;border:1px solid #EAECF0;border-radius:10px;padding:8px 12px;}'
   +'.db-diag{background:#FFFAEB;border:1px solid #FEC84B;border-radius:10px;padding:9px 12px;margin-bottom:10px;font-size:13px;color:#93370D;line-height:1.6;}'
   +'.db-live{color:#067647;} .db-tg.a{color:#fff;border-color:#344054;background:#344054;} .db-x{margin-left:4px;border:0;background:none;color:#98A2B3;cursor:pointer;font-size:12px;padding:0 2px;visibility:hidden;} .db-card:hover .db-x{visibility:visible;} .db-x:hover{color:#B42318;}'
   +'.db-pins{display:flex;flex-direction:column;gap:6px;margin-top:10px;font-size:12.5px;} .db-pl{display:flex;flex-wrap:wrap;gap:5px;align-items:center;color:#475467;font-weight:700;} .db-pc{background:#fff;border:1px solid #D0D5DD;border-radius:999px;padding:1px 4px 1px 9px;font-weight:600;} .db-pc button{border:0;background:none;cursor:pointer;color:#1D4ED8;font-weight:800;}'
@@ -31870,4 +31877,3 @@ try{ RV_STAGE.push({ title:"🤝 협력사 NCR 대리 작성", desc:"1인 사업
 
 </body>
 </html>
-  
