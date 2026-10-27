@@ -18159,11 +18159,14 @@ function dbBuild_(){
     var isInsp=false; try{ var pj=String(r.vendor||"").trim(); isInsp=!!(pj && insp[dispatchProjBase_(pj)]); }catch(_){}
     var tgt=isInsp?dbPrevWork_(base):base, done=(x.st==="완료");
     var shipToday=done && String(r.shipDate||"").slice(0,10)===today;
-    var pa=dbPinAct_(r.orderNo), auto=(tgt===today) || (__db.past && tgt<today && !done) || (shipToday && tgt<=today);
-    if(auto && done && !shipToday && tgt!==today) auto=false;
+    // [수정] 오늘 대상 = 기준일(특별납기 가능일 → 없으면 MAIN 최종납기, 검수품은 하루 전)이 오늘
+    //   + MAIN 최종납기가 오늘인 건(검수품은 납기 당일까지 계속 · 특별납기로 고객과 더 뒤로 미룬 건은 제외)
+    var mOpenLater=!!(x.sdi && x.sdi.open && x.sdi.open>today), mainToday=(String(x.due0||"")===today && !mOpenLater), baseToday=(base===today);
+    var pa=dbPinAct_(r.orderNo), auto=(tgt===today) || mainToday || (isInsp && baseToday) || (__db.past && tgt<today && !done) || (shipToday && tgt<=today);
+    if(auto && done && !shipToday && tgt!==today && !mainToday) auto=false;
     if(pa==="hide"){ if(auto || done) __db.hidden.push(r); return; }
     if(!auto && pa!=="add") return;
-    var c={ x:x, r:r, col:dbCol_(x), tgt:tgt, isInsp:isInsp, isSd:!!x.sdi, late:(tgt<today && !done), lateD:(tgt<today?ofDays_(tgt, today):0), done:done, added:(pa==="add" && !auto) };
+    var c={ x:x, r:r, col:dbCol_(x), tgt:tgt, isInsp:isInsp, isSd:!!x.sdi, late:(tgt<today && !done && !mainToday && !(isInsp && baseToday)), lateD:((tgt<today && !mainToday && !(isInsp && baseToday))?ofDays_(tgt, today):0), done:done, added:(pa==="add" && !auto), isToday:(tgt===today || mainToday || (isInsp && baseToday)) };
     if(__db.cust && String(r.customer||"").indexOf(__db.cust)<0) return;
     out.push(c); });
   out.sort(function(a,b){ return (b.late-a.late) || (b.lateD-a.lateD) || String(a.r.orderNo||"").localeCompare(String(b.r.orderNo||"")); });
@@ -18177,7 +18180,7 @@ function dbBuild_(){
 }
 function dbCard_(c){
   var x=c.x, r=c.r, E=dbE_, k=String(r.orderNo||""), mv=__db.moved[k];
-  var tag=c.late?'<span class="db-tg l">지연 '+c.lateD+'일</span>':(c.done?'<span class="db-tg d">납품완료</span>':(c.tgt===ofToday_()?'<span class="db-tg t">오늘</span>':'<span class="db-tg t">납기 '+ofMD_(c.tgt)+'</span>'));
+  var tag=c.late?'<span class="db-tg l">지연 '+c.lateD+'일</span>':(c.done?'<span class="db-tg d">납품완료</span>':((c.tgt===ofToday_()||c.isToday)?'<span class="db-tg t">오늘</span>':'<span class="db-tg t">납기 '+ofMD_(c.tgt)+'</span>'));
   if(c.isInsp) tag+='<span class="db-tg i" title="검수품 — 납기 '+ofMD_(x.due||x.due0)+' 하루 전 기준">검수</span>';
   if(c.isSd) tag+='<span class="db-tg s" title="특별납기 가능일 기준">특별</span>';
   if(c.added){ var pi=dbPinsGet_()[k]||{}; tag+='<span class="db-tg a" title="직접 추가'+(pi.by?(' · '+E(pi.by)):'')+'">추가</span>'; }
