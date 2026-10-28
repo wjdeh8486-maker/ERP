@@ -2039,6 +2039,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         <div class="nav-item nav-sub qnav-merged" style="display:none" data-view="itemhist"><span class="qnav-i">📇</span><span class="qnav-t"><b>품목이력</b><small>도번 하나로 전체 이력</small></span></div>
         <div class="nav-item nav-sub" data-view="mnshort"><span class="qnav-i">🧩</span><span class="qnav-t"><b>반제품 현황</b><small>공정재고·미납 비교</small></span></div>
         <div class="nav-item nav-sub" data-view="procflow" title="도번·품명별 생산 공정 흐름"><span class="qnav-i">🧭</span><span class="qnav-t"><b>공정도</b><small>도번·품명별 공정 흐름</small></span></div>
+        <div class="nav-item nav-sub" data-view="safety" title="월간 안전교육 자료·참석 서명부·실시 기록 (매월 인쇄해 교육)"><span class="qnav-i">🦺</span><span class="qnav-t"><b>안전교육</b><small>월간 교육자료·서명부·실시 기록</small></span></div>
       </div></div>
     <div class="qnav-cat" data-cat="insp"><button type="button" class="qnav-btn"><span class="qnav-ico">🧾</span>검사<span class="qnav-caret">▾</span></button>
       <div class="qnav-panel">
@@ -2430,6 +2431,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
     <div class="view" id="view-orderflow"><div id="of-root"></div></div>
     <div class="view" id="view-dboard"><div id="db-root"></div></div>
     <div class="view" id="view-procflow"><div id="pf-root"></div></div>
+    <div class="view" id="view-safety"><div id="se-root"></div></div>
     <div class="view" id="view-board"><div id="bd-root"></div></div>
     <div class="view" id="view-syshealth"><div id="sh-root"></div></div>
     <div class="view" id="view-authadmin"><div id="au-root"></div></div>
@@ -4187,7 +4189,7 @@ function qxLayout_(){
       return false; };
     var views=[].slice.call(document.querySelectorAll(".main-area > .view[id^='view-']"));
     views.forEach(function(view){
-      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="dboard" || v==="procflow" || v==="board" || v==="syshealth" || v==="authadmin" || v==="specdue" || v==="specduelog" || v==="custrev" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
+      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="dboard" || v==="safety" || v==="procflow" || v==="board" || v==="syshealth" || v==="authadmin" || v==="specdue" || v==="specduelog" || v==="custrev" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
       var inf=info(v) || (v==="history"?info("management"):null);
       var tb=document.getElementById("topbar-"+v);
       if(tb){
@@ -5253,6 +5255,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="orderflow" && typeof ofRender_==="function"){ ofRender_(); }
     if(target==="dboard" && typeof dbShow_==="function"){ dbShow_(); }   // [추가] 금일 납품 현황판   // [추가] 수주~출하 흐름
     if(target==="procflow" && typeof pfRender_==="function"){ pfRender_(); }   // [추가] 공정도
+    if(target==="safety" && typeof seShow_==="function"){ seShow_(); }   // [추가] 안전교육
     if(target==="board" && typeof bdRender_==="function"){ bdRender_(); }   // [추가] 게시판
     if(target==="authadmin" && typeof auShow_==="function"){ auShow_(); }   // [추가] 계정·권한
     if(target==="syshealth" && typeof shRender_==="function"){ shRender_(); if(!__sh.tabs && !__sh.busy) shRun_(false); }   // [추가] 시스템 상태
@@ -18388,6 +18391,264 @@ function dbShow_(){
   try{ if(typeof qmsLoadSchedShared_==="function") qmsLoadSchedShared_(function(){ dbRender_(); }); }catch(_){}   // 검수품(일정 달력 '검수') 판정용 — 달력을 안 열어 봤어도 불러옴
   if(!__db.timer) __db.timer=setInterval(function(){ var v=document.getElementById("view-dboard"); if(!v || !v.classList.contains("active") || document.hidden) return; var ae=document.activeElement; if(ae && ae.id==="db-q" && ae.value!==(__db.q||"")) return; dbPinsLoad_(function(){ dbRender_(); }); dbFetch_(false); dbInsLoad_(); }, 60000);
 }
+var SE_DEFAULT={"ver": 1, "common": {"title": "NTL 월간 통합 안전교육 자료", "sub": "QA 보증 관점 · 관리 / 품질 / 생산 / 구매 / 영업팀 공통", "purpose": "반도체 장비 부품의 가공·검사·측정·자재 입출고·외주 및 구매 업무에서 발생할 수 있는 사고를 예방하고, 안전수칙 준수와 품질보증(QA), 작업표준, 추적성 및 고객 신뢰를 함께 확보한다.", "docInfo": [["문서명", "NTL 월간 통합 안전교육 자료 및 교육 이수 확인서"], ["적용 부서", "관리팀 / 품질팀 / 생산팀 / 구매팀 / 영업팀 및 해당 업무 수행자"], ["교육 주기", "매월 1회 및 신규·변경 작업 또는 사고·아차사고 발생 시 추가 교육"], ["작성·관리", "교육 담당자 지정 후 교육일자, 참석자, 이해도 확인 및 개선조치 기록"], ["개정", "현장 위험성평가, 설비·공정 변경, 사고사례 및 법규 변경 시 검토·개정"]], "notes": ["본 자료는 사업장 공통 교육용 기본안입니다. 실제 설비별 위험성평가, 사내 안전보건관리규정, 작업표준서 및 최신 법정교육 요건에 맞춰 담당자가 보완하십시오.", "이 문서의 서명은 해당 교육의 참석 및 교육내용 확인 기록입니다. 법령상 별도 교육시간·내용·기록 요건이 적용되는 경우에는 해당 요건을 별도로 충족해야 합니다.", "사고·이상·불안전 상태 발견 시 작업을 멈추고, 주변 위험을 통제한 뒤 관리자에게 보고합니다. 임의로 가동·재작업·출하를 진행하지 않습니다."], "plan": [["1월", "작업 전 안전점검·위험성평가", "전 부서", "작업 전 점검, 위험요인 발견·보고, 작업중지 기준"], ["2월", "끼임·절단·회전체 및 MCT 안전", "생산·품질", "도어 인터록, 칩 제거 도구, 회전 중 접근 금지"], ["3월", "중량물·운반·지게차 및 통로 안전", "생산·구매·관리·영업", "중량물 취급, 운반구 점검, 보행자 동선 및 고객·협력사 방문 시 이동 안전"], ["4월", "화학물질·세척제·SDS 및 보호구", "생산·품질·구매", "라벨 확인, 혼합 금지, 누출 대응, 적합 보호구"], ["5월", "전기·에너지 차단(LOTO)·설비 이상", "생산·관리", "정비 전 전원 차단, 잔류에너지 확인, 무단 재가동 금지"], ["6월", "측정실·검사 작업 안전 및 정밀기기 취급", "품질", "날카로운 모서리, 측정기 취급, 케이블·작업대 정리"], ["7월", "화재·용접·고온작업·비상대응", "생산·관리·구매", "화기작업 승인, 가연물 제거, 소화기·대피로"], ["8월", "근골격계 부담·반복작업·작업자세", "전 부서", "중량·반복작업 개선, 작업대 높이, 휴식 및 통증 보고"], ["9월", "ESD·클린룸·오염 및 이물 관리", "품질·생산", "정전기 관리, 저발진 자재, 청정구역 출입·청소"], ["10월", "외주업체·협력사·입고 및 현장 안전", "구매·품질·생산·영업", "협력사 방문·현장 출입 전 위험 공유, 입고품 손상·안전 확인, 고객사 현장 안전수칙 준수"], ["11월", "사고·아차사고 보고와 시정조치", "전 부서", "사실 중심 보고, 원인분석, 재발방지 효과 확인 및 고객 관련 안전·품질 이상 보고"], ["12월", "비상대응 훈련·연간 개선점 검토", "전 부서", "대피·연락체계, 교육 이수율, 개선조치 종결 확인"]], "roles": [["관리팀", "통로·비상구·소화설비·전기 및 시설 상태 점검, 비상연락망 관리, 교육기록 보관", "위험요인 방치, 비상구 적치, 점검 누락"], ["품질팀(QA/QC)", "검사·측정 중 안전 확보, 측정기·게이지 취급, 부적합품 격리, 기록의 정확성 유지", "날카로운 가공품, 측정기 파손, 식별·추적성 누락"], ["생산팀", "작업 전 설비점검, 방호장치 준수, 칩·절삭유 안전관리, 이상 시 정지·보고", "회전체·끼임, 절삭칩, 미끄럼, 무단 조작"], ["구매팀", "화학물질·보호구·운반자재의 적합성 확인, SDS 및 공급자 정보 확보, 협력사 안전요건 전달", "미확인 화학물질, 부적합 보호구, 포장·운반 위험"], ["영업팀", "고객사·협력사 방문 전 안전수칙과 출입 절차 확인, 운전·이동 및 샘플·제품 운반 시 안전 확보, 현장 위험·사고·제품 손상 발견 시 즉시 보고", "차량 이동 중 사고, 고객사 현장 무단 출입, 통로·중량물 운반 위험, 안전 이상 및 고객 통보 누락"]], "detail": {"title": "작업 전 위험 확인과 이상 보고", "goals": ["작업 시작 전 위험요인을 확인하고, 위험한 상태에서는 작업을 시작하지 않는다.", "안전사고·품질 이상·오염 및 추적성 문제가 서로 연결될 수 있음을 이해한다.", "이상 발생 시 작업중지 → 안전확보 → 보고 → 기록 → 원인분석·시정조치 순서로 대응한다."], "content": [["① 작업 전 3단계 확인", "작업 대상·작업방법 확인 → 설비·공구·보호구 확인 → 주변 통로·비상정지·방호장치 확인", "MCT 가동 전 도어·인터록·공구 상태, 작업대 주변 장애물 확인"], ["② 기계·가공품 취급", "회전 중 손·도구 접근 금지, 칩은 전용 도구로 제거, 날카로운 모서리와 중량물에 적합한 보호구·취급법 적용", "가공 완료 직후 칩을 손으로 쓸어내지 않기, 버·날카로운 모서리 주의"], ["③ 검사·측정 안전", "측정물 고정 및 안정성 확인, 측정기 지정 사용, 케이블 걸림 방지, 파손·이상 시 사용 중지", "3차원 측정기·비접촉 측정기 주변 정리, 무리한 힘으로 측정물 고정 금지"], ["④ 자재·화학물질", "용기 라벨과 SDS 확인, 승인되지 않은 물질 사용 금지, 누출·파손 시 접근 통제 및 보고", "구매 입고 시 라벨·포장 상태 확인, 세척제 임의 혼합 금지"], ["⑤ QA 관점의 기록·추적성", "사고·아차사고·설비 이상·품질 이상을 즉시 기록, 제품 식별 유지, 이상품은 정상품과 분리", "안전 이상으로 공정조건이 바뀌거나 제품이 손상된 경우 해당 제품 식별·보류 후 품질팀 통보 / 영업팀은 고객 방문·납품 중 안전 이상이나 제품 손상 발견 시 임의 판단하지 말고 담당 부서에 즉시 공유한다."], ["⑥ 비상 시 행동", "작업중지 및 안전한 위치로 대피, 필요 시 비상연락·119, 훈련된 담당자 외 무리한 구조·복구 금지", "화재·누출·끼임 위험 시 설비 접근 금지, 비상구와 집결장소 준수 / 영업팀은 고객사 방문 시 현장 대피로·비상연락 절차를 확인하고 안내에 따른다."]], "caseTitle": "입고된 소재의 포장이 파손되어 날카로운 모서리가 노출되어 있고, 생산 일정이 촉박한 상황.", "caseRows": [["구매팀", "입고품을 임의 사용하지 않고 공급자·운송 상태를 확인하며 관련 기록을 남긴다."], ["생산팀", "위험구역을 통제하고 적절한 보호구·취급 방법이 확인되기 전 가공을 시작하지 않는다."], ["품질팀", "소재 식별·손상 여부를 확인하고 필요 시 보류·부적합 절차에 따라 처리한다."], ["관리팀", "안전한 임시 보관·운반 방법을 지원하고 반복 발생 시 시설·포장 기준 개선을 검토한다."], ["영업팀", "고객·협력사 방문 또는 납품 중 포장 파손·날카로운 모서리·운반 위험을 발견하면 무리하게 취급하지 않고 주변을 통제한 뒤 구매·품질·관리 담당자에게 즉시 공유한다."]], "questions": ["작업 중 위험한 상태 또는 방호장치 이상을 발견하면 어떻게 해야 합니까?", "날카로운 가공품이나 절삭칩을 취급할 때 주의할 점은 무엇입니까?", "안전 이상으로 제품 손상·공정 변경 가능성이 있으면 어떤 부서에 알리고 어떤 기록을 남겨야 합니까?"]}, "keep": ["교육자료, 서명부, 이해도 확인 결과 및 개선조치 증빙을 동일 월 기준으로 함께 보관합니다.", "개선조치는 담당자와 완료기한을 지정하고, 완료 여부 및 재발방지 효과를 다음 월 교육 또는 현장점검에서 확인합니다.", "필요 시 교육 사진, 점검표, 위험성평가 변경사항, 시정조치 기록을 첨부합니다."]}, "months": [{"m": 1, "title": "작업 전 안전점검 및 위험성평가", "goal": "작업 시작 전 위험요인을 찾아 작업중지·보고·개선으로 연결한다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["작업 대상·도면·작업방법과 작업 순서를 확인한다.", "설비 방호장치·비상정지·공구·보호구 상태를 확인한다.", "통로·바닥·조명·적치상태와 주변 작업자 위험을 확인한다.", "위험요인이 제거되지 않으면 작업을 시작하지 않고 보고한다."], "dept": [["관리팀", "통로·비상구·소화설비 등 공용공간 점검"], ["품질팀", "검사대·측정기·측정물의 안정성 확인"], ["생산팀", "설비 일상점검 및 방호장치 확인"], ["구매팀", "입고품·포장·운반 조건의 위험 확인"], ["영업팀", "고객 방문·출장 전 일정, 이동경로, 현장 안전수칙 및 비상연락처 확인"]], "practice": "작업 전 위험요인 1건을 찾아 개선하거나 담당자와 완료기한을 기록한다.", "quiz": [["작업 전 확인 없이 작업을 시작해도 된다.", "안 맞음"], ["위험요인이 있으면 작업을 멈추고 보고한다.", "맞음"]]}, {"m": 2, "title": "MCT·회전체·끼임·절단 사고 예방", "goal": "가공설비의 방호장치 준수와 칩·공구 취급 안전을 지킨다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["회전 중 스핀들·공구에 손이나 측정도구를 접근시키지 않는다.", "칩은 설비 정지 후 전용 훅·브러시 등 적합한 도구로 제거한다.", "도어·인터록·비상정지장치를 임의로 해제하거나 우회하지 않는다.", "공구 교환·청소·정비 전 설비 정지와 에너지 차단 절차를 따른다."], "dept": [["관리팀", "방호장치·비상정지 표지와 점검 상태 확인"], ["품질팀", "가공 중인 제품을 측정하거나 손으로 만지지 않기"], ["생산팀", "칩 제거·공구 교환 절차 준수"], ["구매팀", "안전 사양이 확인된 공구·보호구 구매"], ["영업팀", "고객 현장 방문 시 가공설비·회전체 접근금지 및 촬영·측정 요청 시 승인 절차 준수"]], "practice": "설비 1대를 선정해 방호장치·비상정지·칩 제거 도구 비치 여부를 확인한다.", "quiz": [["회전이 멈추기 전 칩을 손으로 제거해도 된다.", "안 맞음"], ["인터록 이상은 보고하고 임의 우회하지 않는다.", "맞음"]]}, {"m": 3, "title": "중량물 취급·운반 및 통로 안전", "goal": "중량물 낙하·충돌·근골격계 부상을 예방하고 보행 동선을 확보한다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["중량·크기·무게중심을 확인하고 무리한 단독 운반을 피한다.", "운반구·리프트 등은 사용 전 손상과 허용하중을 확인한다.", "운반 중 시야를 확보하고 보행자와 장비 동선을 분리한다.", "통로·비상구·소화설비 앞에 자재를 적치하지 않는다."], "dept": [["관리팀", "통로·비상구 적치 여부 확인"], ["품질팀", "측정물·정밀기기 이동 시 충격·전도 방지"], ["생산팀", "소재·완제품의 안전한 적재와 운반"], ["구매팀", "납품 포장 중량·규격·하역 조건 공유"], ["영업팀", "샘플·납품품 운반 시 중량·포장·운반수단을 확인하고 무리한 단독 운반 금지"]], "practice": "현장 통로와 자재 적치 구역을 점검하고 발견사항을 시정한다.", "quiz": [["허용하중이 불명확한 운반구도 사용한다.", "안 맞음"], ["중량·동선·운반구 상태를 확인한 후 운반한다.", "맞음"]]}, {"m": 4, "title": "화학물질·세척제·SDS 및 보호구", "goal": "화학물질 오사용·누출·접촉을 예방하고 적합한 보호구를 사용한다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["용기 라벨과 SDS를 확인하고 무표시 용기는 사용하지 않는다.", "화학물질을 임의로 혼합하거나 다른 용기에 무단 소분하지 않는다.", "작업에 맞는 장갑·보안경과 환기 조건을 확인한다.", "누출·비산 시 접근을 통제하고 사내 절차에 따라 보고한다."], "dept": [["관리팀", "SDS 비치·접근성 및 보관장소 확인"], ["품질팀", "세척제와 측정기·제품의 적합성 확인"], ["생산팀", "사용량·환기·보호구·폐기 절차 준수"], ["구매팀", "신규 물질의 SDS·라벨·보관조건 확보"], ["영업팀", "고객사·외부 현장에 세척제 등 화학제품 반입 시 사전 승인·SDS·보호구 확인"]], "practice": "사용 중인 세척제 1종의 라벨, SDS 위치 및 필요한 보호구를 확인한다.", "quiz": [["라벨 없는 용기는 냄새로 확인해 사용한다.", "안 맞음"], ["물질과 보호구 정보를 확인하고 이상 시 보고한다.", "맞음"]]}, {"m": 5, "title": "전기안전·에너지 차단·설비 이상", "goal": "정비·청소 중 감전과 예기치 않은 설비 재가동을 예방한다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["손상된 전선·플러그는 사용을 중지하고 보고한다.", "정비·청소·공구 교환 시 정해진 에너지 차단 절차를 따른다.", "잔류 압력·회전·열 등 잔류에너지가 없는지 확인한다.", "차단·정비 중인 설비를 허가 없이 재가동하지 않는다."], "dept": [["관리팀", "분전반 접근 공간과 전기설비 이상 확인"], ["품질팀", "측정기 전원선·접지·케이블 걸림 확인"], ["생산팀", "차단·확인 및 재가동 승인 절차 준수"], ["구매팀", "전기용품·설비 부속의 적합 사양 확인"], ["영업팀", "출장·고객 방문 중 전기설비 이상 발견 시 접촉하지 않고 현장 담당자에게 보고"]], "practice": "정비 전 차단·확인·재가동 승인 절차를 현장 기준으로 설명한다.", "quiz": [["전원 스위치만 끄면 모든 정비가 안전하다.", "안 맞음"], ["차단 절차와 잔류에너지 확인이 필요하다.", "맞음"]]}, {"m": 6, "title": "검사·측정 작업 및 정밀기기 취급", "goal": "측정 작업 중 부상, 측정기 파손, 제품 손상을 예방한다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["측정물의 날카로운 모서리·버·중량과 고정 상태를 확인한다.", "측정기를 지정된 용도와 절차에 따라 사용한다.", "케이블·에어호스·측정물로 인한 걸림과 낙하 위험을 제거한다.", "이상·파손·충격이 발생하면 사용을 중지하고 품질 책임자에게 보고한다."], "dept": [["관리팀", "검사실 통로·조명·작업대 환경 유지"], ["품질팀", "측정기 취급·교정상태·측정물 고정 확인"], ["생산팀", "가공품을 안전하게 검사부서에 인계"], ["구매팀", "측정기·치공구 운송 포장과 취급 주의 전달"], ["영업팀", "고객사 검사·측정 입회 시 장비 조작은 승인된 담당자만 수행하고 안전거리 유지"]], "practice": "측정기 1대와 측정물 1개를 선정해 안전 취급 상태를 확인한다.", "quiz": [["측정값이 정상이면 측정기 충격·손상은 무시한다.", "안 맞음"], ["충격·파손이 의심되면 사용 중지 후 보고한다.", "맞음"]]}, {"m": 7, "title": "화재·용접·고온작업 및 비상대응", "goal": "화재 위험을 사전에 제거하고 비상 시 안전하게 대피한다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["화기작업은 사내 승인·감시·소화설비 등 조건을 확인한다.", "작업 주변 가연물을 정리하고 불티 비산을 방지한다.", "소화기·비상구·대피경로와 비상연락 방법을 숙지한다.", "화재·연기 발생 시 위험하면 즉시 대피하고 신고한다."], "dept": [["관리팀", "소화기·비상구·대피 안내·연락망 점검"], ["품질팀", "검사실 전열기·충전기 등 발열 위험 관리"], ["생산팀", "용접·연마 불티와 가연물 분리"], ["구매팀", "가스용기·관련 자재의 안전한 납품·보관"], ["영업팀", "고객사 방문 시 화기작업 구역 접근금지 및 화재·대피 안내를 먼저 확인"]], "practice": "가까운 비상구와 소화기 위치를 확인하고 대피 행동을 말해본다.", "quiz": [["작은 화재는 누구나 무조건 직접 진압한다.", "안 맞음"], ["자신의 안전을 우선하고 위험하면 대피·신고한다.", "맞음"]]}, {"m": 8, "title": "근골격계 부담·반복작업·작업자세", "goal": "반복·부자연스러운 자세와 무리한 힘으로 인한 부담을 줄인다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["작업대 높이와 작업 위치를 몸에 맞게 조정한다.", "중량물은 몸 가까이에서 들고 필요 시 보조장비를 사용한다.", "반복작업은 작업방법을 개선하고 정해진 휴식·교대 기준을 따른다.", "통증·저림·피로가 지속되면 관리자에게 알린다."], "dept": [["관리팀", "사무·현장 작업공간의 작업자세 확인"], ["품질팀", "현미경·측정기 사용 시 자세·시야 조정"], ["생산팀", "소재 적재 높이와 반복 동작 개선"], ["구매팀", "운반 보조구·작업대 등 개선 필요품 검토"], ["영업팀", "장시간 운전·출장 및 사무작업 중 휴식·스트레칭을 실시하고 피로 시 운전 중단"]], "practice": "각 부서에서 부담이 큰 동작이나 자세 1건과 개선안을 제안한다.", "quiz": [["통증이 있어도 작업이 끝날 때까지 보고하지 않는다.", "안 맞음"], ["불편·통증은 조기에 알리고 작업방법을 개선한다.", "맞음"]]}, {"m": 9, "title": "ESD·클린룸·이물 및 오염 관리", "goal": "정전기·입자·이물로 인한 제품 품질 문제와 오염을 예방한다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["지정된 ESD 보호구·접지·정전매트 사용 기준을 따른다.", "제품 접촉면과 측정면을 깨끗하게 유지하고 이물 유입을 막는다.", "승인된 저발진 자재·천·장갑을 사용하고 상태를 확인한다.", "청소·교체 후 사용 자재와 폐기물을 정해진 위치에 관리한다."], "dept": [["관리팀", "작업환경 청결·폐기물·청소도구 관리"], ["품질팀", "측정면·측정기·제품 표면의 이물 확인"], ["생산팀", "가공품 세척·보호·인계 시 오염 방지"], ["구매팀", "ESD·저발진 자재 사양과 공급자 정보 확인"], ["영업팀", "고객사 클린룸·ESD 구역의 복장·출입·오염관리 규정을 준수하고 임의 반입 금지"]], "practice": "작업대 1곳의 이물·정전기 관리상태와 자재 적합성을 확인한다.", "quiz": [["겉으로 깨끗하면 승인되지 않은 자재도 사용한다.", "안 맞음"], ["승인된 자재와 지정된 ESD 절차를 준수한다.", "맞음"]]}, {"m": 10, "title": "외주업체·협력사·입고 및 현장 안전", "goal": "협력사 작업과 입고 과정의 위험을 공유하고 안전한 작업을 확보한다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["외주 작업 전 작업 범위·위험요인·보호구·비상연락 방법을 공유한다.", "입고품 포장 파손·누출·날카로운 모서리·중량을 확인한다.", "위험하거나 부적합한 자재는 사용 보류·식별·격리·보고한다.", "협력사 안전·품질 요구사항과 변경사항을 기록으로 전달한다."], "dept": [["관리팀", "방문자 출입·작업허가·비상안내 관리"], ["품질팀", "입고 손상·식별·추적성 및 보류 처리"], ["생산팀", "외주품 인수 후 안전한 적재·취급"], ["구매팀", "공급자에게 포장·운반·안전 요구사항 전달"], ["영업팀", "고객·협력사 방문 전 출입교육·보호구·작업허가 요건을 확인하고 방문자 안전수칙 안내"]], "practice": "최근 입고품 또는 외주품 사례에서 위험·품질 확인 항목을 점검한다.", "quiz": [["납기가 급하면 포장 파손품을 바로 투입한다.", "안 맞음"], ["위험·손상을 확인하고 필요 시 보류·보고한다.", "맞음"]]}, {"m": 11, "title": "사고·아차사고 보고 및 시정조치", "goal": "사고와 아차사고를 보고하고 재발방지 효과를 확인한다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["부상·설비 이상·낙하·미끄럼 등 사고와 아차사고를 즉시 보고한다.", "시간·장소·상황 등 사실을 기록하고 추측을 피한다.", "작업방법·설비·환경·교육 관점에서 원인을 검토한다.", "개선 담당자·완료기한을 지정하고 효과를 확인한다."], "dept": [["관리팀", "보고체계·기록 보관 및 조치 추적"], ["품질팀", "제품 영향·부적합·추적성 확인 및 격리"], ["생산팀", "위험 제거·현장 기록·재발방지 실행"], ["구매팀", "공급자·외주 관련 사고 및 개선요구 전달"], ["영업팀", "고객 방문·납품 중 사고와 아차사고를 즉시 보고하고 고객 요구사항·후속조치를 기록"]], "practice": "아차사고 사례 1건을 가정해 보고 대상·기록·개선조치를 정한다.", "quiz": [["다친 사람이 없으면 아차사고는 보고하지 않는다.", "안 맞음"], ["아차사고도 보고해 잠재 위험을 개선한다.", "맞음"]]}, {"m": 12, "title": "비상대응 훈련·연간 안전 개선 검토", "goal": "비상 행동을 숙지하고 연간 교육·점검·개선조치 효과를 확인한다.", "target": "관리·품질·생산·구매·영업팀 공통  / 권장 15~20분(사업장 기준에 맞게 조정)", "points": ["화재·누출·부상 등 상황별 비상연락과 대피절차를 확인한다.", "대피경로와 집결장소를 확인하고 장애물을 제거한다.", "연간 사고·아차사고·점검 지적·교육 미이수 항목을 검토한다.", "미완료 개선조치의 담당자·기한을 확인해 다음 계획에 반영한다."], "dept": [["관리팀", "비상연락망·대피로·훈련 기록 점검"], ["품질팀", "비상 시 인명 안전을 제품·측정기보다 우선"], ["생산팀", "가능하면 안전하게 설비 정지 후 대피"], ["구매팀", "비상대응 물품·보호구·협력사 연락처 확인"], ["영업팀", "출장·고객사 방문 시 비상연락처·대피로를 확인하고 사고 시 인명 안전을 우선하여 대응"]], "practice": "대피경로를 확인하고 연간 개선조치 중 미완료 항목을 확인한다.", "quiz": [["비상 시 개인 판단으로 위험구역에 재진입한다.", "안 맞음"], ["안전이 확보될 때까지 재진입하지 않고 지시에 따른다.", "맞음"]]}], "plants": [{"name": "1공장", "rows": 35, "cap": ""}, {"name": "2공장", "rows": 10, "cap": "정원 10명"}]};
+/* ==================== 🦺 안전교육 (생산 소메뉴) ====================
+   NTL 월간 안전교육 — 월별 교육자료(1~12월) · 연간 계획 · 공통 자료 · 참석 서명부(1공장/2공장) · 실시 기록
+   · 기본 양식(3개 문서 내용)을 그대로 넣어 두고, ✏️ 편집으로 조금씩 고쳐 계속 사용 (모든 PC 공유, 변경 이력·되돌리기)
+   · 달이 바뀌면 그 달 자료가 먼저 열림 → 🖨 교육자료 + 서명부 인쇄해 교육
+   · 저장: 공유 저장소 qShare "safetyEdu"(자료·이력) / "safetyEduRec"(월별 실시 기록) */
+var __se={ data:null, hist:[], rec:{}, loaded:false, loading:false, tab:"month", m:0, edit:false, draft:null, year:0 };
+function seE_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function seClone_(o){ return JSON.parse(JSON.stringify(o)); }
+function seWho_(){ try{ if(typeof sdWho_==="function") return sdWho_(); }catch(_){} return ""; }
+function seYm_(m){ var d=new Date(); return d.getFullYear()+"-"+String(m||(d.getMonth()+1)).padStart(2,"0"); }
+function seMonth_(m){ return ((__se.data&&__se.data.months)||[]).filter(function(x){ return x.m===m; })[0]; }
+function seLoad_(cb){
+  if(__se.loading) return; __se.loading=true;
+  try{ var c=JSON.parse(localStorage.getItem("qmsSafetyEdu")||"null"); if(c && c.data){ __se.data=c.data; __se.hist=c.hist||[]; } var r=JSON.parse(localStorage.getItem("qmsSafetyEduRec")||"null"); if(r && r.recs) __se.rec=r.recs; }catch(_){}
+  if(!__se.data) __se.data=seClone_(SE_DEFAULT);
+  var n=0, done=function(){ if(++n<2) return; __se.loaded=true; __se.loading=false; seCache_(); cb&&cb(); };
+  try{ if(typeof qShareLoad_!=="function") { n=1; done(); return; }
+    qShareLoad_("safetyEdu", function(v){ if(v && v.data && (!__se.dataTs || (v.ts||0)>=__se.dataTs)){ __se.data=v.data; __se.hist=v.hist||[]; __se.dataTs=v.ts||0; } done(); });
+    qShareLoad_("safetyEduRec", function(v){ if(v && v.recs){ Object.keys(v.recs).forEach(function(k){ var a=__se.rec[k], b=v.recs[k]; if(!a || (b.ts||0)>=(a.ts||0)) __se.rec[k]=b; }); } done(); });
+  }catch(_){ __se.loaded=true; __se.loading=false; cb&&cb(); } }
+function seCache_(){ try{ localStorage.setItem("qmsSafetyEdu", JSON.stringify({ data:__se.data, hist:__se.hist, ts:__se.dataTs||0 })); localStorage.setItem("qmsSafetyEduRec", JSON.stringify({ recs:__se.rec })); }catch(_){} }
+function seSaveData_(note){
+  var now=Date.now(); __se.hist=(__se.hist||[]).concat([{ ts:now, by:seWho_(), note:note||"", data:seClone_(__se.data) }]).slice(-15); __se.dataTs=now;
+  seCache_(); try{ if(typeof qShareSave_==="function") qShareSave_("safetyEdu", { data:__se.data, hist:__se.hist, ts:now }); }catch(_){} }
+function seSaveRec_(){ seCache_(); try{ if(typeof qShareSave_==="function") qShareSave_("safetyEduRec", { recs:__se.rec, ts:Date.now() }); }catch(_){} }
+function seShow_(){ if(!__se.m) __se.m=new Date().getMonth()+1; if(!__se.loaded){ seRender_(); seLoad_(seRender_); } else seRender_(); }
+// ── 편집 도우미 (draft 경로에 값 넣기)
+function seSet_(path, v){ var ks=path.split("."), o=__se.draft; for(var i=0;i<ks.length-1;i++) o=o[/^\d+$/.test(ks[i])?+ks[i]:ks[i]]; var k=ks[ks.length-1]; o[/^\d+$/.test(k)?+k:k]=v; }
+function seGet_(path){ var o=__se.draft; path.split(".").forEach(function(k){ o=o==null?o:o[/^\d+$/.test(k)?+k:k]; }); return o; }
+function seIn_(path, v, ph, big){ return big?'<textarea class="se-in" data-p="'+path+'" rows="2" placeholder="'+seE_(ph||"")+'">'+seE_(v)+'</textarea>':'<input class="se-in" data-p="'+path+'" value="'+seE_(v)+'" placeholder="'+seE_(ph||"")+'">'; }
+function seEdList_(path, arr, ph){ return '<div class="se-edl">'+(arr||[]).map(function(v,i){ return '<div class="se-edr"><span class="se-no">'+(i+1)+'</span>'+seIn_(path+"."+i, v, ph, true)+'<button type="button" class="se-x" data-del="'+path+'|'+i+'" title="이 줄 삭제">✕</button></div>'; }).join("")+'<button type="button" class="se-add" data-add="'+path+'|s">＋ 줄 추가</button></div>'; }
+function seEdTable_(path, rows, heads, opt){ opt=opt||{}; return '<table class="se-edt"><thead><tr>'+heads.map(function(h){ return '<th>'+seE_(h)+'</th>'; }).join("")+'<th></th></tr></thead><tbody>'
+  +(rows||[]).map(function(r,i){ return '<tr>'+heads.map(function(_,j){ var p=path+"."+i+"."+j; if(opt.sel && opt.sel[j]) return '<td><select class="se-in" data-p="'+p+'">'+opt.sel[j].map(function(o){ return '<option'+(o===r[j]?' selected':'')+'>'+seE_(o)+'</option>'; }).join("")+'</select></td>'; return '<td>'+seIn_(p, r[j], "", (opt.big||[])[j])+'</td>'; }).join("")+'<td><button type="button" class="se-x" data-del="'+path+'|'+i+'">✕</button></td></tr>'; }).join("")
+  +'</tbody></table><button type="button" class="se-add" data-add="'+path+'|'+heads.length+'">＋ 줄 추가</button>'; }
+// ── 화면
+function seRender_(){
+  var host=document.getElementById("se-root"); if(!host) return; seStyle_();
+  if(!host.__bound){ host.__bound=true; host.addEventListener("click", seClick_); host.addEventListener("input", function(e){ var p=e.target.getAttribute&&e.target.getAttribute("data-p"); if(p && __se.draft) seSet_(p, e.target.value); }); host.addEventListener("change", function(e){ if(e.target.id==="se-year"){ __se.year=+e.target.value; seRender_(); return; } var p=e.target.getAttribute&&e.target.getAttribute("data-p"); if(p && __se.draft) seSet_(p, e.target.value); }); }
+  if(!__se.data){ host.innerHTML='<div class="se-empty">불러오는 중…</div>'; return; }
+  var E=seE_, D=__se.edit?__se.draft:__se.data, tabs=[["month","📘 월별 교육자료"],["plan","📅 연간 계획"],["common","📗 공통 자료"],["rec","📝 실시 기록"],["ledger","📒 연간 관리대장"],["hist","🕘 변경 이력"]];
+  var h='<div class="se-head"><div><div class="se-crumb">생산 › 안전교육</div><div class="se-title">🦺 안전교육 <span>월간 안전교육 자료 · 서명부 · 실시 기록</span></div>'
+    +'<div class="se-sub">기본 양식이 저장돼 있습니다 — 달이 바뀌면 그 달 자료를 열어 <b>🖨 교육자료·서명부</b>를 인쇄해 교육하고, 내용은 <b>✏️ 편집</b>으로 고쳐 계속 사용합니다 (모든 PC 공유 · 변경 이력에서 되돌리기).</div></div></div>'
+    +'<div class="se-tabs">'+tabs.map(function(t){ return '<button type="button" data-tab="'+t[0]+'" class="'+(__se.tab===t[0]?'on':'')+'">'+t[1]+'</button>'; }).join("")+'</div>';
+  if(__se.tab==="month") h+=seMonthHtml_(D);
+  else if(__se.tab==="plan") h+=sePlanHtml_(D);
+  else if(__se.tab==="common") h+=seCommonHtml_(D);
+  else if(__se.tab==="rec") h+=seRecHtml_();
+  else if(__se.tab==="ledger") h+=seLedgerHtml_();
+  else h+=seHistHtml_();
+  host.innerHTML=h;
+}
+function seEditBar_(what){ return __se.edit?'<div class="se-editbar">✏️ 편집 중 — '+what+' <button type="button" class="pri" data-a="save">💾 저장</button><button type="button" data-a="cancel">취소</button><span>저장하면 모든 PC에 반영되고 변경 이력에 남습니다</span></div>'
+  :'<button type="button" class="se-btn" data-a="edit">✏️ 편집</button>'; }
+function seMonthHtml_(D){
+  var E=seE_, m=__se.m, mi=(D.months||[]).findIndex(function(x){ return x.m===m; }), M=D.months[mi], cur=new Date().getMonth()+1, ym=seYm_(m), R=__se.rec[ym];
+  var h='<div class="se-chips">'+(D.months||[]).map(function(x){ var r=__se.rec[seYm_(x.m)]; return '<button type="button" data-m="'+x.m+'" class="'+(x.m===m?'on':'')+(x.m===cur?' cur':'')+'" title="'+E(x.title)+'">'+x.m+'월'+(r&&r.date?' ✓':'')+'</button>'; }).join("")+'</div>';
+  if(!M) return h+'<div class="se-empty">자료가 없습니다</div>';
+  h+='<div class="se-act">'+seEditBar_(m+'월 교육자료')+(__se.edit?'':('<button type="button" class="se-btn pri" data-a="pmat">🖨 교육자료 인쇄</button>'+(D.plants||[]).map(function(p,i){ return '<button type="button" class="se-btn" data-a="psign" data-pl="'+i+'">🖨 서명부 ('+E(p.name)+')</button>'; }).join("")+'<button type="button" class="se-btn" data-a="pboth">🖨 교육자료+서명부 한 번에</button><button type="button" class="se-btn" data-a="rec">📝 '+m+'월 실시 기록'+(R&&R.date?' (입력됨)':'')+'</button>'))+'</div>';
+  var P='months.'+mi;
+  if(__se.edit){
+    h+='<div class="se-card se-ed"><div class="se-g2"><label>제목'+seIn_(P+".title", M.title)+'</label><label>교육 목표'+seIn_(P+".goal", M.goal, "", true)+'</label><label>대상 / 권장 시간'+seIn_(P+".target", M.target)+'</label></div>'
+      +'<h4>1. 핵심 교육 내용</h4>'+seEdList_(P+".points", M.points, "교육 포인트")
+      +'<h4>2. 부서별 현장 적용</h4>'+seEdTable_(P+".dept", M.dept, ["부서","실천 항목"], { big:[false,true] })
+      +'<h4>3. 현장 실습 / 토의</h4>'+seIn_(P+".practice", M.practice, "", true)
+      +'<h4>4. 이해도 확인 (O/X 문항 · 정답)</h4>'+seEdTable_(P+".quiz", M.quiz, ["확인 문항","정답"], { big:[true,false], sel:[null,["맞음","안 맞음"]] })+'</div>';
+    return h; }
+  h+='<div class="se-card"><div class="se-mh"><span class="se-mn">'+String(m).padStart(2,"0")+'월</span><b>'+E(M.title)+'</b></div>'
+    +'<table class="se-tb se-kv"><tr><th>교육 목표</th><td>'+E(M.goal)+'</td></tr><tr><th>대상 / 권장 시간</th><td>'+E(M.target)+'</td></tr>'
+    +(R&&R.date?('<tr><th>실시</th><td>'+E(R.date)+' '+E(R.t1||"")+(R.t2?('~'+E(R.t2)):'')+' · '+E(R.place||"")+' · 강사 '+E(R.teacher||"")+'</td></tr>'):'')+'</table>'
+    +'<h4>1. 핵심 교육 내용</h4><ol class="se-ol">'+(M.points||[]).map(function(x){ return '<li>'+E(x)+'</li>'; }).join("")+'</ol>'
+    +'<h4>2. 부서별 현장 적용</h4><table class="se-tb"><thead><tr><th style="width:120px;">부서</th><th>실천 항목</th></tr></thead><tbody>'+(M.dept||[]).map(function(r){ return '<tr><td class="c"><b>'+E(r[0])+'</b></td><td>'+E(r[1])+'</td></tr>'; }).join("")+'</tbody></table>'
+    +'<h4>3. 현장 실습 / 토의</h4><div class="se-box">'+E(M.practice)+'</div>'
+    +'<h4>4. 이해도 확인</h4><table class="se-tb"><thead><tr><th>확인 문항</th><th style="width:90px;">정답(강사용)</th></tr></thead><tbody>'+(M.quiz||[]).map(function(q){ return '<tr><td>'+E(q[0])+'</td><td class="c"><b class="'+(q[1]==="맞음"?'ok':'ng')+'">'+(q[1]==="맞음"?'○ 맞음':'✕ 안 맞음')+'</b></td></tr>'; }).join("")+'</tbody></table></div>';
+  return h; }
+function sePlanHtml_(D){
+  var E=seE_, C=D.common; var h='<div class="se-act">'+seEditBar_('연간 계획')+'</div>';
+  if(__se.edit) return h+'<div class="se-card se-ed">'+seEdTable_("common.plan", C.plan, ["월","교육 주제","주요 대상","핵심 교육 내용"], { big:[false,false,false,true] })+'</div>';
+  return h+'<div class="se-card"><table class="se-tb"><thead><tr><th style="width:60px;">월</th><th>교육 주제</th><th style="width:170px;">주요 대상</th><th>핵심 교육 내용</th><th style="width:110px;">실시</th></tr></thead><tbody>'
+    +(C.plan||[]).map(function(r){ var mm=parseInt(r[0],10), R=__se.rec[seYm_(mm)]; return '<tr class="'+(mm===new Date().getMonth()+1?'cur':'')+'"><td class="c"><a href="#" data-m="'+mm+'" data-go="month"><b>'+E(r[0])+'</b></a></td><td><b>'+E(r[1])+'</b></td><td>'+E(r[2])+'</td><td>'+E(r[3])+'</td><td class="c">'+(R&&R.date?('<span class="ok">✓ '+E(R.date.slice(5))+'</span>'):'<span class="m">-</span>')+'</td></tr>'; }).join("")+'</tbody></table></div>'; }
+function seCommonHtml_(D){
+  var E=seE_, C=D.common, d=C.detail||{}; var h='<div class="se-act">'+seEditBar_('공통 자료')+(__se.edit?'':'<button type="button" class="se-btn" data-a="pcommon">🖨 공통 자료 인쇄</button>')+'</div>';
+  if(__se.edit) return h+'<div class="se-card se-ed"><div class="se-g2"><label>제목'+seIn_("common.title", C.title)+'</label><label>부제'+seIn_("common.sub", C.sub)+'</label></div><h4>문서 목적</h4>'+seIn_("common.purpose", C.purpose, "", true)
+    +'<h4>문서관리 항목</h4>'+seEdTable_("common.docInfo", C.docInfo, ["항목","내용"], { big:[false,true] })+'<h4>운영 시 유의사항</h4>'+seEdList_("common.notes", C.notes)
+    +'<h4>부서별 안전관리 핵심 역할</h4>'+seEdTable_("common.roles", C.roles, ["부서","주요 책임","중점 위험"], { big:[false,true,true] })
+    +'<h4>월간 교육 상세안</h4><label>제목'+seIn_("common.detail.title", d.title)+'</label><h5>교육목표</h5>'+seEdList_("common.detail.goals", d.goals)
+    +'<h5>교육내용</h5>'+seEdTable_("common.detail.content", d.content, ["주제","교육 핵심 내용","현장 적용 예시"], { big:[false,true,true] })
+    +'<h5>부서 통합 사례 토의</h5><label>사례'+seIn_("common.detail.caseTitle", d.caseTitle, "", true)+'</label>'+seEdTable_("common.detail.caseRows", d.caseRows, ["담당","필수 조치"], { big:[false,true] })
+    +'<h5>교육 후 확인 질문</h5>'+seEdList_("common.detail.questions", d.questions)+'<h4>보관 및 후속조치</h4>'+seEdList_("common.keep", C.keep)
+    +'<h4>서명부 (공장별 줄 수)</h4>'+seEdTable_("plants", D.plants, ["공장","줄 수","인원 표시(예: 정원 10명)"])+'</div>';
+  var tb=function(rows, heads, w){ return '<table class="se-tb"><thead><tr>'+heads.map(function(x,i){ return '<th'+(w&&w[i]?' style="width:'+w[i]+'"':'')+'>'+E(x)+'</th>'; }).join("")+'</tr></thead><tbody>'+(rows||[]).map(function(r){ return '<tr>'+r.map(function(c,i){ return '<td'+(i===0?' class="c"':'')+'>'+(i===0?'<b>'+E(c)+'</b>':E(c))+'</td>'; }).join("")+'</tr>'; }).join("")+'</tbody></table>'; };
+  return h+'<div class="se-card"><div class="se-mh"><b>'+E(C.title)+'</b><span class="m">'+E(C.sub)+'</span></div>'
+    +'<h4>문서 목적</h4><div class="se-box">'+E(C.purpose)+'</div>'+tb(C.docInfo,["문서관리 항목","내용"],["160px"])
+    +'<h4>운영 시 유의사항</h4><ul class="se-ol">'+(C.notes||[]).map(function(x){ return '<li>'+E(x)+'</li>'; }).join("")+'</ul>'
+    +'<h4>부서별 안전관리 핵심 역할</h4>'+tb(C.roles,["부서","주요 책임","중점 위험"],["120px"])
+    +'<h4>월간 교육 상세안 — '+E(d.title)+'</h4><h5>교육목표</h5><ul class="se-ol">'+(d.goals||[]).map(function(x){ return '<li>'+E(x)+'</li>'; }).join("")+'</ul>'
+    +'<h5>교육내용</h5>'+tb(d.content,["주제","교육 핵심 내용","현장 적용 예시"],["170px"])
+    +'<h5>부서 통합 사례 토의</h5><div class="se-box">사례: '+E(d.caseTitle)+'</div>'+tb(d.caseRows,["담당","필수 조치"],["120px"])
+    +'<h5>교육 후 확인 질문</h5><ol class="se-ol">'+(d.questions||[]).map(function(x){ return '<li>'+E(x)+'</li>'; }).join("")+'</ol>'
+    +'<h4>보관 및 후속조치</h4><ul class="se-ol">'+(C.keep||[]).map(function(x){ return '<li>'+E(x)+'</li>'; }).join("")+'</ul></div>'; }
+function seRecHtml_(){
+  var E=seE_, ks=Object.keys(__se.rec).sort().reverse();
+  return '<div class="se-act"><button type="button" class="se-btn pri" data-a="rec">📝 '+__se.m+'월 실시 기록 입력</button><span class="m">월별 교육자료 화면에서 달을 고른 뒤 입력해도 됩니다</span></div><div class="se-card">'
+    +(ks.length?'<table class="se-tb"><thead><tr><th>연월</th><th>교육 주제</th><th>일자 / 시간</th><th>장소 · 강사</th><th>참석</th><th>이해도</th><th>불참자 · 보충교육</th><th>개선 필요사항 / 담당·기한</th><th>완료</th><th></th></tr></thead><tbody>'
+      +ks.map(function(k){ var r=__se.rec[k], tot=["a","q","p","b","s","e"].reduce(function(s,x){ return s+(Number(r["n_"+x])||0); },0);
+        return '<tr><td class="c"><b>'+E(k)+'</b></td><td>'+E(r.topic||"")+'</td><td class="c">'+E(r.date||"")+'<br><small>'+E(r.t1||"")+(r.t2?('~'+E(r.t2)):'')+'</small></td><td>'+E(r.place||"")+'<br><small>'+E(r.teacher||"")+'</small></td><td class="c"><b>'+tot+'</b>명</td><td class="c">'+E(r.und||"")+'</td><td>'+E(r.absent||"")+'</td><td>'+E(r.improve||"")+(r.owner?('<br><small>'+E(r.owner)+'</small>'):'')+'</td><td class="c">'+(r.closed?'<span class="ok">✓</span>':'<span class="m">-</span>')+'</td><td><button type="button" class="se-btn sm" data-a="rec" data-ym="'+E(k)+'">수정</button></td></tr>'; }).join("")+'</tbody></table>'
+      :'<div class="se-empty">아직 입력된 실시 기록이 없습니다</div>')+'</div>'; }
+// ── 📒 연간 안전교육 관리대장 (연도별 1~12월 · 계획 대비 실시 · 인쇄 A4 가로 · 엑셀)
+var SE_DEPTS=[["a","관리"],["q","품질"],["p","생산"],["b","구매"],["s","영업"],["e","기타"]];
+function seLedgerRows_(y){
+  var plan=(__se.data.common&&__se.data.common.plan)||[];
+  return [1,2,3,4,5,6,7,8,9,10,11,12].map(function(m){ var ym=y+"-"+String(m).padStart(2,"0"), r=__se.rec[ym]||null, M=seMonth_(m)||{}, pl=plan.filter(function(x){ return parseInt(x[0],10)===m; })[0]||[];
+    var n={}, tot=0; SE_DEPTS.forEach(function(d){ var v=r?(Number(r["n_"+d[0]])||0):0; n[d[0]]=v; tot+=v; });
+    return { m:m, ym:ym, r:r, plan:pl[1]||M.title||"", target:pl[2]||"", topic:(r&&r.topic)||M.title||"", n:n, tot:tot, done:!!(r&&r.date) }; }); }
+function seLedgerYears_(){ var ys={}; ys[new Date().getFullYear()]=1; Object.keys(__se.rec).forEach(function(k){ ys[k.slice(0,4)]=1; }); return Object.keys(ys).sort().reverse(); }
+function seLedgerHtml_(){
+  var E=seE_, y=__se.year||new Date().getFullYear(), L=seLedgerRows_(y), done=L.filter(function(x){ return x.done; }).length, cm=(String(y)===String(new Date().getFullYear()))?(new Date().getMonth()+1):12;
+  var due=L.filter(function(x){ return x.m<=cm; }).length, miss=L.filter(function(x){ return x.m<cm && !x.done; }).length, open=L.filter(function(x){ return x.done && x.r.improve && !x.r.closed; }).length, ppl=L.reduce(function(s,x){ return s+x.tot; },0);
+  return '<div class="se-act"><select id="se-year" class="se-btn">'+seLedgerYears_().map(function(v){ return '<option'+(String(v)===String(y)?' selected':'')+'>'+v+'</option>'; }).join("")+'</select>'
+    +'<button type="button" class="se-btn pri" data-a="pledger">🖨 관리대장 인쇄 (A4 가로)</button><button type="button" class="se-btn" data-a="xledger">📥 엑셀</button><span class="m">실시 기록을 입력하면 자동으로 채워집니다 · 칸을 누르면 그 달 기록 입력</span></div>'
+    +'<div class="se-kp"><div><span>실시</span><b>'+done+'<small> / 12개월</small></b></div><div class="'+(miss?'bad':'')+'"><span>지난 달 중 미실시</span><b>'+miss+'<small>개월</small></b></div><div><span>연간 참석 연인원</span><b>'+ppl+'<small>명</small></b></div><div class="'+(open?'warn':'')+'"><span>개선조치 미완료</span><b>'+open+'<small>건</small></b></div></div>'
+    +'<div class="se-card" style="overflow:auto;"><table class="se-tb se-lg"><thead><tr><th rowspan="2">월</th><th rowspan="2">교육 주제</th><th rowspan="2">실시 일자 / 시간</th><th rowspan="2">장소 · 강사</th><th colspan="7">참석 인원</th><th rowspan="2">이해도</th><th rowspan="2">불참자 · 보충교육</th><th rowspan="2">개선 필요사항 / 담당·기한</th><th rowspan="2">완료</th></tr><tr>'+SE_DEPTS.map(function(d){ return '<th>'+d[1]+'</th>'; }).join("")+'<th>계</th></tr></thead><tbody>'
+    +L.map(function(x){ var r=x.r||{}, late=(!x.done && x.m<cm), cur=(!x.done && x.m===cm && String(y)===String(new Date().getFullYear()));
+      return '<tr class="'+(late?'miss':'')+(cur?' cur':'')+'" data-ym="'+x.ym+'" title="눌러서 '+x.m+'월 실시 기록 입력·수정"><td class="c"><b>'+x.m+'월</b></td><td><b>'+E(x.topic)+'</b>'+(x.target?('<br><small class="m">'+E(x.target)+'</small>'):'')+'</td>'
+        +(x.done?('<td class="c">'+E(r.date)+'<br><small>'+E(r.t1||"")+(r.t2?('~'+E(r.t2)):'')+'</small></td><td>'+E(r.place||"")+'<br><small>'+E(r.teacher||"")+'</small></td>'):('<td class="c" colspan="2">'+(late?'<b class="ng">미실시</b>':(cur?'<b style="color:#B54708;">이번 달 예정</b>':'<span class="m">예정</span>'))+'</td>'))
+        +SE_DEPTS.map(function(d){ return '<td class="c">'+(x.done&&x.n[d[0]]?x.n[d[0]]:'')+'</td>'; }).join("")+'<td class="c"><b>'+(x.done?x.tot:'')+'</b></td>'
+        +'<td class="c">'+E(r.und||"")+'</td><td>'+E(r.absent||"")+'</td><td>'+E(r.improve||"")+(r.owner?('<br><small>'+E(r.owner)+'</small>'):'')+'</td><td class="c">'+(x.done?(r.closed?'<b class="ok">✓</b>':(r.improve?'<b class="ng">미완료</b>':'<span class="m">-</span>')):'')+'</td></tr>'; }).join("")
+    +'</tbody><tfoot><tr><th colspan="4">합계 (실시 '+done+'회)</th>'+SE_DEPTS.map(function(d){ return '<th>'+L.reduce(function(s,x){ return s+(x.n[d[0]]||0); },0)+'</th>'; }).join("")+'<th>'+ppl+'</th><th colspan="4"></th></tr></tfoot></table></div>'; }
+function seLedgerPrint_(y){
+  var E=seE_, L=seLedgerRows_(y), done=L.filter(function(x){ return x.done; }).length, ppl=L.reduce(function(s,x){ return s+x.tot; },0);
+  return '<div class="pg"><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:6mm;margin-bottom:3mm;"><div><h1 style="text-align:left;">'+y+'년 안전보건교육 관리대장</h1><div style="font-size:9.5pt;color:#444;">NTL 월간 안전교육 · 실시 '+done+' / 12개월 · 연간 참석 연인원 '+ppl+'명 · 출력일 '+new Date().toLocaleDateString("ko-KR")+'</div></div>'
+    +'<table style="width:auto;margin:0;"><tr><th style="width:22mm;">작성</th><th style="width:22mm;">검토</th><th style="width:22mm;">승인</th></tr><tr><td style="height:15mm;"></td><td></td><td></td></tr></table></div>'
+    +'<table class="lg"><thead><tr><th rowspan="2" style="width:9mm;">월</th><th rowspan="2" style="width:44mm;">교육 주제</th><th rowspan="2" style="width:23mm;">실시 일자 / 시간</th><th rowspan="2" style="width:28mm;">장소 · 강사</th><th colspan="7">참석 인원</th><th rowspan="2" style="width:15mm;">이해도</th><th rowspan="2" style="width:32mm;">불참자 · 보충교육</th><th rowspan="2">개선 필요사항 / 담당·기한</th><th rowspan="2" style="width:11mm;">완료</th></tr><tr>'+SE_DEPTS.map(function(d){ return '<th style="width:8mm;">'+d[1]+'</th>'; }).join("")+'<th style="width:9mm;">계</th></tr></thead><tbody>'
+    +L.map(function(x){ var r=x.r||{}; return '<tr><td class="c"><b>'+x.m+'</b></td><td>'+E(x.topic)+'</td>'+(x.done?('<td class="c">'+E(r.date)+'<br>'+E(r.t1||"")+(r.t2?('~'+E(r.t2)):'')+'</td><td>'+E(r.place||"")+'<br>'+E(r.teacher||"")+'</td>'):'<td class="c" colspan="2" style="color:#999;">미실시</td>')
+      +SE_DEPTS.map(function(d){ return '<td class="c">'+(x.done&&x.n[d[0]]?x.n[d[0]]:'')+'</td>'; }).join("")+'<td class="c"><b>'+(x.done?x.tot:'')+'</b></td><td class="c">'+E(r.und||"")+'</td><td>'+E(r.absent||"")+'</td><td>'+E(r.improve||"")+(r.owner?(' / '+E(r.owner)):'')+'</td><td class="c">'+(x.done?(r.closed?'✓':(r.improve?'미완':'')):'')+'</td></tr>'; }).join("")
+    +'</tbody><tfoot><tr><th colspan="4">합계 (실시 '+done+'회)</th>'+SE_DEPTS.map(function(d){ return '<th>'+L.reduce(function(s,x){ return s+(x.n[d[0]]||0); },0)+'</th>'; }).join("")+'<th>'+ppl+'</th><th colspan="4"></th></tr></tfoot></table>'
+    +'<div class="note">※ 월별 교육자료 · 참석 서명부와 함께 철하여 보관합니다. 미실시 월은 사유와 보충교육 일정을 기록하고, 개선조치는 완료 여부를 다음 달 교육 또는 현장점검에서 확인합니다.</div></div>'; }
+function seLedgerXlsx_(y){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 누르세요."); return; }
+  var L=seLedgerRows_(y), aoa=[[y+"년 안전보건교육 관리대장"],[],["월","교육 주제","실시 일자","시작","종료","장소","강사"].concat(SE_DEPTS.map(function(d){ return d[1]; })).concat(["계","이해도","이해도 확인 방법","불참자·보충교육","개선 필요사항","조치 담당·기한","완료"])];
+  L.forEach(function(x){ var r=x.r||{}; aoa.push([x.m+"월", x.topic, x.done?r.date:"미실시", r.t1||"", r.t2||"", r.place||"", r.teacher||""].concat(SE_DEPTS.map(function(d){ return x.done?(x.n[d[0]]||0):""; })).concat([x.done?x.tot:"", r.und||"", r.chk||"", r.absent||"", r.improve||"", r.owner||"", x.done?(r.closed?"완료":(r.improve?"미완료":"")):""])); });
+  aoa.push(["합계","","","","","",""].concat(SE_DEPTS.map(function(d){ return L.reduce(function(s,x){ return s+(x.n[d[0]]||0); },0); })).concat([L.reduce(function(s,x){ return s+x.tot; },0)]));
+  var ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=[{wch:6},{wch:34},{wch:12},{wch:7},{wch:7},{wch:16},{wch:10}].concat(SE_DEPTS.map(function(){ return {wch:6}; })).concat([{wch:6},{wch:12},{wch:12},{wch:24},{wch:30},{wch:16},{wch:8}]);
+  ws["!merges"]=[{ s:{r:0,c:0}, e:{r:0,c:6} }];
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, y+"년 관리대장"); XLSX.writeFile(wb, "안전보건교육_관리대장_"+y+".xlsx"); }
+function seHistHtml_(){
+  var E=seE_, H=(__se.hist||[]).slice().reverse();
+  return '<div class="se-act"><button type="button" class="se-btn" data-a="reset">↺ 처음 기본 양식으로</button><span class="m">저장할 때마다 최근 15개 버전이 남습니다 — 이전 버전으로 되돌릴 수 있습니다</span></div><div class="se-card">'
+    +(H.length?'<table class="se-tb"><thead><tr><th>저장 시각</th><th>저장한 사람</th><th>내용</th><th></th></tr></thead><tbody>'+H.map(function(x, i){ return '<tr><td class="c">'+E(new Date(x.ts).toLocaleString("ko-KR"))+'</td><td class="c">'+E(x.by||"")+'</td><td>'+E(x.note||"")+'</td><td>'+(i===0?'<span class="m">현재</span>':'<button type="button" class="se-btn sm" data-a="restore" data-ts="'+x.ts+'">이 버전으로 되돌리기</button>')+'</td></tr>'; }).join("")+'</tbody></table>':'<div class="se-empty">아직 변경 이력이 없습니다 (기본 양식 그대로)</div>')+'</div>'; }
+function seClick_(e){
+  var t=e.target, tb=t.closest("[data-tab]"), mb=t.closest("[data-m]"), a=t.closest("[data-a]"), ad=t.closest("[data-add]"), dl=t.closest("[data-del]");
+  if(tb){ if(__se.edit && !confirm("편집 중인 내용을 저장하지 않고 다른 화면으로 갈까요?")) return; __se.edit=false; __se.draft=null; __se.tab=tb.getAttribute("data-tab"); seRender_(); return; }
+  if(mb){ e.preventDefault(); if(__se.edit) return; __se.m=+mb.getAttribute("data-m"); if(mb.getAttribute("data-go")) __se.tab="month"; seRender_(); return; }
+  if(ad){ var pa=ad.getAttribute("data-add").split("|"), arr=seGet_(pa[0]); if(Array.isArray(arr)){ arr.push(pa[1]==="s"?"":new Array(+pa[1]).fill("")); seRender_(); } return; }
+  if(dl){ var pd=dl.getAttribute("data-del").split("|"), ar=seGet_(pd[0]); if(Array.isArray(ar)){ ar.splice(+pd[1],1); seRender_(); } return; }
+  var lr=t.closest("tr[data-ym]"); if(!a && lr){ seRecPop_(lr.getAttribute("data-ym")); return; }
+  if(!a) return; var k=a.getAttribute("data-a");
+  if(k==="edit"){ __se.draft=seClone_(__se.data); __se.edit=true; seRender_(); return; }
+  if(k==="cancel"){ __se.edit=false; __se.draft=null; seRender_(); return; }
+  if(k==="save"){ (__se.draft.plants||[]).forEach(function(p){ p.rows=Math.max(1, Math.min(80, parseInt(p.rows,10)||10)); }); __se.data=__se.draft; __se.edit=false; __se.draft=null;
+    seSaveData_(__se.tab==="month"?(__se.m+"월 교육자료 수정"):(__se.tab==="plan"?"연간 계획 수정":"공통 자료 수정")); seRender_(); try{ if(typeof qShareToast_==="function") qShareToast_("안전교육 자료를 저장했습니다", false); }catch(_){} return; }
+  if(k==="pmat"){ sePrint_(seMatHtml_(__se.m)); return; }
+  if(k==="psign"){ sePrint_(seSignHtml_(__se.m, +a.getAttribute("data-pl"))); return; }
+  if(k==="pboth"){ sePrint_(seMatHtml_(__se.m)+(__se.data.plants||[]).map(function(_,i){ return seSignHtml_(__se.m, i); }).join("")); return; }
+  if(k==="pcommon"){ sePrint_(seCommonPrint_()); return; }
+  if(k==="pledger"){ sePrint_(seLedgerPrint_(__se.year||new Date().getFullYear()), true); return; }
+  if(k==="xledger"){ seLedgerXlsx_(__se.year||new Date().getFullYear()); return; }
+  if(k==="rec"){ var ym=a.getAttribute("data-ym"); seRecPop_(ym||seYm_(__se.m)); return; }
+  if(k==="restore"){ var ts=+a.getAttribute("data-ts"), v=(__se.hist||[]).filter(function(x){ return x.ts===ts; })[0]; if(!v || !confirm(new Date(ts).toLocaleString("ko-KR")+" 버전으로 되돌릴까요? (지금 내용도 이력에 남습니다)")) return; __se.data=seClone_(v.data); seSaveData_(new Date(ts).toLocaleString("ko-KR")+" 버전으로 되돌림"); seRender_(); return; }
+  if(k==="reset"){ if(!confirm("처음 기본 양식(받은 문서 내용)으로 되돌릴까요? (지금 내용은 변경 이력에 남습니다)")) return; __se.data=seClone_(SE_DEFAULT); seSaveData_("기본 양식으로 되돌림"); seRender_(); return; }
+}
+// ── 실시 기록 입력
+function seRecPop_(ym){
+  var E=seE_, m=parseInt(ym.slice(5),10), M=seMonth_(m)||{}, r=Object.assign({ topic:M.title||"", method:"집합교육", und:"이해함", chk:"질문·답변" }, __se.rec[ym]||{});
+  var old=document.getElementById("se-recov"); if(old) old.remove(); var ov=document.createElement("div"); ov.id="se-recov"; ov.className="sd-ov";
+  var f=function(k,l,typ,w){ return '<label class="se-fl"'+(w?' style="grid-column:span '+w+';"':'')+'>'+l+'<input data-k="'+k+'" type="'+(typ||"text")+'" value="'+E(r[k]||"")+'"></label>'; };
+  var s=function(k,l,opts){ return '<label class="se-fl">'+l+'<select data-k="'+k+'">'+opts.map(function(o){ return '<option'+(o===r[k]?' selected':'')+'>'+E(o)+'</option>'; }).join("")+'</select></label>'; };
+  var ta=function(k,l){ return '<label class="se-fl" style="grid-column:1/-1;">'+l+'<textarea data-k="'+k+'" rows="2">'+E(r[k]||"")+'</textarea></label>'; };
+  ov.innerHTML='<div class="sd-pop" style="width:min(760px,96vw);max-height:92vh;overflow:auto;"><div class="sd-ph"><b>📝 '+E(ym)+' 안전교육 실시 기록</b><button type="button" data-x="close">닫기 ✕</button></div><div class="sd-pb"><div class="se-fg">'
+    +f("topic","교육 주제","text",3)+f("date","교육 일자","date")+f("t1","시작","time")+f("t2","종료","time")+f("place","교육 장소")+f("teacher","강사")+s("method","교육 방법",["집합교육","현장교육","사례공유","기타"])
+    +'<div class="se-fl" style="grid-column:1/-1;">참석 인원 (부서별)<div class="se-cnt">'+[["a","관리"],["q","품질"],["p","생산"],["b","구매"],["s","영업"],["e","기타"]].map(function(x){ return '<label>'+x[1]+'<input data-k="n_'+x[0]+'" type="number" min="0" value="'+E(r["n_"+x[0]]||"")+'"></label>'; }).join("")+'</div></div>'
+    +s("chk","이해도 확인 방법",["질문·답변","체크리스트","현장 시연","기타"])+s("und","이해도",["이해함","추가 설명 필요"])+f("owner","조치 담당 / 완료기한")
+    +ta("absent","불참자 · 보충교육 예정")+ta("improve","위험요인 · 개선 필요사항")+'<label class="se-fl" style="grid-column:1/-1;flex-direction:row;align-items:center;gap:6px;"><input data-k="closed" type="checkbox"'+(r.closed?' checked':'')+' style="width:auto;"> 개선조치 완료 확인</label>'
+    +'</div><div class="m" style="font-size:12px;margin-top:6px;">입력한 내용은 서명부 인쇄 때 위쪽 칸(주제·일자·장소·강사)에 자동으로 들어갑니다 · 모든 PC 공유</div></div>'
+    +'<div class="sd-pf" style="gap:8px;">'+(__se.rec[ym]?'<button type="button" class="sd-btn" data-x="del" style="background:#fff;color:#B42318;border:1px solid #FDA29B;">기록 삭제</button>':'')+'<button type="button" class="sd-btn" data-x="save">저장</button></div></div>';
+  document.body.appendChild(ov);
+  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
+    if(e.target===ov || x==="close"){ ov.remove(); return; }
+    if(x==="del"){ if(!confirm(ym+" 실시 기록을 삭제할까요?")) return; delete __se.rec[ym]; seSaveRec_(); ov.remove(); seRender_(); return; }
+    if(x==="save"){ var o={ ts:Date.now(), by:seWho_() }; ov.querySelectorAll("[data-k]").forEach(function(i){ o[i.getAttribute("data-k")]=i.type==="checkbox"?i.checked:String(i.value||"").trim(); }); __se.rec[ym]=o; seSaveRec_(); ov.remove(); seRender_(); } }); }
+// ── 인쇄 (A4 세로)
+function sePrint_(body, land){
+  var w=(typeof qmsPrintWin_==="function")?qmsPrintWin_():window.open("","_blank"); if(!w){ alert("인쇄 창을 열 수 없습니다."); return; }
+  w.document.write('<html><head><meta charset="utf-8"><title>NTL 안전교육</title><style>'
+    +'@page{ size:A4 '+(land?'landscape':'portrait')+'; margin:9mm 11mm; } table.lg th, table.lg td{ font-size:8pt; padding:1mm 1.3mm; } table.lg tbody td{ height:9.2mm; } tfoot th{ background:#EEF1F5; } *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; } body{ font-family:"Malgun Gothic",sans-serif; color:#111; margin:0; font-size:10pt; }'
+    +'.pg{ page-break-after:always; } .pg:last-child{ page-break-after:auto; } h1{ font-size:16pt; margin:0 0 1.5mm; text-align:center; } h2{ font-size:13.5pt; margin:0 0 3mm; text-align:center; color:#1F3864; } h3{ font-size:10.5pt; margin:2.2mm 0 1mm; color:#1F3864; border-left:4px solid #1F3864; padding-left:6px; }'
+    +'table{ width:100%; border-collapse:collapse; margin-bottom:2mm; } th,td{ border:0.8pt solid #444; padding:1.05mm 2mm; vertical-align:middle; } th{ background:#DCE3EE; font-weight:700; text-align:center; } td.c{ text-align:center; } .lb{ background:#F2F4F7; font-weight:700; width:32mm; text-align:center; }'
+    +'.sub{ text-align:center; color:#555; margin-bottom:4mm; } .note{ font-size:8.5pt; color:#555; margin-top:2mm; } .sig{ margin-top:3mm; display:flex; gap:6mm; flex-wrap:wrap; font-size:9.5pt; } .sig span{ border-bottom:0.8pt solid #333; min-width:32mm; display:inline-block; }'
+    +'.sign td{ height:9mm; padding:1mm 2mm; } .sign th{ padding:1.5mm; } ul,ol{ margin:1mm 0 1mm 6mm; padding:0; } li{ margin:1mm 0; } .box{ border:0.8pt solid #444; padding:2.5mm 3mm; } thead{ display:table-header-group; } tr{ page-break-inside:avoid; }'
+    +'</style></head><body>'+body+'</body></html>');
+  w.document.close(); setTimeout(function(){ try{ w.focus(); w.print(); }catch(_){} }, 300); }
+function seRecLine_(r){ if(!r || !r.date) return "20____년 ____월 ____일  ____:____ ~ ____:____"; var d=r.date.split("-"); return d[0]+"년 "+(+d[1])+"월 "+(+d[2])+"일  "+(r.t1||"__:__")+" ~ "+(r.t2||"__:__"); }
+function seMatHtml_(m){
+  var E=seE_, M=seMonth_(m)||{}, R=__se.rec[seYm_(m)]||{}, blank=function(v, n){ return v?E(v):"_".repeat(n||12); };
+  return '<div class="pg"><h1>NTL 월간 안전교육 프로그램 | '+String(m).padStart(2,"0")+'월</h1><h2>'+E(M.title)+'</h2>'
+    +'<table><tr><th style="width:42mm;">교육 운영 정보</th><th>기입 내용</th></tr><tr><td class="lb">교육 목표</td><td>'+E(M.goal)+'</td></tr><tr><td class="lb">일시 / 장소 / 강사</td><td>'+seRecLine_(R)+'  /  장소: '+blank(R.place)+'  /  강사: '+blank(R.teacher)+'</td></tr><tr><td class="lb">대상 / 권장 시간</td><td>'+E(M.target)+'</td></tr></table>'
+    +'<h3>1. 핵심 교육 내용</h3><table><tr><th style="width:14mm;">No.</th><th>교육 포인트</th></tr>'+(M.points||[]).map(function(x,i){ return '<tr><td class="c">'+(i+1)+'</td><td>'+E(x)+'</td></tr>'; }).join("")+'</table>'
+    +'<h3>2. 부서별 현장 적용</h3><table><tr><th style="width:28mm;">부서</th><th>실천 항목</th></tr>'+(M.dept||[]).map(function(r){ return '<tr><td class="c"><b>'+E(r[0])+'</b></td><td>'+E(r[1])+'</td></tr>'; }).join("")+'</table>'
+    +'<h3>3. 현장 실습 / 토의</h3><div class="box">'+E(M.practice)+'</div>'
+    +'<h3>4. 이해도 확인 <span style="font-weight:400;font-size:9.5pt;">※ 문항별로 맞음 / 안 맞음 중 하나를 표시하세요.</span></h3><table><tr><th>확인 문항</th><th style="width:20mm;">맞음</th><th style="width:20mm;">안 맞음</th></tr>'+(M.quiz||[]).map(function(q){ return '<tr><td>'+E(q[0])+'</td><td class="c">□</td><td class="c">□</td></tr>'; }).join("")+'</table>'
+    +'<div style="font-size:9.5pt;">정답 확인(강사용): '+(M.quiz||[]).map(function(q,i){ return (i+1)+'번 ________'; }).join("  /  ")+'     □ 구두 확인 완료   □ 보완교육 필요</div>'
+    +'<h3>5. 교육 결과 및 확인</h3><table><tr><th>참석 인원</th><th>교육 이해도</th><th>개선 필요사항 / 담당·완료기한</th></tr><tr><td class="c">총 ____명</td><td class="c">□ 이해함  □ 추가 설명 필요</td><td style="height:10mm;"></td></tr></table>'
+    +'<div class="sig">교육 담당자 서명: <span></span> 관리자 확인: <span></span> 추가교육 대상/일자: <span></span></div>'
+    +'<div class="note">※ 교육자료와 참석 서명부를 함께 보관하고, 위험요인은 담당자·완료기한을 지정해 후속 확인합니다. 법정교육 요건은 별도 확인하십시오.</div></div>'; }
+function seSignHtml_(m, pi){
+  var E=seE_, P=(__se.data.plants||[])[pi]||{ name:"", rows:20 }, M=seMonth_(m)||{}, R=__se.rec[seYm_(m)]||{}, rows="";
+  for(var i=1;i<=(P.rows||20);i++) rows+='<tr><td class="c">'+i+'</td><td></td><td></td><td></td><td class="c" style="font-size:9pt;">□ 확인  □ 재설명 필요</td><td></td></tr>';
+  var mins=""; try{ if(R.t1 && R.t2){ var a=R.t1.split(":"), b=R.t2.split(":"); mins=String((+b[0]*60+ +b[1])-(+a[0]*60+ +a[1])); } }catch(_){}
+  var chk=function(opts, v){ return opts.map(function(o){ return (o===v?'■ ':'□ ')+o; }).join("  "); };
+  return '<div class="pg"><h1>NTL 안전보건교육 참석 서명부 — '+E(P.name)+'</h1><div class="sub">'+String(m).padStart(2,"0")+'월 · '+E(M.title)+'</div>'
+    +'<table><tr><td class="lb">교육 주제</td><td>'+E(R.topic||M.title||"")+'</td><td class="lb">교육 일자 / 시간</td><td>'+seRecLine_(R)+(mins?(' (총 '+mins+'분)'):' (총 ____분)')+'</td></tr>'
+    +'<tr><td class="lb">교육 장소</td><td>'+E(R.place||"")+'</td><td class="lb">강사</td><td>'+E(R.teacher||"")+'</td></tr>'
+    +'<tr><td class="lb">교육 대상</td><td>'+E(P.name)+' 참석자</td><td class="lb">교육 인원</td><td>총 ____ 명'+(P.cap?(' / '+E(P.cap)):'')+'</td></tr>'
+    +'<tr><td class="lb">교육 방법</td><td>'+chk(["집합교육","현장교육"], R.method)+'  □ 기타: ______</td><td class="lb">교육 자료</td><td>□ 배포  □ 게시  □ 기타: ______</td></tr></table>'
+    +'<table class="sign"><thead><tr><th style="width:12mm;">No.</th><th style="width:26mm;">부서</th><th style="width:28mm;">성명</th><th style="width:32mm;">서명</th><th style="width:44mm;">교육내용 확인</th><th>비고</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<table><tr><td class="lb">참석 인원</td><td>총 ____ 명  ( 관리 ____명 / 품질 ____명 / 생산 ____명 / 구매 ____명 / 영업 ____명 / 기타 ____명 )</td></tr>'
+    +'<tr><td class="lb">이해도 확인 방법</td><td>□ 질문·답변  □ 체크리스트  □ 현장 시연  □ 기타: __________</td></tr><tr><td class="lb">불참자 / 보충교육 예정</td><td style="height:11mm;"></td></tr><tr><td class="lb">교육 결과 및 개선사항</td><td style="height:14mm;"></td></tr></table>'
+    +'<div class="sig">교육 담당자 서명: <span></span> 관리 책임자 서명: <span></span></div><div class="sig">확인일: ______년 ____월 ____일</div></div>'; }
+function seCommonPrint_(){
+  var E=seE_, C=__se.data.common, d=C.detail||{}, tb=function(rows, heads, w){ return '<table><tr>'+heads.map(function(x,i){ return '<th'+(w&&w[i]?' style="width:'+w[i]+'"':'')+'>'+E(x)+'</th>'; }).join("")+'</tr>'+(rows||[]).map(function(r){ return '<tr>'+r.map(function(c,i){ return '<td'+(i===0?' class="c"':'')+'>'+E(c)+'</td>'; }).join("")+'</tr>'; }).join("")+'</table>'; };
+  var li=function(a, o){ return '<'+(o?'ol':'ul')+'>'+(a||[]).map(function(x){ return '<li>'+E(x)+'</li>'; }).join("")+'</'+(o?'ol':'ul')+'>'; };
+  return '<div class="pg"><h1>'+E(C.title)+'</h1><div class="sub">'+E(C.sub)+'</div><h3>문서 목적</h3><div class="box">'+E(C.purpose)+'</div>'+tb(C.docInfo,["문서관리 항목","내용"],["35mm"])
+    +'<h3>운영 시 유의사항</h3>'+li(C.notes)+'<h3>1. 연간 월별 교육계획(안)</h3>'+tb(C.plan,["월","교육 주제","주요 대상","핵심 교육 내용"],["13mm","50mm","32mm"])
+    +'<h3>2. 부서별 안전관리 핵심 역할</h3>'+tb(C.roles,["부서","주요 책임","중점 위험"],["25mm"])+'</div>'
+    +'<div class="pg"><h3>3. 월간 교육 상세안 — '+E(d.title)+'</h3><b>교육목표</b>'+li(d.goals)+'<b>교육내용</b>'+tb(d.content,["주제","교육 핵심 내용","현장 적용 예시"],["35mm"])
+    +'<b>부서 통합 사례 토의</b><div class="box">사례: '+E(d.caseTitle)+'</div>'+tb(d.caseRows,["담당","필수 조치"],["25mm"])+'<b>교육 후 확인 질문</b>'+li(d.questions,true)
+    +'<div style="font-size:9.5pt;">강사 확인: □ 질문·답변 완료  □ 이해 부족자 재교육 필요  □ 현장 개선조치 등록 필요</div><h3>보관 및 후속조치</h3>'+li(C.keep)+'</div>'; }
+function seStyle_(){ if(document.getElementById("se-style")) return; var s=document.createElement("style"); s.id="se-style"; s.textContent=
+  '#se-root{padding:16px 20px 40px;color:#101828;} .se-crumb{font-size:12px;color:#667085;} .se-title{font-size:24px;font-weight:900;} .se-title span{font-size:13px;font-weight:600;color:#667085;margin-left:6px;} .se-sub{font-size:12.5px;color:#475467;margin:4px 0 12px;}'
+  +'.se-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid #EAECF0;padding-bottom:8px;} .se-tabs button{border:1px solid #D0D5DD;background:#fff;border-radius:999px;padding:7px 14px;font-weight:700;cursor:pointer;font-size:13px;color:#344054;} .se-tabs button.on{background:#1F2A44;color:#fff;border-color:#1F2A44;}'
+  +'.se-chips{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;} .se-chips button{border:1px solid #D0D5DD;background:#fff;border-radius:8px;padding:6px 11px;font-weight:700;cursor:pointer;font-size:13px;} .se-chips button.cur{border-color:#F79009;} .se-chips button.on{background:#DC6803;color:#fff;border-color:#DC6803;}'
+  +'.se-act{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;} .se-act .m{font-size:12px;color:#667085;} .se-btn{border:1px solid #D0D5DD;background:#fff;border-radius:8px;padding:7px 13px;font-weight:700;cursor:pointer;font-size:13px;color:#344054;} .se-btn.pri{background:#1F2A44;color:#fff;border-color:#1F2A44;} .se-btn.sm{padding:3px 9px;font-size:12px;}'
+  +'.se-editbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#FFFAEB;border:1px solid #FEC84B;border-radius:10px;padding:7px 10px;font-weight:700;color:#93370D;width:100%;} .se-editbar button{border:1px solid #D0D5DD;background:#fff;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;} .se-editbar button.pri{background:#067647;color:#fff;border-color:#067647;} .se-editbar span{font-weight:400;font-size:12px;color:#93370D;}'
+  +'.se-card{background:#fff;border:1px solid #EAECF0;border-radius:12px;padding:14px 16px;} .se-card h4{margin:14px 0 6px;font-size:14.5px;color:#1F3864;border-left:4px solid #1F3864;padding-left:7px;} .se-card h5{margin:10px 0 4px;font-size:13.5px;}'
+  +'.se-mh{display:flex;align-items:center;gap:10px;margin-bottom:8px;} .se-mh b{font-size:19px;} .se-mn{background:#DC6803;color:#fff;border-radius:8px;padding:3px 10px;font-weight:900;} .se-mh .m{color:#667085;font-size:12.5px;}'
+  +'#se-root table.se-tb{width:100%;border-collapse:collapse;font-size:13.5px;} #se-root table.se-tb th{background:#F2F4F7 !important;color:#344054 !important;padding:7px 8px !important;border:1px solid #EAECF0 !important;font-weight:700 !important;} #se-root table.se-tb td{padding:7px 9px;border:1px solid #EAECF0;text-align:left !important;vertical-align:top;} #se-root table.se-tb td.c{text-align:center !important;}'
+  +'#se-root table.se-kv th{width:150px;} #se-root table.se-tb tr.cur td{background:#FFFAEB;} .se-ol{margin:4px 0 4px 20px;padding:0;font-size:14px;line-height:1.7;} .se-box{background:#F9FAFB;border:1px solid #EAECF0;border-radius:8px;padding:8px 11px;font-size:14px;}'
+  +'.ok{color:#067647;} .ng{color:#B42318;} .m{color:#98A2B3;} .se-empty{padding:24px;text-align:center;color:#667085;}'
+  +'.se-ed .se-in{width:100%;border:1px solid #D0D5DD;border-radius:7px;padding:6px 8px;font:inherit;font-size:13.5px;box-sizing:border-box;} .se-ed textarea.se-in{resize:vertical;min-height:38px;} .se-ed label{display:flex;flex-direction:column;gap:3px;font-size:12.5px;font-weight:700;color:#475467;margin-bottom:6px;}'
+  +'.se-g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;} .se-edr{display:flex;gap:6px;align-items:flex-start;margin-bottom:5px;} .se-no{min-width:22px;text-align:center;font-weight:800;color:#667085;padding-top:8px;}'
+  +'.se-x{border:1px solid #FDA29B;background:#FEF3F2;color:#B42318;border-radius:7px;padding:5px 8px;cursor:pointer;font-weight:800;} .se-add{border:1px dashed #98A2B3;background:#fff;border-radius:7px;padding:5px 12px;cursor:pointer;font-weight:700;color:#344054;margin:2px 0 6px;}'
+  +'#se-root table.se-edt{width:100%;border-collapse:collapse;margin-bottom:4px;} #se-root table.se-edt th{background:#F2F4F7 !important;color:#344054 !important;font-size:12px !important;padding:5px !important;border:0 !important;} #se-root table.se-edt td{padding:3px;vertical-align:top;border:0;}'
+  +'.se-kp{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px;} .se-kp div{background:#fff;border:1px solid #EAECF0;border-radius:10px;padding:8px 12px;} .se-kp span{font-size:12px;color:#475467;font-weight:700;} .se-kp b{display:block;font-size:24px;} .se-kp small{font-size:12px;color:#667085;} .se-kp .bad{background:#FEF3F2;border-color:#FDA29B;} .se-kp .bad b{color:#B42318;} .se-kp .warn{background:#FFFAEB;border-color:#FEC84B;}'
+  +'#se-root table.se-lg{font-size:12.5px;} #se-root table.se-lg th{text-align:center !important;white-space:nowrap;} #se-root table.se-lg tbody tr{cursor:pointer;} #se-root table.se-lg tbody tr:hover td{background:#F5F8FF;} #se-root table.se-lg tr.miss td{background:#FEF3F2;} #se-root table.se-lg tfoot th{background:#EEF1F5 !important;}'
+  +'.se-fg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;} .se-fl{display:flex;flex-direction:column;gap:3px;font-size:12.5px;font-weight:700;color:#475467;} .se-fl input,.se-fl select,.se-fl textarea{border:1px solid #D0D5DD;border-radius:7px;padding:6px 8px;font:inherit;font-size:13.5px;font-weight:400;}'
+  +'.se-cnt{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;} .se-cnt label{display:flex;flex-direction:column;font-size:12px;} .se-cnt input{border:1px solid #D0D5DD;border-radius:7px;padding:5px;}'
+  +'@media (max-width:800px){ .se-g2,.se-fg{grid-template-columns:1fr;} .se-cnt{grid-template-columns:repeat(3,1fr);} }';
+  document.head.appendChild(s); }
 function ofRender_(){
   var host=document.getElementById("of-root"); if(!host) return;
   ofLoadLog_(); ofLoadMaster_();
