@@ -18763,14 +18763,84 @@ function ftInParse_(txt, qcol){
   var hi=R.findIndex(function(r){ return r.some(function(c){ return /규격/.test(c); }) && r.some(function(c){ return /품목/.test(c); }); }), head=hi>=0?R[hi]:null, body=hi>=0?R.slice(hi+1):R;
   var ix=head?{ code:ftIdx_(head,["품목코드"]), name:ftIdx_(head,["품명"]), spec:ftIdx_(head,["규격"]), unit:ftIdx_(head,["단위"]), stock:ftIdx_(head,["재고량"]), req:ftIdx_(head,["청구량"]) }:{ code:1, name:3, spec:4, unit:5, stock:6, req:7 };
   return body.map(function(r){ var spec=r[ix.spec]||""; if(!spec || /규격/.test(spec)) return null; return { code:r[ix.code]||"", name:r[ix.name]||"", spec:spec, unit:r[ix.unit]||"EA", qty:ftN_(r[qcol==="stock"?ix.stock:ix.req]), stock:ftN_(r[ix.stock]), req:ftN_(r[ix.req]) }; }).filter(Boolean); }
+// [추가] 사진(이미지)으로 받은 납품서·피팅 LIST → 글자 인식(Tesseract, 처음 한 번 내려받음) → 붙여넣기 칸에 표로 채움 → 확인·수정 후 저장
+//   표의 가로줄로 행을 나눠 한 행씩 읽음 (병합칸은 한 덩어리로 읽고 규격·수량 짝을 찾음)
+// 규격은 정해진 목록(등록 품목 + 기본 목록)과 비교해 OCR 오인식(a→4, B→8, e→6, 5→S 등)을 바로잡음
+var FT_SPEC_BASE=["S4E6-P","S4FN","S4HE6-P","S4HFN","S4LG6-P","S4MN","S6*4HLG-P","S8LG6-P","S8MN","S4SG6-P","S8SG6-P","S8FN","S8E6-P","S4LG19-P","S6*4HLG-P"];
+function ftSpecVocab_(){ var v={}; FT_SPEC_BASE.forEach(function(x){ v[x]=1; }); try{ var d=__ft.d||{}; Object.keys(d.items||{}).forEach(function(k){ var x=(d.items[k]||{}).spec; if(x) v[x]=1; }); Object.keys(d.bom||{}).forEach(function(k){ ((d.bom[k]||{}).lines||[]).forEach(function(l){ if(l.spec) v[l.spec]=1; }); }); }catch(_){} return Object.keys(v); }
+function ftSpecHeur_(t){ t=String(t||"").toUpperCase().replace(/[xX×]/g,"*"); if(!t) return t; t="S"+t.slice(1);
+  var c=t.split(""), dig={A:"4",S:"5",B:"8",O:"0",I:"1",L:"1",G:"6",E:"6"};
+  if(c[1] && dig[c[1]]) c[1]=dig[c[1]];                       // S 다음은 숫자
+  if(c[2]==="*" && c[3] && dig[c[3]]) c[3]=dig[c[3]];
+  t=c.join(""); t=t.replace(/(LG|SG|HE|E|HLG)([EG])(-?P)$/,function(m,a,b,c2){ return a+"6"+c2; }).replace(/([A-Z])(\d+)P$/,"$1$2-P");
+  return t; }
+function ftSpecFix_(raw, voc){ var h=ftSpecHeur_(raw); if(voc.indexOf(h)>=0) return { spec:h, ok:true };
+  var conf={"A4":1,"4A":1,"S5":1,"5S":1,"B8":1,"8B":1,"E6":1,"6E":1,"G6":1,"6G":1,"L1":1,"1L":1,"I1":1,"1I":1,"O0":1,"0O":1,"SA":1,"AS":1};
+  var src=String(raw||"").toUpperCase().replace(/[xX×]/g,"*");
+  var dist=function(a,b){ var m=a.length,n=b.length,D=[],i,j; for(i=0;i<=m;i++){ D[i]=[i]; } for(j=0;j<=n;j++) D[0][j]=j;
+    for(i=1;i<=m;i++) for(j=1;j<=n;j++){ var x=a[i-1],y=b[j-1], sub=x===y?0:(conf[x+y]?0.3:1); D[i][j]=Math.min(D[i-1][j]+((x==="-"||x==="*")?0.3:1), D[i][j-1]+((y==="-"||y==="*")?0.3:1), D[i-1][j-1]+sub); } return D[m][n]; };
+  var best=null, bd=9, second=9; voc.forEach(function(v){ var d=Math.min(dist(src,v), dist(h,v)); if(d<bd){ second=bd; bd=d; best=v; } else if(d<second) second=d; });
+  if(best && bd<=1.6 && second-bd>=0.3) return { spec:best, ok:true }; return { spec:h, ok:false }; }
+function ftNumFix_(t){ t=String(t||""); if(!/\d/.test(t)) return null; var v=t.replace(/[aA]/g,"4").replace(/[sS]/g,"5").replace(/[oO]/g,"0").replace(/[lI|]/g,"1").replace(/B/g,"8"); return /^\d{1,5}$/.test(v)?v:null; }
+function ftIsSpecTok_(t){ return /^[sS5][0-9aAsSbB*xX×][0-9A-Za-z*×\-]{1,9}$/.test(t) && /[A-Za-z].*[A-Za-z]/.test(t.slice(1)) && !/^\d+$/.test(t); }
+async function ftOcrLines_(img, onProg){   // 2가지로 읽음: ①원본 크기(테두리 그대로) ②2배 확대+테두리 지움 → 결과가 더 좋은 쪽을 씀
+  var W=img.naturalWidth||img.width, H=img.naturalHeight||img.height;
+  var mk=function(k, clean){ var c=document.createElement("canvas"); c.width=Math.round(W*k); c.height=Math.round(H*k); var g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height); g.imageSmoothingQuality="high"; g.drawImage(img,0,0,c.width,c.height);
+    if(!clean) return c;
+    var cw=c.width, ch=c.height, id=g.getImageData(0,0,cw,ch), d=id.data, dk=function(x,y){ var i=(y*cw+x)*4; return 0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]<150; }, wh=function(x,y){ var i=(y*cw+x)*4; d[i]=d[i+1]=d[i+2]=255; }, x,y,r0, hmin=Math.max(60,cw*0.12), vmin=Math.max(30,ch*0.06), del=[];
+    for(y=0;y<ch;y++){ r0=-1; for(x=0;x<=cw;x++){ var on=x<cw&&dk(x,y); if(on&&r0<0) r0=x; if(!on&&r0>=0){ if(x-r0>=hmin) del.push([0,y,r0,x]); r0=-1; } } }
+    for(x=0;x<cw;x++){ r0=-1; for(y=0;y<=ch;y++){ var on2=y<ch&&dk(x,y); if(on2&&r0<0) r0=y; if(!on2&&r0>=0){ if(y-r0>=vmin) del.push([1,x,r0,y]); r0=-1; } } }
+    del.forEach(function(q){ for(var t=q[2];t<q[3];t++){ if(q[0]) wh(q[1],t); else wh(t,q[1]); } }); g.putImageData(id,0,0); return c; };
+  var big=W>2600?2600/W:1, pass=0;
+  var w=await Tesseract.createWorker("eng",1,{ logger:function(m){ if(onProg && m && m.status==="recognizing text") onProg((pass+(m.progress||0))/2); } });
+  await w.setParameters({ tessedit_pageseg_mode:"4", preserve_interword_spaces:"1" });
+  var out=[], cv=[mk(big,false), mk(Math.min(2,2600/W),true)];
+  for(pass=0;pass<cv.length;pass++){ var res=await w.recognize(cv[pass]);
+    out.push(String((res.data&&res.data.text)||"").split(/\n/).map(function(l){ return l.replace(/[|｜\[\]{}()“”"]/g," ").replace(/\s+/g," ").trim(); }).filter(Boolean)); }
+  await w.terminate(); return out; }
+function ftOcrBest_(passes, fn){ var best=null, sc=-1e9; passes.forEach(function(L){ var r=fn(L), lines=r.tsv.split("\n").length-1, v=lines*2-r.bad.length*3; if(v>sc){ sc=v; best=r; } }); return best; }
+function ftOcrToIn_(lines){   // 고객 납품서 → TSV (품목코드 9자리가 있는 줄만)
+  var voc=ftSpecVocab_(), rows=["NO\t품목코드\t도면번호\t품명\t규격\t단위\t재고량\t청구량"], n=0, bad=[], items=(window.__ft&&__ft.d&&__ft.d.items)||{};
+  lines.forEach(function(L){ var m=L.match(/\b1\d{8}\b/); if(!m) return; var tk=L.slice(m.index+9).split(" "), si=-1;
+    for(var i=0;i<tk.length;i++){ if(ftIsSpecTok_(tk[i])){ si=i; } }
+    if(si<0) return; var f=ftSpecFix_(tk[si], voc), nums=[];
+    Object.keys(items).forEach(function(k){ if(items[k] && items[k].code===m[0] && items[k].spec){ f={ spec:items[k].spec, ok:true }; } });   // 품목코드로 이미 아는 규격이면 그대로
+    for(var j=si+1;j<tk.length && nums.length<2;j++){ if(/^EA$/i.test(tk[j])) continue; var v=ftNumFix_(tk[j]); if(v!==null) nums.push(v); }
+    n++; if(!f.ok) bad.push(f.spec); if(nums.length<2) bad.push(m[0]+" 수량");
+    rows.push([n, m[0], "", tk.slice(0,si).join(" "), f.spec, "EA", nums[0]||"", nums[1]||""].join("\t")); });
+  return { tsv:rows.join("\n"), n:n, bad:bad }; }
+function ftOcrToBom_(lines){   // 피팅 LIST → TSV (품목코드가 없는 줄은 위 제품의 규격으로 이어붙임, 미입고 수량은 무시)
+  var voc=ftSpecVocab_(), rows=["No.\t품목코드\tMaterial\t미입고 수량\tFitting 규격\t적용 수량"], n=0, bad=[], cur=null;
+  lines.forEach(function(L){ var prod=(L.match(/\b[A-Z]\d{3}-\d{3}-\d{3}[A-Z]?\b/)||L.match(/\b\d{5}-\d{2}\b/)||[])[0]||"", mat=(L.match(/\b1\d{8}\b/)||[])[0]||"";
+    var tk=L.split(" "), si=-1; for(var i=0;i<tk.length;i++){ if(tk[i]!==prod && tk[i]!==mat && ftIsSpecTok_(tk[i])){ si=i; break; } }
+    if(prod||mat){ cur={ prod:prod, mat:mat, first:true }; n++; }
+    if(si<0 || !cur) return; var f=ftSpecFix_(tk[si], voc), q=null; for(var j=si+1;j<tk.length && q===null;j++) q=ftNumFix_(tk[j]);
+    if(!f.ok) bad.push(f.spec); if(q===null) bad.push(f.spec+" 수량");
+    rows.push([cur.first?n:"", cur.first?cur.prod:"", cur.first?cur.mat:"", "", f.spec, q||""].join("\t")); cur.first=false; });
+  return { tsv:rows.join("\n"), n:n, bad:bad }; }
+// 붙여넣기 칸에 사진 넣기: 파일 고르기 · Ctrl+V 사진 · 끌어 놓기
+function ftOcrBind_(ov, taSel, kind, onText){
+  var ta=ov.querySelector(taSel), st=ov.querySelector(".ft-ocrst"), run=function(file){ if(!file || !/^image\//.test(file.type||"")) return;
+    st.innerHTML="🖼 글자 인식 준비 중… (처음 한 번은 인식 프로그램을 내려받아 조금 걸립니다)";
+    var u=URL.createObjectURL(file), img=new Image(); img.onerror=function(){ st.textContent="사진을 열지 못했습니다."; };
+    img.onload=function(){ (typeof ocrLoad_==="function"?ocrLoad_:function(cb){ cb(); })(function(){ ftOcrLines_(img, function(p){ st.textContent="🖼 글자 읽는 중… "+Math.round(p*100)+"%"; }).then(function(lines){ URL.revokeObjectURL(u);
+        var r=ftOcrBest_(lines, kind==="in"?ftOcrToIn_:ftOcrToBom_); ta.value=r.tsv; onText(r.tsv);
+        st.innerHTML=r.n?('🖼 사진에서 <b>'+r.n+(kind==="in"?'줄':'개 제품')+'</b>을 읽었습니다 — <b>사진과 줄 수·수량을 꼭 대조</b>하세요 (틀린 곳은 위 칸에서 고치면 아래 표가 다시 계산됩니다)'+(r.bad.length?'<br><b style="color:#B42318;">⚠ 확인 필요: '+ftE_(r.bad.join(", "))+'</b>':'')):'<b style="color:#B42318;">표를 읽지 못했습니다 — 표 부분만 캡처해 다시 넣거나 직접 입력하세요</b>';
+      }).catch(function(e){ st.innerHTML='<b style="color:#B42318;">글자 인식 실패: '+ftE_(e&&e.message||e)+'</b>'; }); }); };
+    img.src=u; };
+  var fi=ov.querySelector(".ft-ocrfile"); if(fi) fi.addEventListener("change", function(){ run(fi.files[0]); fi.value=""; });
+  ta.addEventListener("paste", function(e){ var its=(e.clipboardData&&e.clipboardData.items)||[]; for(var i=0;i<its.length;i++){ if(its[i].kind==="file" && /^image\//.test(its[i].type)){ e.preventDefault(); run(its[i].getAsFile()); return; } } });
+  ta.addEventListener("dragover", function(e){ e.preventDefault(); }); ta.addEventListener("drop", function(e){ var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f && /^image\//.test(f.type)){ e.preventDefault(); run(f); } });
+  ta.addEventListener("input", function(){ onText(ta.value); }); }
 function ftInPop_(){
   var E=ftE_, ov=ftOv_('📥 입고 — 고객사('+E(__ft.d.cfg.cust||"")+') → 엔티엘', 980), st={ rows:[], qcol:"req" };
   var body=ov.querySelector(".sd-pb");
   var draw=function(){ var sum=st.rows.reduce(function(s,r){ return s+ftN_(r.qty); },0);
     body.innerHTML='<div class="ft-g"><label>입고일<input id="fti-date" type="date" value="'+ftToday_()+'"></label><label>수량으로 쓸 칸<select id="fti-qcol"><option value="req"'+(st.qcol==="req"?' selected':'')+'>청구량</option><option value="stock"'+(st.qcol==="stock"?' selected':'')+'>재고량</option></select></label><label style="grid-column:span 2;">비고<input id="fti-note" placeholder="예: 납품서 No. / Project EGUS-SST"></label></div>'
-      +'<label class="ft-paste">고객사 납품서 표를 엑셀·PDF에서 복사해 붙여넣으세요 (NO · 품목코드 · 도면번호 · 품명 · 규격 · 단위 · 재고량 · 청구량 …)<textarea id="fti-paste" rows="4" placeholder="여기에 Ctrl+V"></textarea></label>'
+      +'<label class="ft-paste">고객사 납품서 — 엑셀·PDF 표를 복사해 붙여넣거나, <b>사진은 Ctrl+V · 끌어 놓기 · [🖼 사진으로 읽기]</b> (NO · 품목코드 · 도면번호 · 품명 · 규격 · 단위 · 재고량 · 청구량 …)<textarea id="fti-paste" rows="5" placeholder="여기에 Ctrl+V (표 또는 사진)">'+E(st.raw||"")+'</textarea></label><div class="ft-ocrbar"><label class="ft-btn sm">🖼 사진으로 읽기<input type="file" accept="image/*" class="ft-ocrfile" style="display:none;"></label><span class="ft-ocrst m"></span></div>'
       +(st.rows.length?('<table class="ft-tb"><thead><tr><th>품목코드</th><th>품명</th><th>규격</th><th>단위</th><th>재고량</th><th>청구량</th><th class="hl">입고 수량</th><th></th></tr></thead><tbody>'+st.rows.map(function(r,i){ return '<tr><td>'+E(r.code)+'</td><td class="nm">'+E(r.name)+'</td><td><b>'+E(r.spec)+'</b></td><td class="c">'+E(r.unit)+'</td><td class="n">'+r.stock+'</td><td class="n">'+r.req+'</td><td class="hl"><input class="fti-q" data-i="'+i+'" type="number" value="'+E(r.qty)+'"></td><td><button type="button" class="ft-btn sm del" data-x="rm" data-i="'+i+'">✕</button></td></tr>'; }).join("")+'</tbody><tfoot><tr><th colspan="6">합계 '+st.rows.length+'종</th><th>'+sum+'</th><th></th></tr></tfoot></table>'):'<div class="ft-empty">붙여넣으면 여기에 미리보기가 나옵니다</div>');
-    var pa=body.querySelector("#fti-paste"); pa.addEventListener("paste", function(ev){ setTimeout(function(){ st.rows=ftInParse_(pa.value, st.qcol); st.raw=pa.value; draw(); }, 30); });
+    var pa=body.querySelector("#fti-paste"); pa.addEventListener("paste", function(ev){ var its=(ev.clipboardData&&ev.clipboardData.items)||[]; for(var q=0;q<its.length;q++){ if(its[q].kind==="file") return; } setTimeout(function(){ st.rows=ftInParse_(pa.value, st.qcol); st.raw=pa.value; draw(); }, 30); });
+    ftOcrBind_(body, "#fti-paste", "in", function(t){ st.raw=t; st.rows=ftInParse_(t, st.qcol); clearTimeout(st.tm); st.tm=setTimeout(function(){ var keep=body.querySelector(".ft-ocrst").innerHTML, f=document.activeElement===pa; draw(); body.querySelector(".ft-ocrst").innerHTML=keep; if(f){ var p2=body.querySelector("#fti-paste"); p2.focus(); } }, 600); });
     body.querySelector("#fti-qcol").addEventListener("change", function(ev){ st.qcol=ev.target.value; if(st.raw){ st.rows=ftInParse_(st.raw, st.qcol); } draw(); });
     body.querySelectorAll(".fti-q").forEach(function(i){ i.addEventListener("input", function(){ st.rows[+i.getAttribute("data-i")].qty=ftN_(i.value); }); }); };
   draw();
@@ -18831,9 +18901,10 @@ function ftBomParse_(txt){
   return out; }
 function ftBomPaste_(){
   var E=ftE_, ov=ftOv_("📋 제품별 피팅 LIST 붙여넣기", 900), body=ov.querySelector(".sd-pb"), st={ B:{} };
-  var draw=function(){ var ks=Object.keys(st.B); body.innerHTML='<label class="ft-paste">고객 피팅 LIST 표를 엑셀에서 복사해 붙여넣으세요 (No · 품목코드 · Material · 미입고 수량 · Fitting 규격 · 적용 수량) — 미입고 수량은 쓰지 않고, 병합된 품목코드 칸은 위 값을 이어받습니다<textarea id="ftb-paste" rows="4" placeholder="여기에 Ctrl+V"></textarea></label>'
+  var draw=function(){ var ks=Object.keys(st.B); body.innerHTML='<label class="ft-paste">고객 피팅 LIST — 엑셀 표를 복사해 붙여넣거나, <b>사진은 Ctrl+V · 끌어 놓기 · [🖼 사진으로 읽기]</b> (No · 품목코드 · Material · 미입고 수량 · Fitting 규격 · 적용 수량) — 미입고 수량은 쓰지 않고, 병합된 품목코드 칸은 위 값을 이어받습니다<textarea id="ftb-paste" rows="6" placeholder="여기에 Ctrl+V (표 또는 사진)">'+E(st.raw||"")+'</textarea></label><div class="ft-ocrbar"><label class="ft-btn sm">🖼 사진으로 읽기<input type="file" accept="image/*" class="ft-ocrfile" style="display:none;"></label><span class="ft-ocrst m"></span></div>'
       +(ks.length?('<div class="m" style="margin:4px 0;">제품 '+ks.length+'개 · 같은 품목코드가 이미 있으면 새 내용으로 바뀝니다</div><table class="ft-tb"><thead><tr><th>품목코드</th><th>Material</th><th>Fitting 규격 × 적용 수량</th><th></th></tr></thead><tbody>'+ks.map(function(k){ var b=st.B[k]; return '<tr><td><b>'+E(b.prod)+'</b>'+(__ft.d.bom[k]?' <small class="m">(바뀜)</small>':' <small class="ok">(새로)</small>')+'</td><td>'+E(b.mat)+'</td><td>'+b.lines.map(function(l){ return '<span class="ft-chip">'+E(l.spec)+' <b>×'+l.qty+'</b></span>'; }).join("")+'</td><td></td></tr>'; }).join("")+'</tbody></table>'):'<div class="ft-empty">붙여넣으면 미리보기가 나옵니다</div>');
-    var pa=body.querySelector("#ftb-paste"); pa.addEventListener("paste", function(){ setTimeout(function(){ st.B=ftBomParse_(pa.value); draw(); }, 30); }); };
+    var pa=body.querySelector("#ftb-paste"); pa.addEventListener("paste", function(ev){ var its=(ev.clipboardData&&ev.clipboardData.items)||[]; for(var q=0;q<its.length;q++){ if(its[q].kind==="file") return; } setTimeout(function(){ st.raw=pa.value; st.B=ftBomParse_(pa.value); draw(); }, 30); });
+    ftOcrBind_(body, "#ftb-paste", "bom", function(t){ st.raw=t; st.B=ftBomParse_(t); clearTimeout(st.tm); st.tm=setTimeout(function(){ var keep=body.querySelector(".ft-ocrst").innerHTML, f=document.activeElement===pa; draw(); body.querySelector(".ft-ocrst").innerHTML=keep; if(f){ var p2=body.querySelector("#ftb-paste"); p2.focus(); } }, 600); }); };
   draw(); ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn" data-x="save">BOM 저장</button>';
   ov.addEventListener("click", function(e){ if(e.target.getAttribute && e.target.getAttribute("data-x")==="save"){ var ks=Object.keys(st.B); if(!ks.length){ alert("붙여넣은 내용이 없습니다."); return; } ks.forEach(function(k){ __ft.d.bom[k]=st.B[k]; }); ftSave_("BOM"); ov.remove(); __ft.tab="bom"; ftRender_(); } }); }
 function ftBomEdit_(prod){
@@ -18892,6 +18963,7 @@ function ftStyle_(){ if(document.getElementById("ft-style")) return; var s=docum
   +'.ft-tb input{border:1px solid #D0D5DD;border-radius:6px;padding:5px 7px;font-size:13px;width:100%;box-sizing:border-box;} .ft-tg{font-size:11.5px;font-weight:800;border-radius:6px;padding:1px 7px;white-space:nowrap;} .ft-tg.in{background:#E6F6F4;color:#0E9384;} .ft-tg.out{background:#FFF1E6;color:#DC6803;} .ft-tg.use{background:#EFF4FF;color:#1570EF;} .ft-tg.ret,.ft-tg.adj{background:#F2F4F7;color:#475467;}'
   +'.ft-chip{display:inline-block;border:1px solid #D0D5DD;border-radius:6px;padding:1px 7px;margin:1px 3px 1px 0;font-size:12px;background:#fff;} .ft-chip.no{border-style:dashed;color:#B54708;} .ft-empty{padding:20px;text-align:center;color:#667085;}'
   +'.ft-g{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:8px;align-items:end;} .ft-g label,.ft-paste{display:flex;flex-direction:column;gap:3px;font-size:12.5px;font-weight:700;color:#475467;} .ft-g input,.ft-g select{height:34px;border:1px solid #D0D5DD;border-radius:7px;padding:0 8px;font-size:13px;font-weight:400;} .ft-paste textarea{border:1.5px dashed #84ADFF;border-radius:8px;padding:8px;font-size:12.5px;font-weight:400;margin-bottom:8px;}'
+  +'.ft-ocrbar{display:flex;gap:8px;align-items:center;margin:-4px 0 8px;} .ft-ocrbar .ft-btn{cursor:pointer;}'
   +'.ft-pop h4{margin:10px 0 5px;font-size:14px;} .ft-pop h4 small{font-weight:400;color:#667085;font-size:12px;} .ft-set h4{margin:6px 0;} .ft-vlist .ft-g{grid-template-columns:1.2fr 1fr 0.8fr 1.6fr auto;}'
   +'@media (max-width:900px){ .ft-g{grid-template-columns:1fr 1fr;} .ft-kp{grid-template-columns:repeat(2,1fr);} }';
   document.head.appendChild(s); }
@@ -32428,4 +32500,3 @@ try{ RV_STAGE.push({ title:"🤝 협력사 NCR 대리 작성", desc:"1인 사업
 
 </body>
 </html>
-  
