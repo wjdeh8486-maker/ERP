@@ -5521,6 +5521,8 @@ function refreshActiveViewAfterData(){
 }
 function computeAllStatuses(data){
   const result = {};
+  __rowStatus = new WeakMap();
+  const __putRes = (r, v)=>{ result[r.orderNo] = v; __rowStatus.set(r, v); };   // [추가] 같은 ORDER NO. 여러 줄 → 줄별 상태
   const groups = {};
   const order = [];
   (data||[]).forEach((r, idx)=>{
@@ -5541,45 +5543,45 @@ function computeAllStatuses(data){
     let wRemain = computeWaitIncomingInspection(rep);
     rows.forEach(r=>{
       const I = Number(r.qty)||0;
-      if(I === 0){ result[r.orderNo] = {status:"", q:qRemain, s:sRemain, t:tRemain, r:rRemain}; return; }
-      if(r.shipped === "납품완료"){ result[r.orderNo] = {status:"완료", q:qRemain, s:sRemain, t:tRemain, r:rRemain}; return; }
+      if(I === 0){ __putRes(r, {status:"", q:qRemain, s:sRemain, t:tRemain, r:rRemain}); return; }
+      if(r.shipped === "납품완료"){ __putRes(r, {status:"완료", q:qRemain, s:sRemain, t:tRemain, r:rRemain}); return; }
       const V = computeStockPreShip(r);
       const snapshot = {q:qRemain, s:sRemain, t:tRemain, r:rRemain};
       if(V - I >= 0){
-        result[r.orderNo] = Object.assign({status:"출고"}, snapshot);
+        __putRes(r, Object.assign({status:"출고"}, snapshot));
         return;
       }
       // [수정] 선출고(V)한 만큼은 이미 나갔으므로 남은 수량(N=I-V)만 대기 물량에서 배정·차감
       //   (예: 수량 7·선출고 6 → 비젼대기 8개 중 1개만 쓰고 7개는 다음 주문에 배정)
       const N = I - V;
       if(qRemain - N >= 0){
-        result[r.orderNo] = Object.assign({status:"재고"}, snapshot);
+        __putRes(r, Object.assign({status:"재고"}, snapshot));
         qRemain -= N;
         return;
       }
       if(sRemain - N >= 0){
-        result[r.orderNo] = Object.assign({status:"외관"}, snapshot);
+        __putRes(r, Object.assign({status:"외관"}, snapshot));
         sRemain -= N;
         return;
       }
       if(tRemain - N >= 0){
-        result[r.orderNo] = Object.assign({status:"비젼"}, snapshot);
+        __putRes(r, Object.assign({status:"비젼"}, snapshot));
         tRemain -= N;
         return;
       }
       if(rRemain - N >= 0){
-        result[r.orderNo] = Object.assign({status:"측정"}, snapshot);
+        __putRes(r, Object.assign({status:"측정"}, snapshot));
         rRemain -= N;
         return;
       }
       if(wRemain - N >= 0){
-        result[r.orderNo] = Object.assign({status:"수입"}, snapshot);
+        __putRes(r, Object.assign({status:"수입"}, snapshot));
         wRemain -= N;
         return;
       }
       const totalAvail = qRemain + sRemain + tRemain + rRemain + wRemain + V;
       if(totalAvail >= I){
-        result[r.orderNo] = Object.assign({status:"OK"}, snapshot);
+        __putRes(r, Object.assign({status:"OK"}, snapshot));
         let need = Math.max(I - V, 0);
         const takeQ = Math.min(qRemain, need); qRemain -= takeQ; need -= takeQ;
         const takeS = Math.min(sRemain, need); sRemain -= takeS; need -= takeS;
@@ -5588,12 +5590,14 @@ function computeAllStatuses(data){
         const takeW = Math.min(wRemain, need); wRemain -= takeW; need -= takeW;
         return;
       }
-      result[r.orderNo] = Object.assign({status:"생산"}, snapshot);
+      __putRes(r, Object.assign({status:"생산"}, snapshot));
     });
   });
   return result;
 }
+var __rowStatus = new WeakMap();
 function computeProductStatus(r){
+  try{ const rs = __rowStatus.get(r); if(rs) return rs.status; }catch(_){}
   const cached = mainStatusMap[r.orderNo];
   return cached ? cached.status : computeProductStatusRaw(r);
 }
@@ -5639,9 +5643,25 @@ function rebuildStockPreShipMapIfNeeded(){
     stockPreShipMap[iv.ctrlNo] = (stockPreShipMap[iv.ctrlNo]||0) + (Number(iv.outQty)||0);
   });
 }
+// [추가] 같은 ORDER NO.가 MAIN에 여러 줄(예: PO '선진행' + '추가')이면 출고수량을 줄마다 나눠 배분
+//   순서: '선진행'(선발주) 줄 먼저 → 나머지는 MAIN 순서 · 각 줄 수량만큼 채우고, 남는 출고는 마지막 줄에
+//   (전에는 두 줄 모두 출고 전체를 받아 추가분도 '출고'로 보였음)
+var __dupOrdAlloc = null, __dupOrdRef = null;
+function mainOrderQtySum_(o){ o=String(o||"").trim().toUpperCase(); if(!o) return 0; var s=0, md=(typeof mainData!=="undefined"&&mainData)||[]; for(var i=0;i<md.length;i++){ if(String(md[i].orderNo||"").trim().toUpperCase()===o) s+=Number(md[i].qty)||0; } return s; }
+function dupOrdAllocBuild_(){
+  var md=(typeof mainData!=="undefined"&&mainData)||[];
+  if(__dupOrdAlloc && __dupOrdRef===md && __dupOrdAlloc.__inv===stockPreShipMap) return;
+  __dupOrdAlloc=new WeakMap(); __dupOrdAlloc.__inv=stockPreShipMap; __dupOrdRef=md;
+  var by={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(!o || !((Number(r.qty)||0)>0)) return; (by[o]=by[o]||[]).push(r); });
+  Object.keys(by).forEach(function(o){ var L=by[o]; if(L.length<2) return;
+    L=L.map(function(r,i){ return { r:r, i:i, pre:/선\s*진행|선\s*발주/.test(String(r.prpo||r.po||"")) }; }).sort(function(a,b){ return (b.pre-a.pre) || (a.i-b.i); });
+    var rem=(stockPreShipMap&&stockPreShipMap[o])||0;
+    L.forEach(function(e, k){ var q=Number(e.r.qty)||0, take=(k===L.length-1)?rem:Math.min(q, rem); __dupOrdAlloc.set(e.r, Math.max(0,take)); rem-=Math.max(0,take); }); });
+}
 function computeStockPreShip(r){
   if(typeof invData === "undefined") return 0;
   rebuildStockPreShipMapIfNeeded();
+  try{ dupOrdAllocBuild_(); if(__dupOrdAlloc && __dupOrdAlloc.has(r)) return __dupOrdAlloc.get(r); }catch(_){}
   return stockPreShipMap[r.orderNo] || 0;
 }
 function mainRenderStats(data){
@@ -6240,7 +6260,7 @@ function insplistBuildRows_(q, shipRows){
   if(matched.length>300){ matched=matched.slice(0,300); __tooMany=true; }
   if(typeof window!=="undefined") window.__insplistTooMany=__tooMany;
   // 출하검사 검사수를 순차 배분(앞 ORDER부터 수량만큼) — 전체 MAIN 수량 기준
-  var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
+  var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=(qtyMap[o]||0)+(Number(r.qty)||0); });   // [수정] 같은 ORDER NO. 여러 줄은 합계
   var shipAlloc=insplistShipAlloc_(insplistCountShip_(shipRows, iv), function(o){ return qtyMap[o]||0; });   // [수정] 오늘 검사분만
   return matched.map(function(m){
     var orderNo=String(m.orderNo||"").trim();
@@ -8327,7 +8347,7 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
   if(matched.length>__lim){ matched=matched.slice(0,__lim); __tooMany=true; }
   if(typeof window!=="undefined"){ window.__dispatchTooMany=__tooMany; window.__dispatchTotal=__total; window.__dispatchLastDue=matched.length?String(matched[matched.length-1].dueDate||""):""; }
 
-  var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=Number(r.qty)||0; });
+  var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=(qtyMap[o]||0)+(Number(r.qty)||0); });   // [수정] 같은 ORDER NO. 여러 줄은 합계
   var shipAlloc=insplistShipAlloc_(insplistCountShip_(shipRows, iv), function(o){ return qtyMap[o]||0; });   // [수정] 오늘 검사분만
 
   return matched.map(function(m){
@@ -13248,7 +13268,7 @@ function sdOutTotals_(){
   var m={}, stSn={}, g=function(o){ return m[o]||(m[o]={ stock:0, ship:0 }); };
   iv.forEach(function(r){ var o=String(r.ctrlNo||"").trim(), q=Number(r.outQty)||0; if(!o || q<=0) return; g(o).stock+=q;
     if(r.sn) String(r.sn).split(/[,\n\/]+/).forEach(function(t){ (typeof insplistSnNums_==="function"?insplistSnNums_(t):[]).forEach(function(n){ (stSn[o]=stSn[o]||{})[n]=1; }); }); });
-  var qty={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qty[o]=Number(r.qty)||0; });
+  var qty={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qty[o]=(qty[o]||0)+(Number(r.qty)||0); });   // [수정] 같은 ORDER NO. 여러 줄은 합계
   var used={};
   rows.forEach(function(r){ if(!r || (typeof insIsReinsp_==="function" && insIsReinsp_(r))) return;
     var seg=String(r.seg||""); if(seg && !/분출/.test(seg)) return;                     // 분출 체크한 행만 (구분 비어 있으면 출고NO로 판단)
@@ -27028,7 +27048,7 @@ function insRender(){
   var __outNoOver={}, __outNoOverList=[], __rowOutOver={};
   if(insType==="shipping"){
     var __qtyMap={};
-    try{ ((typeof mainData!=="undefined"&&mainData)||[]).forEach(function(m){ var o=String(m.orderNo||"").trim().toUpperCase(); if(o) __qtyMap[o]=Number(m.qty)||0; }); }catch(_){}
+    try{ ((typeof mainData!=="undefined"&&mainData)||[]).forEach(function(m){ var o=String(m.orderNo||"").trim().toUpperCase(); if(o) __qtyMap[o]=(__qtyMap[o]||0)+(Number(m.qty)||0); }); }catch(_){}   // [수정] 같은 ORDER NO. 여러 줄(선진행+추가)은 합계
     if(Object.keys(__qtyMap).length){
       var __demand={};
       rows.forEach(function(r, ri){
