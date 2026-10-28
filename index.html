@@ -3108,6 +3108,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
             <thead><tr>
               <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">ORDER NO.</th>
+              <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">기존도번</th>
               <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">품명</th>
               <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">수량</th>
               <th style="padding:7px;border:1px solid #E1E8F0;background:#1F2A44;color:#fff;">위치</th>
@@ -8974,12 +8975,16 @@ function insplistStockUseRender_(){
   box.innerHTML=__stockUseRows.map(function(r,i){
     return '<tr>'
       +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;font-weight:700;">'+qcEsc(r.orderNo)+'</td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;font-weight:700;color:#1D4ED8;white-space:nowrap;">'+qcEsc(r.oldDraw||r.partNo||"")+'</td>'
       +'<td style="padding:6px;border:1px solid #E1E8F0;">'+qcEsc(r.name)+'</td>'
       +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;"><input type="number" class="insplist-su-qty" data-idx="'+i+'" value="'+(Number(r.qty)||0)+'" min="0" style="width:60px;padding:5px;border:1px solid #D6DEE8;border-radius:6px;box-sizing:border-box;text-align:center;"></td>'
       +'<td style="padding:6px;border:1px solid #E1E8F0;text-align:center;">'+qcEsc(r.loc)+'</td>'
-      +'<td style="padding:6px;border:1px solid #E1E8F0;"><input type="text" class="insplist-su-sn" data-idx="'+i+'" value="'+qcEsc(r.sn)+'" placeholder="S/N 입력 (쉼표로 여러 개)" style="width:100%;padding:5px;border:1px solid #D6DEE8;border-radius:6px;box-sizing:border-box;"></td>'
+      +'<td style="padding:6px;border:1px solid #E1E8F0;"><input type="text" class="insplist-su-sn" data-idx="'+i+'" value="'+qcEsc(r.sn)+'" placeholder="예: 26185-2,4/26131-4" style="width:100%;padding:5px;border:1px solid #D6DEE8;border-radius:6px;box-sizing:border-box;"><div class="insplist-su-prev" data-idx="'+i+'" style="font-size:11.5px;color:#475467;margin-top:3px;"></div></td>'
       +'</tr>';
   }).join("");
+  // [추가] 입력하는 대로 펼친 S/N 미리보기 (26185-2,4 → 26185-2, 26185-4)
+  var prev=function(inp){ var d=box.querySelector('.insplist-su-prev[data-idx="'+inp.getAttribute("data-idx")+'"]'); if(!d) return; var a=insplistSnExpand_(inp.value); d.textContent=a.length?("→ "+a.join(", ")+" ("+a.length+"개)"):""; };
+  box.querySelectorAll(".insplist-su-sn").forEach(function(inp){ prev(inp); inp.addEventListener("input", function(){ prev(inp); }); });
 }
 function insplistStockUseClose_(){ var m=document.getElementById("insplist-suModal"); if(m) m.style.display="none"; }
  function insplistPreShip_(){
@@ -9083,6 +9088,16 @@ function insplistPreShipCancel_(){
 
 
 // S/N 검증: 입력한 S/N이 그 품번 재고에 있는지. 없으면 오기입 목록 반환
+// [추가] S/N 입력 펼치기: "26185-2,4/26131-4" → 26185-2, 26185-4, 26131-4
+//   앞 번호(로트) 없이 숫자만 쓰면 바로 앞 S/N의 로트를 붙임 · "26185-2~5"·"2~5"는 범위로 펼침 · 구분: 쉼표 / 슬래시 / 띄어쓰기
+function insplistSnExpand_(str){
+  var out=[], pre="", num=function(a, z, w){ var r=[]; if(z<a || z-a>500) z=a; for(var i=a;i<=z;i++){ var v=String(i); if(w && v.length<w) v=v.padStart(w,"0"); r.push(v); } return r; };
+  String(str||"").split(/[,\/\s]+/).map(function(x){ return x.trim(); }).filter(Boolean).forEach(function(t){
+    var m=t.match(/^(.*\S)-(\d+)(?:~(\d+))?$/), b=t.match(/^(\d+)(?:~(\d+))?$/);
+    if(m){ pre=m[1]; (m[3]?num(+m[2], +m[3], m[2].length):[m[2]]).forEach(function(v){ out.push(pre+"-"+v); }); }
+    else if(b && pre){ (b[2]?num(+b[1], +b[2], b[1].length):[b[1]]).forEach(function(v){ out.push(pre+"-"+v); }); }
+    else out.push(t); });
+  var seen={}; return out.filter(function(x){ if(seen[x]) return false; seen[x]=1; return true; }); }
 function insplistStockUseValidate_(){
 
   var bad=[];
@@ -9108,10 +9123,9 @@ function insplistStockUseValidate_(){
 
     if(!r.sn) return;
 
-    r.sn
-      .split(/[,\/\s]+/)
-      .map(function(x){ return x.trim(); })
-      .filter(Boolean)
+    var __sns=insplistSnExpand_(r.sn);
+    r.sn=__sns.join(", ");   // [수정] 펼친 S/N으로 저장 (26185-2,4 → 26185-2, 26185-4)
+    __sns
       .forEach(function(sn){
 
         if(!insplistSnExists_(r.oldDraw, sn)){
@@ -27045,7 +27059,7 @@ function insRender(){
   };
   var __dupKeys=__dupBanner.map(function(d){ return insNormDraw_(d.draw)+"|"+d.sn; });
   // [출하검사] 출고NO 중복/초과: 출고NO를 개별 주문으로 분해(콤마·슬래시) → 주문별 수량만큼 순차 배분 → 넘치면 중복
-  var __outNoOver={}, __outNoOverList=[], __rowOutOver={};
+  var __outNoOver={}, __outNoOverList=[], __rowOutOver={}, __autoCancel=[];
   if(insType==="shipping"){
     var __qtyMap={};
     try{ ((typeof mainData!=="undefined"&&mainData)||[]).forEach(function(m){ var o=String(m.orderNo||"").trim().toUpperCase(); if(o) __qtyMap[o]=(__qtyMap[o]||0)+(Number(m.qty)||0); }); }catch(_){}   // [수정] 같은 ORDER NO. 여러 줄(선진행+추가)은 합계
@@ -27053,6 +27067,10 @@ function insRender(){
       var __demand={};
       rows.forEach(function(r, ri){
         var cnt=Number(r.insCnt)||0; if(cnt<=0 || insIsReinsp_(r)) return;   // 재검사 행은 이미 납품한 수량 → 초과 계산 제외
+        // [추가] 발주취소 자동 표시: 출고NO의 주문이 MAIN에 있는데 수량이 모두 0(수량이 있던 주문이 취소됨) → 비고에 '발주취소(자동)' 입력
+        var __ords0=((typeof insplistExpandOutNo_==="function")?insplistExpandOutNo_(r.outNo):[String(r.outNo||"").trim()]).map(function(x){ return String(x||"").trim().toUpperCase(); }).filter(Boolean);
+        if(__ords0.length && __ords0.every(function(o){ return __qtyMap[o]===0; })){
+          if(!/발주\s*취소/.test(String(r.note||""))){ r.note=(String(r.note||"").trim()?String(r.note).trim()+" ":"")+"발주취소(자동)"; __autoCancel.push(__ords0.join(",")); } return; }
         if(/발주\s*취소/.test(String(r.note||""))) return;   // [추가] 비고에 '발주취소' → 주문이 취소돼 MAIN 수량이 0으로 바뀐 건 — 초과 경고 제외
         var orders=(typeof insplistExpandOutNo_==="function")?insplistExpandOutNo_(r.outNo):[String(r.outNo||"").trim()];
         orders=orders.map(function(x){ return String(x||"").trim().toUpperCase(); }).filter(Boolean);
@@ -27071,6 +27089,7 @@ function insRender(){
       });
       Object.keys(__demand).forEach(function(o){ var q=__qtyMap[o]; if(q!=null && __demand[o]>q){ __outNoOver[o]=true; __outNoOverList.push({outNo:o, sum:__demand[o], qty:q}); } });
       __outNoOverList.sort(function(a,b){ return (b.sum-b.qty)-(a.sum-a.qty); });
+      if(__autoCancel.length){ try{ insSaveLocal(); }catch(_){} try{ insSetStatus("🚫 발주취소 자동 표시 "+__autoCancel.length+"건 (MAIN 수량 0으로 바뀐 주문): "+__autoCancel.join(" · ")+" — 비고에 '발주취소(자동)' 입력, 출고NO 초과 경고에서 제외"); }catch(_){} }
     }
   }
   // [추가] TAP(수입검사)/PIN(출하검사) 미체크 행 — 저장 시 팝업 문구만이 아니라 표에서 바로 보이도록 강조 + 배너로 이동
@@ -29860,17 +29879,21 @@ function stockUseNotifShow_(a, label){ var __lbl=label||"재고분출";
     wrap.style.cssText="position:fixed;right:16px;top:16px;z-index:2147483646;display:flex;flex-direction:column;gap:10px;max-width:580px;";
     document.body.appendChild(wrap);
   }
-  wrap.style.maxWidth="580px";   // 재고분출 큰 카드 수용 (이미 존재해도 넓힘)
+  wrap.style.maxWidth="780px";   // 재고분출 큰 카드 수용 (이미 존재해도 넓힘)
   // ORDER 목록 요약 (앞 3개 + …)
-  var head=orders.slice(0,3).join(", ")+(orders.length>3?(" 외 "+(orders.length-3)+"건"):"");
+  var __drOf={}; try{ ((a&&a.extra&&a.extra.rows)||[]).forEach(function(x){ if(x && x[0] && x[2]) __drOf[x[0]]=x[2]; }); ((typeof mainData!=="undefined"&&mainData)||[]).forEach(function(m){ var o=String(m.orderNo||"").trim(); if(o && !__drOf[o] && orders.indexOf(o)>=0) __drOf[o]=m.oldDrawingNo||m.partNo||""; }); }catch(_){}
+  var head=orders.slice(0,3).map(function(o){ return __drOf[o]?(o+" ("+__drOf[o]+")"):o; }).join(", ")+(orders.length>3?(" 외 "+(orders.length-3)+"건"):"");   // [수정] ORDER 옆에 기존도번
   var card=document.createElement("div");
-  card.style.cssText="background:#fff;border:2px solid "+__C.bd+";border-left:10px solid "+__C.main+";border-radius:16px;box-shadow:0 12px 44px rgba(0,0,0,0.24);padding:22px 26px;font-size:19px;color:#26324A;min-width:440px;max-width:560px;";
+  card.style.cssText="background:#fff;border:2px solid "+__C.bd+";border-left:10px solid "+__C.main+";border-radius:16px;box-shadow:0 12px 44px rgba(0,0,0,0.24);padding:22px 26px;font-size:19px;color:#26324A;min-width:440px;max-width:760px;";
   card.innerHTML=
      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
     +  '<b style="color:'+__C.main+';font-size:22px;">'+__C.ic+' '+insEsc(__lbl)+' '+insEsc(String(a.qty||orders.length))+'건 <span style="font-size:14px;font-weight:700;color:#5A6478;">· '+__C.src+'</span></b>'
     +  '<span style="color:#8A93A6;font-size:15px;">'+insEsc(when)+'</span>'
     +'</div>'
-    +'<div style="line-height:1.6;margin-bottom:6px;font-size:20px;"><b>'+insEsc(head||"-")+'</b></div>'
+    +((function(){ var R=(a&&a.extra&&Array.isArray(a.extra.rows))?a.extra.rows:[]; if(!R.length) return '<div style="line-height:1.6;margin-bottom:6px;font-size:20px;"><b>'+insEsc(head||"-")+'</b></div>';   // [추가] 알림 내용을 표로: ORDER NO. · 기존도번 · 품명 · 수량 · S/N
+        var td='padding:5px 8px;border:1px solid #E1E8F0;font-size:14px;', th=td+'background:#1F2A44;color:#fff;font-weight:700;white-space:nowrap;';
+        return '<div style="max-height:260px;overflow:auto;margin-bottom:8px;"><table style="border-collapse:collapse;width:100%;"><thead><tr><th style="'+th+'">ORDER NO.</th><th style="'+th+'">기존도번</th><th style="'+th+'">품명</th><th style="'+th+'">수량</th><th style="'+th+'">S/N</th></tr></thead><tbody>'
+          +R.map(function(x){ return '<tr><td style="'+td+'font-weight:700;white-space:nowrap;">'+insEsc(x[0]||"")+'</td><td style="'+td+'font-weight:700;color:#1D4ED8;white-space:nowrap;">'+insEsc(x[2]||__drOf[x[0]]||"")+'</td><td style="'+td+'">'+insEsc(x[3]||"")+'</td><td style="'+td+'text-align:center;">'+insEsc(x[4]||"")+'</td><td style="'+td+'font-size:12.5px;">'+insEsc(x[5]||"")+'</td></tr>'; }).join("")+'</tbody></table></div>'; })())
     +'<div style="color:#5A6478;font-size:16px;">리스트 참조 · LIST는 엑셀 다운로드</div>'
     +(a.by?('<div style="color:#5A6478;font-size:15px;margin-top:4px;">등록자 : '+insEsc(a.by)+'</div>'):'')
     +'<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px;">'
