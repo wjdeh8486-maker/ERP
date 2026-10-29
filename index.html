@@ -18733,7 +18733,7 @@ function ftBomHtml_(){
   var E=ftE_, q=ftK_(__ft.q), B=Object.keys(__ft.d.bom||{}).map(function(k){ return __ft.d.bom[k]; }).filter(function(b){ return !q || (ftK_(b.prod)+ftK_(b.mat)+(b.lines||[]).map(function(l){ return ftK_(l.spec); }).join("")).indexOf(q)>=0; }).sort(function(a,b){ return String(a.prod).localeCompare(String(b.prod)); });
   return '<div class="ft-tool"><input id="ft-q" type="search" placeholder="🔎 품목코드·Material·규격 (Enter)" value="'+E(__ft.q)+'"><button type="button" class="ft-btn pri" data-a="bompaste">📋 피팅 LIST 붙여넣기</button><button type="button" class="ft-btn" data-a="bomadd">＋ 제품 추가</button><span class="m">1개 제작할 때 들어가는 피팅 수량 · 미입고 수량 칸은 쓰지 않음</span></div>'
     +'<div class="ft-card"><table class="ft-tb"><thead><tr><th>품목코드 (제품)</th><th>Material</th><th>Fitting 규격 × 적용 수량 (1개당)</th><th></th></tr></thead><tbody>'
-    +(B.length?B.map(function(b){ return '<tr><td><b>'+E(b.prod)+'</b></td><td>'+E(b.mat||"")+'</td><td>'+(b.lines||[]).map(function(l){ var it=__ft.d.items[ftK_(l.spec)]; return '<span class="ft-chip'+(it?'':' no')+'" title="'+(it?E(it.name):'입고된 적 없는 규격')+'">'+E(l.spec)+' <b>×'+E(l.qty)+'</b></span>'; }).join("")+'</td><td class="nw"><button type="button" class="ft-btn sm" data-a="bomedit" data-p="'+E(b.prod)+'">✏️</button><button type="button" class="ft-btn sm del" data-a="bomdel" data-p="'+E(b.prod)+'">✕</button></td></tr>'; }).join("")
+    +(B.length?B.map(function(b){ return '<tr><td><b>'+E(b.prod)+'</b></td><td>'+E(b.mat||"")+'</td><td>'+(b.lines||[]).map(function(l){ var it=__ft.d.items[ftK_(l.spec)]; return '<span class="ft-chip'+(it?'':' no')+'" title="'+(it?E(it.name):'입고된 적 없는 규격')+'">'+E(l.spec)+' <b>×'+E(l.qty)+'</b></span>'; }).join("")+'</td><td class="nw"><button type="button" class="ft-btn sm" data-a="bomcopy" data-p="'+E(b.prod)+'" title="같은 피팅을 쓰는 다른 제품에 이 BOM을 복사">📋 복사</button><button type="button" class="ft-btn sm" data-a="bomedit" data-p="'+E(b.prod)+'">✏️</button><button type="button" class="ft-btn sm del" data-a="bomdel" data-p="'+E(b.prod)+'">✕</button></td></tr>'; }).join("")
       :'<tr><td colspan="4" class="ft-empty">BOM이 없습니다 — 고객 피팅 LIST(No·품목코드·Material·미입고 수량·Fitting 규격·적용 수량)를 엑셀에서 복사해 [📋 피팅 LIST 붙여넣기]</td></tr>')+'</tbody></table></div>'; }
 function ftSetHtml_(){
   var E=ftE_, c=__ft.d.cfg, my=c.my||{}, f=function(id,l,v){ return '<label>'+l+'<input data-c="'+id+'" value="'+E(v||"")+'"></label>'; };
@@ -18746,7 +18746,7 @@ function ftClick_(e){
   if(k==="in") return ftInPop_(); if(k==="out") return ftOutPop_("out"); if(k==="use") return ftOutPop_("use"); if(k==="ret") return ftOutPop_("ret");
   if(k==="print"){ var tx=(__ft.d.tx||[]).filter(function(x){ return x.id===a.getAttribute("data-id"); })[0]; if(tx) ftPrint_(tx); return; }
   if(k==="del"){ var id=a.getAttribute("data-id"); if(!confirm("이 내역을 삭제할까요? (재고가 다시 계산됩니다)")) return; __ft.d.tx=__ft.d.tx.filter(function(x){ return x.id!==id; }); __ft.d.del=(__ft.d.del||[]).concat([id]); ftSave_(); ftRender_(); return; }
-  if(k==="bompaste") return ftBomPaste_(); if(k==="bomadd") return ftBomEdit_(""); if(k==="bomedit") return ftBomEdit_(a.getAttribute("data-p"));
+  if(k==="bompaste") return ftBomPaste_(); if(k==="bomadd") return ftBomEdit_(""); if(k==="bomedit") return ftBomEdit_(a.getAttribute("data-p")); if(k==="bomcopy") return ftBomCopy_(a.getAttribute("data-p"));
   if(k==="bomdel"){ var p=a.getAttribute("data-p"); if(!confirm(p+" BOM을 삭제할까요?")) return; delete __ft.d.bom[ftK_(p)]; ftSave_(); ftRender_(); return; }
   if(k==="vadd"){ __ft.d.vendors.push("새 용접업체"); ftRender_(); return; }
   if(k==="vdel"){ var i=+a.getAttribute("data-i"); if(!confirm("이 업체를 목록에서 뺄까요? (지난 내역은 남습니다)")) return; __ft.d.vendors.splice(i,1); ftSave_(); ftRender_(); return; }
@@ -18907,6 +18907,23 @@ function ftBomPaste_(){
     ftOcrBind_(body, "#ftb-paste", "bom", function(t){ st.raw=t; st.B=ftBomParse_(t); clearTimeout(st.tm); st.tm=setTimeout(function(){ var keep=body.querySelector(".ft-ocrst").innerHTML, f=document.activeElement===pa; draw(); body.querySelector(".ft-ocrst").innerHTML=keep; if(f){ var p2=body.querySelector("#ftb-paste"); p2.focus(); } }, 600); }); };
   draw(); ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn" data-x="save">BOM 저장</button>';
   ov.addEventListener("click", function(e){ if(e.target.getAttribute && e.target.getAttribute("data-x")==="save"){ var ks=Object.keys(st.B); if(!ks.length){ alert("붙여넣은 내용이 없습니다."); return; } ks.forEach(function(k){ __ft.d.bom[k]=st.B[k]; }); ftSave_("BOM"); ov.remove(); __ft.tab="bom"; ftRender_(); } }); }
+// [추가] BOM 복사 — 품명(품목코드)만 다르고 피팅 구성이 같은 제품을 한 번에 등록
+//   한 줄에 한 제품: "품목코드  Material(있으면)" — 엑셀에서 두 칸을 복사해 붙여넣어도 됨
+function ftBomCopy_(prod){
+  var E=ftE_, src=__ft.d.bom[ftK_(prod)]; if(!src) return;
+  var ov=ftOv_("📋 BOM 복사 — "+E(src.prod)+"와 같은 피팅 구성", 640), body=ov.querySelector(".sd-pb"), ft=ov.querySelector(".sd-pf");
+  body.innerHTML='<div class="m" style="margin-bottom:6px;">복사할 피팅: '+(src.lines||[]).map(function(l){ return '<span class="ft-chip">'+E(l.spec)+' <b>×'+E(l.qty)+'</b></span>'; }).join("")+'</div>'
+    +'<label class="ft-paste"><span>같은 피팅을 쓰는 제품의 품목코드를 한 줄에 하나씩 넣으세요 (뒤에 Material을 띄어 쓰면 함께 저장 · 엑셀 두 칸 복사·붙여넣기 가능)</span>'
+    +'<textarea id="ftc-in" rows="6" placeholder="M204-001-004  110006980&#10;M204-001-010&#10;…"></textarea></label><div id="ftc-pv" class="m" style="margin-top:6px;"></div>';
+  ft.innerHTML='<button type="button" class="sd-btn pri" data-x="save">복사 저장</button>';
+  var ta=body.querySelector("#ftc-in"), pv=body.querySelector("#ftc-pv"), list=[];
+  var parse=function(){ var seen={}; list=[]; String(ta.value||"").split(/\r?\n|[,;]/).forEach(function(L){ var t=L.trim().split(/[\t ]+/).filter(Boolean); if(!t.length) return; var pr=t[0], k=ftK_(pr); if(!pr || seen[k] || k===ftK_(src.prod)) return; seen[k]=1; list.push({ prod:pr, mat:t[1]||"", has:!!__ft.d.bom[k] }); });
+    pv.innerHTML=list.length?('<b>'+list.length+'개 제품</b>에 복사: '+list.map(function(x){ return E(x.prod)+(x.mat?(' <span style="color:#667085;">('+E(x.mat)+')</span>'):'')+(x.has?' <b style="color:#B54708;">[이미 있음 → 덮어씀]</b>':''); }).join(", ")):'품목코드를 넣으면 여기에 미리 보입니다'; };
+  ta.addEventListener("input", parse); ta.addEventListener("paste", function(){ setTimeout(parse, 30); }); parse(); setTimeout(function(){ ta.focus(); }, 50);
+  ov.addEventListener("click", function(e){ if(!(e.target.getAttribute && e.target.getAttribute("data-x")==="save")) return; parse(); if(!list.length){ alert("품목코드를 넣으세요."); return; }
+    var ow=list.filter(function(x){ return x.has; }).length; if(ow && !confirm("이미 BOM이 있는 "+ow+"개 제품은 새 구성으로 바뀝니다. 계속할까요?")) return;
+    list.forEach(function(x){ var old=__ft.d.bom[ftK_(x.prod)]; __ft.d.bom[ftK_(x.prod)]={ prod:x.prod, mat:x.mat||(old&&old.mat)||"", lines:(src.lines||[]).map(function(l){ return { spec:l.spec, qty:l.qty }; }) }; });
+    ftSave_("BOM"); ov.remove(); ftRender_(); }); }
 function ftBomEdit_(prod){
   var E=ftE_, b=prod?JSON.parse(JSON.stringify(__ft.d.bom[ftK_(prod)]||{ prod:prod, mat:"", lines:[] })):{ prod:"", mat:"", lines:[{ spec:"", qty:1 }] }, ov=ftOv_(prod?("✏️ BOM 수정 — "+prod):"＋ 제품 BOM 추가", 640), body=ov.querySelector(".sd-pb");
   var draw=function(){ body.innerHTML='<div class="ft-g"><label>품목코드 (제품)<input id="fte-prod" value="'+E(b.prod)+'"></label><label>Material<input id="fte-mat" value="'+E(b.mat||"")+'"></label></div><table class="ft-tb"><thead><tr><th>Fitting 규격</th><th>적용 수량 (1개당)</th><th></th></tr></thead><tbody>'
