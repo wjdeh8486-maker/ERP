@@ -6153,7 +6153,9 @@ function insplistStockCountable_(r){ var d=insplistYmd_(r&&r.outDate); return !d
 function insplistShipIsToday_(r){ return insplistYmd_(r&&r.insDate)===insplistToday_(); }
 function insplistTodayShip_(rows){ return (rows||[]).filter(function(r){ return insplistShipIsToday_(r) && !(typeof insIsReinsp_==="function" && insIsReinsp_(r)); }); }   // 재검사 행은 완료수량에서 제외
 // [추가] S/N 토큰 → 숫자 목록. "26112-1"처럼 [숫자-숫자] 한 덩어리는 쪼개지 않고 그대로 (예전엔 26112 와 1 로 갈라져 표시됐음). "10768-" 접두는 기존처럼 제거
-function insplistSnNums_(tok){ tok=String(tok||"").trim().replace(/^10768-/,""); if(/^\d+-\d+$/.test(tok)) return [tok]; return (tok.match(/\d+/g)||[]).filter(function(n){ return n!=="10768"; }); }
+// [추가] 앞에 붙은 회사번호 "00020-" (0으로 시작하는 5자리) 제거: 00020-26335-3 = 26335-3 (10768- 과 같은 취급)
+function insSnStripCo_(tok){ return String(tok==null?"":tok).trim().replace(/^0\d{4}-(?=\d{5}-\d)/,""); }
+function insplistSnNums_(tok){ tok=insSnStripCo_(tok).replace(/^10768-/,""); if(/^\d+-\d+$/.test(tok)) return [tok]; return (tok.match(/\d+/g)||[]).filter(function(n){ return n!=="10768"; }); }
 // [수정] 완료수량에 반영할 출하검사: 오늘 검사분 + 과거 검사분 중 "그 ORDER에 재고 출고 기록이 아직 없는 것" (재고 출고가 있으면 거기서 이미 세므로 중복 방지)
 function insplistCountShip_(rows, iv){
   var stockOrd={}; (iv||[]).forEach(function(r){ var o=String(r.ctrlNo||"").trim(); if(o && (Number(r.outQty)||0)>0 && insplistStockCountable_(r)) stockOrd[o]=1; });
@@ -29768,7 +29770,7 @@ function insSnFull_(field){
   var COMPANY="10768";   // 회사고유번호 → 비교 시 제거(10768-243 = 243). 생산년도 접두어(26185 등)는 구분 유지
   var norm=function(s){ var m=String(s).match(/^(\w+)-(\d+)$/); if(m && m[1]===COMPANY) return m[2]; return s; };
   f.split(/[,\/\n]+/).forEach(function(tok){
-    tok=tok.trim(); if(!tok) return;
+    tok=insSnStripCo_(tok); if(!tok) return;
     tok=tok.replace(/\([^)]*\)/g,"").trim();     // (찍힘) 등 괄호 메모 제거
     tok=tok.replace(/[>《].*$/,"").trim();        // ">포장실" 등 꼬리 제거
     if(!tok) return;
@@ -29793,7 +29795,7 @@ function insSnTail_(s){ s=String(s==null?"":s).trim(); if(!s) return ""; var p=s
 // S/N 필드(콤마/슬래시/범위 ~) → 꼬리번호 집합. 예: "10768-083~086" → {83,84,85,86}
 function insSnSet_(field){
   var set={}, f=String(field==null?"":field);
-  f.split(/[,\/\n.·]+/).forEach(function(tok){ tok=tok.trim(); if(!tok) return;
+  f.split(/[,\/\n.·]+/).forEach(function(tok){ tok=insSnStripCo_(tok); if(!tok) return;
     if(/^[A-Fa-f][1-4]$/.test(tok) || /재고/.test(tok)) return;   // [수정] 재고 위치(D3 등)·'재고사용' 표시는 S/N 아님
     if(tok.indexOf("~")>=0){ var mm=tok.split("~"), a=Number(insSnTail_(mm[0])), b=Number(insSnTail_(mm[1]));
       if(isFinite(a)&&isFinite(b)&&b>=a&&(b-a)<10000){ for(var i=a;i<=b;i++) set[String(i)]=true; return; } }
