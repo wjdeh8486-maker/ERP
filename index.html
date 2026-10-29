@@ -28140,7 +28140,7 @@ function insInit(){
   // 유형 소메뉴(드롭다운)
   var __ts=document.getElementById("insrep-typeSel");
   if(__ts) __ts.addEventListener("change",function(){ insType=this.value; insShowAllRows=false; insSyncMetaInputs(); insRender(); insSaveLocal(); try{ insSheetAutoLoad_(insType); }catch(_){} });
-  var __ic=document.getElementById("insrep-content"); if(__ic) __ic.addEventListener("change",function(e){ var t=e.target; if(!t||!t.getAttribute) return; var key=t.getAttribute("data-key"); if(key==="draw" && t.value && typeof insDrawGuide_==="function"){ try{ insDrawGuide_(t.value, t.getAttribute("data-ri")); }catch(_){} } if(key!=="draw"&&key!=="sn") return; window.__insDupDirty=Date.now(); var ri=t.getAttribute("data-ri"); var dEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="draw"]'); var sEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="sn"]'); var dv=dEl?String(dEl.value||"").trim():""; var sv=sEl?String(sEl.value||"").trim():""; if(dv){ clearTimeout(window.__insHistTimer); window.__insHistTimer=setTimeout(function(){ insNcHistoryPopup_(dv, sv); }, 600); } });
+  var __ic=document.getElementById("insrep-content"); if(__ic) __ic.addEventListener("change",function(e){ var t=e.target; if(!t||!t.getAttribute) return; var key=t.getAttribute("data-key"); if(key==="draw" && t.value && typeof insDrawGuide_==="function"){ try{ insDrawGuide_(t.value, t.getAttribute("data-ri")); }catch(_){} } if(key==="outNo" && String(t.value||"").trim()){ try{ var wr=t.closest(".ins-urgwrap"); if(wr){ wr.classList.remove("ins-urgwrap"); wr.style.background=""; wr.style.outline=""; var ub=wr.querySelector(".ins-urg"); if(ub) ub.remove(); } }catch(_){} } if(key!=="draw"&&key!=="sn") return; window.__insDupDirty=Date.now(); var ri=t.getAttribute("data-ri"); var dEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="draw"]'); var sEl=__ic.querySelector('[data-ri="'+ri+'"][data-key="sn"]'); var dv=dEl?String(dEl.value||"").trim():""; var sv=sEl?String(sEl.value||"").trim():""; if(dv){ clearTimeout(window.__insHistTimer); window.__insHistTimer=setTimeout(function(){ insNcHistoryPopup_(dv, sv); }, 600); } });
   // [추가] 출하검사: 입력한 도번+S/N이 이미 출하검사된 적 있으면 "재입고품인가요?" 물어보고, 예 → 비고에 '재검사' 자동 기록
   // [추가] 출하검사: 구분 "재고" 체크 → 재고 라벨 출력 물어봄 / 재고 옆 🏷 → 바로 출력 창
   if(__ic && !__ic.__stkLbl){ __ic.__stkLbl=true;
@@ -28331,8 +28331,10 @@ function insRender(){
             +'<span class="ins-sn-ocr" data-ri="'+ri+'" title="S/N 사진 인식(업로드)" style="cursor:pointer;font-size:14px;color:#0B7A8A;padding:0 2px;user-select:none;flex:0 0 auto;">📷</span>'
             +'</div>';
         } else if(c.key==="outNo"){
-          cell='<div style="display:flex;align-items:center;gap:1px;">'
+          var __urg=[]; try{ if(insType==="shipping" && !String(v||"").trim() && row.draw && String(row.insDate||"").slice(0,10)===insToday_() && typeof insGuideUrgent_==="function") __urg=insGuideUrgent_(row.draw); }catch(_){}
+          cell='<div class="'+(__urg.length?'ins-urgwrap':'')+'" data-ri="'+ri+'" style="display:flex;align-items:center;gap:1px;'+(__urg.length?'background:#FEE4E2;outline:2px solid #F04438;border-radius:4px;':'')+'">'
             +'<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'"'+extraAttr+' style="flex:1;min-width:0;border:none;'+bgStyle+'font-size:12px;" placeholder="예: 261-13,263-13">'
+            +(__urg.length?('<span class="ins-urg" data-ri="'+ri+'" title="이 도번에 미납·검수·분출 LIST 건이 있는데 출고No가 비어 있음 — 눌러서 그 건만 보기" style="cursor:pointer;white-space:nowrap;font-size:11px;font-weight:800;color:#fff;background:#D92D20;border-radius:5px;padding:2px 5px;flex:0 0 auto;user-select:none;">⚠ '+__urg.length+'건</span>'):'')
             +(v?('<span class="ins-outno-label" data-ri="'+ri+'" title="이 출고NO(들)로 분출LIST에서 관리번호를 찾아 라벨(70×40mm) 인쇄" style="cursor:pointer;font-size:13px;color:#8A1F1F;padding:0 2px;user-select:none;flex:0 0 auto;">🏷️</span>'):'')
             +'</div>';
         } else {
@@ -28489,6 +28491,7 @@ function insRender(){
     el.querySelectorAll(".insrep-del").forEach(function(b){ b.addEventListener("click",function(){ var __i=+b.getAttribute("data-ri"); var __r=insState[insType].rows[__i]; if(__r&&__r._id) insMarkDeleted_(__r._id); insState[insType].rows.splice(__i,1); try{ if(window.__insDupCache&&window.__insDupCache[insType]) insDupRecalc_(insType); }catch(_){} insRender(); insSaveLocal(); }); });
     el.querySelectorAll(".ins-dwg-open").forEach(function(ic){ ic.addEventListener("click",function(e){ e.stopPropagation(); var __r=+ic.getAttribute("data-ri"); var __di=el.querySelector('input[data-ri="'+__r+'"][data-key="draw"]'); var __dv=String((__di&&__di.value)||"").trim(); if(!__dv){ alert("도번을 먼저 입력하세요."); return; } if(typeof openDrawing==="function") openDrawing(__dv); }); });
     // 출고NO → 분출LIST 관리번호 매칭 → 라벨(70×40mm) 인쇄
+    el.querySelectorAll(".ins-urg").forEach(function(ub){ ub.addEventListener("click", function(e){ e.stopPropagation(); var __r=+ub.getAttribute("data-ri"), __row=insState[insType].rows[__r]; if(__row) insDrawGuide_(__row.draw, __r, true); }); });   // [추가] 미납·검수·분출만 보기
     el.querySelectorAll(".ins-outno-label").forEach(function(ic){ ic.addEventListener("click",function(e){ e.stopPropagation(); var __r=+ic.getAttribute("data-ri"); var __oi=el.querySelector('input[data-ri="'+__r+'"][data-key="outNo"]'); var __ov=String((__oi&&__oi.value)||"").trim(); if(!__ov){ alert("출고NO를 먼저 입력하세요."); return; } if(typeof dispatchLabelsByOutNo_==="function") dispatchLabelsByOutNo_(__ov); }); });
     // S/N 사진 인식(업로드) — 그 행에 바로 채움
     (function(){
@@ -30420,22 +30423,29 @@ function insGuideRows_(draw){
     if(o.sd) o.tags.push(["특별납기 "+o.sd.slice(5),"#B54708","#FFFAEB"]);
     if(o.disp) o.tags.push(["분출 LIST","#175CD3","#EFF8FF"]);
     if(!isI && due && due<t) o.tags.push(["납기 지남","#B42318","#FEF3F2"]);
+    o.urg=!!(isI || o.disp || (due && due<t));   // [추가] 미납(납기 지남)·검수·분출 LIST = 출고No 지정이 필요한 건 (미래 납기만 있는 일반·특별납기는 제외)
     o.rank=(isI && due && due<t)?0:(o.sd?1:((isI && o.inspDay && o.inspDay<=W.e)?2:(o.disp?3:(due && due<t?4:5))));
     out.push(o); });
   out.sort(function(a,b){ return a.rank-b.rank || String(a.sd||a.due||"9999").localeCompare(String(b.sd||b.due||"9999")) || a.no.localeCompare(b.no); });
   return out; }
-function insDrawGuide_(draw, ri){
+// [추가] 출고No를 안 정한 행 → 그 도번에 미납·검수·분출 건이 있으면 출고No 칸을 빨갛게 (1분 캐시)
+var __insUrgC={};
+function insGuideUrgent_(draw){ var D=insNormDraw_(draw); if(!D) return []; var n=(typeof mainData!=="undefined"&&mainData)?mainData.length:0, c=__insUrgC[D];
+  if(c && c.n===n && Date.now()-c.t<60000) return c.v; var L=insGuideRows_(draw)||[], v=L.filter(function(o){ return o.urg; }); __insUrgC[D]={ t:Date.now(), n:n, v:v }; return v; }
+function insDrawGuide_(draw, ri, urgOnly){
   if(typeof insType!=="undefined" && insType!=="shipping") return; var D=insNormDraw_(draw); if(!D) return;
+  if(urgOnly){ var o0=document.getElementById("ins-guide"); if(o0) o0.remove(); }
 
   var old=document.getElementById("ins-guide"); if(old && old.getAttribute("data-d")===D && String(window.__insGuideRi)===String(ri) && Date.now()-(+old.getAttribute("data-t")||0)<1500) return;   // 같은 도번 연속 호출(Enter+change) 중복 방지
-  var L=insGuideRows_(draw); if(old) old.remove(); if(L===null) return;
+  var L=insGuideRows_(draw); if(old) old.remove(); if(L===null) return; if(urgOnly) L=L.filter(function(o){ return o.urg; });
   var E=insEsc, box=document.createElement("div"); box.id="ins-guide"; box.setAttribute("data-d", D); box.setAttribute("data-t", Date.now()); window.__insGuideRi=ri;
   // [수정] 태블릿 입력 팝업(최상단 레이어) 위에 보이게 · 입력 팝업이 열려 있으면 화면 위쪽에(아래 저장 버튼을 가리지 않게) · 부적합 이력 팝업보다는 아래
   var formOpen=(function(){ var f=document.getElementById("insform-ov"); return !!(f && f.style.display!=="none"); })(), narrow=window.innerWidth<700;
+  if(urgOnly) setTimeout(function(){ try{ box.style.borderColor="#D92D20"; box.firstChild.style.background="#B42318"; }catch(_){} },0);
   box.style.cssText="position:fixed;"+(formOpen?"top:10px;":"bottom:"+(narrow?"76px":"86px")+";")+"right:"+(narrow?"8px":"14px")+";width:min(800px,calc(100vw - "+(narrow?16:28)+"px));max-height:"+(formOpen?"38vh":"46vh")+";overflow:auto;-webkit-overflow-scrolling:touch;background:#fff;border:2px solid #1F2A44;border-radius:12px;box-shadow:0 12px 34px rgba(16,24,40,.28);z-index:2147483100;font-size:13px;color:#101828;";
   var W=insGuideWeek_();
 
-  box.innerHTML='<div style="position:sticky;top:0;background:#1F2A44;color:#fff;padding:8px 12px;display:flex;align-items:center;gap:8px;"><b style="font-size:14px;white-space:nowrap;">📋 '+E(D)+' — 출고 대상 '+L.length+'건</b><span style="font-size:11px;opacity:.8;flex:1;min-width:0;'+(narrow?'display:none;':'')+'">검수·검수지연·특별납기·분출(~'+insGuideDispRange_().e.slice(5)+' 납기) 한눈에'+(ri==null?'':' · ➕ 누르면 '+(ri==="form"?'입력창':(Number(ri)+1)+'번째 행')+' 출고No에 넣음')+'</span><span style="flex:'+(narrow?'1':'0')+';"></span><button type="button" data-g="x" style="background:none;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:2px 9px;cursor:pointer;white-space:nowrap;flex:none;">닫기 ✕</button></div>'
+  box.innerHTML='<div style="position:sticky;top:0;background:#1F2A44;color:#fff;padding:8px 12px;display:flex;align-items:center;gap:8px;"><b style="font-size:14px;white-space:nowrap;">'+(urgOnly?'⚠ '+E(D)+' — 미납·검수·분출 '+L.length+'건':'📋 '+E(D)+' — 출고 대상 '+L.length+'건')+'</b><span style="font-size:11px;opacity:.8;flex:1;min-width:0;'+(narrow?'display:none;':'')+'">검수·검수지연·특별납기·분출(~'+insGuideDispRange_().e.slice(5)+' 납기) 한눈에'+(ri==null?'':' · ➕ 누르면 '+(ri==="form"?'입력창':(Number(ri)+1)+'번째 행')+' 출고No에 넣음')+'</span><span style="flex:'+(narrow?'1':'0')+';"></span><button type="button" data-g="x" style="background:none;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:2px 9px;cursor:pointer;white-space:nowrap;flex:none;">닫기 ✕</button></div>'
     +(L.length && narrow?L.map(function(o){ var late=o.due && o.due<((typeof insplistToday_==="function")?insplistToday_():"");
         return '<div style="border-top:1px solid #EAECF0;padding:8px 10px;'+(o.rank===0?'background:#FFFBFA;':'')+'"><div>'+(o.tags.length?o.tags.map(function(g){ return '<span style="display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:800;color:'+g[1]+';background:'+g[2]+';border-radius:5px;padding:1px 6px;margin:1px 3px 1px 0;">'+E(g[0])+'</span>'; }).join(""):'<span style="color:#98A2B3;font-size:12px;">일반</span>')+'</div>'
           +'<div style="display:flex;align-items:center;gap:8px;margin-top:4px;"><div style="flex:1;min-width:0;"><b style="font-size:14px;">'+E(o.no)+'</b> <span style="font-size:12px;color:#475467;">'+E(o.pj)+'</span><div style="font-size:12px;color:#475467;">남은 <b style="color:#101828;">'+o.rest+'</b>'+(o.rest!==o.qty?'/'+o.qty:'')+' · 납기 <span style="'+(late?'color:#B42318;font-weight:700;':'')+'">'+E(o.due)+'</span> · '+E(o.st)+'</div></div>'
@@ -30454,6 +30464,7 @@ function insDrawGuide_(draw, ri){
       var v=parts.concat([no]).join(",");
       if(inp){ inp.value=v; inp.dispatchEvent(new Event("input",{bubbles:true})); inp.dispatchEvent(new Event("change",{bubbles:true})); }
       else if(r0!=="form" && insState && insState[insType] && insState[insType].rows[r0]){ insState[insType].rows[r0].outNo=v; try{ insSaveLocal(); insRender(); }catch(_){} }
+      try{ var wr=document.querySelector('.ins-urgwrap[data-ri="'+r0+'"]'); if(wr){ wr.classList.remove("ins-urgwrap"); wr.style.background=""; wr.style.outline=""; var ub=wr.querySelector(".ins-urg"); if(ub) ub.remove(); } }catch(_){}
       b.textContent="✔ 넣음"; b.style.background="#ECFDF3"; b.style.color="#067647"; b.style.borderColor="#067647"; } }); }
 function insCtrlNoCandidates_(draw){
   var d=insNormDraw_(draw); if(!d) return [];
