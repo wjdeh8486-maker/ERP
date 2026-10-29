@@ -18702,7 +18702,7 @@ function ftBomCalc_(prods){   // [{prod, qty}] → {규격키: 수량}
 function ftShow_(){ if(!__ft.loaded){ ftRender_(); ftLoad_(ftRender_); } else ftRender_(); }
 function ftRender_(){
   var host=document.getElementById("ft-root"); if(!host) return; ftStyle_();
-  if(!host.__bound){ host.__bound=true; host.addEventListener("click", ftClick_); host.addEventListener("change", function(e){ var id=e.target.id; if((e.target.className||"").indexOf("ftp-")>=0 || id==="ftp-basis"){ ftPlanChange_(e.target); return; } if(id==="ft-fType"){ __ft.fType=e.target.value; ftRender_(); } if(id==="ft-fVendor"){ __ft.fVendor=e.target.value; ftRender_(); } if(id==="ft-fMonth"){ __ft.fMonth=e.target.value; ftRender_(); } }); host.addEventListener("keydown", function(e){ if(e.target.id==="ft-q" && e.key==="Enter"){ __ft.q=e.target.value.trim(); ftRender_(); } }); }
+  if(!host.__bound){ host.__bound=true; host.addEventListener("click", ftClick_); host.addEventListener("change", function(e){ var id=e.target.id; if((e.target.className||"").indexOf("ftp-")>=0 || id==="ftp-basis" || id==="ftp-scope"){ ftPlanChange_(e.target); return; } if(id==="ft-fType"){ __ft.fType=e.target.value; ftRender_(); } if(id==="ft-fVendor"){ __ft.fVendor=e.target.value; ftRender_(); } if(id==="ft-fMonth"){ __ft.fMonth=e.target.value; ftRender_(); } }); host.addEventListener("keydown", function(e){ if(e.target.id==="ft-q" && e.key==="Enter"){ __ft.q=e.target.value.trim(); ftRender_(); } }); }
   if(!__ft.d){ host.innerHTML='<div class="ft-empty">불러오는 중…</div>'; return; }
   var tabs=[["stock","📊 재고 현황"],["tx","📋 입고·분출·사용 내역"],["bom","🧩 제품별 피팅 BOM"],["plan","🧮 작업 순서"],["set","⚙ 업체·명세서 정보"]];
   var h='<div class="ft-head"><div><div class="ft-crumb">사급품 › FITTING</div><div class="ft-title">🔩 사급 피팅 관리 <span>고객사 → 엔티엘 → 용접업체</span></div>'
@@ -18739,32 +18739,42 @@ function ftBomHtml_(){
       :'<tr><td colspan="4" class="ft-empty">BOM이 없습니다 — 고객 피팅 LIST(No·품목코드·Material·미입고 수량·Fitting 규격·적용 수량)를 엑셀에서 복사해 [📋 피팅 LIST 붙여넣기]</td></tr>')+'</tbody></table></div>'; }
 // ── [추가] 🧮 작업 순서 — MAIN 미납을 자동 집계해 순서대로 피팅 재고에 배정 → "무엇을 몇 개 먼저" 할지 계산
 //   · MAIN 연결: BOM Material = MAIN 품번(partNo) (없으면 품목코드 = 기존도번/품번)
-//   · 미납 = 출고·완료 전 주문 / 피팅 필요 = 그중 '생산' 단계(아직 용접 전) 수량 — 수입검사 이후 단계는 이미 용접된 것으로 봄
+//   · 미납 = 주문수량 − 출고분(선출고 포함) / 피팅 필요 = '생산' 단계 주문의 (미납 − 수입·측정·외관·비젼·재고 대기 수량) = 아직 용접 전 수량
+//   · ✕ 제외 = 순서에서 뺌(피팅 배정 안 함) · 작업 가능 0인 제품은 '피팅 부족 대기'로 따로 모음(피팅이 들어오면 자동으로 올라감)
 //   · 공용 피팅(여러 제품이 같이 쓰는 규격)은 앞 순서 제품이 먼저 가져감
 //   · 순서: 직접(▲▼) / 오래된 납기순 / 완료 건수 최대 · 피팅 필요 수량은 직접 고칠 수 있음(지우면 MAIN 값)
-function ftPlan_(){ var p=__ft.d.plan||(__ft.d.plan={}); p.need=p.need||{}; p.order=p.order||[]; p.basis=p.basis||"all"; return p; }
+function ftPlan_(){ var p=__ft.d.plan||(__ft.d.plan={}); p.need=p.need||{}; p.order=p.order||[]; p.excl=p.excl||{}; p.basis=p.basis||"all"; p.scope=p.scope||"late"; return p; }
+// [수정] 집계 범위 — 기본 '미납' = 최종 납기(MAIN 납기일)가 오늘 전인 주문만 · 필요하면 N일 안 납기까지 포함
+var FT_SCOPE={ late:"미납만 (납기 지남)", d7:"미납 + 7일 안 납기", d14:"미납 + 14일 안 납기", all:"출고 전 전체" };
+function ftScopeOk_(due){ var sc=ftPlan_().scope, t=ftToday_(); if(sc==="all") return true; if(!due) return false; if(sc==="late") return due<t;
+  var d=new Date(t); d.setDate(d.getDate()+(sc==="d7"?7:14)); var lim=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); return due<=lim; }
 function ftPlanMain_(){
   var D=(typeof mainData!=="undefined" && mainData)||[]; if(!D.length) return null;
   try{ if(typeof mainStatusMapDirty!=="undefined" && mainStatusMapDirty && typeof computeAllStatuses==="function"){ mainStatusMap=computeAllStatuses(mainData); mainStatusMapDirty=false; } }catch(_){}
   var idx={}, out={}; Object.keys(__ft.d.bom||{}).forEach(function(k){ var b=__ft.d.bom[k]; if(b.mat) idx["M"+ftK_(b.mat)]=k; idx["P"+k]=k; });
   D.forEach(function(r){ var q=Number(r.qty)||0; if(q<=0) return; if(typeof mainHasPRPO==="function" && !mainHasPRPO(r)) return;
     var k=idx["M"+ftK_(r.partNo)]||idx["P"+ftK_(r.oldDrawingNo)]||idx["P"+ftK_(r.partNo)]; if(!k) return;
+    if(!ftScopeOk_(String(r.dueDate||"").slice(0,10))) return;
     var st=""; try{ st=computeProductStatus(r)||""; }catch(_){} if(/완료|출고/.test(st)) return;
+    var f=function(fn){ try{ return Math.max(0, Number(fn(r))||0); }catch(_){ return 0; } };
+    var shp=Math.min(q, typeof computeStockPreShip==="function"?f(computeStockPreShip):0), rest=q-shp; if(rest<=0) return;   // 일부 출고분 제외
+    var wait=0; if(st==="생산" || !st){ ["computeWaitDeliver","computeWaitClean","computeWaitVision","computeWaitMeasure","computeWaitIncomingInspection"].forEach(function(n){ if(typeof window[n]==="function") wait+=f(window[n]); }); }
+    var pn=(st==="생산" || !st)?Math.max(0, rest-wait):0;   // 아직 용접 전 수량
     var o=out[k]||(out[k]={ qty:0, prod:0, due:"", od:"", orders:[] }), due=String(r.dueDate||"").slice(0,10), od=String(r.orderDate||"").slice(0,10);
-    o.qty+=q; if(st==="생산" || !st) o.prod+=q; if(due && (!o.due || due<o.due)) o.due=due; if(od && (!o.od || od<o.od)) o.od=od;
-    o.orders.push({ no:r.orderNo||"", qty:q, due:due, od:od, st:st||"생산" }); });
+    o.qty+=rest; o.prod+=pn; if(due && (!o.due || due<o.due)) o.due=due; if(od && (!o.od || od<o.od)) o.od=od;
+    o.orders.push({ no:r.orderNo||"", qty:q, rest:rest, shp:shp, pn:pn, due:due, od:od, st:st||"생산" }); });
   Object.keys(out).forEach(function(k){ out[k].orders.sort(function(a,b){ return String(a.due||"9999").localeCompare(String(b.due||"9999")); }); });
   return out; }
 function ftPlanOrder_(M){ var P=ftPlan_(), ks=Object.keys(__ft.d.bom||{}), seen={}, out=[], dd=function(k){ return (M&&M[k]&&M[k].due)||"9999"; };
   P.order.forEach(function(k){ if(__ft.d.bom[k] && !seen[k]){ seen[k]=1; out.push(k); } });
   ks.sort(function(a,b){ return dd(a).localeCompare(dd(b)) || a.localeCompare(b); }).forEach(function(k){ if(!seen[k]){ seen[k]=1; out.push(k); } });
   P.order=out; return out; }
-function ftPlanNeed_(k, M){ var P=ftPlan_(); if(P.need[k]!=null && P.need[k]!=="") return Math.max(0, ftN_(P.need[k])); return (M&&M[k])?M[k].prod:0; }
+function ftPlanNeed_(k, M){ var P=ftPlan_(); if(P.excl[k]) return 0; if(P.need[k]!=null && P.need[k]!=="") return Math.max(0, ftN_(P.need[k])); return (M&&M[k])?M[k].prod:0; }
 function ftPlanCalc_(){
   var P=ftPlan_(), M=ftPlanMain_(), R=ftStock_(), pool={}, have={}, order=ftPlanOrder_(M), rows=[], use={}, needAll={}, users={};
   Object.keys(R.S).forEach(function(k){ var e=R.S[k]; have[k]=Math.max(0, e.ntl+(P.basis!=="ntl"?Math.max(0,e.vend):0)+(P.basis==="all"?Math.max(0,e.vown||0):0)); pool[k]=have[k]; });
   order.forEach(function(k){ var b=__ft.d.bom[k], need=ftPlanNeed_(k,M); (b.lines||[]).forEach(function(l){ var s=ftK_(l.spec); users[s]=(users[s]||0)+(need>0?1:0); needAll[s]=(needAll[s]||0)+need*ftN_(l.qty); }); });
-  order.forEach(function(k){ var b=__ft.d.bom[k], m=(M&&M[k])||null, need=ftPlanNeed_(k,M), L=(b.lines||[]).filter(function(l){ return ftN_(l.qty)>0; }), base={ k:k, b:b, m:m, need:need, man:(P.need[k]!=null && P.need[k]!=="") };
+  order.forEach(function(k){ var b=__ft.d.bom[k], m=(M&&M[k])||null, need=ftPlanNeed_(k,M), L=(b.lines||[]).filter(function(l){ return ftN_(l.qty)>0; }), base={ k:k, b:b, m:m, need:need, man:(P.need[k]!=null && P.need[k]!==""), ex:!!P.excl[k] };
     if(!need || !L.length){ base.can=0; base.rest=0; base.neck=[]; base.skip=true; rows.push(base); return; }
     var can=need, neck=[]; L.forEach(function(l){ var s=ftK_(l.spec), x=Math.floor((pool[s]||0)/ftN_(l.qty)); if(x<can) can=x; });
     L.forEach(function(l){ var s=ftK_(l.spec), x=Math.floor((pool[s]||0)/ftN_(l.qty)); if(x===can && can<need) neck.push(l.spec); });
@@ -18774,35 +18784,42 @@ function ftPlanCalc_(){
   return { rows:rows, fit:fit, P:P, M:M }; }
 function ftLateTxt_(due){ if(!due) return ""; var t=ftToday_(), d=Math.round((new Date(t)-new Date(due))/86400000); return d>0?('<b style="color:#B42318;">지연 '+d+'일</b>'):(d===0?'<b style="color:#B54708;">오늘</b>':('D-'+(-d))); }
 function ftPlanHtml_(){
-  var E=ftE_, C=ftPlanCalc_(), P=C.P, act=C.rows.filter(function(r){ return !r.skip; }), idle=C.rows.filter(function(r){ return r.skip; }), n=0;
-  var tot=act.reduce(function(s,r){ return s+r.need; },0), can=act.reduce(function(s,r){ return s+r.can; },0), full=act.filter(function(r){ return r.can===r.need; }).length, gapN=C.fit.filter(function(f){ return f.gap>0; }).length;
-  var oldest=act.concat(idle).map(function(r){ return r.m&&r.m.due; }).filter(Boolean).sort()[0]||"";
+  var E=ftE_, C=ftPlanCalc_(), P=C.P, all=C.rows.filter(function(r){ return !r.skip; }), act=all.filter(function(r){ return r.can>0; }), wait=all.filter(function(r){ return r.can===0; }), exl=C.rows.filter(function(r){ return r.ex; }), idle=C.rows.filter(function(r){ return r.skip && !r.ex; }), n=0, OP=__ft.open||(__ft.open={});
+  var tot=all.reduce(function(s,r){ return s+r.need; },0), can=all.reduce(function(s,r){ return s+r.can; },0), full=all.filter(function(r){ return r.can===r.need; }).length, gapN=C.fit.filter(function(f){ return f.gap>0; }).length;
+  var oldest=C.rows.filter(function(r){ return !r.ex; }).map(function(r){ return r.m&&r.m.due; }).filter(Boolean).sort()[0]||"";
   var tag=function(r){ return r.can===r.need?'<span class="ft-tg ok">전량 가능</span>':(r.can>0?'<span class="ft-tg wa">일부 가능</span>':'<span class="ft-tg ng">피팅 부족</span>'); };
-  var row=function(r){ var m=r.m, tip=m?m.orders.map(function(o){ return o.no+" · "+o.qty+"개 · 납기 "+(o.due||"-")+" · "+o.st; }).join("\n"):"";
+  var row=function(r){ var m=r.m, tip="", grp=r.ex?"ex":(r.skip?"idle":(r.can>0?"act":"wait"));
     var lines=(r.b.lines||[]).map(function(l){ var s=ftK_(l.spec), f=C.fit.filter(function(x){ return x.s===s; })[0]; return '<span class="ft-chip'+(r.neck.indexOf(l.spec)>=0?' no':'')+'" title="'+(f&&f.users>1?('공용 피팅 — 미납 제품 '+f.users+'개가 같이 씀'):'')+'">'+E(l.spec)+' <b>×'+E(l.qty)+'</b>'+(f&&f.users>1?' <small>공용</small>':'')+'</span>'; }).join("");
-    return '<tr class="'+(r.skip?'idle':'')+'"><td class="c">'+(r.skip?'':('<b>'+(++n)+'</b>'))+'</td><td class="nw">'+(r.skip?'':'<button type="button" class="ft-btn sm" data-a="pup" data-k="'+E(r.k)+'" title="위로">▲</button><button type="button" class="ft-btn sm" data-a="pdn" data-k="'+E(r.k)+'" title="아래로">▼</button>')+'</td>'
+    var det=(OP[r.k] && m)?('<tr class="ftp-det"><td></td><td colspan="9"><table class="ftp-o"><tr><th>ORDER NO.</th><th>주문</th><th>출고</th><th>미납</th><th>용접 전</th><th>납기</th><th>발주</th><th>단계</th></tr>'+m.orders.map(function(o){ return '<tr><td>'+E(o.no)+'</td><td class="n">'+o.qty+'</td><td class="n">'+(o.shp||"")+'</td><td class="n"><b>'+o.rest+'</b></td><td class="n">'+(o.pn||"")+'</td><td>'+E(o.due)+' '+ftLateTxt_(o.due)+'</td><td>'+E(o.od)+'</td><td>'+E(o.st)+'</td></tr>'; }).join("")+'</table></td></tr>'):'';
+    return '<tr class="'+(grp==="act"?'':grp)+'"><td class="c">'+(grp==="act"?('<b>'+(++n)+'</b>'):'')+'</td><td class="nw">'+(grp==="act"?'<button type="button" class="ft-btn sm" data-a="pup" data-k="'+E(r.k)+'" title="위로">▲</button><button type="button" class="ft-btn sm" data-a="pdn" data-k="'+E(r.k)+'" title="아래로">▼</button>':'')+(r.ex?'<button type="button" class="ft-btn sm" data-a="pinc" data-k="'+E(r.k)+'" title="다시 순서에 넣기">↺ 넣기</button>':((grp==="act"||grp==="wait")?'<button type="button" class="ft-btn sm del" data-a="pexc" data-k="'+E(r.k)+'" title="순서에서 빼기 (피팅 배정 안 함)">✕ 제외</button>':''))+'</td>'
       +'<td><b>'+E(r.b.prod)+'</b>'+(r.b.mat?'<div class="m">'+E(r.b.mat)+'</div>':'')+'</td>'
       +'<td title="'+E(tip)+'">'+(m&&m.due?('<b>'+E(m.due)+'</b> '+ftLateTxt_(m.due)+(m.od?'<div class="m">발주 '+E(m.od)+'</div>':'')):'<span class="m">-</span>')+'</td>'
-      +'<td class="n" title="'+E(tip)+'">'+(m?('<b>'+m.qty+'</b><div class="m">'+m.orders.length+'건'+(m.qty>m.prod?' · 용접 후 '+(m.qty-m.prod):'')+'</div>'):'<span class="m">0</span>')+'</td>'
+      +'<td class="n">'+(m?('<b>'+m.qty+'</b><div><button type="button" class="ft-lnk" data-a="pdet" data-k="'+E(r.k)+'">'+(OP[r.k]?'▾':'▸')+' '+m.orders.length+'건</button>'+(m.qty>m.prod?' <span class="m">용접 후 '+(m.qty-m.prod)+'</span>':'')+'</div>'):'<span class="m">0</span>')+'</td>'
       +'<td><input class="ftp-need" data-k="'+E(r.k)+'" type="number" min="0" value="'+(r.man?E(P.need[r.k]):'')+'" placeholder="'+(m?m.prod:0)+'" title="비우면 MAIN 값('+(m?m.prod:0)+') · 숫자를 넣으면 그 값으로 계산" style="width:80px;'+(r.man?'border-color:#F79009;background:#FFFAEB;':'')+'">'+(r.man?'<div class="m" style="color:#B54708;">직접 입력</div>':'')+'</td>'
-      +(r.skip?'<td colspan="3" class="m">'+(m?'용접할 것 없음 (모두 용접 후 단계)':'미납 없음')+'</td>':('<td class="n"><b style="font-size:15px;color:'+(r.can?'#067647':'#B42318')+';">'+r.can+'</b></td><td class="n'+(r.rest?' neg':'')+'">'+(r.rest||"")+'</td><td>'+tag(r)+(r.neck.length?'<div class="m" style="color:#B42318;">막힘: '+E(r.neck.join(", "))+'</div>':'')+'</td>'))
-      +'<td>'+lines+'</td></tr>'; };
-  var mainNote=C.M?('MAIN 미납 자동 집계 (BOM Material = MAIN 품번) · 출고·완료 전 주문만 · <b>피팅 필요 = 생산 단계(용접 전) 수량</b> — 미납 칸에 마우스를 올리면 ORDER NO.별 내역')
+      +(r.skip?'<td colspan="3" class="m">'+(r.ex?'순서에서 제외됨':(m?'용접할 것 없음 (모두 용접 후 단계)':'미납 없음'))+'</td>':('<td class="n"><b style="font-size:15px;color:'+(r.can?'#067647':'#B42318')+';">'+r.can+'</b></td><td class="n'+(r.rest?' neg':'')+'">'+(r.rest||"")+'</td><td>'+tag(r)+(r.neck.length?'<div class="m" style="color:#B42318;">막힘: '+E(r.neck.join(", "))+'</div>':'')+'</td>'))
+      +'<td>'+lines+'</td></tr>'+det; };
+  var mainNote=C.M?('MAIN 자동 집계 · <b>'+FT_SCOPE[P.scope]+'</b> (최종 납기 기준) · BOM Material = MAIN 품번 · 미납 = 주문 − 출고분 · <b>피팅 필요 = 생산 단계(용접 전) 수량</b> — <b>▸ n건</b>을 누르면 ORDER NO.별 주문·출고·미납·용접 전 수량 · 피팅이 모자라 못 하는 제품은 아래 ‘피팅 부족’에 모이고, 안 할 제품은 ✕ 제외')
     :'<b style="color:#B42318;">MAIN 데이터가 아직 없습니다 — MAIN 화면을 한 번 연 뒤 [↻ MAIN 다시 집계]를 누르세요</b>';
   return '<div class="ft-tool"><button type="button" class="ft-btn" data-a="pre" title="MAIN 미납을 다시 읽어 계산">↻ MAIN 다시 집계</button><button type="button" class="ft-btn" data-a="psortdue">📅 오래된 납기순</button><button type="button" class="ft-btn" data-a="psortfew" title="필요 피팅이 적은(빨리 끝나는) 제품부터 — 완료되는 주문 건수가 가장 많아짐">✅ 완료 건수 최대 순</button>'
     +(Object.keys(P.need).length?'<button type="button" class="ft-btn" data-a="pclr" title="직접 입력한 수량을 지우고 MAIN 값으로">↺ 직접 입력 지우기 ('+Object.keys(P.need).length+')</button>':'')
-    +'<label class="m" style="display:flex;align-items:center;gap:4px;">재고 기준 <select id="ftp-basis"><option value="all"'+(P.basis==="all"?' selected':'')+'>전체: NTL 재고 + 인계 + 업체자재</option><option value="ntlv"'+(P.basis==="ntlv"?' selected':'')+'>NTL 재고 + 인계 (업체자재 제외)</option><option value="ntl"'+(P.basis==="ntl"?' selected':'')+'>NTL 재고만</option></select></label>'
+    +'<label class="m" style="display:flex;align-items:center;gap:4px;">집계 <select id="ftp-scope">'+Object.keys(FT_SCOPE).map(function(x){ return '<option value="'+x+'"'+(P.scope===x?' selected':'')+'>'+FT_SCOPE[x]+'</option>'; }).join("")+'</select></label><label class="m" style="display:flex;align-items:center;gap:4px;">재고 기준 <select id="ftp-basis"><option value="all"'+(P.basis==="all"?' selected':'')+'>전체: NTL 재고 + 인계 + 업체자재</option><option value="ntlv"'+(P.basis==="ntlv"?' selected':'')+'>NTL 재고 + 인계 (업체자재 제외)</option><option value="ntl"'+(P.basis==="ntl"?' selected':'')+'>NTL 재고만</option></select></label>'
     +'<span style="flex:1;"></span><button type="button" class="ft-btn out" data-a="pout" title="작업 가능 수량이 있는 제품을 순서대로 분출 화면에 넣음">🚚 이 순서로 분출</button><button type="button" class="ft-btn" data-a="pprint">🖨 작업 순서표</button><button type="button" class="ft-btn" data-a="pxlsx">📊 엑셀</button></div>'
-    +'<div class="ft-kp" style="grid-template-columns:repeat(6,minmax(0,1fr));"><div><span>가장 오래된 미납 납기</span><b style="font-size:18px;">'+(oldest?E(oldest)+' <span style="font-size:13px;">'+ftLateTxt_(oldest)+'</span>':'-')+'</b></div><div><span>용접할 제품</span><b>'+act.length+'</b></div><div><span>피팅 필요 수량</span><b>'+tot+'</b></div><div><span>지금 피팅으로 가능</span><b style="color:#067647;">'+can+'</b></div><div><span>전량 완료 가능 제품</span><b>'+full+' / '+act.length+'</b></div><div><span>부족 피팅 종류</span><b style="color:'+(gapN?'#B42318':'#067647')+';">'+gapN+'</b></div></div>'
+    +'<div class="ft-kp" style="grid-template-columns:repeat(6,minmax(0,1fr));"><div><span>가장 오래된 미납 납기</span><b style="font-size:18px;">'+(oldest?E(oldest)+' <small style="font-size:13px;font-weight:700;">'+ftLateTxt_(oldest)+'</small>':'-')+'</b></div><div><span>용접할 제품</span><b>'+act.length+'</b></div><div><span>피팅 필요 수량</span><b>'+tot+'</b></div><div><span>지금 피팅으로 가능</span><b style="color:#067647;">'+can+'</b></div><div><span>전량 완료 가능 제품</span><b>'+full+' / '+act.length+'</b></div><div><span>부족 피팅 종류</span><b style="color:'+(gapN?'#B42318':'#067647')+';">'+gapN+'</b></div></div>'
     +'<div class="m" style="margin:-2px 0 8px;">'+mainNote+'<br>위 순서대로 피팅을 배정합니다 — <b>공용 피팅은 앞 순서 제품이 먼저 가져갑니다.</b> ▲▼로 순서를 바꾸면 바로 다시 계산됩니다.</div>'
-    +'<div class="ft-card"><table class="ft-tb ftp"><thead><tr><th>순서</th><th></th><th>품목코드</th><th>가장 오래된 납기</th><th>MAIN 미납</th><th>피팅 필요</th><th>▶ 작업 가능</th><th>남음</th><th>판정</th><th>피팅 (1개당 · 점선=막히는 피팅)</th></tr></thead><tbody>'
-    +act.map(row).join("")+(idle.length?'<tr><td colspan="10" class="m" style="background:#F9FAFB;">용접할 것 없는 제품 '+idle.length+'개</td></tr>'+idle.map(row).join(""):'')+'</tbody></table></div>'
+    +'<div class="ft-card"><table class="ft-tb ftp"><thead><tr><th>순서</th><th></th><th>품목코드</th><th>가장 오래된 납기</th><th>'+(P.scope==="late"?'미납 (납기 지남)':'MAIN 미납')+'</th><th>피팅 필요</th><th>▶ 작업 가능</th><th>남음</th><th>판정</th><th>피팅 (1개당 · 점선=막히는 피팅)</th></tr></thead><tbody>'
+    +(act.length?act.map(row).join(""):'<tr><td colspan="10" class="ft-empty">지금 피팅으로 작업할 수 있는 제품이 없습니다</td></tr>')
+    +(wait.length?'<tr><td colspan="10" class="grp ng">⛔ 피팅 부족 — 작업 불가 '+wait.length+'개 (피팅이 들어오면 자동으로 위로 올라감 · 순서 앞쪽 제품이 공용 피팅을 먼저 씀)</td></tr>'+wait.map(row).join(""):'')
+    +(exl.length?'<tr><td colspan="10" class="grp">✕ 순서에서 제외 '+exl.length+'개 (피팅 배정 안 함 · ↺ 넣기로 되돌림)</td></tr>'+exl.map(row).join(""):'')
+    +(idle.length?'<tr><td colspan="10" class="grp">용접할 것 없는 제품 '+idle.length+'개</td></tr>'+idle.map(row).join(""):'')+'</tbody></table></div>'
     +'<h4 style="margin:14px 0 6px;">🔩 피팅별 — 피팅 필요 수량을 다 만들려면</h4><div class="ft-card"><table class="ft-tb"><thead><tr><th>규격</th><th>품명</th><th>쓰는 제품</th><th>보유</th><th>필요 합계</th><th>이번 계획 사용</th><th>남는 재고</th><th>부족 (고객사 요청)</th></tr></thead><tbody>'
     +(C.fit.length?C.fit.map(function(f){ return '<tr><td><b>'+E(f.spec)+'</b>'+(f.users>1?' <span class="ft-tg wa">공용 '+f.users+'</span>':'')+'</td><td class="nm">'+E(f.name)+'</td><td class="c">'+f.users+'</td><td class="n">'+f.have+'</td><td class="n">'+f.need+'</td><td class="n">'+f.use+'</td><td class="n">'+f.left+'</td><td class="n'+(f.gap?' neg':'')+'"><b>'+(f.gap||"-")+'</b></td></tr>'; }).join(""):'<tr><td colspan="8" class="ft-empty">피팅이 필요한 미납이 없습니다</td></tr>')+'</tbody></table></div>'; }
 function ftPlanAct_(k, a){ var P=ftPlan_(), M=ftPlanMain_(), O=ftPlanOrder_(M);
   if(k==="pre"){ ftRender_(); return; }
+  if(k==="pdet"){ var kd=a.getAttribute("data-k"); __ft.open=__ft.open||{}; __ft.open[kd]=!__ft.open[kd]; ftRender_(); return; }
+  if(k==="pexc"){ P.excl[a.getAttribute("data-k")]=1; ftPlanSave_(); return; }
+  if(k==="pinc"){ delete P.excl[a.getAttribute("data-k")]; ftPlanSave_(); return; }
   if(k==="pclr"){ if(!confirm("직접 입력한 피팅 필요 수량을 모두 지우고 MAIN 값으로 계산할까요?")) return; P.need={}; ftPlanSave_(); return; }
-  if(k==="pup"||k==="pdn"){ var key=a.getAttribute("data-k"), act=O.filter(function(x){ return ftPlanNeed_(x,M)>0; }), i=act.indexOf(key), j=k==="pup"?i-1:i+1; if(i<0||j<0||j>=act.length) return;
+  if(k==="pup"||k==="pdn"){ var key=a.getAttribute("data-k"), act=(function(){ var cc={}; ftPlanCalc_().rows.forEach(function(r){ if(!r.skip && r.can>0) cc[r.k]=1; }); return O.filter(function(x){ return cc[x]; }); })(), i=act.indexOf(key), j=k==="pup"?i-1:i+1; if(i<0||j<0||j>=act.length) return;
     var t=act[i]; act[i]=act[j]; act[j]=t; P.order=act.concat(O.filter(function(x){ return act.indexOf(x)<0; })); ftPlanSave_(); return; }
   if(k==="psortdue"){ var dd=function(x){ return (M&&M[x]&&M[x].due)||"9999"; }; P.order=O.slice().sort(function(a2,b2){ return dd(a2).localeCompare(dd(b2)) || O.indexOf(a2)-O.indexOf(b2); }); ftPlanSave_(); return; }
   if(k==="psortfew"){ var per=function(x){ return (((__ft.d.bom[x]||{}).lines)||[]).reduce(function(s,l){ return s+ftN_(l.qty); },0)*ftPlanNeed_(x,M); };
@@ -18813,15 +18830,16 @@ var __ftPlanT=null;
 function ftPlanSave_(){ ftRender_(); clearTimeout(__ftPlanT); __ftPlanT=setTimeout(function(){ ftSave_("작업순서"); }, 800); }
 function ftPlanChange_(t){ var P=ftPlan_(), k=t.getAttribute("data-k");
   if(t.classList.contains("ftp-need")){ if(String(t.value).trim()==="") delete P.need[k]; else P.need[k]=Math.max(0, ftN_(t.value)); }
-  else if(t.id==="ftp-basis") P.basis=t.value; else return false;
+  else if(t.id==="ftp-basis") P.basis=t.value; else if(t.id==="ftp-scope") P.scope=t.value; else return false;
   ftPlanSave_(); return true; }
 function ftPlanPrint_(){
-  var E=ftE_, C=ftPlanCalc_(), act=C.rows.filter(function(r){ return !r.skip; }), n=0;
+  var E=ftE_, C=ftPlanCalc_(), act=C.rows.filter(function(r){ return !r.skip && r.can>0; }), wt=C.rows.filter(function(r){ return !r.skip && r.can===0; }), n=0;
   var html='<html><head><meta charset="utf-8"><title>피팅 작업 순서표</title><style>@page{ size:A4 landscape; margin:9mm; } *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; } body{ font-family:"Malgun Gothic",sans-serif; font-size:9pt; margin:0; color:#111; }'
     +'h1{ font-size:15pt; margin:0 0 1mm; } .m{ color:#555; font-size:8pt; margin-bottom:2mm; } table{ width:100%; border-collapse:collapse; margin-bottom:3mm; } td,th{ border:0.6pt solid #444; padding:1mm 1.5mm; } th{ background:#E3E8EF; } .n{ text-align:right; } .c{ text-align:center; } .ng{ color:#B42318; font-weight:700; } .big{ font-size:11pt; font-weight:900; } h2{ font-size:11pt; margin:2mm 0 1mm; } .s{ font-size:7.5pt; }</style></head><body>'
-    +'<h1>피팅 작업 순서표</h1><div class="m">'+ftToday_()+' 기준 · MAIN 미납 자동 집계 · 재고 기준: '+({ all:'NTL 재고 + 인계 + 업체자재', ntlv:'NTL 재고 + 인계', ntl:'NTL 재고만' }[C.P.basis]||'')+' · 공용 피팅은 앞 순서 제품에 먼저 배정</div>'
+    +'<h1>피팅 작업 순서표</h1><div class="m">'+ftToday_()+' 기준 · MAIN '+FT_SCOPE[C.P.scope]+' · 재고 기준: '+({ all:'NTL 재고 + 인계 + 업체자재', ntlv:'NTL 재고 + 인계', ntl:'NTL 재고만' }[C.P.basis]||'')+' · 공용 피팅은 앞 순서 제품에 먼저 배정</div>'
     +'<table><tr><th style="width:9mm;">순서</th><th>품목코드</th><th>가장 오래된 납기</th><th>ORDER NO.</th><th>피팅 필요</th><th>작업 수량</th><th>남음</th><th>막히는 피팅</th><th>피팅 (1개당)</th><th style="width:20mm;">완료 확인</th></tr>'
-    +act.map(function(r){ var m=r.m; return '<tr><td class="c">'+(++n)+'</td><td><b>'+E(r.b.prod)+'</b><div class="s">'+E(r.b.mat||"")+'</div></td><td class="c">'+E((m&&m.due)||"")+'</td><td class="s">'+(m?m.orders.filter(function(o){ return o.st==="생산"; }).map(function(o){ return E(o.no)+'('+o.qty+')'; }).join(", "):"")+'</td><td class="n">'+r.need+'</td><td class="n big">'+r.can+'</td><td class="n'+(r.rest?' ng':'')+'">'+(r.rest||"")+'</td><td class="ng">'+E(r.neck.join(", "))+'</td><td class="s">'+(r.b.lines||[]).map(function(l){ return E(l.spec)+'×'+E(l.qty); }).join(", ")+'</td><td></td></tr>'; }).join("")+'</table>'
+    +act.map(function(r){ var m=r.m; return '<tr><td class="c">'+(++n)+'</td><td><b>'+E(r.b.prod)+'</b><div class="s">'+E(r.b.mat||"")+'</div></td><td class="c">'+E((m&&m.due)||"")+'</td><td class="s">'+(m?m.orders.filter(function(o){ return o.st==="생산"; }).map(function(o){ return E(o.no)+'('+(o.pn||o.rest)+')'; }).join(", "):"")+'</td><td class="n">'+r.need+'</td><td class="n big">'+r.can+'</td><td class="n'+(r.rest?' ng':'')+'">'+(r.rest||"")+'</td><td class="ng">'+E(r.neck.join(", "))+'</td><td class="s">'+(r.b.lines||[]).map(function(l){ return E(l.spec)+'×'+E(l.qty); }).join(", ")+'</td><td></td></tr>'; }).join("")+'</table>'
+    +(wt.length?'<h2>⛔ 피팅 부족 — 작업 불가</h2><table><tr><th>품목코드</th><th>가장 오래된 납기</th><th>피팅 필요</th><th>막히는 피팅</th></tr>'+wt.map(function(r){ return '<tr><td><b>'+E(r.b.prod)+'</b></td><td class="c">'+E((r.m&&r.m.due)||"")+'</td><td class="n">'+r.need+'</td><td class="ng">'+E(r.neck.join(", "))+'</td></tr>'; }).join("")+'</table>':'')
     +'<h2>피팅별 부족 (고객사 요청 수량)</h2><table><tr><th>규격</th><th>품명</th><th>보유</th><th>필요 합계</th><th>이번 사용</th><th>남는 재고</th><th>부족</th></tr>'
     +C.fit.map(function(f){ return '<tr><td><b>'+E(f.spec)+'</b>'+(f.users>1?' (공용 '+f.users+')':'')+'</td><td>'+E(f.name)+'</td><td class="n">'+f.have+'</td><td class="n">'+f.need+'</td><td class="n">'+f.use+'</td><td class="n">'+f.left+'</td><td class="n'+(f.gap?' ng':'')+'">'+(f.gap||"-")+'</td></tr>'; }).join("")+'</table></body></html>';
   var w=(typeof qmsPrintWin_==="function")?qmsPrintWin_():window.open("","_blank"); if(!w){ alert("인쇄 창을 열 수 없습니다."); return; }
@@ -18849,7 +18867,7 @@ function ftClick_(e){
   if(k==="print"){ var tx=(__ft.d.tx||[]).filter(function(x){ return x.id===a.getAttribute("data-id"); })[0]; if(tx) ftPrint_(tx); return; }
   if(k==="del"){ var id=a.getAttribute("data-id"); if(!confirm("이 내역을 삭제할까요? (재고가 다시 계산됩니다)")) return; __ft.d.tx=__ft.d.tx.filter(function(x){ return x.id!==id; }); __ft.d.del=(__ft.d.del||[]).concat([id]); ftSave_(); ftRender_(); return; }
   if(k==="bompaste") return ftBomPaste_(); if(k==="bomadd") return ftBomEdit_(""); if(k==="bomedit") return ftBomEdit_(a.getAttribute("data-p")); if(k==="bomcopy") return ftBomCopy_(a.getAttribute("data-p"));
-  if(/^p(up|dn|sortdue|sortfew|out|print|xlsx|re|clr)$/.test(k)) return ftPlanAct_(k, a);
+  if(/^p(up|dn|sortdue|sortfew|out|print|xlsx|re|clr|det|exc|inc)$/.test(k)) return ftPlanAct_(k, a);
   if(k==="bomdel"){ var p=a.getAttribute("data-p"); if(!confirm(p+" BOM을 삭제할까요?")) return; delete __ft.d.bom[ftK_(p)]; ftSave_(); ftRender_(); return; }
   if(k==="vadd"){ __ft.d.vendors.push("새 용접업체"); ftRender_(); return; }
   if(k==="vdel"){ var i=+a.getAttribute("data-i"); if(!confirm("이 업체를 목록에서 뺄까요? (지난 내역은 남습니다)")) return; __ft.d.vendors.splice(i,1); ftSave_(); ftRender_(); return; }
@@ -19081,7 +19099,8 @@ function ftXlsx_(k){
   XLSX.writeFile(wb, "사급피팅_"+ftToday_()+".xlsx"); }
 function ftStyle_(){ if(document.getElementById("ft-style")) return; var s=document.createElement("style"); s.id="ft-style"; s.textContent=
   '#ft-root{padding:16px 20px 40px;color:#101828;} .ft-head{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap;} .ft-crumb{font-size:12px;color:#667085;} .ft-title{font-size:24px;font-weight:900;} .ft-title span{font-size:13px;font-weight:600;color:#667085;margin-left:6px;} .ft-sub{font-size:12.5px;color:#475467;margin:3px 0 10px;}'
-  +'.ft-acts{display:flex;gap:6px;flex-wrap:wrap;} .ft-btn{border:1px solid #D0D5DD;background:#fff;border-radius:8px;padding:8px 13px;font-weight:700;cursor:pointer;font-size:13px;color:#344054;} .ft-btn.in{background:#0E9384;color:#fff;border-color:#0E9384;} .ft-btn.out{background:#DC6803;color:#fff;border-color:#DC6803;} .ft-btn.use{background:#1570EF;color:#fff;border-color:#1570EF;} .ft-btn.pri{background:#1F2A44;color:#fff;border-color:#1F2A44;} .ft-btn.sm{padding:3px 9px;font-size:12px;} .ft-tg.ok{background:#ECFDF3;color:#067647;} .ft-tg.wa{background:#FFFAEB;color:#B54708;} .ft-tg.ng{background:#FEF3F2;color:#B42318;} .ftp tr.idle td{color:#98A2B3;} .ftp tr.idle .ft-chip{opacity:.6;} .ftp input{max-width:140px;} .ft-btn.del{color:#B42318;border-color:#FDA29B;}'
+  +'.ft-acts{display:flex;gap:6px;flex-wrap:wrap;} .ft-btn{border:1px solid #D0D5DD;background:#fff;border-radius:8px;padding:8px 13px;font-weight:700;cursor:pointer;font-size:13px;color:#344054;} .ft-btn.in{background:#0E9384;color:#fff;border-color:#0E9384;} .ft-btn.out{background:#DC6803;color:#fff;border-color:#DC6803;} .ft-btn.use{background:#1570EF;color:#fff;border-color:#1570EF;} .ft-btn.pri{background:#1F2A44;color:#fff;border-color:#1F2A44;} .ft-btn.sm{padding:3px 9px;font-size:12px;} .ft-tg.ok{background:#ECFDF3;color:#067647;} .ft-tg.wa{background:#FFFAEB;color:#B54708;} .ft-tg.ng{background:#FEF3F2;color:#B42318;} .ftp tr.idle td,.ftp tr.ex td{color:#98A2B3;} .ftp tr.idle .ft-chip,.ftp tr.ex .ft-chip{opacity:.6;} .ftp tr.wait td{background:#FFFBFA;} .ftp input{max-width:140px;} .ftp td.grp{background:#F2F4F7;font-weight:800;color:#475467;font-size:12.5px;} .ftp td.grp.ng{background:#FEF3F2;color:#B42318;} .ft-lnk{border:0;background:none;color:#1570EF;font-weight:700;cursor:pointer;padding:0;font-size:12px;} .ftp-det>td{background:#F9FAFB;} table.ftp-o{border-collapse:collapse;font-size:12px;margin:2px 0;} table.ftp-o th,table.ftp-o td{border:1px solid #EAECF0;padding:3px 8px;white-space:nowrap;} table.ftp-o th{background:#F2F4F7;color:#344054;}'
+  +'/* [수정] 태블릿·모바일: 한글이 한 글자씩 접히지 않게 — 단어 단위 줄바꿈 + 좁은 화면은 표를 가로 스크롤 */ html body table.ft-tb th{white-space:nowrap;} html body table.ft-tb td{word-break:keep-all;} .ft-chip{white-space:nowrap;} .ft-tb td.nw{white-space:nowrap;} .ft-kp{grid-template-columns:repeat(auto-fit,minmax(150px,1fr)) !important;} @media (max-width:1280px){ html body table.ft-tb{min-width:1080px;} #ft-root{padding:12px 10px 40px;} .ft-title{font-size:20px;} } .ft-pop table.ft-tb{min-width:0 !important;} .ft-btn.del{color:#B42318;border-color:#FDA29B;}'
   +'.ft-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px;border-bottom:1px solid #EAECF0;padding-bottom:8px;} .ft-tabs button{border:1px solid #D0D5DD;background:#fff;border-radius:999px;padding:7px 14px;font-weight:700;cursor:pointer;font-size:13px;} .ft-tabs button.on{background:#1F2A44;color:#fff;border-color:#1F2A44;}'
   +'.ft-tool{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;} .ft-tool input,.ft-tool select{height:34px;border:1px solid #D0D5DD;border-radius:8px;padding:0 10px;font-size:13px;} .ft-tool input{min-width:240px;} .m{color:#667085;font-size:12px;} .ok{color:#067647;} .neg{color:#B42318 !important;}'
   +'.ft-kp{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:10px;} .ft-kp div{background:#fff;border:1px solid #EAECF0;border-radius:10px;padding:8px 12px;} .ft-kp span{font-size:12px;color:#475467;font-weight:700;} .ft-kp b{display:block;font-size:24px;}'
