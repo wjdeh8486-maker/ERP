@@ -29791,7 +29791,8 @@ function insNcHistoryPopup_(draw, sn){
   var __k=d+"|"+sn;
   var now=Date.now(); if(__insNcLast.draw===__k && (now-__insNcLast.t)<1500) return; __insNcLast={draw:__k,t:now};
   var hits=insNcHistoryFor_(d);
-   if(insType==="shipping"){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[], (g&&g.missingDetail)||[]); }); return; }
+   // [수정] 출하검사: 앞 공정 미검사 팝업 끔(요청) — 고객부적합·변경점 이력이 있을 때만 팝업. 측정실 BOLT/LED 팝업은 그대로
+   if(insType==="shipping"){ if(hits.length || (typeof chgActiveFor_==="function" && chgActiveFor_(d).length)) insNcRenderPopup_(d, hits, []); else { try{ insSetStatus("✔ "+d+" — 고객부적합 이력 없음"); }catch(e){} } return; }
   if(insType==="measureS"||insType==="measureL"){ try{ var __nf=insFnNeed_(d); if(__nf && __nf.length) insSetStatus("\u26A0 "+d+" — 기능검사 대상: "+__nf.map(function(k){ return INS_FN_LBL[k]; }).join(", ")+" (체크하세요)", "#B45309"); }catch(_){} }
   if((insType==="measureS"||insType==="measureL") && sn){ insShipGateDebounced_(d, sn, function(g){ insNcRenderPopup_(d, hits, (g&&g.missing)||[], (g&&g.missingDetail)||[]); }, ["bolt","led"]); return; }
   if(!hits.length && !(typeof chgActiveFor_==="function" && chgActiveFor_(d).length)){ try{ insSetStatus("✔ "+d+" — 고객부적합 이력 없음"); }catch(e){} return; }
