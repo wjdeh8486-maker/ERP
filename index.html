@@ -19051,23 +19051,34 @@ function ftOcrBind_(ov, taSel, kind, onText){
   ta.addEventListener("dragover", function(e){ e.preventDefault(); }); ta.addEventListener("drop", function(e){ var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f && /^image\//.test(f.type)){ e.preventDefault(); run(f); } });
   ta.addEventListener("input", function(){ onText(ta.value); }); }
 function ftInPop_(){
-  var E=ftE_, ov=ftOv_('📥 입고 — 고객사 → 엔티엘', 980), st={ rows:[], qcol:"req" };
+  var E=ftE_, ov=ftOv_('📥 입고 — 고객사 → 엔티엘', 980), st={ rows:[], qcol:"req", date:ftToday_(), note:"", vendor:"고객사" };
   var body=ov.querySelector(".sd-pb");
   var draw=function(){ var sum=st.rows.reduce(function(s,r){ return s+ftN_(r.qty); },0);
-    body.innerHTML='<div class="ft-g"><label>입고일<input id="fti-date" type="date" value="'+ftToday_()+'"></label><label>수량으로 쓸 칸<select id="fti-qcol"><option value="req"'+(st.qcol==="req"?' selected':'')+'>청구량</option><option value="stock"'+(st.qcol==="stock"?' selected':'')+'>재고량</option></select></label><label style="grid-column:span 2;">비고<input id="fti-note" placeholder="예: 납품서 No. / Project EGUS-SST"></label></div>'
-      +'<label class="ft-paste">고객사 납품서 — 엑셀·PDF 표를 복사해 붙여넣거나, <b>사진은 Ctrl+V · 끌어 놓기 · [🖼 사진으로 읽기]</b> (NO · 품목코드 · 도면번호 · 품명 · 규격 · 단위 · 재고량 · 청구량 …)<textarea id="fti-paste" rows="5" placeholder="여기에 Ctrl+V (표 또는 사진)">'+E(st.raw||"")+'</textarea></label><div class="ft-ocrbar"><label class="ft-btn sm">🖼 사진으로 읽기<input type="file" accept="image/*" class="ft-ocrfile" style="display:none;"></label><span class="ft-ocrst m"></span></div>'
+    var R0=ftStock_(), vSeen={ "고객사":1 }; (__ft.d.tx||[]).forEach(function(t){ if(t.type==="in" && t.vendor) vSeen[t.vendor]=1; });
+    body.innerHTML='<datalist id="fti-specs">'+Object.keys(R0.S).map(function(k){ return '<option value="'+E(R0.S[k].spec)+'">'+E(R0.S[k].name)+'</option>'; }).join("")+'</datalist><datalist id="fti-vlist">'+Object.keys(vSeen).map(function(v){ return '<option value="'+E(v)+'">'; }).join("")+'</datalist>'
+      +'<div class="ft-g"><label>입고일<input id="fti-date" type="date" value="'+E(st.date)+'"></label><label>입고 업체<input id="fti-vendor" list="fti-vlist" value="'+E(st.vendor)+'" placeholder="예: 고객사"></label><label>수량으로 쓸 칸<select id="fti-qcol"><option value="req"'+(st.qcol==="req"?' selected':'')+'>청구량</option><option value="stock"'+(st.qcol==="stock"?' selected':'')+'>재고량</option></select></label><label>비고<input id="fti-note" value="'+E(st.note)+'" placeholder="예: 납품서 No. / Project EGUS-SST"></label></div>'
+      +'<div class="ft-g" style="background:#F9FAFB;border:1px solid #EAECF0;border-radius:10px;padding:8px 10px;grid-template-columns:2fr 1fr auto;"><label>✏️ 직접 입력 — 규격<input id="fti-ms" list="fti-specs" placeholder="예: S4FN"></label><label>입고 수량<input id="fti-mq" type="number" min="1" placeholder="0"></label><button type="button" class="ft-btn pri" data-x="madd" style="align-self:end;">＋ 추가</button></div>'
+      +'<label class="ft-paste"><span>📋 고객사 납품서가 있으면 — 엑셀·PDF 표를 복사해 붙여넣거나, 사진은 Ctrl+V · 끌어 놓기 · [🖼 사진으로 읽기] (NO · 품목코드 · 도면번호 · 품명 · 규격 · 단위 · 재고량 · 청구량 …)</span><textarea id="fti-paste" rows="3" placeholder="여기에 Ctrl+V (표 또는 사진)">'+E(st.raw||"")+'</textarea></label><div class="ft-ocrbar"><label class="ft-btn sm">🖼 사진으로 읽기<input type="file" accept="image/*" class="ft-ocrfile" style="display:none;"></label><span class="ft-ocrst m"></span></div>'
       +(st.rows.length?('<table class="ft-tb"><thead><tr><th>품목코드</th><th>품명</th><th>규격</th><th>단위</th><th>재고량</th><th>청구량</th><th class="hl">입고 수량</th><th></th></tr></thead><tbody>'+st.rows.map(function(r,i){ return '<tr><td>'+E(r.code)+'</td><td class="nm">'+E(r.name)+'</td><td><b>'+E(r.spec)+'</b></td><td class="c">'+E(r.unit)+'</td><td class="n">'+r.stock+'</td><td class="n">'+r.req+'</td><td class="hl"><input class="fti-q" data-i="'+i+'" type="number" value="'+E(r.qty)+'"></td><td><button type="button" class="ft-btn sm del" data-x="rm" data-i="'+i+'">✕</button></td></tr>'; }).join("")+'</tbody><tfoot><tr><th colspan="6">합계 '+st.rows.length+'종</th><th>'+sum+'</th><th></th></tr></tfoot></table>'):'<div class="ft-empty">붙여넣으면 여기에 미리보기가 나옵니다</div>');
     var pa=body.querySelector("#fti-paste"); pa.addEventListener("paste", function(ev){ var its=(ev.clipboardData&&ev.clipboardData.items)||[]; for(var q=0;q<its.length;q++){ if(its[q].kind==="file") return; } setTimeout(function(){ st.rows=ftInParse_(pa.value, st.qcol); st.raw=pa.value; draw(); }, 30); });
     ftOcrBind_(body, "#fti-paste", "in", function(t){ st.raw=t; st.rows=ftInParse_(t, st.qcol); clearTimeout(st.tm); st.tm=setTimeout(function(){ var keep=body.querySelector(".ft-ocrst").innerHTML, f=document.activeElement===pa; draw(); body.querySelector(".ft-ocrst").innerHTML=keep; if(f){ var p2=body.querySelector("#fti-paste"); p2.focus(); } }, 600); });
+    [["#fti-date","date"],["#fti-vendor","vendor"],["#fti-note","note"]].forEach(function(f){ var el=body.querySelector(f[0]); if(el) el.addEventListener("input", function(){ st[f[1]]=el.value; }); });
+    var mq=body.querySelector("#fti-mq"), ms=body.querySelector("#fti-ms"); [mq,ms].forEach(function(el){ if(el) el.addEventListener("keydown", function(ev){ if(ev.key==="Enter"){ ev.preventDefault(); ov.__madd(); } }); });
     body.querySelector("#fti-qcol").addEventListener("change", function(ev){ st.qcol=ev.target.value; if(st.raw){ st.rows=ftInParse_(st.raw, st.qcol); } draw(); });
     body.querySelectorAll(".fti-q").forEach(function(i){ i.addEventListener("input", function(){ st.rows[+i.getAttribute("data-i")].qty=ftN_(i.value); }); }); };
   draw();
   ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn" data-x="save">입고 저장</button>';
+  // [추가] 직접 입력 — 규격·수량만 넣고 [＋ 추가] (같은 규격이면 수량 합침)
+  ov.__madd=function(){ var sp=String((body.querySelector("#fti-ms")||{}).value||"").trim(), q=ftN_((body.querySelector("#fti-mq")||{}).value); if(!sp || q<=0){ alert("규격과 입고 수량을 넣으세요."); return; }
+    var k=ftK_(sp), it=__ft.d.items[k]||{}, ex=st.rows.filter(function(r){ return ftK_(r.spec)===k; })[0];
+    if(ex) ex.qty=ftN_(ex.qty)+q; else st.rows.push({ code:it.code||"", name:it.name||"", spec:it.spec||sp.toUpperCase(), unit:it.unit||"EA", stock:"", req:"", qty:q, man:true });
+    draw(); var m2=body.querySelector("#fti-ms"); if(m2) m2.focus(); };
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x");
+    if(x==="madd"){ ov.__madd(); return; }
     if(x==="rm"){ st.rows.splice(+e.target.getAttribute("data-i"),1); draw(); return; }
     if(x==="save"){ var L=st.rows.filter(function(r){ return ftN_(r.qty)>0; }); if(!L.length){ alert("입고 수량이 있는 줄이 없습니다."); return; }
       L.forEach(function(r){ var k=ftK_(r.spec), it=__ft.d.items[k]||{}; __ft.d.items[k]={ code:r.code||it.code||"", name:r.name||it.name||"", spec:r.spec, unit:r.unit||it.unit||"EA" }; });
-      __ft.d.tx.push({ id:"ft"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), type:"in", date:ov.querySelector("#fti-date").value||ftToday_(), vendor:"", lines:L.map(function(r){ return { spec:r.spec, qty:ftN_(r.qty) }; }), note:ov.querySelector("#fti-note").value.trim(), by:ftWho_(), ts:Date.now() });
+      __ft.d.tx.push({ id:"ft"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), type:"in", date:ov.querySelector("#fti-date").value||ftToday_(), vendor:(String(st.vendor||"").trim()==="고객사"?"":String(st.vendor||"").trim()), lines:L.map(function(r){ return { spec:r.spec, qty:ftN_(r.qty) }; }), note:ov.querySelector("#fti-note").value.trim(), by:ftWho_(), ts:Date.now() });
       ftSave_("입고"); ov.remove(); __ft.tab="stock"; ftRender_(); } }); }
 // 분출 / 사용 / 반납·조정: 제품 × 수량 → BOM 자동 계산 + 피팅 직접 추가·수정
 function ftOutPop_(type, pre, kind0){
