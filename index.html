@@ -8404,7 +8404,7 @@ function dispatchBuildRows_(startD, endD, q, shipRows){
              status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[partNo]||""),
              partNo:partNo, stockQty:stockQty, lastLoc:lastLoc, dispatched:dispatched, po:(m.prpo!=null?String(m.prpo):""), note:note };
   }).filter(function(r){
-    var __ok=qlistStateOk_("dispatch", r); if(!__ok && queries.length && __excl.length<30) __excl.push({ orderNo:r.orderNo, why:"완료 여부 필터(전체/미완료만/완료만)에 걸림" }); return __ok;   // 전체 / 미완료만 / 완료만
+    var __ok=window.__dispAllStates || qlistStateOk_("dispatch", r); /* [수정] 라벨 찾기는 완료 여부와 관계없이 */ if(!__ok && queries.length && __excl.length<30) __excl.push({ orderNo:r.orderNo, why:"완료 여부 필터(전체/미완료만/완료만)에 걸림" }); return __ok;   // 전체 / 미완료만 / 완료만
   }).sort(function(a,b){
     var mode=(typeof window!=="undefined" && window.__dispatchSort)||"due";
     if(mode==="draw-asc")  return String(a.oldDraw||"").localeCompare(String(b.oldDraw||""), undefined, {numeric:true});
@@ -8719,7 +8719,7 @@ function dispatchLabelsByOutNo_(outNoStr){
   var orders=(typeof insplistExpandOutNo_==="function")?insplistExpandOutNo_(outNoStr):[];
   orders=Array.from(new Set(orders.map(function(x){ return String(x||"").trim(); }).filter(Boolean)));
   if(!orders.length){ alert("출고NO에서 관리번호를 찾지 못했습니다: "+outNoStr); return; }
-  var all=dispatchBuildRows_("", "", orders.join(","), (typeof __dispatchShip!=="undefined")?__dispatchShip:[]);
+  window.__dispAllStates=true; var all; try{ all=dispatchBuildRows_("", "", orders.join(","), (typeof __dispatchShip!=="undefined")?__dispatchShip:[]); } finally{ window.__dispAllStates=false; }   // [수정] 출하검사 직후 '완료'가 된 관리번호도 라벨을 찾게
   var byOrder={}; all.forEach(function(r){ byOrder[r.orderNo]=r; });
   // [수정] 검수로 잡힌 PROJECT는 분출LIST에서 빠지므로(dispatchInspProjSet_), 없는 ORDER는 검수LIST에서 찾아 보충
   var __miss0=orders.filter(function(o){ return !byOrder[o]; });
@@ -28300,7 +28300,7 @@ function insRender(){
       if(insType==="measureS" || insType==="measureL"){
         if(!window.__fnLogKick && typeof insGateLoadLogs_==="function" && (Date.now()-((INS_GATE_LOGS&&INS_GATE_LOGS.t)||0))>600000){ window.__fnLogKick=true; insGateLoadLogs_(function(){ window.__fnLogKick=false; insSafeRender_(); }); }
         __fnMiss=insFnMissingRows_(rows); __fnBanner=insFnMissingAll_(); }
-      if(insType==="shipping"){ rows.forEach(function(r, ri){ var m=insGateMissFor_(r); if(m) __gateBanner.push({ draw:r.draw, sn:r.sn, ri:ri, miss:m }); }); setTimeout(function(){ try{ insShipGateScan_(rows); }catch(_){} }, 1500); }
+      if(insType==="shipping"){ rows.forEach(function(r, ri){ var m=insGateMissFor_(r); if(m) __gateBanner.push({ draw:r.draw, sn:r.sn, ri:ri, miss:m }); }); if(!INS_SHIP_GATE_OFF) setTimeout(function(){ try{ insShipGateScan_(rows); }catch(_){} }, 1500); }
     }catch(_){}
     // 2행 헤더
   var head1="", head2="";
@@ -28385,7 +28385,7 @@ function insRender(){
             +'<span class="ins-sn-ocr" data-ri="'+ri+'" title="S/N 사진 인식(업로드)" style="cursor:pointer;font-size:14px;color:#0B7A8A;padding:0 2px;user-select:none;flex:0 0 auto;">📷</span>'
             +'</div>';
         } else if(c.key==="outNo"){
-          var __urg=[]; try{ if(insType==="shipping" && !String(v||"").trim() && row.draw && String(row.insDate||"").slice(0,10)===insToday_() && typeof insGuideUrgent_==="function") __urg=insGuideUrgent_(row.draw); }catch(_){}
+          var __urg=[]; try{ if(insType==="shipping" && !String(v||"").trim() && row.draw && String(row.insDate||"").slice(0,10)===insToday_() && typeof insGuideUrgent_==="function") __urg=insGuideUrgent_(row.draw, ri); }catch(_){}
           cell='<div class="'+(__urg.length?'ins-urgwrap':'')+'" data-ri="'+ri+'" style="display:flex;align-items:center;gap:1px;'+(__urg.length?'background:#FEE4E2;outline:2px solid #F04438;border-radius:4px;':'')+'">'
             +'<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'"'+extraAttr+' style="flex:1;min-width:0;border:none;'+bgStyle+'font-size:12px;" placeholder="예: 261-13,263-13">'
             +(__urg.length?('<span class="ins-urg" data-ri="'+ri+'" title="이 도번에 미납·검수·분출 LIST 건이 있는데 출고No가 비어 있음 — 눌러서 그 건만 보기" style="cursor:pointer;white-space:nowrap;font-size:11px;font-weight:800;color:#fff;background:#D92D20;border-radius:5px;padding:2px 5px;flex:0 0 auto;user-select:none;">⚠ '+__urg.length+'건</span>'):'')
@@ -30124,10 +30124,12 @@ function insGateTarget_(r){
 }
 /* [수정] 미검사 표시에 "행의 S/N 앞 20자" 대신 "실제로 안 끝난 S/N"을 보여줌 (예: BOLT 94)
    전에는 행 S/N이 그대로 보여 92·93·96 등 끝난 것까지 미검사처럼 보였음 */
-function insGateMissTxt_(r){ if(!insGateTarget_(r)) return ""; var c=__gateRes[insGateKey_(r.draw, r.sn)]; if(!c || !c.missing || !c.missing.length) return "";
+// [수정] 출하검사에서는 치수·기능 '출하 전 미검사' 알림을 쓰지 않음(요청) — PIN 미체크 경고만 남김 · 다시 켜려면 false
+var INS_SHIP_GATE_OFF=true;
+function insGateMissTxt_(r){ if(INS_SHIP_GATE_OFF) return ""; if(!insGateTarget_(r)) return ""; var c=__gateRes[insGateKey_(r.draw, r.sn)]; if(!c || !c.missing || !c.missing.length) return "";
   var det=c.detail||[]; if(det.length) return det.map(function(d){ return d.label+((d.sns&&d.sns.length)?(" "+d.sns.join(",")):""); }).join(" / ");
   return c.missing.join(","); }
-function insGateMissFor_(r){ if(!insGateTarget_(r)) return null; var c=__gateRes[insGateKey_(r.draw, r.sn)]; return (c && c.missing && c.missing.length)?c.missing:null; }
+function insGateMissFor_(r){ if(INS_SHIP_GATE_OFF) return null; if(!insGateTarget_(r)) return null; var c=__gateRes[insGateKey_(r.draw, r.sn)]; return (c && c.missing && c.missing.length)?c.missing:null; }
 // 디바운스: 연속 입력 시 마지막 것만 600ms 후 서버 조회(호출 급감)
 var __gateDebT=null, __gateDebLast="";
 function insShipGateDebounced_(draw, sn, cb, reqKeys){
@@ -30460,7 +30462,12 @@ function insGuideWeek_(){ var d=new Date(), z=function(n){ return String(n).padS
   var mon=new Date(d); mon.setDate(d.getDate()-((d.getDay()+6)%7)); var sun=new Date(mon); sun.setDate(mon.getDate()+13); return { s:ymd(mon), e:ymd(sun) }; }
 // [수정] 분출 LIST 범위 = 2026-01-01 ~ 오늘+6일 (현장 분출 LIST 기준)
 function insGuideDispRange_(){ var d=new Date(), z=function(n){ return String(n).padStart(2,"0"); }; d.setDate(d.getDate()+6); return { s:"2026-01-01", e:d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()) }; }
-function insGuideRows_(draw){
+// [추가] 오늘 다른 행에 이미 넣은 출고NO 수량 (검사수를 출고No 순서대로 배분) — 같은 관리번호를 또 안내·빨간 표시하지 않게
+function insGuideTaken_(exceptRi){ var out={ q:{}, rows:{} }; try{ if(typeof insState==="undefined" || !insState.shipping) return out; var t=insToday_();
+    insState.shipping.rows.forEach(function(r, i){ if(String(i)===String(exceptRi) || String(r.insDate||"").slice(0,10)!==t) return; var list=insplistExpandOutNo_(r.outNo), cnt=Number(r.insCnt||r.goodCnt||0)||0;
+      list.forEach(function(o, j){ (out.rows[o]=out.rows[o]||[]).push(i+1); if(list.length===1 || j===list.length-1) out.q[o]=(out.q[o]||0)+(cnt>0?cnt:1e9); else out.q[o]=(out.q[o]||0)+0; }); });   // 여러 개를 쓴 행은 마지막 것에 남은 수량
+  }catch(_){} return out; }
+function insGuideRows_(draw, ri){
   var D=insNormDraw_(draw), md=(typeof mainData!=="undefined"&&mainData)||[]; if(!D || !md.length) return null;
   try{ if(typeof mainStatusMapDirty!=="undefined" && mainStatusMapDirty && typeof computeAllStatuses==="function"){ mainStatusMap=computeAllStatuses(mainData); mainStatusMapDirty=false; } }catch(_){}
   var t=(typeof insplistToday_==="function")?insplistToday_():new Date().toISOString().slice(0,10), W=insGuideWeek_(), sdI=(typeof ofSdIndex_==="function")?ofSdIndex_():{}, insp=(typeof dispatchInspProjSet_==="function")?dispatchInspProjSet_():{};
@@ -30480,18 +30487,24 @@ function insGuideRows_(draw){
     o.urg=!!(isI || o.disp || (due && due<t));   // [추가] 미납(납기 지남)·검수·분출 LIST = 출고No 지정이 필요한 건 (미래 납기만 있는 일반·특별납기는 제외)
     o.rank=(isI && due && due<t)?0:(o.sd?1:((isI && o.inspDay && o.inspDay<=W.e)?2:(o.disp?3:(due && due<t?4:5))));
     out.push(o); });
+  // [수정] MAIN에 같은 관리번호가 여러 줄(선진행+추가 등)이면 한 줄로 합침 — 전에는 두 번 나왔음
+  var byNo={}, merged=[]; out.forEach(function(o){ var m=byNo[o.no]; if(!m){ byNo[o.no]=o; merged.push(o); return; } m.qty+=o.qty; m.rest+=o.rest; m.urg=m.urg||o.urg; m.rank=Math.min(m.rank,o.rank); o.tags.forEach(function(g){ if(!m.tags.some(function(x){ return x[0]===g[0]; })) m.tags.push(g); }); });
+  out=merged;
+  // [추가] 오늘 다른 행에 이미 넣은 만큼 빼기 → 다 찬 관리번호는 '지정됨'으로 (빨간 표시·추천에서 제외)
+  var TK=insGuideTaken_(ri); out.forEach(function(o){ var tq=Math.min(o.rest, TK.q[o.no]||0); o.taken=tq; o.takenRows=TK.rows[o.no]||[]; o.left=o.rest-tq; if(o.left<=0){ o.full=true; o.urg=false; o.rank=9; } });
   out.sort(function(a,b){ return a.rank-b.rank || String(a.sd||a.due||"9999").localeCompare(String(b.sd||b.due||"9999")) || a.no.localeCompare(b.no); });
   return out; }
 // [추가] 출고No를 안 정한 행 → 그 도번에 미납·검수·분출 건이 있으면 출고No 칸을 빨갛게 (1분 캐시)
 var __insUrgC={};
-function insGuideUrgent_(draw){ var D=insNormDraw_(draw); if(!D) return []; var n=(typeof mainData!=="undefined"&&mainData)?mainData.length:0, c=__insUrgC[D];
-  if(c && c.n===n && Date.now()-c.t<60000) return c.v; var L=insGuideRows_(draw)||[], v=L.filter(function(o){ return o.urg; }); __insUrgC[D]={ t:Date.now(), n:n, v:v }; return v; }
+function insGuideUrgent_(draw, ri){ var D=insNormDraw_(draw); if(!D) return []; var n=(typeof mainData!=="undefined"&&mainData)?mainData.length:0, base=__insUrgC[D];
+  if(!base || base.n!==n || Date.now()-base.t>=60000){ base={ t:Date.now(), n:n, L:insGuideRows_(draw, "__none__")||[] }; __insUrgC[D]=base; }   // MAIN 계산은 1분 캐시, 오늘 지정분은 매번 반영
+  var TK=insGuideTaken_(ri); return base.L.filter(function(o){ var left=(o.rest||0)-Math.min(o.rest||0, TK.q[o.no]||0); return o.urg && left>0 && !(o.taken>0 && o.left<=0); }).filter(function(o){ return !((TK.q[o.no]||0)>=o.rest); }); }
 function insDrawGuide_(draw, ri, urgOnly){
   if(typeof insType!=="undefined" && insType!=="shipping") return; var D=insNormDraw_(draw); if(!D) return;
   if(urgOnly){ var o0=document.getElementById("ins-guide"); if(o0) o0.remove(); }
 
   var old=document.getElementById("ins-guide"); if(old && old.getAttribute("data-d")===D && String(window.__insGuideRi)===String(ri) && Date.now()-(+old.getAttribute("data-t")||0)<1500) return;   // 같은 도번 연속 호출(Enter+change) 중복 방지
-  var L=insGuideRows_(draw); if(old) old.remove(); if(L===null) return; if(urgOnly) L=L.filter(function(o){ return o.urg; });
+  var L=insGuideRows_(draw, ri); if(old) old.remove(); if(L===null) return; if(urgOnly) L=L.filter(function(o){ return o.urg; });
   var E=insEsc, box=document.createElement("div"); box.id="ins-guide"; box.setAttribute("data-d", D); box.setAttribute("data-t", Date.now()); window.__insGuideRi=ri;
   // [수정] 태블릿 입력 팝업(최상단 레이어) 위에 보이게 · 입력 팝업이 열려 있으면 화면 위쪽에(아래 저장 버튼을 가리지 않게) · 부적합 이력 팝업보다는 아래
   var formOpen=(function(){ var f=document.getElementById("insform-ov"); return !!(f && f.style.display!=="none"); })(), narrow=window.innerWidth<700;
@@ -30501,12 +30514,12 @@ function insDrawGuide_(draw, ri, urgOnly){
 
   box.innerHTML='<div style="position:sticky;top:0;background:#1F2A44;color:#fff;padding:8px 12px;display:flex;align-items:center;gap:8px;"><b style="font-size:14px;white-space:nowrap;">'+(urgOnly?'⚠ '+E(D)+' — 미납·검수·분출 '+L.length+'건':'📋 '+E(D)+' — 출고 대상 '+L.length+'건')+'</b><span style="font-size:11px;opacity:.8;flex:1;min-width:0;'+(narrow?'display:none;':'')+'">검수·검수지연·특별납기·분출(~'+insGuideDispRange_().e.slice(5)+' 납기) 한눈에'+(ri==null?'':' · ➕ 누르면 '+(ri==="form"?'입력창':(Number(ri)+1)+'번째 행')+' 출고No에 넣음')+'</span><span style="flex:'+(narrow?'1':'0')+';"></span><button type="button" data-g="x" style="background:none;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:2px 9px;cursor:pointer;white-space:nowrap;flex:none;">닫기 ✕</button></div>'
     +(L.length && narrow?L.map(function(o){ var late=o.due && o.due<((typeof insplistToday_==="function")?insplistToday_():"");
-        return '<div style="border-top:1px solid #EAECF0;padding:8px 10px;'+(o.rank===0?'background:#FFFBFA;':'')+'"><div>'+(o.tags.length?o.tags.map(function(g){ return '<span style="display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:800;color:'+g[1]+';background:'+g[2]+';border-radius:5px;padding:1px 6px;margin:1px 3px 1px 0;">'+E(g[0])+'</span>'; }).join(""):'<span style="color:#98A2B3;font-size:12px;">일반</span>')+'</div>'
-          +'<div style="display:flex;align-items:center;gap:8px;margin-top:4px;"><div style="flex:1;min-width:0;"><b style="font-size:14px;">'+E(o.no)+'</b> <span style="font-size:12px;color:#475467;">'+E(o.pj)+'</span><div style="font-size:12px;color:#475467;">남은 <b style="color:#101828;">'+o.rest+'</b>'+(o.rest!==o.qty?'/'+o.qty:'')+' · 납기 <span style="'+(late?'color:#B42318;font-weight:700;':'')+'">'+E(o.due)+'</span> · '+E(o.st)+'</div></div>'
+        return '<div style="border-top:1px solid #EAECF0;padding:8px 10px;'+(o.full?'opacity:.55;':(o.rank===0?'background:#FFFBFA;':''))+'"><div>'+(o.taken>0?'<span style="display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:800;color:#344054;background:#EAECF0;border-radius:5px;padding:1px 6px;margin:1px 3px 1px 0;">✔ '+o.takenRows.join(',')+'행에 '+(o.full?'지정됨':o.taken+'개 지정')+'</span>':'')+(o.tags.length?o.tags.map(function(g){ return '<span style="display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:800;color:'+g[1]+';background:'+g[2]+';border-radius:5px;padding:1px 6px;margin:1px 3px 1px 0;">'+E(g[0])+'</span>'; }).join(""):'<span style="color:#98A2B3;font-size:12px;">일반</span>')+'</div>'
+          +'<div style="display:flex;align-items:center;gap:8px;margin-top:4px;"><div style="flex:1;min-width:0;"><b style="font-size:14px;">'+E(o.no)+'</b> <span style="font-size:12px;color:#475467;">'+E(o.pj)+'</span><div style="font-size:12px;color:#475467;">남은 <b style="color:#101828;">'+(o.left!=null?o.left:o.rest)+'</b>'+((o.left!=null?o.left:o.rest)!==o.qty?'/'+o.qty:'')+' · 납기 <span style="'+(late?'color:#B42318;font-weight:700;':'')+'">'+E(o.due)+'</span> · '+E(o.st)+'</div></div>'
           +(ri==null?'':'<button type="button" data-g="add" data-no="'+E(o.no)+'" style="flex:none;border:1px solid #1570EF;background:#EFF8FF;color:#1570EF;font-weight:800;border-radius:8px;padding:8px 10px;cursor:pointer;">➕ 출고NO</button>')+'</div></div>'; }).join("")
      :L.length?'<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F2F4F7;color:#344054;font-size:12px;"><th style="padding:5px 6px;text-align:left;">구분</th><th style="padding:5px 6px;text-align:left;">ORDER NO.</th><th style="padding:5px 6px;text-align:left;">PROJECT</th><th style="padding:5px 6px;text-align:right;">남은/주문</th><th style="padding:5px 6px;">최종납기</th><th style="padding:5px 6px;">상태</th><th></th></tr></thead><tbody>'
-      +L.map(function(o){ var late=o.due && o.due<((typeof insplistToday_==="function")?insplistToday_():""); return '<tr style="border-top:1px solid #EAECF0;'+(o.rank===0?'background:#FFFBFA;':'')+'"><td style="padding:5px 6px;">'+(o.tags.length?o.tags.map(function(g){ return '<span style="display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:800;color:'+g[1]+';background:'+g[2]+';border-radius:5px;padding:1px 6px;margin:1px 3px 1px 0;">'+E(g[0])+'</span>'; }).join(""):'<span style="color:#98A2B3;font-size:12px;">일반</span>')+'</td>'
-        +'<td style="padding:5px 6px;white-space:nowrap;"><b>'+E(o.no)+'</b></td><td style="padding:5px 6px;font-size:12px;">'+E(o.pj)+'</td><td style="padding:5px 6px;text-align:right;white-space:nowrap;"><b>'+o.rest+'</b>'+(o.rest!==o.qty?' <span style="color:#667085;">/ '+o.qty+'</span>':'')+'</td>'
+      +L.map(function(o){ var late=o.due && o.due<((typeof insplistToday_==="function")?insplistToday_():""); return '<tr style="border-top:1px solid #EAECF0;'+(o.full?'opacity:.55;':(o.rank===0?'background:#FFFBFA;':''))+'"><td style="padding:5px 6px;">'+(o.taken>0?'<span style="display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:800;color:#344054;background:#EAECF0;border-radius:5px;padding:1px 6px;margin:1px 3px 1px 0;">✔ '+o.takenRows.join(',')+'행에 '+(o.full?'지정됨':o.taken+'개 지정')+'</span>':'')+(o.tags.length?o.tags.map(function(g){ return '<span style="display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:800;color:'+g[1]+';background:'+g[2]+';border-radius:5px;padding:1px 6px;margin:1px 3px 1px 0;">'+E(g[0])+'</span>'; }).join(""):'<span style="color:#98A2B3;font-size:12px;">일반</span>')+'</td>'
+        +'<td style="padding:5px 6px;white-space:nowrap;"><b>'+E(o.no)+'</b></td><td style="padding:5px 6px;font-size:12px;">'+E(o.pj)+'</td><td style="padding:5px 6px;text-align:right;white-space:nowrap;"><b>'+(o.left!=null?o.left:o.rest)+'</b>'+((o.left!=null?o.left:o.rest)!==o.qty?' <span style="color:#667085;">/ '+o.qty+'</span>':'')+'</td>'
         +'<td style="padding:5px 6px;white-space:nowrap;text-align:center;'+(late?'color:#B42318;font-weight:700;':'')+'">'+E(o.due)+'</td><td style="padding:5px 6px;text-align:center;font-size:12px;">'+E(o.st)+'</td>'
         +'<td style="padding:5px 6px;white-space:nowrap;">'+(ri==null?'':'<button type="button" data-g="add" data-no="'+E(o.no)+'" style="border:1px solid #1570EF;background:#EFF8FF;color:#1570EF;font-weight:800;border-radius:6px;padding:3px 9px;cursor:pointer;">➕ 출고NO</button>')+'</td></tr>'; }).join("")+'</tbody></table>'
       :'<div style="padding:14px;color:#667085;">MAIN에 이 도번의 출고 전 주문이 없습니다 (이미 출고됐거나 도번이 다름)</div>');
@@ -30523,9 +30536,10 @@ function insDrawGuide_(draw, ri, urgOnly){
 function insCtrlNoCandidates_(draw){
   var d=insNormDraw_(draw); if(!d) return [];
   var sEl=document.getElementById("dispatch-start"), eEl=document.getElementById("dispatch-end");
-  var startD=(sEl&&sEl.value)||"", endD=(eEl&&eEl.value)||"";   // 분출 LIST의 현재 최종납기 범위
+  var DR=(typeof insGuideDispRange_==="function")?insGuideDispRange_():{ s:"", e:"" };
+  var startD=(sEl&&sEl.value)||DR.s, endD=(eEl&&eEl.value)||DR.e;   // 분출 LIST의 현재 최종납기 범위 (안 열었으면 기본 범위)
   var ship=(typeof __dispatchShip!=="undefined"&&__dispatchShip)?__dispatchShip:[];
-  var rows=(typeof dispatchBuildRows_==="function")?dispatchBuildRows_(startD, endD, "", ship):[];   // 미완료품만 체크는 내부에서 반영
+  var rows=(typeof dispatchBuildRows_==="function")?dispatchBuildRows_(startD, endD, String(draw||"").trim(), ship):[];   // [수정] 도번으로 좁혀 계산 — 전에는 분출 대상 전체를 매번 계산해 '분출' 클릭이 느렸음
   var seen={}, out=[];
   rows.forEach(function(r){
     if(insNormDraw_(r.oldDraw)!==d) return;                       // 도번 일치
