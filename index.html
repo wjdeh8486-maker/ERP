@@ -15118,6 +15118,18 @@ function mailDate_(v){ if(v==null||v==="") return ""; if(typeof v==="number" && 
     return yr+"-"+String(mo).padStart(2,"0")+"-"+String(da).padStart(2,"0"); }
   return ""; }
 function mailHash_(t){ var h=0, s=String(t||"").replace(/\s+/g," ").trim(); for(var i=0;i<s.length;i++){ h=((h<<5)-h+s.charCodeAt(i))|0; } return "H"+(h>>>0).toString(36); }
+// [추가] 값 모양으로 칸 바로잡기 — PO = 45로 시작하는 10자리 · PR = 8자리 · Material = 9자리 · Document = 도면번호(M200-024-006 / 55121-00 등)
+//   예: 칸이 밀려 PO칸에 PR(10637632), Material칸에 PO(4500139020)가 들어온 경우
+function mailFixCols_(it, r){ try{
+  var cells=(r||[]).map(function(c){ return String(c==null?"":c).trim(); }), only=function(re){ return cells.filter(function(c){ return re.test(c); }); };
+  var reP=/^45\d{8}$/, reR=/^1\d{7}$/, reM=/^[1-9]\d{8}$/, reD=/^([A-Z]{1,2}\d{3}-\d{3}-\d{2,3}[A-Z]?|\d{5}-\d{2}|[A-Z]\d{3}-\d{3}-\d{2}[A-Z]?)$/i;
+  var P=only(reP), R=only(reR), M=only(reM).filter(function(c){ return !reP.test(c); }), Dw=only(reD);
+  if(!reP.test(it.po||"") && P.length===1) it.po=P[0];
+  if(it.pr && !reR.test(it.pr) && R.length===1) it.pr=R[0]; else if(!it.pr && R.length===1) it.pr=R[0];
+  if(!reM.test(it.mat||"") || reP.test(it.mat||"")){ if(M.length===1) it.mat=M[0]; else if(reP.test(it.mat||"") || reR.test(it.mat||"")) it.mat=""; }
+  if(Dw.length===1 && !reD.test(it.doc||"")) it.doc=Dw[0];
+  else if(it.doc && (reP.test(it.doc) || reR.test(it.doc))) it.doc=Dw[0]||it.mat||"";
+  }catch(_){} }
 function mailParseTable_(rows){   // rows: 2차원 배열
   var head=-1, col={};
   for(var i=0;i<Math.min(rows.length,10);i++){ var r=rows[i].map(function(x){ return String(x==null?"":x).trim().toLowerCase(); });
@@ -15134,6 +15146,7 @@ function mailParseTable_(rows){   // rows: 2차원 배열
   var stat=(col.nd==null);   // [추가] 미납 현황형: 변경 납기 = 코미코인계 > 최종납기 > 납기일정
   var out=[]; for(var k=head+1;k<rows.length;k++){ var r=rows[k]; if(!r || !r.length) continue; var po=mailDigits_(r[col.po]); if(!po || po.length<6) continue;
     var it={ po:po, pr:mailDigits_(r[col.pr]), mat:V(r,col.mat), doc:V(r,col.doc), txt:V(r,col.txt), cd:D(r,col.cd), cdRaw:V(r,col.cd), nd:D(r,col.nd), ndRaw:V(r,col.nd) };
+    mailFixCols_(it, r);   // [추가] 칸이 밀려 붙여넣어져도 값 모양으로 PO·PR·Material·Document를 바로잡음
     if(col.ord!=null){ var od=V(r,col.ord); if(/^\d{2}-\d+-\d+/.test(od)) it.ord=od; }
     if(stat){ var kd=D(r,col.kom), fd=D(r,col.fin);
       if(kd){ it.nd=kd; it.ndSrc="코미코인계"; } else if(fd){ it.nd=fd; it.ndSrc="최종납기"; } else if(it.cd){ it.nd=it.cd; it.ndSrc="납기일정"; }
@@ -15160,18 +15173,29 @@ function mailMatch_(it){
     return { orders:byD, how:byD.length===1?"품번":"" }; }
   var U=function(v){ return String(v||"").trim().toUpperCase(); }, md=(typeof mainData!=="undefined"&&mainData)||[];
   if(it.ord){ var mo1=md.find(function(r){ return String(r.orderNo||"").trim()===it.ord; }); if(mo1) return { orders:[mo1], how:"관리번호", allDone:String(mo1.shipped||"")==="납품완료" }; }   // [추가] 표에 관리번호 열이 있으면 우선
+  // [수정] 단계별로 찾기 — ① PO+Material+Document ② PO+(Material 또는 Document) ③ Material+Document(PO 다름·미완료) ④ Material 또는 Document(미완료) ⑤ 특별납기에 등록된 도번
   var byPo=md.filter(function(r){ var p=mailDigits_(r.prpo); return p && (p.indexOf(it.po)>=0 || (it.pr && p.indexOf(it.pr)>=0)); });
-  var hit=byPo.filter(function(r){ return (it.mat && (U(r.partNo)===U(it.mat))) || (it.doc && (U(r.oldDrawingNo)===U(it.doc) || U(r.partNo)===U(it.doc))); });
-  if(!hit.length){ var any=md.filter(function(r){ return (it.mat && U(r.partNo)===U(it.mat)) || (it.doc && U(r.oldDrawingNo)===U(it.doc)); }).filter(function(r){ return String(r.shipped||"")!=="납품완료"; }); if(any.length===1) return { orders:any, how:"품번" }; return { orders:any.length>1?any:[], how:any.length>1?"품번(여러 건)":"" }; }
-  var open=hit.filter(function(r){ return String(r.shipped||"")!=="납품완료"; }); return { orders:open.length?open:hit, how:"PO+품번", allDone:!open.length };
+  var mM=function(r){ return !!(it.mat && U(r.partNo)===U(it.mat)); }, mD=function(r){ return !!(it.doc && (U(r.oldDrawingNo)===U(it.doc) || U(r.partNo)===U(it.doc))); };
+  var openOf=function(L){ return L.filter(function(r){ return String(r.shipped||"")!=="납품완료"; }); };
+  var pick=function(L, how, weak){ var op=openOf(L); return { orders:op.length?op:L, how:how, allDone:!op.length && !weak, weak:!!weak }; };
+  if(it.mat && it.doc){ var h3=byPo.filter(function(r){ return mM(r) && mD(r); }); if(h3.length) return pick(h3, "PO+Material+Document"); }
+  var hit=byPo.filter(function(r){ return mM(r) || mD(r); }); if(hit.length) return pick(hit, "PO+품번");
+  if(it.mat && it.doc){ var b2=openOf(md.filter(function(r){ return mM(r) && mD(r); })); if(b2.length) return { orders:b2, how:"품번", weak:true }; }
+  var any=openOf(md.filter(function(r){ return mM(r) || mD(r); })); if(any.length) return { orders:any, how:"품번", weak:true };
+  try{ var SD=(typeof sdLive_==="function")?sdLive_():[], seen={}, fromSd=[]; SD.forEach(function(x){ var dw=U(x.draw); if(!x.ord || seen[x.ord] || !(dw && (dw===U(it.doc) || dw===U(it.mat)))) return; seen[x.ord]=1; var mo=md.find(function(r){ return String(r.orderNo||"").trim()===String(x.ord).trim(); }); fromSd.push(mo||{ orderNo:x.ord, qty:x.qty, dueDate:x.due, oldDrawingNo:x.draw }); });
+    if(fromSd.length) return { orders:fromSd, how:"특별납기", weak:true }; }catch(_){}
+  return { orders:[], how:"" };
 }
 function mailBuild_(list){
   return list.map(function(it, i){ var m=mailMatch_(it), o=m.orders, row={ i:i, it:it, how:m.how, orders:o, sel:null, lines:[], st:"", msg:"" };
     if(!o.length){ row.st="없음"; row.msg="MAIN에서 PO·품번을 못 찾음 → 관리번호 직접 입력"; return row; }
     if(m.allDone){ row.st="확인"; row.msg="MAIN에서 이미 납품완료"; }
-    if(o.length>1){ row.st="확인"; row.msg="같은 PO·품번 주문 "+o.length+"건 → 관리번호 선택"; return row; }
+    var mPo=function(L){ var ps={}; L.forEach(function(r){ var d=mailDigits_(r.prpo); if(d) ps[d.slice(-10)]=1; }); var k=Object.keys(ps); return k.length?" (MAIN PO "+k.slice(0,3).join(", ")+")":""; };
+    var howTxt=m.how==="PO+Material+Document"?"PO·Material·Document 일치":(m.how==="PO+품번"?"PO+품번 일치":(m.how==="특별납기"?"MAIN에 없음 → 특별납기에 등록된 도번으로 찾음":"PO가 MAIN과 다름 (품번만 일치)"+mPo(o)));
+    if(o.length>1){ row.st="확인"; row.msg=howTxt+" · 주문 "+o.length+"건 → 관리번호 선택"; if(m.weak) row.weak=true; return row; }
     row.sel=String(o[0].orderNo||"").trim(); mailLineState_(row);
-    if(m.how==="품번" && it.fmt!=="int"){ row.weak=true; row.st="확인"; row.msg="PO가 MAIN과 다름 (품번만 일치) — 맞으면 체크 · "+row.msg; }   // [추가] PO가 다른데 품번만 같은 주문에 붙지 않게
+    if(m.weak && it.fmt!=="int"){ row.weak=true; row.st="확인"; row.msg=howTxt+" — 맞으면 체크 · "+row.msg; }
+    if(m.allDone){ row.weak=true; row.st="확인"; row.msg="⚠ MAIN에서 이미 납품완료 — 필요하면 체크 · "+row.msg; }   // [수정] 납품완료 표시가 덮어써져 안 보이던 문제   // [추가] PO가 다른데 품번만 같은 주문에 붙지 않게
     return row; });
 }
 // [추가] ☑ 골라서 — 고른 관리번호마다 어떻게 들어갈지 판단 칸에 표시
