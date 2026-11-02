@@ -19282,11 +19282,11 @@ function smSave_(){ shSave_("smData", { C:SM_SH, get:function(){ return __sm.d; 
 // ── 계산
 function smCalc_(){
   var d=__sm.d, S={}, A={}, get=function(k){ var it=d.items[k]||{}; return S[k]||(S[k]={ k:k, name:it.name||k, unit:it.unit||"EA", in:0, use:0, ret:0, adj:0, alloc:0, allocUsed:0 }); };
-  (d.alloc||[]).forEach(function(a){ A[a.id]={ a:a, used:0 }; get(ftK_(a.mat)).alloc+=ftN_(a.qty); });
-  (d.tx||[]).forEach(function(t){ var e=get(ftK_(t.mat)), q=ftN_(t.qty); if(t.type==="in") e.in+=q; else if(t.type==="use"){ e.use+=q; if(A[t.allocId]){ A[t.allocId].used+=q; e.allocUsed+=q; } } else if(t.type==="ret") e.ret+=q; else if(t.type==="adj") e.adj+=q; });
+  (d.alloc||[]).forEach(function(a){ A[a.id]={ a:a, used:0 }; var e0=get(ftK_(a.mat)); e0.alloc+=ftN_(a.qty); if(a.hist) e0.allocUsed+=ftN_(a.qty); });   /* hist = 출고 완료 관리번호 이력 → 잔량 0 */
+  (d.tx||[]).forEach(function(t){ var e=get(ftK_(t.mat)), q=ftN_(t.qty); if(t.type==="in") e.in+=q; else if(t.type==="use"){ e.use+=q; if(A[t.allocId]){ A[t.allocId].used+=q; if(!A[t.allocId].a.hist) e.allocUsed+=q; } } else if(t.type==="ret") e.ret+=q; else if(t.type==="adj") e.adj+=q; });
   Object.keys(d.items||{}).forEach(get);
   Object.keys(S).forEach(function(k){ var e=S[k]; e.stock=e.in-e.use-e.ret+e.adj; e.allocLeft=e.alloc-e.allocUsed; e.free=e.stock-Math.max(0,e.allocLeft); });
-  Object.keys(A).forEach(function(i){ var x=A[i]; x.left=ftN_(x.a.qty)-x.used; });
+  Object.keys(A).forEach(function(i){ var x=A[i]; if(x.a.hist){ x.used=Math.max(x.used, ftN_(x.a.qty)); x.left=0; } else x.left=ftN_(x.a.qty)-x.used; });
   return { S:S, A:A }; }
 function smPer_(prodKey){ var p=(__sm.d.per||{})[prodKey]; return p&&ftN_(p.n)>0?ftN_(p.n):0; }
 // MAIN(QC제품관리) — 소재규격 및 후처리에 키워드가 들어간 품목 (품번 기준으로 묶음)
@@ -19339,8 +19339,8 @@ function smAllocHtml_(){
   var open=L.filter(function(a){ return C.A[a.id].left>0; }), done=L.filter(function(a){ return C.A[a.id].left<=0; }), noWo=open.filter(function(a){ return !a.wo; });
   var row=function(a){ var x=C.A[a.id], p=P[smProdKeyOf_(a.prod)], per=smPer_(smProdKeyOf_(a.prod)), it=__sm.d.items[ftK_(a.mat)]||{};
     var wo=a.wo?('<div class="nw"><b style="color:#067647;">✅ 지시 '+E(a.wo.date)+'</b></div><div class="m">'+E(a.wo.to||"")+(a.wo.by?' · '+E(a.wo.by):'')+'</div><div class="nw"><button type="button" class="ft-btn sm" data-a="swoprint" data-id="'+E(a.id)+'" title="작업지시서 다시 인쇄">🖨</button><button type="button" class="ft-btn sm" data-a="swoundo" data-id="'+E(a.id)+'" title="지시 표시 취소">↺</button></div>')
-      :(x.left>0?'<button type="button" class="ft-btn sm" data-a="swo" data-id="'+E(a.id)+'" style="color:#B54708;border-color:#FEC84B;background:#FFFAEB;font-weight:800;">📣 작업 지시</button>':'<span class="m">-</span>');
-    return '<tr'+(x.left<=0?' style="color:#98A2B3;"':(!a.wo?' style="background:#FFFCF5;"':''))+'><td class="c">'+E(a.date)+'</td><td><b>'+E(it.name||a.mat)+'</b></td><td><b>'+E(a.prod)+'</b>'+(p?'<div class="m">'+E(p.draw)+' · '+E(p.name)+'</div>':'')+'</td><td class="s">'+E(a.orderNo||"")+'</td>'
+      :((x.left>0||a.hist)?'<button type="button" class="ft-btn sm" data-a="swo" data-id="'+E(a.id)+'" style="color:#B54708;border-color:#FEC84B;background:#FFFAEB;font-weight:800;">📣 작업 지시</button>':'<span class="m">-</span>');
+    return '<tr'+(x.left<=0?' style="color:#98A2B3;"':(!a.wo?' style="background:#FFFCF5;"':''))+'><td class="c">'+E(a.date)+'</td><td><b>'+E(it.name||a.mat)+'</b></td><td><b>'+E(a.prod)+'</b>'+(p?'<div class="m">'+E(p.draw)+' · '+E(p.name)+'</div>':'')+'</td><td class="s">'+E(a.orderNo||"")+(a.hist?'<div><span class="ft-tg" style="background:#F2F4F7;color:#344054;">📦 출고 완료 이력</span></div>':'')+'</td>'
       +'<td class="n">'+E(a.qty)+'</td><td class="n">'+(x.used||'')+'</td><td class="n" style="color:#067647;"><b>'+x.left+'</b></td><td class="n">'+(per?('×'+per+' = <b>'+(x.left*per)+'</b>개'):'<span class="m">생산수 미정</span>')+'</td>'
       +'<td>'+wo+'</td><td class="nm s">'+E(a.note||"")+'</td><td class="s">'+E(a.by||"")+'</td><td class="nw"><button type="button" class="ft-btn sm" data-a="saedit" data-id="'+E(a.id)+'">✏️</button><button type="button" class="ft-btn sm del" data-a="sadel" data-id="'+E(a.id)+'">✕</button></td></tr>'; };
   var head='<table class="ft-tb"><thead><tr><th>할당일</th><th>소재</th><th>사용할 제품 (품번)</th><th>ORDER NO.</th><th>할당 수량</th><th>사용</th><th>잔량</th><th>생산 가능 (잔량 × 1소재당)</th><th>현장 작업 지시</th><th>근거 (고객 지시)</th><th>등록</th><th></th></tr></thead><tbody>';
@@ -19465,42 +19465,49 @@ function smTxPop_(type, editId){
     else __sm.d.tx.push({ id:smId_("sm"), type:kind, date:st.date||ftToday_(), mat:mat, qty:q, allocId:al?al.id:"", prod:prod, orderNo:ord, made:made, note:st.note.trim(), by:ftWho_(), ts:Date.now() });
     smSave_(); ov.remove(); __sm.tab=type==="in"?"stock":"tx"; smRender_(); }); }
 // 고객 할당 등록·수정
+// [추가] 출고 완료 관리번호용 할당인지 — 적은 ORDER NO.가 모두 그 제품의 출고 완료 주문이면 이력
+function smHistOf_(prod, ordNo){ var nos=String(ordNo||"").split(/[,\/\s]+/).map(ftK_).filter(Boolean); if(!nos.length) return false; var pp=(smProducts_()||{})[smProdKeyOf_(prod)]; if(!pp) return false;
+  var dn={}; (pp.doneOrders||[]).forEach(function(o){ dn[ftK_(o.no)]=1; }); return nos.every(function(n){ return dn[n]; }); }
 function smAllocPop_(editId, prod0, ord0){
   var E=ftE_, old=editId?(__sm.d.alloc||[]).filter(function(x){ return x.id===editId; })[0]:null;
   var st=old?{ date:old.date, mat:(__sm.d.items[ftK_(old.mat)]||{}).name||old.mat, prod:old.prod, orderNo:old.orderNo||"", qty:old.qty, note:old.note||"" }:{ date:ftToday_(), mat:(Object.keys(__sm.d.items||{}).length===1?__sm.d.items[Object.keys(__sm.d.items)[0]].name:""), prod:prod0||"", orderNo:ord0||"", qty:"", note:"" };
-  if(!old && prod0){ try{ if(ord0){ var po=((smProducts_()||{})[smProdKeyOf_(prod0)]||{ orders:[] }).orders.filter(function(o){ return ftK_(o.no)===ftK_(ord0); })[0], per0=smPer_(smProdKeyOf_(prod0)); if(po) st.qty=Math.ceil(po.rest/(per0||1)); } var pp=(smProducts_()||{})[smProdKeyOf_(prod0)]; var tg=pp?Object.keys(pp.tags).filter(function(t){ return /용$/.test(t); })[0]:""; if(tg && !st.note) st.note=tg.replace(/^사급 · /,""); }catch(_){} }
+  if(!old && prod0){ try{ if(ord0){ var pp0=(smProducts_()||{})[smProdKeyOf_(prod0)]||{ orders:[], doneOrders:[] }, po=pp0.orders.concat(pp0.doneOrders||[]).filter(function(o){ return ftK_(o.no)===ftK_(ord0); })[0], per0=smPer_(smProdKeyOf_(prod0)); if(po){ st.qty=Math.ceil((po.done?po.qty:po.rest)/(per0||1)); if(po.done && po.due && po.due<st.date) st.date=po.due; } } var pp=(smProducts_()||{})[smProdKeyOf_(prod0)]; var tg=pp?Object.keys(pp.tags).filter(function(t){ return /용$/.test(t); })[0]:""; if(tg && !st.note) st.note=tg.replace(/^사급 · /,""); }catch(_){} }
   if(!old && st.prod && !st.mat){ var mm=smMatOfProd_(smProdKeyOf_(st.prod)); if(mm.length===1) st.mat=__sm.d.items[mm[0]].name; }
   var ov=ftOv_((old?"✏️ 할당 수정":"📌 고객 할당 등록")+" — 이 소재를 여기에 사용", 760), body=ov.querySelector(".sd-pb");
   var draw=function(){ var C=smCalc_(), e=C.S[ftK_(st.mat)], per=smPer_(smProdKeyOf_(st.prod)), P=smProducts_()||{}, p=P[smProdKeyOf_(st.prod)];
     var mIt=__sm.d.items[ftK_(st.mat)], mProds=(mIt&&mIt.prods)||[];
     body.innerHTML=smMatList_()+(mProds.length?'<datalist id="sm-prods">'+mProds.map(function(pc){ var pp=(smProducts_()||{})[smProdKeyOf_(pc)]; return '<option value="'+E(pc)+'">'+E(pp?(pp.partNo+" · "+pp.name+" · 출고 전 "+pp.open):"")+'</option>'; }).join("")+'</datalist>':smProdList_())+(mProds.length?'<div class="m" style="margin-bottom:4px;">이 소재를 쓰는 제품: <b>'+E(mProds.join(", "))+'</b></div>':'')+'<div class="ft-g"><label>할당일<input id="sma-date" type="date" value="'+E(st.date)+'"></label><label style="grid-column:span 2;">소재 (규격)<input id="sma-mat" list="sm-mats" value="'+E(st.mat)+'"></label><label>할당 수량 (소재 개수)<input id="sma-qty" type="number" min="1" value="'+E(st.qty)+'"></label>'
-      +'<label style="grid-column:span 2;">사용할 제품 (품번)<input id="sma-prod" list="sm-prods" value="'+E(st.prod)+'" placeholder="제품 LIST의 품번"></label><label style="grid-column:span 2;">ORDER NO. (선택 · 여러 개는 쉼표)<input id="sma-ord" list="sma-ords" value="'+E(st.orderNo)+'" placeholder="비우면 납기 빠른 주문부터"></label><datalist id="sma-ords">'+(p?p.orders.map(function(o){ return '<option value="'+E(o.no)+'">'+E((o.pj||"")+" · "+o.rest+"개 · 납기 "+(o.due||"-"))+'</option>'; }).join(""):'')+'</datalist>'
+      +'<label style="grid-column:span 2;">사용할 제품 (품번)<input id="sma-prod" list="sm-prods" value="'+E(st.prod)+'" placeholder="제품 LIST의 품번"></label><label style="grid-column:span 2;">ORDER NO. (선택 · 여러 개는 쉼표)<input id="sma-ord" list="sma-ords" value="'+E(st.orderNo)+'" placeholder="비우면 납기 빠른 주문부터"></label><datalist id="sma-ords">'+(p?p.orders.map(function(o){ return '<option value="'+E(o.no)+'">'+E((o.pj||"")+" · "+o.rest+"개 · 납기 "+(o.due||"-"))+'</option>'; }).join("")+(p.doneOrders||[]).map(function(o){ return '<option value="'+E(o.no)+'">'+E("📦 출고 완료 · "+(o.pj||"")+" · "+o.qty+"개"+(o.ship?" · 출고 "+o.ship:""))+'</option>'; }).join(""):'')+'</datalist>'
       +'<label style="grid-column:span 4;">근거 (고객 지시)<input id="sma-note" value="'+E(st.note)+'" placeholder="예: 10/29 유선 · 담당자 메일 등"></label></div>'
+      +(smHistOf_(st.prod, st.orderNo)&&!(old&&old.wo)?'<div style="padding:8px 10px;background:#F2F4F7;border-radius:8px;margin-bottom:8px;"><b>📦 출고 완료 관리번호 — 이력으로 등록</b> <span class="m">(재고·할당 잔량에는 영향 없음)</span><div class="ft-g" style="margin-top:6px;"><label>작업 지시일 (선택)<input id="sma-wdate" type="date" value="'+E(st.wdate||"")+'"></label><label>지시 대상<input id="sma-wto" value="'+E(st.wto||"")+'" placeholder="예: 2공장"></label><label>지시자<input id="sma-wby" value="'+E(st.wby||"")+'" placeholder="예: 정혜정 (생산팀)"></label><label>지시 메모<input id="sma-wnote" value="'+E(st.wnote||"")+'"></label></div></div>':'')
       +'<div class="m" style="padding:8px 10px;background:#F9FAFB;border-radius:8px;">'+(e?('소재 보유 재고 <b>'+e.stock+'</b> · 이미 할당된 잔량 <b>'+Math.max(0,e.allocLeft)+'</b> · 미할당 <b>'+Math.max(0,e.free)+'</b>'):'처음 쓰는 소재 규격입니다')
       +(p?('<br>제품: <b>'+E(p.draw)+' · '+E(p.name)+'</b> · 출고 전 '+p.open+' (미납 '+p.late+')'):(st.prod?'<br><span style="color:#B54708;">제품 LIST에 없는 품번입니다 (그래도 등록 가능)</span>':''))
       +(per&&ftN_(st.qty)?('<br>1소재당 '+per+'개 → 할당 '+ftN_(st.qty)+'개로 <b>'+(ftN_(st.qty)*per)+'개</b> 생산 가능'):'')+'</div>';
-    [["#sma-date","date"],["#sma-mat","mat"],["#sma-qty","qty"],["#sma-prod","prod"],["#sma-ord","orderNo"],["#sma-note","note"]].forEach(function(f){ var el=body.querySelector(f[0]); el.addEventListener("input", function(){ st[f[1]]=el.value; }); if(f[1]!=="note" && f[1]!=="date") el.addEventListener("change", draw); }); };
+    [["#sma-date","date"],["#sma-mat","mat"],["#sma-qty","qty"],["#sma-prod","prod"],["#sma-ord","orderNo"],["#sma-note","note"],["#sma-wdate","wdate"],["#sma-wto","wto"],["#sma-wby","wby"],["#sma-wnote","wnote"]].forEach(function(f){ var el=body.querySelector(f[0]); if(!el) return; el.addEventListener("input", function(){ st[f[1]]=el.value; }); if(!/note|date|^w/.test(f[1])) el.addEventListener("change", draw); }); };
   draw(); ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn pri" data-x="asave">'+(old?'수정 저장':'할당 저장')+'</button>';
   ov.addEventListener("click", function(e){ if(!(e.target.getAttribute && e.target.getAttribute("data-x")==="asave")) return;
     var q=ftN_(st.qty); if(!String(st.mat).trim() || !String(st.prod).trim() || q<=0){ alert("소재·제품·할당 수량을 넣으세요."); return; }
     var C=smCalc_(); if(old && C.A[old.id] && q<C.A[old.id].used){ alert("이미 "+C.A[old.id].used+"개를 사용했습니다. 그보다 적게 줄일 수 없습니다."); return; }
     var mk=ftK_(st.mat); if(!__sm.d.items[mk]) __sm.d.items[mk]={ name:String(st.mat).trim(), unit:"EA" };
     var o={ date:st.date||ftToday_(), mat:String(st.mat).trim(), prod:String(st.prod).trim(), orderNo:String(st.orderNo).trim(), qty:q, note:String(st.note).trim() };
+    o.hist=smHistOf_(o.prod, o.orderNo);   // 출고 완료 관리번호 → 이력 할당
+    if(old && !o.hist) delete old.hist;
+    if(o.hist && st.wdate && !(old&&old.wo)) o.wo={ date:st.wdate, to:String(st.wto||"").trim(), note:String(st.wnote||"").trim(), by:String(st.wby||"").trim()||ftWho_() };
     if(old){ Object.keys(o).forEach(function(k){ old[k]=o[k]; }); old.ts2=Date.now(); } else { o.id=smId_("sa"); o.by=ftWho_(); o.ts=Date.now(); __sm.d.alloc.push(o); }
-    smSave_(); ov.remove(); __sm.tab="alloc"; smRender_(); }); }
+    smSave_(); ov.remove(); if(!o.hist) __sm.tab="alloc"; smRender_(); }); }
 // [추가] 현장 작업 지시 — 할당받은 건을 현장에 지시했는지 기록 (+ 작업지시서 인쇄)
 function smWoPop_(id){
   var E=ftE_, a=(__sm.d.alloc||[]).filter(function(x){ return x.id===id; })[0]; if(!a) return; var C=smCalc_(), x=C.A[a.id], per=smPer_(smProdKeyOf_(a.prod)), P=smProducts_()||{}, p=P[smProdKeyOf_(a.prod)], it=__sm.d.items[ftK_(a.mat)]||{};
   var ov=ftOv_("📣 현장 작업 지시 — "+E(a.prod), 640), body=ov.querySelector(".sd-pb");
-  body.innerHTML='<div class="m" style="padding:8px 10px;background:#F9FAFB;border-radius:8px;margin-bottom:8px;">소재 <b>'+E(it.name||a.mat)+'</b> · 할당 잔량 <b>'+x.left+'</b>개 → 제품 <b>'+E(a.prod)+'</b>'+(p?' ('+E(p.draw)+' · '+E(p.name)+')':'')+(per?' · 약 <b>'+(x.left*per)+'</b>개 생산':'')+(a.orderNo?' · '+E(a.orderNo):'')+'</div>'
-    +'<div class="ft-g"><label>지시일<input id="swo-date" type="date" value="'+ftToday_()+'"></label><label style="grid-column:span 3;">지시 대상 (현장·담당자)<input id="swo-to" placeholder="예: 가공1팀 김OO"></label><label style="grid-column:span 4;">메모<input id="swo-note" placeholder="예: 11/3까지 가공"></label></div>'
-    +'<label class="m" style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="swo-print" checked style="width:16px;height:16px;margin:0;flex:none;"> 저장하면서 작업지시서 인쇄</label>';
+  body.innerHTML='<div class="m" style="padding:8px 10px;background:#F9FAFB;border-radius:8px;margin-bottom:8px;">소재 <b>'+E(it.name||a.mat)+'</b> · '+(a.hist?'📦 출고 완료 이력 · 할당 <b>'+ftN_(a.qty)+'</b>개':'할당 잔량 <b>'+x.left+'</b>개')+' → 제품 <b>'+E(a.prod)+'</b>'+(p?' ('+E(p.draw)+' · '+E(p.name)+')':'')+(per?' · 약 <b>'+((a.hist?ftN_(a.qty):x.left)*per)+'</b>개 생산':'')+(a.orderNo?' · '+E(a.orderNo):'')+'</div>'
+    +'<div class="ft-g"><label>지시일<input id="swo-date" type="date" value="'+E(a.hist?(a.date||ftToday_()):ftToday_())+'"></label><label style="grid-column:span 3;">지시 대상 (현장·담당자)<input id="swo-to" placeholder="예: 가공1팀 김OO"></label><label style="grid-column:span 4;">메모<input id="swo-note" placeholder="예: 11/3까지 가공"></label></div>'
+    +'<label class="m" style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="swo-print"'+(a.hist?'':' checked')+' style="width:16px;height:16px;margin:0;flex:none;"> 저장하면서 작업지시서 인쇄</label>';
   ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn pri" data-x="wsave">지시 완료로 저장</button>';
   ov.addEventListener("click", function(e){ if(!(e.target.getAttribute && e.target.getAttribute("data-x")==="wsave")) return;
     a.wo={ date:ov.querySelector("#swo-date").value||ftToday_(), to:ov.querySelector("#swo-to").value.trim(), note:ov.querySelector("#swo-note").value.trim(), by:ftWho_() };
     var pr=ov.querySelector("#swo-print").checked; smSave_(); ov.remove(); smRender_(); if(pr) smWoPrint_(a); }); }
 function smWoPrint_(a){
-  var E=ftE_, C=smCalc_(), x=C.A[a.id]||{ left:a.qty, used:0 }, per=smPer_(smProdKeyOf_(a.prod)), P=smProducts_()||{}, p=P[smProdKeyOf_(a.prod)], it=__sm.d.items[ftK_(a.mat)]||{}, w=a.wo||{};
+  var E=ftE_, C=smCalc_(), x=C.A[a.id]||{ left:a.qty, used:0 }; if(a.hist) x={ left:ftN_(a.qty), used:0 }; var per=smPer_(smProdKeyOf_(a.prod)), P=smProducts_()||{}, p=P[smProdKeyOf_(a.prod)], it=__sm.d.items[ftK_(a.mat)]||{}, w=a.wo||{};
   var orders=p?p.orders.slice(0,12):[];
   var html='<html><head><meta charset="utf-8"><title>사급 소재 작업지시서</title><style>@page{ size:A4 portrait; margin:8mm 12mm; } *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; } body{ font-family:"Malgun Gothic",sans-serif; font-size:9.5pt; margin:0; color:#111; }'
     +'.half{ height:136mm; overflow:hidden; position:relative; padding-top:1mm; } .cut{ border-top:0.8pt dashed #667085; margin:2mm 0 3mm; position:relative; height:0; } .cut span{ position:absolute; left:50%; top:-2.2mm; transform:translateX(-50%); background:#fff; padding:0 3mm; font-size:7.5pt; color:#667085; }'
@@ -19535,8 +19542,11 @@ function smOrders_(){
   var attach=function(r, a){ if(r.allocs.indexOf(a)<0) r.allocs.push(a); if(a.wo && r.wo.indexOf(a.wo)<0) r.wo.push(a.wo); };
   var AL={}; (__sm.d.alloc||[]).forEach(function(a){ AL[a.id]=a; });
   (__sm.d.tx||[]).forEach(function(t){ if(t.type==="use" && t.orderNo && AL[t.allocId] && idx[ftK_(t.orderNo)]) attach(idx[ftK_(t.orderNo)], AL[t.allocId]); });   // 이미 쓴 할당 → 그 관리번호
-  (__sm.d.alloc||[]).forEach(function(a){ var x=C.A[a.id]; if(!x) return; var left=Math.max(0,x.left); if(!left) return;
-    var ex=String(a.orderNo||"").split(/[,\/\s]+/).map(ftK_).filter(function(n){ return idx[n]; }).map(function(n){ return idx[n]; }), tg=ex.length?ex:(byProd[smProdKeyOf_(a.prod)]||[]);
+  var doneNo={}; Object.keys(P).forEach(function(k){ (P[k].doneOrders||[]).forEach(function(o){ doneNo[ftK_(o.no)]=1; }); });
+  (__sm.d.alloc||[]).forEach(function(a){ var x=C.A[a.id]; if(!x || a.hist) return; var left=Math.max(0,x.left); if(!left) return;
+    var nos=String(a.orderNo||"").split(/[,\/\s]+/).map(ftK_).filter(Boolean), ex=nos.filter(function(n){ return idx[n]; }).map(function(n){ return idx[n]; });
+    if(!ex.length && nos.some(function(n){ return doneNo[n]; })) return;   /* 출고 완료 관리번호용 할당 → 다른 주문으로 넘기지 않음 */
+    var tg=ex.length?ex:(byProd[smProdKeyOf_(a.prod)]||[]);
     tg.forEach(function(r, i){ var give=Math.min(left, Math.max(0, r.need-r.al)); if(ex.length && i===tg.length-1) give=left;   // ORDER NO.를 적은 할당은 남김없이 그 주문에
       if(give>0){ r.al+=give; left-=give; attach(r, a); } }); });
   rows.forEach(function(r){ r.gap=Math.max(0, r.need-r.al); r.st=r.used>=r.need?"use":(r.gap===0?"full":(r.al>0?"part":"none")); });
@@ -19544,7 +19554,8 @@ function smOrders_(){
     var exA={}; (__sm.d.alloc||[]).forEach(function(a){ String(a.orderNo||"").split(/[,\/\s]+/).map(ftK_).filter(Boolean).forEach(function(n){ (exA[n]=exA[n]||[]).push(a); }); });
     var usA={}; (__sm.d.tx||[]).forEach(function(t){ if(t.type==="use" && t.orderNo && AL[t.allocId]) (usA[ftK_(t.orderNo)]=usA[ftK_(t.orderNo)]||[]).push(AL[t.allocId]); });
     Object.keys(P).forEach(function(k){ if(smExcl_(k)) return; (P[k].doneOrders||[]).forEach(function(o){ var n=ftK_(o.no), u=used[n]||0, als=(exA[n]||[]).concat(usA[n]||[]);
-      var r={ p:P[k], k:k, o:o, per:smPer_(k), need:0, used:u, al:u, wo:[], allocs:[], gap:0, st:"done" }; als.forEach(function(a){ if(r.allocs.indexOf(a)<0) r.allocs.push(a); if(a.wo && r.wo.indexOf(a.wo)<0) r.wo.push(a.wo); }); rows.push(r); }); }); }
+      var alq=(exA[n]||[]).reduce(function(s1,a){ return s1+(String(a.orderNo||"").split(/[,\/\s]+/).filter(Boolean).length===1?ftN_(a.qty):0); },0);
+      var r={ p:P[k], k:k, o:o, per:smPer_(k), need:0, used:u, al:Math.max(u,alq), wo:[], allocs:[], gap:0, st:"done" }; als.forEach(function(a){ if(r.allocs.indexOf(a)<0) r.allocs.push(a); if(a.wo && r.wo.indexOf(a.wo)<0) r.wo.push(a.wo); }); rows.push(r); }); }); }
   return rows; }
 function smOrdHtml_(){
   var E=ftE_, R=smOrders_(); if(!R) return '<div class="ft-empty"><b style="color:#B42318;">MAIN 데이터가 아직 없습니다 — MAIN 화면을 한 번 연 뒤 다시 누르세요</b></div>';
@@ -19566,7 +19577,7 @@ function smOrdHtml_(){
         +'<td class="nw">'+E(o.due)+'<div>'+(o.done?'<span class="m">'+(o.ship?'출고 '+E(o.ship):'출고 완료')+'</span>':ftLateTxt_(o.due))+'</div></td><td class="n">'+(o.done?'<span class="m">0</span>':o.rest)+'</td><td class="nw"><input class="sm-per" data-k="'+E(r.k)+'" type="number" min="0" step="1" value="'+(r.per||"")+'" placeholder="?" style="width:62px;'+(r.per?'':'border-color:#F79009;background:#FFFAEB;')+'" title="소재 1개로 이 제품을 몇 개 만드는지"> 개</td><td class="n"><b>'+r.need+'</b>'+(r.per?'':'<div class="m" style="color:#B54708;">1개=1개로 계산</div>')+'</td>'
         +'<td class="n" style="color:#067647;"><b>'+(r.al||'')+'</b>'+(r.allocs.length?'<div class="m">'+r.allocs.map(function(a){ return E(a.date.slice(5)); }).join(", ")+' 할당</div>':'')+'</td><td class="n" style="color:#175CD3;">'+(r.used||'')+'</td><td class="n'+(r.gap?' neg':'')+'"><b>'+(r.gap||'')+'</b></td>'
         +'<td class="nw">'+(r.wo.length?r.wo.map(function(w){ return '<div style="color:#067647;font-weight:700;">✅ '+E(w.date.slice(5))+(w.to?' · '+E(w.to):'')+'</div>'; }).join(""):(r.al?'<span style="color:#B54708;font-weight:700;">미지시</span>':'<span class="m">-</span>'))+'</td>'
-        +'<td class="nw">'+(r.gap?'<button type="button" class="ft-btn sm" data-a="salloc" data-k="'+E(p.partNo||p.k)+'" data-o="'+E(o.no)+'" title="이 관리번호로 할당 등록">📌 할당</button>':'')+'<button type="button" class="ft-btn sm del" data-a="sexcl" data-k="'+E(r.k)+'" data-l="'+E((p.draw||p.partNo)+' '+p.name)+'" title="이 품목을 LIST에서 빼기 (같은 품목 모든 관리번호)">✕ 제외</button>'+'</td></tr>'; }).join(""):'<tr><td colspan="14" class="ft-empty">해당 주문이 없습니다</td></tr>')+'</tbody></table></div>'; }
+        +'<td class="nw">'+((r.gap||o.done)?'<button type="button" class="ft-btn sm" data-a="salloc" data-k="'+E(p.partNo||p.k)+'" data-o="'+E(o.no)+'" title="'+(o.done?'출고 완료 관리번호 — 할당·지시 이력 등록':'이 관리번호로 할당 등록')+'">📌 할당</button>':'')+(function(){ var nw=r.allocs.filter(function(a){ return !a.wo; })[0]; return nw?'<button type="button" class="ft-btn sm" data-a="swo" data-id="'+E(nw.id)+'" style="color:#B54708;border-color:#FEC84B;background:#FFFAEB;" title="이 할당의 현장 작업 지시 기록">📣 지시</button>':''; })()+'<button type="button" class="ft-btn sm del" data-a="sexcl" data-k="'+E(r.k)+'" data-l="'+E((p.draw||p.partNo)+' '+p.name)+'" title="이 품목을 LIST에서 빼기 (같은 품목 모든 관리번호)">✕ 제외</button>'+'</td></tr>'; }).join(""):'<tr><td colspan="14" class="ft-empty">해당 주문이 없습니다</td></tr>')+'</tbody></table></div>'; }
 function smOrdXlsx_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; } var R=smOrders_()||[], nm={ none:"할당 없음", part:"일부 할당", full:"할당 완료", use:"사용 완료" };
   var a=[["상태","ORDER NO.","PROJECT NO.","품번","기존도번","품명","구분","납기","미출고","1소재당 생산","필요 소재","할당","사용","부족","작업 지시"]];
   R.forEach(function(r){ a.push([nm[r.st], r.o.no, r.o.pj, r.p.partNo, r.p.draw, r.p.name, Object.keys(r.p.tags).join(", "), r.o.due, r.o.rest, r.per||"미정", r.need, r.al, r.used, r.gap, r.wo.map(function(w){ return w.date+(w.to?" "+w.to:""); }).join(", ")||(r.al?"미지시":"")]); });
