@@ -19268,15 +19268,16 @@ function smLoad_(cb){ if(__sm.loading) return; __sm.loading=true;
   var fin=function(){ __sm.snap=shClone_(__sm.d); __sm.loaded=true; __sm.loading=false; cb&&cb(); };
   try{ if(typeof qShareLoad_!=="function"){ fin(); return; } qShareLoad_("smData", function(v){ if(v && v.tx) shMerge_(__sm.d, v, SM_SH); smCache_(); fin(); }); }catch(_){ fin(); } }
 function smCache_(){ try{ localStorage.setItem("qmsSmData", JSON.stringify(__sm.d)); }catch(_){} }
-var SM_SH={ arrays:["tx","alloc"], maps:["per","items"], unions:[], blobs:[["cfg"]],
+var SM_SH={ arrays:["tx","alloc"], maps:["per","items","excl"], unions:[], blobs:[["cfg"]],
   sort:function(a,b){ return String(a.date).localeCompare(String(b.date)) || ((a.ts||0)-(b.ts||0)); },
   label:function(f, t, o){ var mn=function(m){ return ((__sm.d.items||{})[ftK_(m)]||{}).name||m||""; };
     if(f==="tx") return (SM_TX[t.type]||t.type)+" · "+t.date+" · "+mn(t.mat)+" "+t.qty+"개"+(t.prod?" → "+t.prod:"")+(o && ftN_(o.qty)!==ftN_(t.qty)?" (수량 "+o.qty+" → "+t.qty+")":"");
     if(f==="alloc"){ var w=t.wo&&!(o&&o.wo)?" · 📣 작업 지시 ("+t.wo.date+(t.wo.to?" · "+t.wo.to:"")+")":((o&&o.wo&&!t.wo)?" · 작업 지시 취소":""); return "할당 "+t.date+" · "+mn(t.mat)+" "+t.qty+"개 → "+t.prod+(t.orderNo?" ("+t.orderNo+")":"")+(o && ftN_(o.qty)!==ftN_(t.qty)?" (수량 "+o.qty+" → "+t.qty+")":"")+w; }
+    if(f==="excl") return "LIST에서 제외 "+(t.label||t.k||"")+(t.why?" · "+t.why:"");
     if(f==="items") return "소재 "+(t.name||"")+((t.prods||[]).length?" · 사용 제품 "+t.prods.join(", "):"");
     if(f==="per") return "1소재당 생산 수량 "+(t.k||"")+" · "+(t.n||0)+"개"+(o?" (전 "+(o.n||0)+"개)":"");
     return f; } };
-var SM_LOGK={ tx:"입고·사용 내역", alloc:"고객 할당", per:"1소재당 생산", items:"소재 등록", cfg:"설정" };
+var SM_LOGK={ tx:"입고·사용 내역", alloc:"고객 할당", per:"1소재당 생산", items:"소재 등록", excl:"LIST 제외", cfg:"설정" };
 function smSave_(){ shSave_("smData", { C:SM_SH, get:function(){ return __sm.d; }, snap:function(){ return __sm.snap; }, setSnap:function(x){ __sm.snap=x; }, cache:smCache_, render:smRender_ }); }
 // ── 계산
 function smCalc_(){
@@ -19358,6 +19359,7 @@ function smProdHtml_(){
   var L=Object.keys(P).map(function(k){ return P[k]; }).filter(function(p){ return !q || (ftK_(p.partNo)+ftK_(p.draw)+ftK_(p.name)+ftK_(p.spec)).indexOf(q)>=0; })
     .sort(function(a,b){ return (b.late>0)-(a.late>0) || String(a.due||"9999").localeCompare(String(b.due||"9999")) || a.k.localeCompare(b.k); });
   var only=__sm.onlyOpen!==false; if(only) L=L.filter(function(p){ return p.open>0; });
+  var exN=L.filter(function(p){ return smExcl_(p.k); }).length; L=L.filter(function(p){ return __sm.showExcl?smExcl_(p.k):!smExcl_(p.k); });
   var tagCnt={}; L.forEach(function(p){ Object.keys(p.tags).forEach(function(t){ tagCnt[t]=(tagCnt[t]||0)+1; }); });
   var tf=__sm.tagF||""; if(tf) L=L.filter(function(p){ return p.tags[tf]; });
   var tagH=function(p){ return Object.keys(p.tags).map(function(t){ var c=t==="표기 없음"?"background:#F2F4F7;color:#667085;":(t==="사급"?"background:#F4F3FF;color:#6941C6;":"background:#F4F3FF;color:#6941C6;border:1px solid #BDB4FE;"); return '<span class="ft-tg" style="'+c+'white-space:nowrap;">'+E(t)+'</span>'; }).join(" "); };
@@ -19368,8 +19370,8 @@ function smProdHtml_(){
       +'<td class="n'+(p.late?' neg':'')+'">'+(p.late||'')+(p.due?'<div class="m">'+E(p.due)+' '+ftLateTxt_(p.due)+'</div>':'')+'</td>'
       +'<td><input class="sm-per" data-k="'+E(p.k)+'" type="number" min="0" step="1" value="'+(per||"")+'" placeholder="?" style="width:70px;" title="소재 1개로 이 제품을 몇 개 만드는지"></td>'
       +'<td class="n">'+(per?('<b>'+need+'</b>'+(needAll!==need?'<div class="m">출고 전 전체 '+needAll+'</div>':'')):'<span class="m">-</span>')+'</td><td class="n" style="color:#067647;">'+(al||'')+'</td>'
-      +'<td class="n'+(gap?' neg':'')+'"><b>'+(per?(gap||'-'):'')+'</b></td><td class="nw"><button type="button" class="ft-btn sm" data-a="salloc" data-k="'+E(p.partNo||p.k)+'" title="이 제품으로 할당 등록">📌</button></td></tr>'+det; };
-  return '<div class="ft-tool"><input id="sm-q" type="search" placeholder="🔎 품번·도번·품명·소재규격" value="'+E(__sm.q)+'" style="min-width:260px;"><button type="button" class="ft-btn sm pri" data-a="sq">검색</button>'+(__sm.q?'<button type="button" class="ft-btn sm" data-a="sqx">✕ 검색 지우기</button>':'')+'<label class="m" style="display:flex;align-items:center;gap:5px;white-space:nowrap;"><input type="checkbox" id="sm-onlyopen"'+(only?' checked':'')+' style="width:16px;height:16px;margin:0;flex:none;"> 출고 전 수량 있는 것만</label>'
+      +'<td class="n'+(gap?' neg':'')+'"><b>'+(per?(gap||'-'):'')+'</b></td><td class="nw">'+(smExcl_(p.k)?'<button type="button" class="ft-btn sm" data-a="sincl" data-k="'+E(p.k)+'" title="다시 LIST에 넣기">↺ 넣기</button>':'<button type="button" class="ft-btn sm" data-a="salloc" data-k="'+E(p.partNo||p.k)+'" title="이 제품으로 할당 등록">📌</button><button type="button" class="ft-btn sm del" data-a="sexcl" data-k="'+E(p.k)+'" data-l="'+E((p.draw||p.partNo)+' '+p.name)+'" title="이 품목을 LIST에서 빼기">✕</button>')+'</td></tr>'+det; };
+  return '<div class="ft-tool"><input id="sm-q" type="search" placeholder="🔎 품번·도번·품명·소재규격" value="'+E(__sm.q)+'" style="min-width:260px;"><button type="button" class="ft-btn sm pri" data-a="sq">검색</button>'+(__sm.q?'<button type="button" class="ft-btn sm" data-a="sqx">✕ 검색 지우기</button>':'')+'<button type="button" class="ft-btn sm" data-a="sshowexcl" title="LIST에서 뺀 품목 보기·되돌리기">'+(__sm.showExcl?'← LIST로':'🚫 제외한 품목 '+exN)+'</button><label class="m" style="display:flex;align-items:center;gap:5px;white-space:nowrap;"><input type="checkbox" id="sm-onlyopen"'+(only?' checked':'')+' style="width:16px;height:16px;margin:0;flex:none;"> 출고 전 수량 있는 것만</label>'
     +'<label class="m" style="display:flex;align-items:center;gap:4px;">구분 <select id="sm-tagf"><option value="">전체</option>'+Object.keys(tagCnt).sort(function(a,b){ return (a==="사급"?0:a==="표기 없음"?2:1)-(b==="사급"?0:b==="표기 없음"?2:1) || a.localeCompare(b); }).map(function(t){ return '<option value="'+E(t)+'"'+(tf===t?' selected':'')+'>'+E(t)+' ('+tagCnt[t]+')</option>'; }).join("")+'</select></label><label class="m" style="display:flex;align-items:center;gap:4px;">소재 키워드 <input id="sm-kw" value="'+E(__sm.d.cfg.kw||"AL3003")+'" style="width:120px;" title="소재규격 및 후처리에 이 글자가 있으면 LIST에 나옴 (여러 개는 쉼표)"></label><span style="flex:1;"></span><button type="button" class="ft-btn sm" data-a="spxlsx">📥 엑셀</button></div>'
     +'<div class="m" style="margin:-2px 0 8px;">MAIN(QC제품관리) <b>소재규격 및 후처리</b>에 \''+E(__sm.d.cfg.kw||"AL3003")+'\'가 있는 품목 '+L.length+'개 · <b>1소재당 생산</b>을 넣으면 필요 소재 = 미납(납기 지남) ÷ 1소재당 생산 (올림) · 부족 = 필요 소재 − 할당 잔량 → 고객사에 할당 요청할 수량</div>'
     +'<div class="ft-card"><table class="ft-tb ftp"><thead><tr><th>품번</th><th>기존도번</th><th>품명</th><th>구분</th><th>소재규격 및 후처리</th><th>출고 전</th><th>미납 (납기 지남)</th><th>1소재당 생산</th><th>필요 소재</th><th>할당 잔량</th><th>부족 (할당 요청)</th><th></th></tr></thead><tbody>'
@@ -19384,6 +19386,10 @@ function smChange_(e){ var t=e.target;
   if(t.id==="sm-kw"){ __sm.d.cfg.kw=t.value.trim()||"AL3003"; smSave_(); smRender_(); return; } }
 function smClick_(e){ var t=e.target, tb=t.closest("[data-stab]"), a=t.closest("[data-a]"); if(tb){ __sm.tab=tb.getAttribute("data-stab"); __sm.q=""; __sm.tagF=""; smRender_(); return; } if(!a) return; var k=a.getAttribute("data-a"), id=a.getAttribute("data-id");
   if(k==="sin") return smTxPop_("in"); if(k==="suse") return smTxPop_("use"); if(k==="sadj") return smTxPop_("adj"); if(k==="salloc") return smAllocPop_(null, a.getAttribute("data-k")||"", a.getAttribute("data-o")||"");
+  if(k==="sexcl"){ smExclSet_(a.getAttribute("data-k"), true, a.getAttribute("data-l")); return; }
+  if(k==="sincl"){ smExclSet_(a.getAttribute("data-k"), false); return; }
+  if(k==="sgoexcl"){ __sm.tab="prod"; __sm.showExcl=true; __sm.onlyOpen=false; smRender_(); return; }
+  if(k==="sshowexcl"){ __sm.showExcl=!__sm.showExcl; smRender_(); return; }
   if(k==="spull"){ a.textContent="불러오는 중…"; smPull_(true); return; }
   if(k==="smadd") return smMatPop_(null); if(k==="smedit") return smMatPop_(a.getAttribute("data-k"));
   if(k==="smdelm"){ var mk=a.getAttribute("data-k"), C2=smCalc_(), e2=C2.S[mk]; if(e2 && (e2.in||e2.alloc) && !confirm("이 소재로 입고·할당 내역이 있습니다. 등록만 지울까요? (내역은 남음)")) return; if(!(e2 && (e2.in||e2.alloc)) && !confirm("이 소재 등록을 지울까요?")) return; delete __sm.d.items[mk]; smSave_(); smRender_(); return; }
@@ -19511,10 +19517,13 @@ function smWoPrint_(a){
 // [추가] 관리번호(ORDER NO.)별 현황 — 출고 전 AL3003 주문마다 필요 소재 · 할당 · 사용 · 작업 지시를 한 줄로
 //   필요 소재 = 미출고 ÷ 1소재당 생산 (올림, 미정이면 1개=1개로 보고 '미정' 표시)
 //   할당 배분: ① 할당에 ORDER NO.를 적었으면 그 주문에 ② 아니면 같은 품번의 납기 빠른 주문부터 · 사용분은 사용할 때 고른 ORDER NO.에
+// [추가] 품목 LIST 제외 — 제품 LIST·관리번호별 현황에서 뺌 (데이터는 그대로, ↺로 되돌림)
+function smExcl_(k){ return !!((__sm.d.excl||{})[k]); }
+function smExclSet_(k, on, label){ __sm.d.excl=__sm.d.excl||{}; if(on){ var why=prompt((label||k)+" — LIST에서 뺄 이유 (선택)", "사급 아님"); if(why===null) return; __sm.d.excl[k]={ k:k, label:label||k, why:String(why||"").trim(), by:ftWho_(), ts:0 }; } else delete __sm.d.excl[k]; smSave_(); smRender_(); }
 function smOrders_(){
   var P=smProducts_(); if(!P) return null; var C=smCalc_(), used={}, rows=[], byProd={};
   (__sm.d.tx||[]).forEach(function(t){ if(t.type==="use" && t.orderNo) used[ftK_(t.orderNo)]=(used[ftK_(t.orderNo)]||0)+ftN_(t.qty); });
-  Object.keys(P).forEach(function(k){ var p=P[k], per=smPer_(k); byProd[k]=[];
+  Object.keys(P).forEach(function(k){ if(smExcl_(k)) return; var p=P[k], per=smPer_(k); byProd[k]=[];
     p.orders.slice().sort(function(a,b){ return String(a.due||"9999").localeCompare(String(b.due||"9999")); }).forEach(function(o){
       var need=Math.ceil(o.rest/(per||1)), r={ p:p, k:k, o:o, per:per, need:need, used:used[ftK_(o.no)]||0, al:0, wo:[], allocs:[] }; r.al=r.used; rows.push(r); byProd[k].push(r); }); });
   var idx={}; rows.forEach(function(r){ idx[ftK_(r.o.no)]=r; });
@@ -19529,7 +19538,7 @@ function smOrders_(){
   if(__sm.withDone){   // [추가] 출고 완료 포함 — 할당·사용 기록이 있는 납품 완료 관리번호
     var exA={}; (__sm.d.alloc||[]).forEach(function(a){ String(a.orderNo||"").split(/[,\/\s]+/).map(ftK_).filter(Boolean).forEach(function(n){ (exA[n]=exA[n]||[]).push(a); }); });
     var usA={}; (__sm.d.tx||[]).forEach(function(t){ if(t.type==="use" && t.orderNo && AL[t.allocId]) (usA[ftK_(t.orderNo)]=usA[ftK_(t.orderNo)]||[]).push(AL[t.allocId]); });
-    Object.keys(P).forEach(function(k){ (P[k].doneOrders||[]).forEach(function(o){ var n=ftK_(o.no), u=used[n]||0, als=(exA[n]||[]).concat(usA[n]||[]); if(!u && !als.length) return;
+    Object.keys(P).forEach(function(k){ if(smExcl_(k)) return; (P[k].doneOrders||[]).forEach(function(o){ var n=ftK_(o.no), u=used[n]||0, als=(exA[n]||[]).concat(usA[n]||[]); if(!u && !als.length) return;
       var r={ p:P[k], k:k, o:o, per:smPer_(k), need:0, used:u, al:u, wo:[], allocs:[], gap:0, st:"done" }; als.forEach(function(a){ if(r.allocs.indexOf(a)<0) r.allocs.push(a); if(a.wo && r.wo.indexOf(a.wo)<0) r.wo.push(a.wo); }); rows.push(r); }); }); }
   return rows; }
 function smOrdHtml_(){
@@ -19542,7 +19551,7 @@ function smOrdHtml_(){
   var badge={ none:'<span class="ft-tg" style="background:#FEF3F2;color:#B42318;">❌ 할당 없음</span>', part:'<span class="ft-tg" style="background:#FFFAEB;color:#B54708;">⚠ 일부 할당</span>', full:'<span class="ft-tg" style="background:#ECFDF3;color:#067647;">✅ 할당 완료</span>', use:'<span class="ft-tg" style="background:#EFF8FF;color:#175CD3;">🔧 사용 완료</span>', done:'<span class="ft-tg" style="background:#F2F4F7;color:#344054;">📦 출고 완료</span>' };
   var kp=function(s, label, col){ return '<div data-a="sost" data-s="'+s+'" style="cursor:pointer;'+(stF===s?'outline:2px solid #1F2A44;':'')+'"><span>'+label+'</span><b style="color:'+col+';">'+(s?cnt(s):all.length)+'건</b></div>'; };
   return '<div class="ft-tool"><input id="sm-q" type="search" placeholder="🔎 품번·도번·ORDER NO.·PROJECT" value="'+E(__sm.q)+'" style="min-width:260px;"><button type="button" class="ft-btn sm pri" data-a="sq">검색</button>'+(__sm.q?'<button type="button" class="ft-btn sm" data-a="sqx">✕ 검색 지우기</button>':'')+'<label class="m" style="display:flex;align-items:center;gap:4px;">구분 <select id="sm-tagf"><option value="">전체</option>'+Object.keys(tags).sort().map(function(x){ return '<option value="'+E(x)+'"'+(tf===x?' selected':'')+'>'+E(x)+'</option>'; }).join("")+'</select></label>'
-    +'<label class="m" style="display:flex;align-items:center;gap:5px;white-space:nowrap;"><input type="checkbox" id="sm-lateonly"'+(lateOnly?' checked':'')+' style="width:16px;height:16px;margin:0;flex:none;"> 미납(납기 지남)만</label><label class="m" style="display:flex;align-items:center;gap:5px;white-space:nowrap;" title="납품이 끝난 관리번호 중 할당·사용 기록이 있는 것도 보기"><input type="checkbox" id="sm-withdone"'+(__sm.withDone?' checked':'')+' style="width:16px;height:16px;margin:0;flex:none;"> 출고 완료 포함</label><span style="flex:1;"></span><button type="button" class="ft-btn sm" data-a="soxlsx">📥 엑셀</button></div>'
+    +'<label class="m" style="display:flex;align-items:center;gap:5px;white-space:nowrap;"><input type="checkbox" id="sm-lateonly"'+(lateOnly?' checked':'')+' style="width:16px;height:16px;margin:0;flex:none;"> 미납(납기 지남)만</label><label class="m" style="display:flex;align-items:center;gap:5px;white-space:nowrap;" title="납품이 끝난 관리번호 중 할당·사용 기록이 있는 것도 보기"><input type="checkbox" id="sm-withdone"'+(__sm.withDone?' checked':'')+' style="width:16px;height:16px;margin:0;flex:none;"> 출고 완료 포함</label><span style="flex:1;"></span>'+(Object.keys(__sm.d.excl||{}).length?'<button type="button" class="ft-btn sm" data-a="sgoexcl" title="LIST에서 뺀 품목 보기·되돌리기">🚫 제외한 품목 '+Object.keys(__sm.d.excl||{}).length+'</button>':'')+'<button type="button" class="ft-btn sm" data-a="soxlsx">📥 엑셀</button></div>'
     +'<div class="ft-kp" style="grid-template-columns:repeat(6,minmax(0,1fr));">'+kp("","출고 전 주문 (전체)","#101828").replace(/>\d+건</, ">"+all.filter(function(r){ return r.st!=="done"; }).length+"건<")+kp("none","❌ 할당 없음","#B42318")+kp("part","⚠ 일부 할당","#B54708")+kp("full","✅ 할당 완료","#067647")+kp("use","🔧 사용 완료","#175CD3")+(__sm.withDone?kp("done","📦 출고 완료 (기록 있음)","#344054"):'')+'<div><span>할당 요청할 소재 (부족 합)'+(function(){ var n={}; all.forEach(function(r){ if(!r.per) n[r.k]=1; }); var c=Object.keys(n).length; return c?' · <small style="color:#B54708;font-weight:700;font-size:12px;">생산수 미정 '+c+'품번</small>':''; })()+'</span><b style="color:'+(gapSum?'#B42318':'#067647')+';">'+gapSum+'개</b></div></div>'
     +'<div class="m" style="margin:-2px 0 8px;">MAIN의 출고 전 '+E(__sm.d.cfg.kw||"AL3003")+' 주문을 관리번호별로 · <b>1소재당 생산 칸에 숫자를 넣으면 (품번마다 한 번) 같은 품번 모든 줄에 적용</b> · 필요 소재 = 미출고 ÷ 1소재당 생산(올림) · 할당은 ORDER NO.를 적은 할당 → 같은 품번 납기 빠른 주문 순으로 나눠 봄 · 위 칸을 누르면 그 상태만</div>'
     +'<div class="ft-card"><table class="ft-tb ftp"><thead><tr><th>상태</th><th>ORDER NO.</th><th>PROJECT NO.</th><th>도번 · 품명</th><th>구분</th><th>납기</th><th>미출고</th><th title="소재 1개로 이 제품을 몇 개 만드는지 — 품번마다 한 번만 넣으면 모든 관리번호에 적용">1소재당 생산</th><th>필요 소재</th><th>할당</th><th>사용 (이 관리번호)</th><th>부족</th><th>작업 지시</th><th></th></tr></thead><tbody>'
@@ -19552,7 +19561,7 @@ function smOrdHtml_(){
         +'<td class="nw">'+E(o.due)+'<div>'+(o.done?'<span class="m">'+(o.ship?'출고 '+E(o.ship):'출고 완료')+'</span>':ftLateTxt_(o.due))+'</div></td><td class="n">'+(o.done?'<span class="m">0</span>':o.rest)+'</td><td class="nw"><input class="sm-per" data-k="'+E(r.k)+'" type="number" min="0" step="1" value="'+(r.per||"")+'" placeholder="?" style="width:62px;'+(r.per?'':'border-color:#F79009;background:#FFFAEB;')+'" title="소재 1개로 이 제품을 몇 개 만드는지"> 개</td><td class="n"><b>'+r.need+'</b>'+(r.per?'':'<div class="m" style="color:#B54708;">1개=1개로 계산</div>')+'</td>'
         +'<td class="n" style="color:#067647;"><b>'+(r.al||'')+'</b>'+(r.allocs.length?'<div class="m">'+r.allocs.map(function(a){ return E(a.date.slice(5)); }).join(", ")+' 할당</div>':'')+'</td><td class="n" style="color:#175CD3;">'+(r.used||'')+'</td><td class="n'+(r.gap?' neg':'')+'"><b>'+(r.gap||'')+'</b></td>'
         +'<td class="nw">'+(r.wo.length?r.wo.map(function(w){ return '<div style="color:#067647;font-weight:700;">✅ '+E(w.date.slice(5))+(w.to?' · '+E(w.to):'')+'</div>'; }).join(""):(r.al?'<span style="color:#B54708;font-weight:700;">미지시</span>':'<span class="m">-</span>'))+'</td>'
-        +'<td class="nw">'+(r.gap?'<button type="button" class="ft-btn sm" data-a="salloc" data-k="'+E(p.partNo||p.k)+'" data-o="'+E(o.no)+'" title="이 관리번호로 할당 등록">📌 할당</button>':'')+'</td></tr>'; }).join(""):'<tr><td colspan="14" class="ft-empty">해당 주문이 없습니다</td></tr>')+'</tbody></table></div>'; }
+        +'<td class="nw">'+(r.gap?'<button type="button" class="ft-btn sm" data-a="salloc" data-k="'+E(p.partNo||p.k)+'" data-o="'+E(o.no)+'" title="이 관리번호로 할당 등록">📌 할당</button>':'')+'<button type="button" class="ft-btn sm del" data-a="sexcl" data-k="'+E(r.k)+'" data-l="'+E((p.draw||p.partNo)+' '+p.name)+'" title="이 품목을 LIST에서 빼기 (같은 품목 모든 관리번호)">✕ 제외</button>'+'</td></tr>'; }).join(""):'<tr><td colspan="14" class="ft-empty">해당 주문이 없습니다</td></tr>')+'</tbody></table></div>'; }
 function smOrdXlsx_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; } var R=smOrders_()||[], nm={ none:"할당 없음", part:"일부 할당", full:"할당 완료", use:"사용 완료" };
   var a=[["상태","ORDER NO.","PROJECT NO.","품번","기존도번","품명","구분","납기","미출고","1소재당 생산","필요 소재","할당","사용","부족","작업 지시"]];
   R.forEach(function(r){ a.push([nm[r.st], r.o.no, r.o.pj, r.p.partNo, r.p.draw, r.p.name, Object.keys(r.p.tags).join(", "), r.o.due, r.o.rest, r.per||"미정", r.need, r.al, r.used, r.gap, r.wo.map(function(w){ return w.date+(w.to?" "+w.to:""); }).join(", ")||(r.al?"미지시":"")]); });
