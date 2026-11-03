@@ -14833,13 +14833,15 @@ function mainBulkPop_(pre){
     +'<div class="sd-pf"><button type="button" class="sd-btn pri" data-x="apply">선택한 주문 일정 변경</button></div></div>';
   document.body.appendChild(ov);
   var found=[], files=[];
-  var find=function(){ var q=String(ov.querySelector("#mb-q").value||"").trim().toUpperCase(); if(!q) return;
+  // [수정] MAIN에서 체크한 행이 있으면 그 행만 (selOnly) — 없으면 입력한 프로젝트로 찾기
+  var find=function(selOnly){ var q=String(ov.querySelector("#mb-q").value||"").trim().toUpperCase(), selOrd={}; selOnly=(selOnly===true);
+    if(selOnly) reqSelRows.forEach(function(v){ var k=String(v.ord||"").trim().toUpperCase(); if(k) selOrd[k]=1; }); else if(!q) return;
     var md=(typeof mainData!=="undefined"&&mainData)||[];
-    found=md.filter(function(r){ if(String(r.shipped||"")==="납품완료") return false; var o=String(r.orderNo||"").trim().toUpperCase(); return o===q || o.indexOf(q+"-")===0 || String(r.vendor||"").toUpperCase().indexOf(q)>=0; })
+    found=md.filter(function(r){ var o=String(r.orderNo||"").trim().toUpperCase(); if(selOnly) return !!selOrd[o]; if(String(r.shipped||"")==="납품완료") return false; return o===q || o.indexOf(q+"-")===0 || String(r.vendor||"").toUpperCase().indexOf(q)>=0; })
       .map(function(r){ var o=String(r.orderNo||"").trim(), sl=sdLive_().filter(function(x){ return x.ord===o && !sdDone_(x); }); return { r:r, ord:o, lines:sl }; })
       .sort(function(a,b){ return a.ord.localeCompare(b.ord, undefined, { numeric:true }); });
     var el=ov.querySelector("#mb-list");
-    el.innerHTML=found.length?('<div style="margin-bottom:4px;"><label><input type="checkbox" id="mb-all" checked> 전체 선택</label> · <b>'+found.length+'건</b> · 특별납기 등록 '+found.filter(function(x){ return x.lines.length; }).length+'건</div><div style="max-height:240px;overflow:auto;border:1px solid #EAECF0;border-radius:8px;">'
+    el.innerHTML=found.length?('<div style="margin-bottom:4px;"><label><input type="checkbox" id="mb-all" checked> 전체 선택</label> · '+(selOnly?'<b style="color:#175CD3;">MAIN에서 체크한 '+found.length+'건</b>'+(q?' <button type="button" class="sd-btn" data-x="find" style="height:26px;padding:0 8px;font-size:12px;">🔎 \''+sdE_(q)+'\' 프로젝트 전체로 찾기</button>':''):'<b>'+found.length+'건</b>')+' · 특별납기 등록 '+found.filter(function(x){ return x.lines.length; }).length+'건</div><div style="max-height:240px;overflow:auto;border:1px solid #EAECF0;border-radius:8px;">'
       +found.map(function(x,i){ return '<label style="display:flex;gap:8px;padding:6px 10px;border-bottom:1px solid #F2F4F7;color:#101828;align-items:center;"><input type="checkbox" class="mb-chk" data-i="'+i+'" checked><b style="min-width:92px;">'+sdE_(x.ord)+'</b><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+sdE_(x.r.oldDrawingNo||"")+' '+sdE_(x.r.partName||"")+'</span><span class="m">최종납기 '+sdMD_(String(x.r.dueDate||"").slice(0,10))+'</span>'
         +(x.lines.length?'<span style="color:#B54708;font-weight:700;">⭐ 가능 '+x.lines.map(function(l){ return sdMD_(l.avail); }).join(",")+'</span>':'<span class="m">특별납기 없음</span>')+'</label>'; }).join("")+'</div>')
       :'<span style="color:#B42318;">해당하는 주문이 없습니다.</span>'; };
@@ -14872,7 +14874,7 @@ function mainBulkPop_(pre){
         try{ if(typeof showToast==="function") showToast("📅 일정 변경 — 특별납기 변경 "+nUpd+"줄 · 신규 "+nReg+"건, 회의·변경 기록에 남김"); }catch(_){} };
       if(!left) go(); else files.forEach(function(f){ sdUploadFile_(f, function(info){ if(info) up.push(info); if(--left===0) go(); }); });
     } });
-  if(pre) setTimeout(find, 50); setTimeout(function(){ ov.querySelector("#mb-q").focus(); }, 60);
+  if(typeof reqSelRows!=="undefined" && reqSelRows.size) setTimeout(function(){ find(true); }, 50); else if(pre) setTimeout(find, 50); setTimeout(function(){ ov.querySelector("#mb-q").focus(); }, 60);
 }
 /* [추가] 특별납기 ▸ 검사 의뢰서 — 출고 일정 줄을 골라 MAIN의 검사요청서(같은 양식·MASTER ● 표시)로 출력
    요청수량 = 고른 특별납기 줄의 수량 합(품번별). MAIN에서 체크해 둔 선택은 창을 닫으면 원래대로 돌아감 */
