@@ -1444,6 +1444,7 @@
   #view-specdue .sd-dd{ font-weight:700; } #view-specdue .sd-dd small{ color:#98A2B3; font-weight:500; margin-left:2px; }
   #view-specdue .sd-bar{ position:relative; height:20px; background:#F2F4F7; border-radius:999px; overflow:hidden; }
   #view-specdue .sd-bar i{ position:absolute; left:0; top:0; bottom:0; background:#84ADFF; border-radius:999px; } #view-specdue .sd-bar span{ position:relative; display:block; text-align:center; font-size:11.5px; font-weight:700; line-height:20px; color:#1D2939; }
+  #view-specdue .sd-vx{ border:0; background:transparent; color:#98A2B3; font-size:11px; font-weight:800; padding:0 0 0 4px; cursor:pointer; line-height:1; } #view-specdue .sd-vx:hover{ color:#B42318; }
   #view-specdue .sd-chips{ display:flex; flex-wrap:wrap; gap:4px; } #view-specdue .sd-chip{ background:#EFF4FF; color:#1D4ED8; border-radius:8px; padding:2px 8px; font-size:12px; font-weight:600; } #view-specdue .sd-chip small{ color:#667085; font-weight:500; } #view-specdue .sd-chip.short{ background:#FEF3F2; color:#B42318; }
   #view-specdue .sd-savest{ align-self:center; font-size:12.5px; color:#667085; margin-right:4px; white-space:nowrap; }
   #view-specdue .sd-savest.ok{ color:#039855; font-weight:600; } #view-specdue .sd-savest.ing{ color:#B54708; }
@@ -13256,11 +13257,29 @@ function sdNameOf_(draw, ord){ try{ var md=mainData||[], o=String(ord||"").trim(
   if(!r && d) r=md.find(function(x){ return String(x.oldDrawingNo||"").trim()===d || String(x.partNo||"").trim()===d; });
   return r?String(r.partName||""):""; }catch(_){ return ""; } }
 function sdIsVision_(name){ return /SHOWER\s*HEAD|샤워헤드/i.test(String(name||"")); }
+// [추가] 비젼검사 대상에서 뺀 품번 (품명에 SHOWERHEAD가 들어가도 비젼 아님 — 예: 57050-00 BOLT) → 측정+출하로 계산
+//   공유 키 "sdVisEx" = { 품번: { ex:true/false, ts, by, why } } — 시각(ts)이 최신인 쪽이 이김 (다른 PC와 합침)
+var __sdVx={ map:{}, loaded:false };
+try{ var __vx0=JSON.parse(localStorage.getItem("sdVisExCache")||"null"); if(__vx0 && typeof __vx0==="object") __sdVx.map=__vx0; }catch(_){}
+function sdVxKey_(d){ return String(d||"").trim().toUpperCase(); }
+function sdVxEx_(draw){ var e=__sdVx.map[sdVxKey_(draw)]; return !!(e && e.ex); }
+function sdIsVisDraw_(draw, name){ return !sdVxEx_(draw) && sdIsVision_(name); }
+function sdVxMerge_(a, b){ var o={}; [a||{}, b||{}].forEach(function(m){ Object.keys(m).forEach(function(k){ if(!o[k] || (m[k].ts||0)>(o[k].ts||0)) o[k]=m[k]; }); }); return o; }
+function sdVxLoad_(cb){ if(typeof qShareLoad_!=="function"){ cb&&cb(false); return; }
+  qShareLoad_("sdVisEx", function(v){ var before=JSON.stringify(__sdVx.map); if(v && typeof v==="object" && !Array.isArray(v)) __sdVx.map=sdVxMerge_(__sdVx.map, v.map||v); __sdVx.loaded=true;
+    try{ localStorage.setItem("sdVisExCache", JSON.stringify(__sdVx.map)); }catch(_){} cb&&cb(before!==JSON.stringify(__sdVx.map)); }); }
+function sdVxSet_(draw, ex){ var k=sdVxKey_(draw); if(!k) return;
+  var why=""; if(ex){ why=prompt(draw+" — 비젼검사 준비 일정에서 뺍니다 (측정+출하로 계산).\n이유 (선택):", "SHOWERHEAD 아님 (BOLT 등)"); if(why===null) return; }
+  else if(!confirm(draw+" 을(를) 다시 비젼검사 대상으로 넣을까요?")) return;
+  __sdVx.map[k]={ ex:!!ex, ts:Date.now(), by:(typeof sdWho_==="function"?sdWho_():""), why:String(why||"").trim() };
+  try{ localStorage.setItem("sdVisExCache", JSON.stringify(__sdVx.map)); }catch(_){}
+  if(typeof qShareLoad_==="function" && typeof qShareUrl_==="function" && qShareUrl_()) qShareLoad_("sdVisEx", function(v){ var m=sdVxMerge_((v&&(v.map||v))||{}, __sdVx.map); __sdVx.map=m; try{ qSharePost_(qShareUrl_(), "sdVisEx", JSON.stringify({ map:m, ts:Date.now() })); }catch(_){} });
+  sdRender_(); }
 // [수정] 보유 = 검사 대기 + 재고(검사 끝나 출고만 남은 것). 검사를 끝내면 대기→재고로 옮겨갈 뿐 보유는 그대로
 //        (전에는 대기만 세서, 검사할수록 보유가 줄어 "부족"이 늘어 보였음)
 function sdStockOf_(draw){ try{ if(typeof buildInvStockMap==="function") buildInvStockMap(); var k=(typeof invKey_==="function")?invKey_(draw):String(draw||"").trim(); var v=(invStockMap||{})[k]; return Math.max(0, Number(v)||0); }catch(_){ return 0; } }
 function sdHoldInfo_(draw, ord){
-  var nm=sdNameOf_(draw, ord), vis=sdIsVision_(nm), key={ oldDrawingNo:draw, partNo:"" }, w=0;
+  var nm=sdNameOf_(draw, ord), vis=sdIsVisDraw_(draw, nm), key={ oldDrawingNo:draw, partNo:"" }, w=0;
   try{ if(vis){ w=Number(lookupWaitMap(visionWaitMap, key))||0; } else { w=(Number(lookupWaitMap(measureWaitMap, key))||0)+(Number(lookupWaitMap(cleanWaitMap, key))||0); } }catch(_){}
   var st=sdStockOf_(draw);
   return { q:w+st, wait:w, stock:st, vision:vis, kind:vis?"비젼":"측정+출하", name:nm };
@@ -13408,7 +13427,7 @@ var __sdVis={ snap:null, tried:"" };
 function sdVisSync_(){
   var today=sdYmd_(sdToday_()); if(__sdVis.tried===today) return; 
   try{ if(!visionWaitMap || !Object.keys(visionWaitMap).length) return; }catch(_){ return; }   // 비젼 데이터가 아직 안 들어옴
-  var draws={}; sdLive_().forEach(function(x){ if(x.draw && sdIsVision_(sdNameOf_(x.draw, x.ord))) draws[x.draw]=true; });
+  var draws={}; sdLive_().forEach(function(x){ if(x.draw && sdIsVisDraw_(x.draw, sdNameOf_(x.draw, x.ord))) draws[x.draw]=true; });
   var cur={}; Object.keys(draws).forEach(function(d){ cur[d]=Number(lookupWaitMap(visionWaitMap, { oldDrawingNo:d, partNo:"" }))||0; });
   if(!Object.keys(cur).length) return;
   __sdVis.tried=today;
@@ -13548,6 +13567,7 @@ function sdRender_(){
   var root=document.getElementById("sd-root"); if(!root) return;
   if(!__sd.loaded){ root.innerHTML='<div class="sd-empty">불러오는 중…</div>'; sdLoad_(sdRender_); return; }
   try{ sdVisSync_(); }catch(_){}
+  if(!__sdVx.loaded && !__sdVx.ing){ __sdVx.ing=true; sdVxLoad_(function(ch){ __sdVx.ing=false; if(ch) sdRender_(); }); }
   try{ sdAutoOut_(); }catch(_){}
   var C=sdCompute_(), today=C.today;
   var kpi=function(t,v,sub,cls,key){ return '<div class="sd-kpi '+(cls||"")+'"'+(key?' data-kp="'+key+'" role="button" tabindex="0" title="눌러서 목록 보기"':'')+'><div class="sd-kl">'+t+(key?' <span class="sd-kmore">목록 ›</span>':'')+'</div><div class="sd-kn">'+v+'</div><div class="sd-ks">'+sub+'</div></div>'; };
@@ -13576,8 +13596,9 @@ function sdRender_(){
   var dayRow=function(ds, lateFlag){ var list=C.plan[ds]||[], tot=list.reduce(function(s,p){ return s+p.q; },0);
     return '<div class="sd-day'+(ds===today?" today":"")+(lateFlag?" late":"")+'"><div class="sd-dd">'+(lateFlag?"밀림 ":"")+sdMD_(ds)+'<small>('+sdDow_(ds)+')</small></div>'
       +'<div class="sd-bar"><i style="width:'+Math.min(100,Math.round(tot/C.cap*100))+'%"></i><span>'+tot+' / '+C.cap+'</span></div>'
-      +'<div class="sd-chips">'+(list.length?list.map(function(p){ return '<span class="sd-chip'+(p.x._short>0?' short':'')+'"'+(p.x._short>0?' title="비젼 보유가 부족한 줄 — 제품 입고(생산) 먼저 필요"':'')+'>'+sdE_(p.x.draw)+' ×'+p.q+(p.x._short>0?' ⚠':'')+' <small>→ '+sdMD_(p.x.avail)+' 출고</small></span>'; }).join(""):'<span class="m">-</span>')+'</div></div>'; };
+      +'<div class="sd-chips">'+(list.length?list.map(function(p){ return '<span class="sd-chip'+(p.x._short>0?' short':'')+'"'+(p.x._short>0?' title="비젼 보유가 부족한 줄 — 제품 입고(생산) 먼저 필요"':'')+'>'+sdE_(p.x.draw)+' ×'+p.q+(p.x._short>0?' ⚠':'')+'<button type="button" class="sd-vx" data-a="vxoff" data-d="'+sdE_(p.x.draw)+'" title="이 품번을 비젼검사 준비에서 빼기 (SHOWERHEAD 아님)">✕</button> <small>→ '+sdMD_(p.x.avail)+' 출고</small></span>'; }).join(""):'<span class="m">-</span>')+'</div></div>'; };
   h+='<section class="sd-card"><h3>비젼검사 준비 일정 <small>SHOWERHEAD 종류 · 1일 '+C.cap+'개 · 출고 전날까지 · 재고분 제외</small></h3>'
+    +(function(){ var ks=Object.keys(__sdVx.map).filter(function(k){ return __sdVx.map[k].ex; }); return ks.length?'<div class="m" style="margin:-2px 0 6px;font-size:12px;">🚫 비젼에서 뺀 품번 (측정+출하로 계산): '+ks.map(function(k){ var e=__sdVx.map[k]; return '<span style="white-space:nowrap;"><b>'+sdE_(k)+'</b>'+(e.why?' <small>('+sdE_(e.why)+')</small>':'')+' <button type="button" class="sd-btn" data-a="vxon" data-d="'+sdE_(k)+'" style="height:22px;padding:0 6px;font-size:11.5px;" title="다시 비젼검사 대상으로">↺ 넣기</button></span>'; }).join(' · ')+'</div>':''; })()
     +(function(){ var a=sdVisDone_(); return a.length?'<div class="sd-actual">비젼 완료(추정, 대기 감소분): '+a.map(function(r){ return sdMD_(r.d)+' <b>'+r.n+'</b>개'+(r.n<C.cap?'':''); }).join(' · ')+'</div>':'<div class="sd-actual m">비젼 완료 실적은 내일부터 표시됩니다 (매일 대기 수량을 기록해 전날과 비교)</div>'; })()
     +(past.length?'<div class="sd-warn">⚠ 이미 지난 날짜에 배정된 검사 '+C.lateInsp+'개 — 지금 시작해도 일정이 빠듯합니다. 가능일자 조정 또는 추가 인원이 필요합니다.</div>':'')
     +past.map(function(ds){ return dayRow(ds,true); }).join("")+days.map(function(ds){ return dayRow(ds,false); }).join("")+'</section></div>';
@@ -13617,6 +13638,7 @@ function sdClick_(e){
   if(k==="sclear"){ __sd.sq={ ord:"", draw:"", name:"", avail:"", note:"" }; sdRender_(); return; }
   if(k==="sall"){ __sd.sq={ ord:"", draw:"", name:"", avail:"", note:"" }; __sd.filter="all"; sdRender_(); return; }   // 출고 달력의 [전체 보기]
   if(k==="newline"){ sdEditPop_(null); return; }
+  if(k==="vxoff" || k==="vxon"){ sdVxSet_(a.getAttribute("data-d"), k==="vxoff"); return; }
   if(k==="bulk"){ var gb=function(){ sdBulkPop_(); }; if(__sdl.loaded) gb(); else sdlLoad_(gb); return; }
   if(k==="calprint"){ sdCalPrint_(); return; }
   if(k==="xls") return sdExcel_();
