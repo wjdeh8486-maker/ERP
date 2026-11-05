@@ -7999,6 +7999,7 @@ function stockHandleFile_(file){
         for(var r2=hr+1;r2<aoa.length;r2++){
           var dv=(aoa[r2]||[])[ci]; var dr=String(dv==null?"":dv).trim();
           if(!dr) continue;
+          if(/^(총\s*합\s*계|합\s*계|소\s*계|누\s*계|TOTAL|SUM|GRAND\s*TOTAL)$/i.test(dr.replace(/[:：\s]/g,"")) || /합계|소계/.test(dr)) continue;   // [수정] 엑셀 '총합계'·'소계' 줄은 도번이 아님
           var qraw=String(((aoa[r2]||[])[qi]==null)?"":(aoa[r2]||[])[qi]).replace(/[^\d.\-]/g,"");
           var qv=Number(qraw); if(isNaN(qv)) qv=0;
           var __k=(typeof insNormDraw_==="function")?insNormDraw_(dr):dr.trim().toUpperCase(); map[__k]=qv; cnt++;
@@ -15273,6 +15274,7 @@ var WP_TX={ "in":"입고", "use":"사용", "adj":"조정", "base":"기초 재고
 function wpBlank_(){ return { items:{}, tx:[], wo:[], ign:{}, del:[], cfg:{ kw:"사상,C.P", start:"", pre0:[] }, ts:0 }; }
 function wpId_(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function wpK_(d){ return (typeof insNormDraw_==="function")?insNormDraw_(d):String(d||"").trim().toUpperCase(); }
+function wpSumKey_(k){ return /합계|소계|누계|^TOTAL$|^SUM$|^GRANDTOTAL$/i.test(String(k||"").replace(/[\s:：]/g,"")); }   // 엑셀 합계 줄 (도번 아님)
 function wpOK_(r){ return ftK_(r.orderNo)+"|"+ftK_(r.vendor); }   // 관리번호 키 (같은 ORDER NO.가 PROJECT NO.만 다른 경우 구분)
 var WP_SH={ arrays:["tx","wo"], maps:["items","ign"], unions:[], blobs:[["cfg"]],
   sort:function(a,b){ return String(a.date).localeCompare(String(b.date)) || ((a.ts||0)-(b.ts||0)); },
@@ -15293,7 +15295,9 @@ function wpSave_(){ shSave_("wipData", { C:WP_SH, get:function(){ return __wp.d;
 var WP_PULL={ C:null, get:function(){ return __wp.d; }, snap:function(){ return __wp.snap; }, setSnap:function(x){ __wp.snap=x; }, cache:function(){ wpCache_(); } };
 function wpPull_(force){ WP_PULL.C=WP_SH; if(!__wp.loaded) return; if(!force && Date.now()-(WP_PULL.pulled||0)<60000) return;
   shPull_("wipData", WP_PULL, function(){ if(wpAuto_()) wpSave_(); var v=document.getElementById("view-wip"); if(v && v.classList.contains("active") && !document.getElementById("ft-ov")) wpRender_(); }); }
-function wpShow_(){ var go=function(){ if(wpAuto_()) wpSave_(); wpRender_(); };
+function wpClean_(){ var d=__wp.d, ch=false; if(!d) return false; Object.keys(d.items||{}).forEach(function(k){ if(wpSumKey_(k) || wpSumKey_((d.items[k]||{}).draw)){ delete d.items[k]; ch=true; } });   // [수정] 공정재고LIST '총합계' 줄이 품목으로 들어간 것 정리
+  var n0=(d.tx||[]).length; d.tx=(d.tx||[]).filter(function(x){ return !wpSumKey_(x.draw); }); if(d.tx.length!==n0) ch=true; return ch; }
+function wpShow_(){ var go=function(){ var c=wpClean_(); if(wpAuto_() || c) wpSave_(); wpRender_(); };
   if(!__wp.loaded){ wpRender_(); wpLoad_(function(){ WP_PULL.pulled=Date.now(); go(); }); } else { go(); wpPull_(false); }
   if(!window.__wpPullT) window.__wpPullT=setInterval(function(){ var v=document.getElementById("view-wip"); if(v && v.classList.contains("active") && !document.hidden) wpPull_(true); }, 120000); }
 // ── 자동 사용 판정
@@ -15454,7 +15458,7 @@ function wpClick_(ev){ var a=ev.target.closest && ev.target.closest("[data-a]");
     if(!confirm((d.cfg.start?"이미 "+d.cfg.start+"에 시작했습니다. 다시 시작하면 '시작 시점 생산 중 주문' 목록을 새로 잡습니다.\n\n":"")+(k==="wbase"?"공정재고LIST "+n+"개 도번을 관리 품목으로 넣고 그 보유수를 기초 재고로 넣습니다.\n":"")+"오늘부터 사상·C.P 자동 사용을 시작할까요?")) return;
     var t=ftToday_(), who=ftWho_();
     if(k==="wbase" && d.cfg.start){ var nowTs=Date.now(); d.tx.forEach(function(x){ if(!x.arch && map[wpK_(x.draw)]!=null){ x.arch=t; x.ts2=nowTs; } }); }   // [중복 방지] 다시 시작: 새 공정재고 값에 이미 반영된 예전 입고·사용은 보관 (계산 제외 · 사용 기록은 남아 다시 차감 안 됨)
-    if(k==="wbase"){ Object.keys(map).forEach(function(dk){ var q=ftN_(map[dk]); if(!d.items[dk]) d.items[dk]={ draw:dk, name:wpNameOf_(dk), ts:0 }; if(q) d.tx.push({ id:wpId_("wb"), type:"base", date:t, draw:dk, qty:q, note:"공정재고LIST "+(__stockData.at||""), by:who, ts:Date.now() }); }); }
+    if(k==="wbase"){ Object.keys(map).forEach(function(dk){ if(wpSumKey_(dk)) return; var q=ftN_(map[dk]); if(!d.items[dk]) d.items[dk]={ draw:dk, name:wpNameOf_(dk), ts:0 }; if(q) d.tx.push({ id:wpId_("wb"), type:"base", date:t, draw:dk, qty:q, note:"공정재고LIST "+(__stockData.at||""), by:who, ts:Date.now() }); }); }
     d.cfg.start=t; d.cfg.pre0=wpStart_(); wpSave_(); __wp.tab="st"; wpRender_(); alert("시작했습니다 — 지금 생산 중인 주문 "+d.cfg.pre0.length+"건이 사상·C.P에 들어가면 자동으로 사용 처리됩니다."); return; }
   if(k==="wprest"){ if(!confirm("지운 자료를 되살릴까요?")) return; if(shRestore_(d, id)){ wpSave_(); wpRender_(); } return; } }
 // ===== [추가] 도면 NOTES 해석 — 도면 PDF(또는 사진)의 NOTES(주기)를 글자 인식(OCR)해 한글로 풀어 줌 =====
