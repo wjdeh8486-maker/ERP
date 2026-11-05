@@ -1444,6 +1444,9 @@
   #view-specdue .sd-dd{ font-weight:700; } #view-specdue .sd-dd small{ color:#98A2B3; font-weight:500; margin-left:2px; }
   #view-specdue .sd-bar{ position:relative; height:20px; background:#F2F4F7; border-radius:999px; overflow:hidden; }
   #view-specdue .sd-bar i{ position:absolute; left:0; top:0; bottom:0; background:#84ADFF; border-radius:999px; } #view-specdue .sd-bar span{ position:relative; display:block; text-align:center; font-size:11.5px; font-weight:700; line-height:20px; color:#1D2939; }
+  .ins-seg{ display:inline-flex; gap:0; border:1px solid #C9D3E0; border-radius:8px; overflow:hidden; background:#fff; } .ins-seg:empty{ display:none; }
+  .ins-seg button{ border:0; border-right:1px solid #C9D3E0; background:#fff; color:#344054; padding:7px 10px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; } .ins-seg button:last-child{ border-right:0; } .ins-seg button b{ font-weight:900; }
+  .ins-carry-tag{ display:inline-block; margin-top:2px; font-size:10px; font-weight:800; color:#fff; background:#D92D20; border-radius:4px; padding:0 4px; line-height:15px; }
   #view-dnote{ padding:16px 20px 40px; } #dn-root .dn-head h2{ margin:2px 0 4px; font-size:22px; } #dn-root .dn-head{ margin-bottom:10px; }
   #dn-root .dn-tool{ flex-wrap:wrap; gap:8px; align-items:center; } #dn-root .dn-tool input{ height:32px; }
   #dn-root .dn-drop{ border:2px dashed #98A2B3; border-radius:14px; padding:46px 16px; text-align:center; color:#475467; font-weight:700; background:#F9FAFB; margin-top:8px; } #dn-root .dn-drop small{ font-weight:500; color:#667085; }
@@ -3014,6 +3017,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
           <span style="font-size:12px;color:#5A6478;font-weight:700;" title="날짜별 보기">📅</span>
           <select id="insrep-dayFilter" style="padding:7px 8px;border:1px solid #0B5CAB;border-radius:7px;font-size:12px;font-weight:700;color:#0B5CAB;background:#F4F8FD;cursor:pointer;"><option value="all">전체</option></select>
         </span>
+        <span id="insrep-segWrap" class="ins-seg" title="금일 입력한 행과, 전날까지 부적합인데 조치완료일이 비어 넘어온 행을 나눠 보기"></span>
         <span style="display:inline-flex;align-items:center;gap:6px;">
           <span style="font-size:12px;color:#5A6478;font-weight:700;">🔎 도번</span>
           <input type="text" id="insrep-drawSearch" placeholder="도번 검색 후 Enter" autocomplete="off" style="width:150px;padding:7px 9px;border:1px solid #0B5CAB;border-radius:7px;font-size:12px;">
@@ -28405,6 +28409,12 @@ var insProcInSource = null;   // 공정입고 집계용 공유 버퍼(null이면
 var insProcInMemo   = {};     // 도번 -> { m:측정실비고, c:크린룸비고 }
 var insMetaByType = { incoming:{inspector:"",date:"",inspByDate:{}}, shipping:{inspector:"",date:"",inspByDate:{}}, measureS:{inspector:"",date:"",inspByDate:{}}, measureL:{inspector:"",date:"",inspByDate:{}} };  // 검사자/검사일자 유형별 + 날짜별 검사자
 var insDayFilter = "all";  // 검사 일보 날짜 필터
+// [추가] 금일 입력 / 이월 부적합(미조치) 구분 — 보기: all 전체 · today 금일 입력만 · nc 이월 부적합만
+var insViewSeg = "all";
+function insRefDay_(){ return (insDayFilter && insDayFilter!=="all")?insDayFilter:insToday_(); }
+function insIsCarryNc_(row, ref){ try{ return insRowDefect_(insType,row) && String(row.actDate||"").trim()==="" && String(row.insDate||"").slice(0,10)<(ref||insRefDay_()); }catch(_){ return false; } }
+document.addEventListener("click", function(e){ var b=e.target && e.target.closest && e.target.closest("#insrep-segWrap [data-seg]"); if(!b) return; insViewSeg=b.getAttribute("data-seg"); try{ insShowAllRows=false; }catch(_){} if(typeof insRender==="function") insRender(); });
+function insSegOk_(row, ref){ if(insViewSeg==="today") return String(row.insDate||"").slice(0,10)===ref; if(insViewSeg==="nc") return insIsCarryNc_(row, ref); return true; }
 var insDrawSearch = "";     // 검사 일보 도번 검색(있으면 전체 날짜에서 도번 매칭만 표시)
 var insOutSearch = "";      // 검사 일보 출고NO 검색(있으면 해당 출고NO 포함 행만 표시)
 var insShowAllRows = false; // 대용량: 최근 N행만 표시(false) / 전체 표시(true) 토글
@@ -28714,12 +28724,16 @@ function insRender(){
   var __dq0=(insDrawSearch||"").trim().toLowerCase();
   var __oq0=(insOutSearch||"").trim().toUpperCase();
   var __outMatch=function(row){ if(!__oq0) return true; try{ var ex=(typeof insplistExpandOutNo_==="function")?insplistExpandOutNo_(row.outNo).map(function(x){return String(x).toUpperCase();}):[]; if(ex.indexOf(__oq0)>=0) return true; }catch(_){} return String(row.outNo||"").toUpperCase().indexOf(__oq0)>=0; };
-  var __visIdx=[];
+  var __visIdx=[], __ref=insRefDay_(), __nT=0, __nC=0;
+  rows.forEach(function(row){ if(String(row.insDate||"").slice(0,10)===__ref) __nT++; else if(insIsCarryNc_(row, __ref)) __nC++; });
+  try{ var __sw=document.getElementById("insrep-segWrap"); if(__sw){ var __sb=function(k,t,n,c){ return '<button type="button" data-seg="'+k+'" class="'+(insViewSeg===k?'on':'')+'" style="'+(insViewSeg===k?'background:'+c+';color:#fff;border-color:'+c+';':'')+'">'+t+(n!=null?' <b>'+n+'</b>':'')+'</button>'; };
+    __sw.innerHTML=__sb("all","전체",null,"#1F2A44")+__sb("today","📝 "+(__ref===insToday_()?"금일":__ref.slice(5).replace("-","/"))+" 입력",__nT,"#0B5CAB")+__sb("nc","⚠ 이월 부적합",__nC,"#B42318"); } }catch(_){}
   rows.forEach(function(row,ri){
     if(insType==="incoming" && __insMatFilter!=="전체" && String(row.matType||"제품")!==__insMatFilter) return;   // [구분] 제품/소재 필터
     if(__oq0){ if(!__outMatch(row)) return; }
     else if(__dq0){ if(String(row.draw||"").toLowerCase().indexOf(__dq0)<0) return; }
     else if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && String(row.actDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="" && String(row.insDate||"")<=insDayFilter)) return;
+    if(!__oq0 && !__dq0 && !insSegOk_(row, __ref)) return;   // [추가] 금일/이월 부적합 보기
     __visIdx.push(ri);
   });
   var __capped=(!insShowAllRows && __visIdx.length>INS_RENDER_CAP);
@@ -28740,12 +28754,14 @@ function insRender(){
     if(__oq0){ if(!__outMatch(row)) return; }   // 출고NO 검색: 전체 날짜에서 매칭만
     else if(__dq){ if(String(row.draw||"").toLowerCase().indexOf(__dq)<0) return; }   // 도번 검색: 전체 날짜에서 매칭만
     else if(insDayFilter!=="all" && String(row.insDate||"")!==insDayFilter && String(row.actDate||"")!==insDayFilter && !(insRowDefect_(insType,row) && String(row.actDate||"").trim()==="" && String(row.insDate||"")<=insDayFilter)) return;   // 다른 날짜여도 미조치 부적합은 계속 표시
+    if(!__oq0 && !__dq && !insSegOk_(row, __ref)) return;   // [추가] 금일/이월 부적합 보기
+    var __carry=insIsCarryNc_(row, __ref);
     __dispNo++;
     if(__allowIdx && !__allowIdx.has(ri)) return;   // 상한 초과: 번호만 증가시키고 DOM은 생략
     var tds="";
     leaves.forEach(function(c){
       var v=row[c.key];
-      if(c.kind==="no"){ tds+='<td style="border:1px solid #E6EBF2;text-align:center;color:#5A6478;">'+__dispNo+'</td>'; return; }
+      if(c.kind==="no"){ tds+='<td style="border:1px solid #E6EBF2;text-align:center;color:#5A6478;'+(__carry?'border-left:4px solid #D92D20;':'')+'">'+__dispNo+(__carry?'<div class="ins-carry-tag" title="전날까지 부적합인데 조치완료일이 비어 넘어온 행">이월</div>':'')+'</td>'; return; }
       var cell="";
       if(c.kind==="check"){
         cell='<input type="checkbox" data-ri="'+ri+'" data-key="'+c.key+'" '+(v?"checked":"")+'>';
@@ -28801,7 +28817,8 @@ function insRender(){
       :(__gtM?' style="background:#FDE2E1;" title="⛔ 출하 전 미검사: '+insEsc(insGateMissTxt_(row)||__gtM.join(", "))+'"'
       :(__fnM?' style="background:#FFEBD6;" title="⚠ 기능검사 미완료: '+__fnM.join(", ")+' — 필수검사 대상인데 체크가 없습니다"'
       :(__tapPin?' style="background:#FFF6D8;" title="⚠ 이 도번은 '+(__tapPinType==="tap"?"TAP(공정검사)":"PIN 압입")+' 대상인데 아직 체크하지 않았습니다"':'')))));
-    body+='<tr id="insrep-tr-'+ri+'"'+__trStyle+'>'+tds+'</tr>';
+    if(__carry && !__trStyle) __trStyle=' style="background:#FFF7F6;" title="⚠ 이월 부적합 — '+insEsc(String(row.insDate||"").slice(0,10))+' 검사분, 조치완료일이 비어 있어 계속 표시"';
+    body+='<tr id="insrep-tr-'+ri+'"'+(__carry?' class="ins-carry"':'')+__trStyle+'>'+tds+'</tr>';
   });  
   if(!body){ body='<tr><td colspan="'+(leaves.length+1)+'" style="padding:20px;text-align:center;color:#8A93A6;">해당 날짜에 행이 없습니다.</td></tr>'; }
   el.innerHTML=
