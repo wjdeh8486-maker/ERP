@@ -15269,7 +15269,7 @@ function mailLineState_(row){
 //          공정을 건너뛰고 검사·출고로 넘어간 주문도, 시작 때 '생산 중'이었던 주문이면 사용으로 잡음
 //  · 시작: [설정]에서 기초 재고(공정재고LIST 값 또는 직접) + 시작일 → 그 시점에 이미 사상 이후인 주문은 사용으로 안 잡음 (기초 재고에 반영된 것)
 //  · 자동 사용을 ✕로 지우면 다시 자동으로 들어오지 않음 (제외 목록)
-var __wp={ d:null, tab:"st", q:"", loaded:false, loading:false, onlyShort:false, open:{} };
+var __wp={ d:null, tab:"st", q:"", loaded:false, loading:false, onlyShort:false, open:{}, sort:(function(){ try{ return localStorage.getItem("wpSort")||""; }catch(_){ return ""; } })() };
 var WP_TX={ "in":"입고", "use":"사용", "adj":"조정", "base":"기초 재고" };
 function wpBlank_(){ return { items:{}, tx:[], wo:[], ign:{}, del:[], cfg:{ kw:"사상,C.P", start:"", pre0:[] }, ts:0 }; }
 function wpId_(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -15351,7 +15351,7 @@ function wpCalc_(){ var d=__wp.d, S={}, md=(typeof mainData!=="undefined"&&mainD
   return S; }
 // ── 화면
 function wpRender_(){ var host=document.getElementById("wp-root"); if(!host) return; if(typeof ftStyle_==="function") ftStyle_();
-  if(!host.__bound){ host.__bound=true; host.addEventListener("click", wpClick_); host.addEventListener("keydown", function(e){ if(e.target.id==="wp-q" && e.key==="Enter"){ __wp.q=e.target.value.trim(); wpRender_(); } }); host.addEventListener("change", function(e){ if(e.target.id==="wp-short"){ __wp.onlyShort=e.target.checked; wpRender_(); } }); }
+  if(!host.__bound){ host.__bound=true; host.addEventListener("click", wpClick_); host.addEventListener("keydown", function(e){ if(e.target.id==="wp-q" && e.key==="Enter"){ __wp.q=e.target.value.trim(); wpRender_(); } }); host.addEventListener("change", function(e){ if(e.target.id==="wp-short"){ __wp.onlyShort=e.target.checked; wpRender_(); } if(e.target.id==="wp-sort"){ __wp.sort=e.target.value; try{ localStorage.setItem("wpSort", __wp.sort); }catch(_){} wpRender_(); } }); }
   if(!__wp.d){ host.innerHTML='<div class="ft-empty">불러오는 중…</div>'; return; }
   var E=ftE_, nWo=(__wp.d.wo||[]).filter(function(w){ return !w.done; }).length, tabs=[["st","📊 반제품 현황"],["wo","📣 작업지시"+(nWo?' <b style="background:#F79009;color:#fff;border-radius:999px;padding:0 6px;margin-left:2px;">'+nWo+'</b>':'')],["tx","📋 입고·사용 내역"],["set","⚙ 설정·품목"],["log","🕘 변경 이력"]];
   var h='<div class="ft-head"><div><div class="ft-crumb">생산 › 반제품 관리</div><div class="ft-title">🧩 반제품 관리 <span>재고 생산 → 보유 → 사상·C.P에서 자동 사용</span></div>'
@@ -15363,12 +15363,14 @@ function wpRender_(){ var host=document.getElementById("wp-root"); if(!host) ret
   host.innerHTML=h; }
 function wpStHtml_(){ var E=ftE_, S=wpCalc_(), q=wpK_(__wp.q), L=Object.keys(S).map(function(k){ return S[k]; }).filter(function(e){ return !q || (e.k+" "+String(e.name).toUpperCase()).indexOf(q)>=0 || String(e.name).toUpperCase().indexOf(String(__wp.q).toUpperCase())>=0; });
   if(__wp.onlyShort) L=L.filter(function(e){ return e.lack<0; });
-  L.sort(function(a,b){ return (a.lack<0?0:1)-(b.lack<0?0:1) || String(a.due||"9999").localeCompare(String(b.due||"9999")) || a.k.localeCompare(b.k); });
+  var srt=__wp.sort||"", dc=function(a,b){ return String(a.draw).localeCompare(String(b.draw), undefined, { numeric:true, sensitivity:"base" }); };   // [추가] 정렬
+  if(srt==="draw") L.sort(dc); else if(srt==="drawd") L.sort(function(a,b){ return dc(b,a); }); else if(srt==="lack") L.sort(function(a,b){ return a.lack-b.lack || dc(a,b); }); else if(srt==="have") L.sort(function(a,b){ return b.have-a.have || dc(a,b); });
+  else L.sort(function(a,b){ return (a.lack<0?0:1)-(b.lack<0?0:1) || String(a.due||"9999").localeCompare(String(b.due||"9999")) || dc(a,b); });
   var tot=function(f){ return L.reduce(function(s1,e){ return s1+f(e); },0); }, nS=L.filter(function(e){ return e.lack<0; }).length;
   return '<div class="ft-kp"><div><span>품목</span><b>'+L.length+'</b></div><div><span>현재 보유</span><b>'+tot(function(e){ return e.have; })+'</b></div><div><span>납기 합계 (아직 안 쓴 주문)</span><b>'+tot(function(e){ return e.dem; })+'</b></div><div><span>부족 품목</span><b style="color:'+(nS?'#B42318':'#067647')+';">'+nS+'</b></div><div><span>작업지시 중</span><b style="color:#B54708;">'+tot(function(e){ return e.wo; })+'</b></div></div>'
-    +'<div class="ft-tool"><input id="wp-q" type="search" value="'+E(__wp.q)+'" placeholder="🔎 도번·품명" style="min-width:220px;"><button type="button" class="ft-btn sm pri" data-a="wq">검색</button><label class="m" style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="wp-short"'+(__wp.onlyShort?' checked':'')+' style="width:16px;height:16px;margin:0;"> 부족만</label><span style="flex:1"></span><button type="button" class="ft-btn sm" data-a="wxlsx">📥 엑셀</button></div>'
+    +'<div class="ft-tool"><input id="wp-q" type="search" value="'+E(__wp.q)+'" placeholder="🔎 도번·품명" style="min-width:220px;"><button type="button" class="ft-btn sm pri" data-a="wq">검색</button><label class="m" style="display:flex;align-items:center;gap:5px;">정렬 <select id="wp-sort"><option value=""'+(srt===""?' selected':'')+'>부족 먼저 (납기순)</option><option value="draw"'+(srt==="draw"?' selected':'')+'>도번 ↑</option><option value="drawd"'+(srt==="drawd"?' selected':'')+'>도번 ↓</option><option value="lack"'+(srt==="lack"?' selected':'')+'>부족수 많은 순</option><option value="have"'+(srt==="have"?' selected':'')+'>현재 보유 많은 순</option></select></label><label class="m" style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="wp-short"'+(__wp.onlyShort?' checked':'')+' style="width:16px;height:16px;margin:0;"> 부족만</label><span style="flex:1"></span><button type="button" class="ft-btn sm" data-a="wxlsx">📥 엑셀</button></div>'
     +'<div class="m" style="margin:-2px 0 8px;">현재 보유 = 기초 + 입고 − 사용 ± 조정 · <b>납기 합계</b> = MAIN 출고 전 주문 중 아직 사상·C.P에 안 들어간 수량 · <b>부족수</b> = 현재 보유 − 납기 합계 (− 면 재고 생산 필요) · ▸ 누르면 주문별</div>'
-    +'<div class="ft-card"><table class="ft-tb"><thead><tr><th>도번</th><th>품명</th><th>기초</th><th>입고</th><th>사용</th><th>조정</th><th class="hl">현재 보유</th><th>납기 합계</th><th>가장 빠른 납기</th><th class="hl">부족수</th><th>작업지시 중</th><th></th></tr></thead><tbody>'
+    +'<div class="ft-card"><table class="ft-tb"><thead><tr><th data-a="wsortdraw" style="cursor:pointer;" title="눌러서 도번순 정렬">도번 '+(srt==="draw"?'▲':srt==="drawd"?'▼':'⇅')+'</th><th>품명</th><th>기초</th><th>입고</th><th>사용</th><th>조정</th><th class="hl">현재 보유</th><th>납기 합계</th><th>가장 빠른 납기</th><th class="hl">부족수</th><th>작업지시 중</th><th></th></tr></thead><tbody>'
     +(L.length?L.map(function(e){ var op=__wp.open[e.k];
       return '<tr><td><b>'+E(e.draw)+'</b></td><td class="nm s">'+E(e.name)+'</td><td class="n">'+(e.base||'')+'</td><td class="n">'+(e.in||'')+'</td><td class="n">'+(e.use||'')+'</td><td class="n">'+(e.adj||'')+'</td><td class="n hl'+(e.have<0?' neg':'')+'"><b>'+e.have+'</b></td>'
         +'<td class="n">'+(e.dem?'<b>'+e.dem+'</b><div><button type="button" class="ft-lnk" data-a="wopen" data-k="'+E(e.k)+'">'+(op?'▾':'▸')+' '+e.orders.length+'건</button></div>':'')+'</td><td class="nw">'+(e.due?E(e.due)+'<div>'+ftLateTxt_(e.due)+'</div>':'')+'</td>'
@@ -15440,6 +15442,7 @@ function wpClick_(ev){ var a=ev.target.closest && ev.target.closest("[data-a]");
   if(k==="wpull"){ wpPull_(true); return; }
   if(k==="wq"){ var qi=document.getElementById("wp-q"); __wp.q=qi?qi.value.trim():""; wpRender_(); return; }
   if(k==="wopen"){ __wp.open[kk]=!__wp.open[kk]; wpRender_(); return; }
+  if(k==="wsortdraw"){ __wp.sort=(__wp.sort==="draw")?"drawd":"draw"; try{ localStorage.setItem("wpSort", __wp.sort); }catch(_){} wpRender_(); return; }
   if(k==="win") return wpTxPop_("in", kk); if(k==="wadj") return wpTxPop_("adj", kk); if(k==="wwo") return wpWoPop_(kk); if(k==="wxlsx") return wpXlsx_();
   if(k==="wtedit") return wpTxPop_(null, "", id);
   if(k==="wtdel"){ var t=(d.tx||[]).filter(function(x){ return x.id===id; })[0]; if(!t) return; if(!confirm((t.auto?"자동 사용 "+t.orderNo+" ("+t.qty+"개)을 지울까요?\n이 관리번호는 다시 자동으로 들어오지 않습니다.":"이 내역을 지울까요?"))) return;
