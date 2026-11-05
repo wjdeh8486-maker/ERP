@@ -19552,11 +19552,12 @@ var SM_LOGK={ tx:"입고·사용 내역", alloc:"고객 할당", per:"1소재당
 function smSave_(){ shSave_("smData", { C:SM_SH, get:function(){ return __sm.d; }, snap:function(){ return __sm.snap; }, setSnap:function(x){ __sm.snap=x; }, cache:smCache_, render:smRender_ }); }
 // ── 계산
 function smCalc_(){
-  var d=__sm.d, S={}, A={}, get=function(k){ var it=d.items[k]||{}; return S[k]||(S[k]={ k:k, name:it.name||k, unit:it.unit||"EA", in:0, use:0, ret:0, adj:0, alloc:0, allocUsed:0, buy:0, buse:0 }); };
+  var d=__sm.d, S={}, A={}, get=function(k){ var it=d.items[k]||{}; return S[k]||(S[k]={ k:k, name:it.name||k, unit:it.unit||"EA", in:0, use:0, ship:0, ret:0, adj:0, alloc:0, allocUsed:0, buy:0, buse:0 }); };
   (d.alloc||[]).forEach(function(a){ A[a.id]={ a:a, used:0 }; var e0=get(ftK_(a.mat)); e0.alloc+=ftN_(a.qty); if(a.hist) e0.allocUsed+=ftN_(a.qty); });   /* hist = 출고 완료 관리번호 이력 → 잔량 0 */
   (d.tx||[]).forEach(function(t){ var e=get(ftK_(t.mat)), q=ftN_(t.qty); if(t.type==="in") e.in+=q; else if(t.type==="use"){ e.use+=q; if(A[t.allocId]){ A[t.allocId].used+=q; if(!A[t.allocId].a.hist) e.allocUsed+=q; } } else if(t.type==="ret") e.ret+=q; else if(t.type==="adj") e.adj+=q; else if(t.type==="buy") e.buy+=q; else if(t.type==="buse") e.buse+=q; });
   Object.keys(d.items||{}).forEach(get);
-  Object.keys(S).forEach(function(k){ var e=S[k]; e.stock=e.in-e.use-e.ret+e.adj; e.own=e.buy-e.buse; e.real=e.stock+e.own; e.allocLeft=e.alloc-e.allocUsed; e.free=e.stock-Math.max(0,e.allocLeft); });
+  try{ (smShipPend_()||[]).forEach(function(r){ get(ftK_(r.a.mat)).ship+=r.q; }); }catch(_){}   // [수정] 출고 완료됐는데 사용 미입력분도 재고에서 뺌 (실제로 나간 소재)
+  Object.keys(S).forEach(function(k){ var e=S[k]; e.stock=e.in-e.use-e.ship-e.ret+e.adj; e.own=e.buy-e.buse; e.real=e.stock+e.own; e.allocLeft=e.alloc-e.allocUsed; e.free=e.stock-Math.max(0,e.allocLeft); });
   Object.keys(A).forEach(function(i){ var x=A[i]; if(x.a.hist){ x.used=Math.max(x.used, ftN_(x.a.qty)); x.left=0; } else x.left=ftN_(x.a.qty)-x.used; });
   return { S:S, A:A }; }
 function smPer_(prodKey){ var p=(__sm.d.per||{})[prodKey]; return p&&ftN_(p.n)>0?ftN_(p.n):0; }
@@ -19637,10 +19638,10 @@ function smStockHtml_(){   // [수정] 사급 보유(고객 제출용) / 실 보
   var SP=smShipPend_()||[], spM={}; SP.forEach(function(r){ var k=ftK_(r.a.mat); spM[k]=(spM[k]||0)+r.q; }); var spT=SP.reduce(function(s1,r){ return s1+r.q; },0);
   return (spT?'<div class="dn-warn" style="margin:0 0 8px;padding:9px 12px;border-radius:10px;background:#FFFAEB;color:#B54708;font-weight:700;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">📦 출고 완료됐는데 사용이 안 들어간 할당분 '+SP.length+'건 · 소재 '+spT+'개 — 할당 합계와 사용 합계가 안 맞는 이유<span style="flex:1"></span><button type="button" class="ft-btn sm pri" data-a="sship">📦 출고 완료 → 사용 처리</button></div>':'')+'<div class="ft-kp"><div><span>소재 종류</span><b>'+L.length+'</b></div><div><span>📄 사급 보유 (고객 제출용)</span><b style="color:#6941C6;">'+tot(function(e){ return e.stock; })+'</b></div><div><span>🛒 구매 보유 (자체)</span><b style="color:#B54708;">'+tot(function(e){ return e.own; })+'</b></div><div><span>🏭 실 보유 (내부)</span><b>'+tot(function(e){ return e.real; })+'</b></div><div><span>할당 잔량 (사급 사용 가능)</span><b style="color:#067647;">'+tot(function(e){ return Math.max(0,e.allocLeft); })+'</b></div><div><span>미할당 (사급 사용 불가)</span><b style="color:#B54708;">'+tot(function(e){ return Math.max(0,e.free); })+'</b></div></div>'
     +'<div class="ft-tool" style="margin:0 0 6px;"><span style="flex:1;"></span><button type="button" class="ft-btn sm pri" data-a="scxlsx" title="사급분만 — 구매·실 보유·작업 지시 등 내부 정보 없음">📥 고객 제출용 엑셀</button><button type="button" class="ft-btn sm" data-a="spxlsx" title="구매·실 보유·작업 지시·제품 LIST까지 전부">📥 내부용 엑셀</button></div>'
-    +'<div class="m" style="margin:-2px 0 8px;"><b>사급 보유</b> = 고객 입고 − 사급 사용 − 반납 ± 조정 (고객사 제출은 이 숫자) · <b>구매 보유</b> = 자체 구매 − 구매분 사용 · <b>실 보유</b> = 사급 보유 + 구매 보유 (현장 실제 수량) · 할당·미할당은 사급분만 계산 · <b>📦 출고 완료</b> = 출고는 끝났는데 사용으로 안 넣은 할당분 (사용 + 출고 완료 = 실제로 쓴 양) · <b>고객 제출용 엑셀</b>엔 사급분만 들어감</div>'
+    +'<div class="m" style="margin:-2px 0 8px;"><b>사급 보유</b> = 고객 입고 − 사급 사용 − 출고 완료(사용 미입력) − 반납 ± 조정 (고객사 제출은 이 숫자 · 마이너스면 입고 누락 또는 할당 과다) · <b>구매 보유</b> = 자체 구매 − 구매분 사용 · <b>실 보유</b> = 사급 보유 + 구매 보유 (현장 실제 수량) · 할당·미할당은 사급분만 계산 · <b>📦 출고 완료</b> = 출고는 끝났는데 사용으로 안 넣은 할당분 (사용 + 출고 완료 = 실제로 쓴 양) · <b>고객 제출용 엑셀</b>엔 사급분만 들어감</div>'
     +'<div class="ft-card"><table class="ft-tb"><thead><tr><th rowspan="2">소재 (규격)</th><th rowspan="2">단위</th><th colspan="8" style="background:#F4F3FF;color:#5925DC;">사급 (고객 제출용)</th><th colspan="3" style="background:#FFFAEB;color:#B54708;">구매 (자체)</th><th rowspan="2" class="hl">🏭 실 보유<br><small>(내부)</small></th></tr>'
     +'<tr><th>입고</th><th>사용</th><th title="출고·납품은 끝났는데 사용으로 안 넣은 할당분 — [출고 완료 → 사용 처리]로 넣으면 사용으로 옮겨감">📦 출고 완료<br><small>(사용 미입력)</small></th><th>반납·조정</th><th class="hl">사급 보유</th><th>할당 합계</th><th>할당 잔량</th><th>미할당</th><th>구매</th><th>사용</th><th>구매 보유</th></tr></thead><tbody>'
-    +(L.length?L.map(function(e){ return '<tr><td><b>'+E(e.name)+'</b></td><td class="c">'+E(e.unit)+'</td><td class="n">'+e.in+'</td><td class="n">'+(e.use||'')+'</td><td class="n" style="color:#B54708;">'+(spM[e.k]?'<b>'+spM[e.k]+'</b>':'')+'</td><td class="n">'+((e.adj-e.ret)||'')+'</td><td class="n hl'+(e.stock<0?' neg':'')+'" style="color:#5925DC;"><b>'+e.stock+'</b></td><td class="n">'+(e.alloc||'')+'</td><td class="n" style="color:#067647;"><b>'+(e.allocLeft||'')+'</b></td><td class="n'+(e.free<0?' neg':'')+'" style="color:#B54708;">'+(e.free<0?'할당이 재고보다 '+(-e.free)+' 많음':(e.free||''))+'</td>'
+    +(L.length?L.map(function(e){ return '<tr><td><b>'+E(e.name)+'</b></td><td class="c">'+E(e.unit)+'</td><td class="n">'+e.in+'</td><td class="n">'+(e.use||'')+'</td><td class="n" style="color:#B54708;">'+(e.ship?'<b>'+e.ship+'</b>':'')+'</td><td class="n">'+((e.adj-e.ret)||'')+'</td><td class="n hl'+(e.stock<0?' neg':'')+'" style="color:#5925DC;"><b>'+e.stock+'</b></td><td class="n">'+(e.alloc||'')+'</td><td class="n" style="color:#067647;"><b>'+(e.allocLeft||'')+'</b></td><td class="n'+(e.free<0?' neg':'')+'" style="color:#B54708;">'+(e.free<0?'할당이 재고보다 '+(-e.free)+' 많음':(e.free||''))+'</td>'
       +'<td class="n">'+(e.buy||'')+'</td><td class="n">'+(e.buse||'')+'</td><td class="n'+(e.own<0?' neg':'')+'" style="color:#B54708;"><b>'+(e.own||(e.buy?0:''))+'</b></td><td class="n hl'+(e.real<0?' neg':'')+'"><b>'+e.real+'</b></td></tr>'; }).join(""):'<tr><td colspan="14" class="ft-empty">소재가 없습니다 — [📥 입고]로 고객사에서 받은 소재, [🛒 구매]로 자체 구매 소재를 등록하세요</td></tr>')+'</tbody></table></div>'; }
 function smAllocHtml_(){
   var E=ftE_, C=smCalc_(), P=smProducts_()||{}, L=(__sm.d.alloc||[]).slice().sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
@@ -19915,8 +19916,8 @@ function smOrdXlsx_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러
 function smXlsxCust_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
   var wb=XLSX.utils.book_new(), C=smCalc_(), t0=ftToday_();
   var s=[["사급 소재 보유 현황 (기준일 "+t0+")"],[],["소재 (규격)","단위","입고","사용","반납·조정","보유","할당 합계","할당 잔량","미할당"]];
-  Object.keys(C.S).map(function(k){ return C.S[k]; }).filter(function(e){ return e.in||e.use||e.ret||e.adj||e.alloc; }).sort(function(a,b){ return a.name.localeCompare(b.name); })
-    .forEach(function(e){ s.push([e.name,e.unit,e.in,e.use,e.adj-e.ret,e.stock,e.alloc,Math.max(0,e.allocLeft),Math.max(0,e.free)]); });
+  Object.keys(C.S).map(function(k){ return C.S[k]; }).filter(function(e){ return e.in||e.use||e.ship||e.ret||e.adj||e.alloc; }).sort(function(a,b){ return a.name.localeCompare(b.name); })
+    .forEach(function(e){ s.push([e.name,e.unit,e.in,e.use+e.ship,e.adj-e.ret,e.stock,e.alloc,Math.max(0,e.allocLeft),Math.max(0,e.free)]); });   // 사용 = 사용 + 출고 완료분
   var ws=XLSX.utils.aoa_to_sheet(s); ws["!cols"]=[{wch:30},{wch:6},{wch:8},{wch:8},{wch:10},{wch:8},{wch:10},{wch:10},{wch:8}]; XLSX.utils.book_append_sheet(wb, ws, "보유 현황");
   var a=[["할당일","소재","제품(품번)","ORDER NO.","할당","사용","잔량","근거"]]; (__sm.d.alloc||[]).forEach(function(x){ var c=C.A[x.id]; a.push([x.date,x.mat,x.prod,x.orderNo||"",ftN_(x.qty),c.used,c.left,x.note||""]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a), "할당 내역");
@@ -19925,9 +19926,9 @@ function smXlsxCust_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브�
   XLSX.writeFile(wb, "사급소재_보유현황_고객제출용_"+t0+".xlsx"); }
 function smXlsx_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
   var wb=XLSX.utils.book_new(), C=smCalc_(), P=smProducts_()||{};
-  var s=[["소재","입고","사용","반납·조정","사급 보유","할당 합계","할당 잔량","미할당(사용 불가)"]]; Object.keys(C.S).forEach(function(k){ var e=C.S[k]; s.push([e.name,e.in,e.use,e.adj-e.ret,e.stock,e.alloc,e.allocLeft,e.free]); });
+  var s=[["소재","입고","사용(출고 완료 포함)","반납·조정","사급 보유","할당 합계","할당 잔량","미할당(사용 불가)"]]; Object.keys(C.S).forEach(function(k){ var e=C.S[k]; s.push([e.name,e.in,e.use+e.ship,e.adj-e.ret,e.stock,e.alloc,e.allocLeft,e.free]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s), "재고(고객 제출용)");   // [수정] 고객 제출용엔 구매분 없음
-  var s2=[["소재","사급 입고","사급 사용","반납·조정","사급 보유","구매","구매분 사용","구매 보유","실 보유(내부)"]]; Object.keys(C.S).forEach(function(k){ var e=C.S[k]; s2.push([e.name,e.in,e.use,e.adj-e.ret,e.stock,e.buy,e.buse,e.own,e.real]); });
+  var s2=[["소재","사급 입고","사급 사용","출고 완료(사용 미입력)","반납·조정","사급 보유","구매","구매분 사용","구매 보유","실 보유(내부)"]]; Object.keys(C.S).forEach(function(k){ var e=C.S[k]; s2.push([e.name,e.in,e.use,e.ship,e.adj-e.ret,e.stock,e.buy,e.buse,e.own,e.real]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s2), "재고(내부)");
   var a=[["할당일","소재","제품(품번)","ORDER NO.","할당","사용","잔량","작업 지시일","지시 대상","근거","등록"]]; (__sm.d.alloc||[]).forEach(function(x){ var c=C.A[x.id]; a.push([x.date,x.mat,x.prod,x.orderNo||"",x.qty,c.used,c.left,(x.wo&&x.wo.date)||"미지시",(x.wo&&x.wo.to)||"",x.note||"",x.by||""]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a), "고객 할당");
