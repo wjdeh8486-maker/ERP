@@ -2056,6 +2056,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
       <div class="qnav-panel">
         <div class="nav-item nav-sub" data-view="management"><span class="qnav-i">🔎</span><span class="qnav-t"><b>도번 조회</b><small>주문·진행 + 품목 전체 이력</small></span></div>
         <div class="nav-item nav-sub qnav-merged" style="display:none" data-view="itemhist"><span class="qnav-i">📇</span><span class="qnav-t"><b>품목이력</b><small>도번 하나로 전체 이력</small></span></div>
+        <div class="nav-item nav-sub" data-view="wip" title="반제품 입고·사상·C.P 자동 사용·보유·납기·부족·작업지시"><span class="qnav-i">🧩</span><span class="qnav-t"><b>반제품 관리</b><small>입고·자동 사용·부족·작업지시</small></span></div>
         <div class="nav-item nav-sub" data-view="mnshort"><span class="qnav-i">🧩</span><span class="qnav-t"><b>반제품 현황</b><small>공정재고·미납 비교</small></span></div>
         <div class="nav-item nav-sub" data-view="procflow" title="도번·품명별 생산 공정 흐름"><span class="qnav-i">🧭</span><span class="qnav-t"><b>공정도</b><small>도번·품명별 공정 흐름</small></span></div>
         <div class="nav-item nav-sub" data-view="safety" title="월간 안전교육 자료·참석 서명부·실시 기록 (매월 인쇄해 교육)"><span class="qnav-i">🦺</span><span class="qnav-t"><b>안전교육</b><small>월간 교육자료·서명부·실시 기록</small></span></div>
@@ -2459,6 +2460,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
     <div class="view" id="view-fitting"><div id="ft-root"></div></div>
     <div class="view" id="view-smat"><div id="sm-root"></div></div>
     <div class="view" id="view-dnote"><div id="dn-root"></div></div>
+    <div class="view" id="view-wip"><div id="wp-root" style="padding:16px 20px 40px;"></div></div>
     <div class="view" id="view-board"><div id="bd-root"></div></div>
     <div class="view" id="view-syshealth"><div id="sh-root"></div></div>
     <div class="view" id="view-authadmin"><div id="au-root"></div></div>
@@ -4217,7 +4219,7 @@ function qxLayout_(){
       return false; };
     var views=[].slice.call(document.querySelectorAll(".main-area > .view[id^='view-']"));
     views.forEach(function(view){
-      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="dboard" || v==="safety" || v==="fitting" || v==="smat" || v==="dnote" || v==="procflow" || v==="board" || v==="syshealth" || v==="authadmin" || v==="specdue" || v==="specduelog" || v==="custrev" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
+      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="dboard" || v==="safety" || v==="fitting" || v==="smat" || v==="dnote" || v==="wip" || v==="procflow" || v==="board" || v==="syshealth" || v==="authadmin" || v==="specdue" || v==="specduelog" || v==="custrev" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
       var inf=info(v) || (v==="history"?info("management"):null);
       var tb=document.getElementById("topbar-"+v);
       if(tb){
@@ -5287,6 +5289,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="fitting" && typeof ftShow_==="function"){ ftShow_(); }   // [추가] 사급 피팅
     if(target==="smat" && typeof smShow_==="function"){ smShow_(); }   // [추가] 사급 소재
     if(target==="dnote" && typeof dnShow_==="function"){ dnShow_(); }   // [추가] 도면 NOTES 해석
+    if(target==="wip" && typeof wpShow_==="function"){ wpShow_(); }   // [추가] 반제품 관리
     if(target==="board" && typeof bdRender_==="function"){ bdRender_(); }   // [추가] 게시판
     if(target==="authadmin" && typeof auShow_==="function"){ auShow_(); }   // [추가] 계정·권한
     if(target==="syshealth" && typeof shRender_==="function"){ shRender_(); if(!__sh.tabs && !__sh.busy) shRun_(false); }   // [추가] 시스템 상태
@@ -15258,6 +15261,202 @@ function mailLineState_(row){
   if(L[0].avail===it.nd && qDiff){ row.st="변경"; row.msg="수량 "+L[0].qty+" → "+it.qty; return; }
   row.st="변경"; row.msg="기존 "+sdMD_(L[0].avail)+" → "+sdMD_(it.nd);
 }
+// ===== [추가] 🧩 반제품 관리 (생산 › 반제품 관리) — 사급 소재처럼 입고·사용·보유·납기·부족·작업지시 =====
+//  · 반제품 = 완제품과 같은 도번 (1개 → 1개)
+//  · 입고: 직접 입력 ([📥 입고] 또는 작업지시 [완료 입력])
+//  · 사용: 자동 — MAIN 관리번호의 현재진행공정이 사상(작업시작/작업종료)·C.P가 되면 그 주문수량만큼 사용 (관리번호마다 한 번)
+//          공정을 건너뛰고 검사·출고로 넘어간 주문도, 시작 때 '생산 중'이었던 주문이면 사용으로 잡음
+//  · 시작: [설정]에서 기초 재고(공정재고LIST 값 또는 직접) + 시작일 → 그 시점에 이미 사상 이후인 주문은 사용으로 안 잡음 (기초 재고에 반영된 것)
+//  · 자동 사용을 ✕로 지우면 다시 자동으로 들어오지 않음 (제외 목록)
+var __wp={ d:null, tab:"st", q:"", loaded:false, loading:false, onlyShort:false, open:{} };
+var WP_TX={ "in":"입고", "use":"사용", "adj":"조정", "base":"기초 재고" };
+function wpBlank_(){ return { items:{}, tx:[], wo:[], ign:{}, del:[], cfg:{ kw:"사상,C.P", start:"", pre0:[] }, ts:0 }; }
+function wpId_(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function wpK_(d){ return (typeof insNormDraw_==="function")?insNormDraw_(d):String(d||"").trim().toUpperCase(); }
+function wpOK_(r){ return ftK_(r.orderNo)+"|"+ftK_(r.vendor); }   // 관리번호 키 (같은 ORDER NO.가 PROJECT NO.만 다른 경우 구분)
+var WP_SH={ arrays:["tx","wo"], maps:["items","ign"], unions:[], blobs:[["cfg"]],
+  sort:function(a,b){ return String(a.date).localeCompare(String(b.date)) || ((a.ts||0)-(b.ts||0)); },
+  label:function(f, t, o){ if(f==="tx") return (WP_TX[t.type]||t.type)+(t.auto?" (자동)":"")+" · "+t.date+" · "+t.draw+" "+t.qty+"개"+(t.orderNo?" · "+t.orderNo:"")+(o && ftN_(o.qty)!==ftN_(t.qty)?" (수량 "+o.qty+" → "+t.qty+")":"");
+    if(f==="wo") return "작업지시 "+t.date+" · "+t.draw+" "+t.qty+"개"+(t.to?" · "+t.to:"")+(t.done&&!(o&&o.done)?" · ✅ 완료 "+t.done.qty+"개":"");
+    if(f==="items") return "품목 "+(t.draw||"")+(t.name?" · "+t.name:"");
+    if(f==="ign") return "자동 사용 제외 "+(t.label||t.k||"");
+    return f; },
+  blobLog:{ "cfg":"설정 변경 (자동 사용 공정·시작일)" } };
+var WP_LOGK={ tx:"입고·사용", wo:"작업지시", items:"품목", ign:"자동 사용 제외", cfg:"설정" };
+function wpCache_(){ try{ localStorage.setItem("qmsWpData", JSON.stringify(__wp.d)); }catch(_){} }
+function wpLoad_(cb){ if(__wp.loading) return; __wp.loading=true;
+  try{ var c=JSON.parse(localStorage.getItem("qmsWpData")||"null"); if(c && c.tx) __wp.d=c; }catch(_){}
+  if(!__wp.d) __wp.d=wpBlank_();
+  var fin=function(){ __wp.snap=shClone_(__wp.d); __wp.loaded=true; __wp.loading=false; cb&&cb(); };
+  try{ if(typeof qShareLoad_!=="function"){ fin(); return; } qShareLoad_("wipData", function(v){ if(v && v.tx) shMerge_(__wp.d, v, WP_SH); wpCache_(); fin(); }); }catch(_){ fin(); } }
+function wpSave_(){ shSave_("wipData", { C:WP_SH, get:function(){ return __wp.d; }, snap:function(){ return __wp.snap; }, setSnap:function(x){ __wp.snap=x; }, cache:wpCache_, render:wpRender_ }); }
+var WP_PULL={ C:null, get:function(){ return __wp.d; }, snap:function(){ return __wp.snap; }, setSnap:function(x){ __wp.snap=x; }, cache:function(){ wpCache_(); } };
+function wpPull_(force){ WP_PULL.C=WP_SH; if(!__wp.loaded) return; if(!force && Date.now()-(WP_PULL.pulled||0)<60000) return;
+  shPull_("wipData", WP_PULL, function(){ if(wpAuto_()) wpSave_(); var v=document.getElementById("view-wip"); if(v && v.classList.contains("active") && !document.getElementById("ft-ov")) wpRender_(); }); }
+function wpShow_(){ var go=function(){ if(wpAuto_()) wpSave_(); wpRender_(); };
+  if(!__wp.loaded){ wpRender_(); wpLoad_(function(){ WP_PULL.pulled=Date.now(); go(); }); } else { go(); wpPull_(false); }
+  if(!window.__wpPullT) window.__wpPullT=setInterval(function(){ var v=document.getElementById("view-wip"); if(v && v.classList.contains("active") && !document.hidden) wpPull_(true); }, 120000); }
+// ── 자동 사용 판정
+function wpKw_(){ return String(__wp.d.cfg.kw||"사상,C.P").split(/[,;\/]+/).map(function(x){ return x.replace(/[\s.]/g,"").toUpperCase(); }).filter(Boolean); }
+function wpProc_(no){ try{ return String((typeof getCurrentProcess==="function")?getCurrentProcess(String(no||"").trim()):""); }catch(_){ return ""; } }
+function wpHit_(p, kw){ var s=String(p||"").replace(/[\s.]/g,"").toUpperCase(); return !!s && kw.some(function(k){ return s.indexOf(k)>=0; }); }
+function wpSt_(r){ try{ return String((typeof computeProductStatus==="function")?computeProductStatus(r):"")||""; }catch(_){ return ""; } }
+function wpUsedKeys_(){ var u={}, sm={}; (__wp.d.tx||[]).forEach(function(t){ if(t.type==="use" && t.ok){ sm[t.ok]=(sm[t.ok]||0)+ftN_(t.qty); if(t.cum) u[t.ok]=Math.max(u[t.ok]||0, ftN_(t.cum)); } }); Object.keys(sm).forEach(function(k){ if(!u[k]) u[k]=sm[k]; }); return u; }   // 관리번호(ORDER NO.+PROJECT NO.)별 이미 자동 사용한 수량
+// 시작 시점 기록: 지금 '생산 중'이고 아직 사상·C.P 전인 주문 = 앞으로 반제품을 쓸 주문
+function wpStart_(){ var md=(typeof mainData!=="undefined"&&mainData)||[], kw=wpKw_(), pre=[];
+  md.forEach(function(r){ if(String(r.shipped||"").indexOf("완료")>=0) return; if(!(Number(r.qty)>0)) return; var st=wpSt_(r); if(st!=="생산") return; if(wpHit_(wpProc_(r.orderNo), kw)) return; var k=wpOK_(r); if(pre.indexOf(k)<0) pre.push(k); });
+  return pre; }
+// 새로 사용으로 잡을 주문을 찾아 자동 사용 기록 → 바뀌었으면 true
+function wpAuto_(){ var d=__wp.d, md=(typeof mainData!=="undefined"&&mainData)||[]; if(!d || !d.cfg.start || !md.length) return false;
+  if(typeof processMap!=="undefined" && !Object.keys(processMap||{}).length) return false;   // 생산공정현황이 아직 안 들어옴
+  try{ if(typeof mainStatusMapDirty!=="undefined" && mainStatusMapDirty && typeof computeAllStatuses==="function"){ mainStatusMap=computeAllStatuses(mainData); mainStatusMapDirty=false; } }catch(_){}
+  // [중복 차감 방지]
+  //  ① 관리번호 = ORDER NO.+PROJECT NO. 하나당 한 번만 — 같은 키의 MAIN 줄(선진행·추가 분할)은 수량을 합쳐서
+  //  ② 기록 id = "wa_키_누적수량" → 여러 PC가 동시에 돌려도 같은 id라 합칠 때 하나만 남음
+  //  ③ 이미 사용한 뒤 주문 수량이 늘었을 때만 차이만큼 추가 (줄어든 건 자동으로 되돌리지 않음 — 조정으로)
+  //  ④ ✕로 지운 자동 사용은 제외 목록 → 다시 안 들어옴 · 시작 전에 이미 사상 이후였던 주문은 기초 재고에 포함 → 안 잡음
+  var kw=wpKw_(), used=wpUsedKeys_(), pre={}, items=d.items||{}, add=0, t=ftToday_(), who=ftWho_(), ids={}, G={}, order=[];
+  (d.cfg.pre0||[]).forEach(function(k){ pre[k]=1; });
+  // ⑤ 다른 PC가 옛 MAIN으로 먼저 넣어 같은 관리번호 자동 사용이 겹치면 → 누적 수량이 가장 큰 1건으로 합침
+  var byK={}; (d.tx||[]).forEach(function(x){ if(x.type==="use" && x.auto && x.ok) (byK[x.ok]=byK[x.ok]||[]).push(x); });
+  Object.keys(byK).forEach(function(k){ var L=byK[k]; if(L.length<2) return; var mx=L.reduce(function(m,x){ return Math.max(m, ftN_(x.cum||0)); },0), sum=L.reduce(function(s1,x){ return s1+ftN_(x.qty); },0); if(!mx || sum<=mx) return;
+    var keep=L.filter(function(x){ return ftN_(x.cum)===mx; })[0]; keep.qty=mx; keep.ts2=Date.now(); keep.note=(keep.note||"")+" · 중복 합침"; d.tx=d.tx.filter(function(x){ return !(x.ok===k && x.auto && x.type==="use" && x!==keep); }); add++; });
+  if(add) used=wpUsedKeys_();
+  (d.tx||[]).forEach(function(x){ ids[x.id]=1; });
+  md.forEach(function(r){ var dk=wpK_(r.oldDrawingNo); if(!dk || !items[dk]) return; var q=Number(r.qty)||0; if(q<=0) return; var ok=wpOK_(r); if(d.ign[ok]) return;
+    var g=G[ok]; if(!g){ g=G[ok]={ ok:ok, dk:dk, r:r, q:0, hit:false, p:"", st:"", allPast:true }; order.push(g); } g.q+=q;
+    var p=wpProc_(r.orderNo); if(wpHit_(p, kw)){ g.hit=true; g.p=p; } var st=wpSt_(r); if(!st || st==="생산") g.allPast=false; else g.st=st; });
+  order.forEach(function(g){ var have=used[g.ok]||0; if(have>=g.q) return;
+    var r=g.r, od=String(r.orderDate||"").slice(0,10), isNew=od && od>=d.cfg.start;
+    if(!have){ if(!(pre[g.ok] || isNew)) return; if(!g.hit && !g.allPast) return; }   // 처음 사용: 사상·C.P에 들어갔거나 그 단계를 못 보고 검사·출고로 넘어감
+    var id="wa_"+g.ok.replace(/[^0-9A-Z가-힣_-]/g,"_")+"_"+g.q; if(ids[id]) return;
+    d.tx.push({ id:id, type:"use", auto:true, date:t, draw:items[g.dk].draw||g.dk, qty:g.q-have, cum:g.q, orderNo:String(r.orderNo||"").trim(), pj:String(r.vendor||"").trim(), ok:g.ok, note:have?("주문 수량 늘어남 ("+have+" → "+g.q+")"):(g.hit?("공정 "+g.p):("공정 넘어감 → "+g.st)), by:who||"자동", ts:Date.now() });
+    ids[id]=1; used[g.ok]=g.q; add++; });
+  return add>0; }
+// ── 계산
+function wpCalc_(){ var d=__wp.d, S={}, md=(typeof mainData!=="undefined"&&mainData)||[], used=wpUsedKeys_(), t=ftToday_(), pre0={}; (d.cfg.pre0||[]).forEach(function(k){ pre0[k]=1; });
+  var get=function(k){ var it=(d.items||{})[k]||{}; return S[k]||(S[k]={ k:k, draw:it.draw||k, name:it.name||"", base:0, in:0, use:0, adj:0, dem:0, late:0, due:"", orders:[], wo:0 }); };
+  Object.keys(d.items||{}).forEach(get);
+  (d.tx||[]).forEach(function(x){ if(x.arch) return; var e=get(wpK_(x.draw)), q=ftN_(x.qty); if(x.type==="in") e.in+=q; else if(x.type==="use") e.use+=q; else if(x.type==="adj") e.adj+=q; else if(x.type==="base") e.base+=q; });
+  (d.wo||[]).forEach(function(w){ if(!w.done) get(wpK_(w.draw)).wo+=ftN_(w.qty); });
+  md.forEach(function(r){ var dk=wpK_(r.oldDrawingNo); if(!dk || !S[dk]) return; if(String(r.shipped||"").indexOf("완료")>=0) return; var q=Number(r.qty)||0; if(q<=0) return; if(used[wpOK_(r)]) return;
+    if(d.cfg.start && !pre0[wpOK_(r)] && !(String(r.orderDate||"").slice(0,10)>=d.cfg.start)) return;   // 시작 때 이미 사상 이후였던 주문은 반제품을 다 쓴 것 → 납기 합계에서 뺌
+    var shp=0; try{ shp=Math.max(0, Math.min(q, Number(computeStockPreShip(r))||0)); }catch(_){} var rest=q-shp; if(rest<=0) return; var e=S[dk]; if(!e.name) e.name=r.partName||"";
+    var du=String(r.dueDate||"").slice(0,10); e.dem+=rest; if(du && du<t) e.late+=rest; if(du && (!e.due || du<e.due)) e.due=du; e.orders.push({ no:r.orderNo, pj:r.vendor||"", rest:rest, due:du, p:wpProc_(r.orderNo) }); });
+  Object.keys(S).forEach(function(k){ var e=S[k]; e.have=e.base+e.in-e.use+e.adj; e.lack=e.have-e.dem; });
+  return S; }
+// ── 화면
+function wpRender_(){ var host=document.getElementById("wp-root"); if(!host) return; if(typeof ftStyle_==="function") ftStyle_();
+  if(!host.__bound){ host.__bound=true; host.addEventListener("click", wpClick_); host.addEventListener("keydown", function(e){ if(e.target.id==="wp-q" && e.key==="Enter"){ __wp.q=e.target.value.trim(); wpRender_(); } }); host.addEventListener("change", function(e){ if(e.target.id==="wp-short"){ __wp.onlyShort=e.target.checked; wpRender_(); } }); }
+  if(!__wp.d){ host.innerHTML='<div class="ft-empty">불러오는 중…</div>'; return; }
+  var E=ftE_, nWo=(__wp.d.wo||[]).filter(function(w){ return !w.done; }).length, tabs=[["st","📊 반제품 현황"],["wo","📣 작업지시"+(nWo?' <b style="background:#F79009;color:#fff;border-radius:999px;padding:0 6px;margin-left:2px;">'+nWo+'</b>':'')],["tx","📋 입고·사용 내역"],["set","⚙ 설정·품목"],["log","🕘 변경 이력"]];
+  var h='<div class="ft-head"><div><div class="ft-crumb">생산 › 반제품 관리</div><div class="ft-title">🧩 반제품 관리 <span>재고 생산 → 보유 → 사상·C.P에서 자동 사용</span></div>'
+    +'<div class="ft-sub">입고는 직접(또는 작업지시 완료) · <b>사용은 자동</b>: MAIN 관리번호 공정이 <b>'+E(__wp.d.cfg.kw||"사상,C.P")+'</b>가 되면 그 주문수량만큼 · 모든 PC 공유 · <button type="button" class="ft-btn sm" data-a="wpull">↻ 최신 불러오기</button> <span class="m">'+(WP_PULL.pulled?shSyncTxt_(WP_PULL.pulled)+' 기준':'')+'</span></div></div>'
+    +'<div class="ft-acts"><button type="button" class="ft-btn in" data-a="win">📥 입고</button><button type="button" class="ft-btn" data-a="wwo" style="color:#B54708;border-color:#FEC84B;">📣 작업지시</button><button type="button" class="ft-btn" data-a="wadj">± 조정</button></div></div>'
+    +'<div class="ft-tabs">'+tabs.map(function(t){ return '<button type="button" data-a="wtab" data-t="'+t[0]+'" class="'+(__wp.tab===t[0]?'on':'')+'">'+t[1]+'</button>'; }).join("")+'</div>';
+  if(!__wp.d.cfg.start && __wp.tab!=="set" && __wp.tab!=="log") h+='<div style="margin:0 0 10px;padding:12px 14px;border-radius:10px;background:#EFF8FF;color:#175CD3;font-weight:700;">처음 한 번 [⚙ 설정·품목]에서 <b>관리할 반제품 품목과 기초 재고</b>를 넣고 <b>시작</b>을 누르세요 — 공정재고LIST(📤 데이터 업로드) 값으로 한 번에 넣을 수 있습니다 <button type="button" class="ft-btn sm pri" data-a="wtab" data-t="set">⚙ 설정으로</button></div>';
+  h+= __wp.tab==="wo"?wpWoHtml_():__wp.tab==="tx"?wpTxHtml_():__wp.tab==="set"?wpSetHtml_():__wp.tab==="log"?shLogHtml_(__wp.d, WP_LOGK, "wprest"):wpStHtml_();
+  host.innerHTML=h; }
+function wpStHtml_(){ var E=ftE_, S=wpCalc_(), q=wpK_(__wp.q), L=Object.keys(S).map(function(k){ return S[k]; }).filter(function(e){ return !q || (e.k+" "+String(e.name).toUpperCase()).indexOf(q)>=0 || String(e.name).toUpperCase().indexOf(String(__wp.q).toUpperCase())>=0; });
+  if(__wp.onlyShort) L=L.filter(function(e){ return e.lack<0; });
+  L.sort(function(a,b){ return (a.lack<0?0:1)-(b.lack<0?0:1) || String(a.due||"9999").localeCompare(String(b.due||"9999")) || a.k.localeCompare(b.k); });
+  var tot=function(f){ return L.reduce(function(s1,e){ return s1+f(e); },0); }, nS=L.filter(function(e){ return e.lack<0; }).length;
+  return '<div class="ft-kp"><div><span>품목</span><b>'+L.length+'</b></div><div><span>현재 보유</span><b>'+tot(function(e){ return e.have; })+'</b></div><div><span>납기 합계 (아직 안 쓴 주문)</span><b>'+tot(function(e){ return e.dem; })+'</b></div><div><span>부족 품목</span><b style="color:'+(nS?'#B42318':'#067647')+';">'+nS+'</b></div><div><span>작업지시 중</span><b style="color:#B54708;">'+tot(function(e){ return e.wo; })+'</b></div></div>'
+    +'<div class="ft-tool"><input id="wp-q" type="search" value="'+E(__wp.q)+'" placeholder="🔎 도번·품명" style="min-width:220px;"><button type="button" class="ft-btn sm pri" data-a="wq">검색</button><label class="m" style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="wp-short"'+(__wp.onlyShort?' checked':'')+' style="width:16px;height:16px;margin:0;"> 부족만</label><span style="flex:1"></span><button type="button" class="ft-btn sm" data-a="wxlsx">📥 엑셀</button></div>'
+    +'<div class="m" style="margin:-2px 0 8px;">현재 보유 = 기초 + 입고 − 사용 ± 조정 · <b>납기 합계</b> = MAIN 출고 전 주문 중 아직 사상·C.P에 안 들어간 수량 · <b>부족수</b> = 현재 보유 − 납기 합계 (− 면 재고 생산 필요) · ▸ 누르면 주문별</div>'
+    +'<div class="ft-card"><table class="ft-tb"><thead><tr><th>도번</th><th>품명</th><th>기초</th><th>입고</th><th>사용</th><th>조정</th><th class="hl">현재 보유</th><th>납기 합계</th><th>가장 빠른 납기</th><th class="hl">부족수</th><th>작업지시 중</th><th></th></tr></thead><tbody>'
+    +(L.length?L.map(function(e){ var op=__wp.open[e.k];
+      return '<tr><td><b>'+E(e.draw)+'</b></td><td class="nm s">'+E(e.name)+'</td><td class="n">'+(e.base||'')+'</td><td class="n">'+(e.in||'')+'</td><td class="n">'+(e.use||'')+'</td><td class="n">'+(e.adj||'')+'</td><td class="n hl'+(e.have<0?' neg':'')+'"><b>'+e.have+'</b></td>'
+        +'<td class="n">'+(e.dem?'<b>'+e.dem+'</b><div><button type="button" class="ft-lnk" data-a="wopen" data-k="'+E(e.k)+'">'+(op?'▾':'▸')+' '+e.orders.length+'건</button></div>':'')+'</td><td class="nw">'+(e.due?E(e.due)+'<div>'+ftLateTxt_(e.due)+'</div>':'')+'</td>'
+        +'<td class="n hl'+(e.lack<0?' neg':'')+'" style="color:'+(e.lack<0?'#B42318':'#067647')+';"><b>'+e.lack+'</b></td><td class="n" style="color:#B54708;">'+(e.wo||'')+'</td>'
+        +'<td class="nw"><button type="button" class="ft-btn sm" data-a="wwo" data-k="'+E(e.k)+'" title="이 반제품 재고 생산 작업지시">📣</button><button type="button" class="ft-btn sm" data-a="win" data-k="'+E(e.k)+'" title="입고">📥</button></td></tr>'
+        +(op?'<tr class="ftp-det"><td></td><td colspan="11"><table class="ftp-o"><tr><th>ORDER NO.</th><th>PROJECT NO.</th><th>수량</th><th>납기</th><th>현재 공정</th></tr>'+e.orders.sort(function(a,b){ return String(a.due).localeCompare(String(b.due)); }).map(function(o){ return '<tr><td>'+E(o.no)+'</td><td>'+E(o.pj)+'</td><td class="n">'+o.rest+'</td><td>'+E(o.due)+' '+ftLateTxt_(o.due)+'</td><td>'+E(o.p||"-")+'</td></tr>'; }).join("")+'</table></td></tr>':''); }).join("")
+      :'<tr><td colspan="12" class="ft-empty">관리할 반제품이 없습니다 — [⚙ 설정·품목]에서 넣으세요</td></tr>')+'</tbody></table></div>'; }
+function wpTxHtml_(){ var E=ftE_, T=(__wp.d.tx||[]).slice().reverse(), q=wpK_(__wp.q); if(q) T=T.filter(function(t){ return wpK_(t.draw).indexOf(q)>=0 || ftK_(t.orderNo).indexOf(ftK_(__wp.q))>=0; });
+  return '<div class="ft-tool"><input id="wp-q" type="search" value="'+E(__wp.q)+'" placeholder="🔎 도번·ORDER NO." style="min-width:220px;"><button type="button" class="ft-btn sm pri" data-a="wq">검색</button><span class="m">🤖 = 공정(사상·C.P)으로 자동 들어간 사용 · ✕로 지우면 그 관리번호는 다시 자동으로 안 들어옴</span></div>'
+    +'<div class="ft-card"><table class="ft-tb"><thead><tr><th>일자</th><th>구분</th><th>도번</th><th>수량</th><th>ORDER NO.</th><th>비고</th><th>등록</th><th></th></tr></thead><tbody>'
+    +(T.length?T.slice(0,800).map(function(t){ return '<tr><td class="c">'+E(t.date)+'</td><td><span class="ft-tg '+(t.type==="in"||t.type==="base"?"in":t.type==="use"?"use":"adj")+'">'+(t.auto?'🤖 ':'')+E(WP_TX[t.type]||t.type)+'</span></td><td><b>'+E(t.draw)+'</b></td><td class="n"><b>'+E(t.qty)+'</b></td><td>'+E(t.orderNo||"")+(t.pj?'<div class="m">'+E(t.pj)+'</div>':'')+'</td><td class="nm s">'+E(t.note||"")+'</td><td class="s">'+E(t.by||"")+'</td><td class="nw">'+(t.auto?'':'<button type="button" class="ft-btn sm" data-a="wtedit" data-id="'+E(t.id)+'">✏️</button>')+'<button type="button" class="ft-btn sm del" data-a="wtdel" data-id="'+E(t.id)+'">✕</button></td></tr>'; }).join(""):'<tr><td colspan="8" class="ft-empty">내역이 없습니다</td></tr>')+'</tbody></table></div>'; }
+function wpWoHtml_(){ var E=ftE_, L=(__wp.d.wo||[]).slice().sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); }), open=L.filter(function(w){ return !w.done; }), done=L.filter(function(w){ return w.done; }), S=wpCalc_();
+  var row=function(w){ var e=S[wpK_(w.draw)]||{}; return '<tr'+(w.done?' style="color:#98A2B3;"':'')+'><td class="c">'+E(w.date)+'</td><td><b>'+E(w.draw)+'</b><div class="m">'+E(e.name||"")+'</div></td><td class="n"><b>'+E(w.qty)+'</b></td><td>'+E(w.to||"")+'</td><td class="nm s">'+E(w.note||"")+'</td><td class="s">'+E(w.by||"")+'</td>'
+    +'<td class="nw">'+(w.done?'✅ '+E(w.done.date)+' · '+E(w.done.qty)+'개 입고':'<button type="button" class="ft-btn sm pri" data-a="wwodone" data-id="'+E(w.id)+'">✅ 완료 입력</button>')+'</td><td class="nw"><button type="button" class="ft-btn sm" data-a="wwoprint" data-id="'+E(w.id)+'" title="작업지시서 인쇄">🖨</button>'+(w.done?'':'<button type="button" class="ft-btn sm del" data-a="wwodel" data-id="'+E(w.id)+'">✕</button>')+'</td></tr>'; };
+  var head='<table class="ft-tb"><thead><tr><th>지시일</th><th>도번</th><th>지시 수량</th><th>지시 대상</th><th>메모</th><th>지시자</th><th>완료</th><th></th></tr></thead><tbody>';
+  return '<div class="m" style="margin-bottom:8px;">재고 생산 작업지시 — 현장에서 끝나면 <b>✅ 완료 입력</b>에 만든 수량만 넣으면 그대로 <b>입고</b>됩니다 · 현황에서 📣를 누르면 부족수가 지시 수량으로 들어감</div>'
+    +'<div class="ft-card">'+head+(open.length?open.map(row).join(""):'<tr><td colspan="8" class="ft-empty">진행 중인 작업지시가 없습니다</td></tr>')+'</tbody></table></div>'
+    +(done.length?'<h4 style="margin:14px 0 6px;color:#667085;">완료 '+done.length+'건</h4><div class="ft-card">'+head+done.slice(0,200).map(row).join("")+'</tbody></table></div>':''); }
+function wpSetHtml_(){ var E=ftE_, d=__wp.d, items=Object.keys(d.items||{}).map(function(k){ return d.items[k]; }).sort(function(a,b){ return String(a.draw).localeCompare(String(b.draw)); }), nStock=(typeof __stockData!=="undefined"&&__stockData.map)?Object.keys(__stockData.map).length:0, ig=Object.keys(d.ign||{});
+  return '<div class="ft-card" style="padding:14px;margin-bottom:12px;"><b>1. 자동 사용 공정</b><div class="m">MAIN 관리번호의 현재진행공정에 이 글자가 들어가면 그 주문수량을 사용으로 잡음 (쉼표로 여러 개 · 띄어쓰기·점 무시: C.P = CP)</div>'
+    +'<div class="ft-tool" style="margin-top:6px;"><input id="wp-kw" value="'+E(d.cfg.kw||"사상,C.P")+'" style="width:260px;"><button type="button" class="ft-btn sm pri" data-a="wkw">저장</button></div></div>'
+    +'<div class="ft-card" style="padding:14px;margin-bottom:12px;"><b>2. 관리 품목 · 기초 재고</b> '+(d.cfg.start?'<span style="color:#067647;font-weight:800;">✅ '+E(d.cfg.start)+' 시작 — 이때 생산 중이던 주문 '+(d.cfg.pre0||[]).length+'건부터 자동 사용</span>':'<span style="color:#B54708;font-weight:800;">아직 시작 안 함</span>')
+    +'<div class="m" style="margin:4px 0 8px;">공정재고LIST(📤 데이터 업로드)'+(nStock?' '+nStock+'개 도번'+(__stockData.at?' · '+E(__stockData.at):''):' — 아직 업로드 없음')+' 값을 기초 재고로 넣고 시작합니다. 시작 시점에 이미 사상·C.P 이후인 주문은 기초 재고에 반영된 것으로 보고 사용으로 잡지 않습니다.</div>'
+    +'<div class="ft-tool"><button type="button" class="ft-btn sm pri" data-a="wbase"'+(nStock?'':' disabled')+'>📦 공정재고LIST 값으로 품목·기초 재고 넣고 시작</button><button type="button" class="ft-btn sm" data-a="wstart">▶ 기초 재고 없이 지금부터 시작</button><button type="button" class="ft-btn sm" data-a="witem">＋ 품목 추가</button></div>'
+    +'<table class="ft-tb" style="margin-top:8px;"><thead><tr><th>도번</th><th>품명</th><th></th></tr></thead><tbody>'+(items.length?items.slice(0,600).map(function(it){ return '<tr><td><b>'+E(it.draw)+'</b></td><td class="nm s">'+E(it.name||"")+'</td><td class="nw"><button type="button" class="ft-btn sm del" data-a="widel" data-k="'+E(wpK_(it.draw))+'">✕</button></td></tr>'; }).join(""):'<tr><td colspan="3" class="ft-empty">품목이 없습니다</td></tr>')+'</tbody></table></div>'
+    +(ig.length?'<div class="ft-card" style="padding:14px;"><b>자동 사용 제외 '+ig.length+'건</b> <span class="m">(자동 사용을 ✕로 지운 관리번호 — 다시 자동으로 넣으려면 ↺)</span><div style="margin-top:6px;">'+ig.map(function(k){ return '<span class="ft-tg" style="margin:2px;">'+E(d.ign[k].label||k)+' <button type="button" class="ft-lnk" data-a="wunign" data-k="'+E(k)+'">↺</button></span>'; }).join("")+'</div></div>':''); }
+// ── 입력 창
+function wpTxPop_(type, k0, editId){ var E=ftE_, old=editId?(__wp.d.tx||[]).filter(function(x){ return x.id===editId; })[0]:null; if(old) type=old.type;
+  var st=old?{ date:old.date, draw:old.draw, qty:old.qty, note:old.note||"" }:{ date:ftToday_(), draw:k0?((__wp.d.items[k0]||{}).draw||k0):"", qty:"", note:"" };
+  var ov=ftOv_((old?"✏️ 수정 — ":"")+({ "in":"📥 반제품 입고", "adj":"± 재고 조정 (+ 늘림 / − 줄임)", "base":"기초 재고" }[type]||type), 620), body=ov.querySelector(".sd-pb");
+  body.innerHTML='<datalist id="wp-draws">'+Object.keys(__wp.d.items||{}).map(function(k){ var it=__wp.d.items[k]; return '<option value="'+E(it.draw)+'">'+E(it.name||"")+'</option>'; }).join("")+'</datalist><div class="ft-g"><label>일자<input id="wpt-date" type="date" value="'+E(st.date)+'"></label><label style="grid-column:span 2;">도번<input id="wpt-draw" list="wp-draws" value="'+E(st.draw)+'"></label><label>수량<input id="wpt-qty" type="number" value="'+E(st.qty)+'"></label><label style="grid-column:span 4;">비고<input id="wpt-note" value="'+E(st.note)+'" placeholder="'+(type==="adj"?'예: 실사 차이':'예: 2공장 재고 생산')+'"></label></div>';
+  ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn pri" data-x="wsave">저장</button>';
+  ov.addEventListener("click", function(e){ if(!(e.target.getAttribute && e.target.getAttribute("data-x")==="wsave")) return; var g=function(i){ return String(ov.querySelector(i).value||"").trim(); };
+    var draw=g("#wpt-draw"), q=ftN_(g("#wpt-qty")), dk=wpK_(draw); if(!dk || !q){ alert("도번과 수량을 넣으세요."); return; } if(type!=="adj" && q<0){ alert("수량은 0보다 커야 합니다."); return; }
+    if(!__wp.d.items[dk]){ if(!confirm(draw+" 은(는) 관리 품목에 없습니다. 품목으로 추가하고 저장할까요?")) return; __wp.d.items[dk]={ draw:draw, name:wpNameOf_(dk), ts:0 }; }
+    if(old){ old.date=g("#wpt-date"); old.draw=__wp.d.items[dk].draw; old.qty=q; old.note=g("#wpt-note"); old.ts2=Date.now(); }
+    else __wp.d.tx.push({ id:wpId_("wt"), type:type, date:g("#wpt-date")||ftToday_(), draw:__wp.d.items[dk].draw, qty:q, note:g("#wpt-note"), by:ftWho_(), ts:Date.now() });
+    wpSave_(); ov.remove(); wpRender_(); }); }
+function wpNameOf_(dk){ var md=(typeof mainData!=="undefined"&&mainData)||[]; for(var i=0;i<md.length;i++){ if(wpK_(md[i].oldDrawingNo)===dk) return md[i].partName||""; } return ""; }
+function wpWoPop_(k0){ var E=ftE_, S=wpCalc_(), e=k0?S[k0]:null, ov=ftOv_("📣 반제품 재고 생산 작업지시", 640), body=ov.querySelector(".sd-pb");
+  body.innerHTML='<datalist id="wp-draws">'+Object.keys(__wp.d.items||{}).map(function(k){ var it=__wp.d.items[k]; return '<option value="'+E(it.draw)+'">'+E(it.name||"")+'</option>'; }).join("")+'</datalist>'
+    +(e?'<div class="m" style="padding:8px 10px;background:#F9FAFB;border-radius:8px;margin-bottom:8px;">'+E(e.draw)+' '+E(e.name)+' · 현재 보유 <b>'+e.have+'</b> · 납기 합계 <b>'+e.dem+'</b> · 부족 <b style="color:'+(e.lack<0?'#B42318':'#067647')+';">'+e.lack+'</b>'+(e.wo?' · 이미 지시 중 '+e.wo:'')+'</div>':'')
+    +'<div class="ft-g"><label>지시일<input id="wpw-date" type="date" value="'+ftToday_()+'"></label><label style="grid-column:span 2;">도번<input id="wpw-draw" list="wp-draws" value="'+E(e?e.draw:"")+'"></label><label>지시 수량<input id="wpw-qty" type="number" value="'+(e && e.lack<0?Math.max(0,-e.lack-(e.wo||0)):"")+'"></label><label style="grid-column:span 2;">지시 대상 (현장·담당자)<input id="wpw-to" placeholder="예: 2공장 MCT"></label><label style="grid-column:span 2;">메모<input id="wpw-note" placeholder="예: 11/12까지"></label></div>'
+    +'<label class="m" style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="wpw-print" checked style="width:16px;height:16px;margin:0;"> 저장하면서 작업지시서 인쇄</label>';
+  ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn pri" data-x="wwsave">작업지시 저장</button>';
+  ov.addEventListener("click", function(ev){ if(!(ev.target.getAttribute && ev.target.getAttribute("data-x")==="wwsave")) return; var g=function(i){ return String(ov.querySelector(i).value||"").trim(); };
+    var draw=g("#wpw-draw"), dk=wpK_(draw), q=ftN_(g("#wpw-qty")); if(!dk || q<=0){ alert("도번과 지시 수량을 넣으세요."); return; }
+    if(!__wp.d.items[dk]) __wp.d.items[dk]={ draw:draw, name:wpNameOf_(dk), ts:0 };
+    var w={ id:wpId_("ww"), date:g("#wpw-date")||ftToday_(), draw:__wp.d.items[dk].draw, qty:q, to:g("#wpw-to"), note:g("#wpw-note"), by:ftWho_(), ts:Date.now() };
+    __wp.d.wo.push(w); var pr=ov.querySelector("#wpw-print").checked; wpSave_(); ov.remove(); __wp.tab="wo"; wpRender_(); if(pr) wpWoPrint_(w); }); }
+function wpWoPrint_(w){ var E=ftE_, S=wpCalc_(), e=S[wpK_(w.draw)]||{}, it=__wp.d.items[wpK_(w.draw)]||{};
+  var one='<div class="half"><span class="cp">@@CP@@</span><h1>작업지시서</h1><div class="warn">반제품 재고 생산 — 완료 후 만든 수량을 품질팀(QMS 반제품 관리)에 알려 주세요</div>'
+    +'<table><tr><th>지시일</th><td>'+E(w.date)+'</td><th>지시 대상</th><td>'+E(w.to||"")+'</td></tr><tr><th>도번</th><td class="big">'+E(w.draw)+'</td><th>지시 수량</th><td class="big">'+E(w.qty)+' 개</td></tr>'
+    +'<tr><th>품명</th><td colspan="3">'+E(it.name||e.name||"")+'</td></tr><tr><th>현재 보유</th><td>'+(e.have!=null?e.have:"")+'</td><th>납기 합계</th><td>'+(e.dem!=null?e.dem:"")+(e.due?' (가장 빠른 납기 '+E(e.due)+')':'')+'</td></tr>'
+    +'<tr><th>메모</th><td colspan="3" style="height:9mm;">'+E(w.note||"")+'</td></tr></table>'
+    +'<table class="sg"><tr><th>지시자</th><th>작업자 확인</th><th>완료 수량</th><th>완료일</th></tr><tr><td>'+E(w.by||"")+'</td><td></td><td></td><td></td></tr></table></div>';
+  var html='<!doctype html><html><head><meta charset="utf-8"><title>반제품 작업지시서</title><style>@page{ size:A4 portrait; margin:8mm 12mm; } *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; } body{ font-family:"Malgun Gothic",sans-serif; font-size:10pt; margin:0; color:#111; }'
+    +'.half{ height:136mm; overflow:hidden; position:relative; padding-top:1mm; } .cut{ border-top:0.8pt dashed #667085; margin:2mm 0 3mm; position:relative; height:0; } .cut span{ position:absolute; left:50%; top:-2.2mm; transform:translateX(-50%); background:#fff; padding:0 3mm; font-size:7.5pt; color:#667085; }'
+    +'.cp{ position:absolute; right:0; top:1mm; border:1pt solid #344054; border-radius:1.5mm; padding:0.6mm 3mm; font-size:9pt; font-weight:800; } h1{ text-align:center; font-size:16pt; letter-spacing:3mm; margin:0 0 2mm; } table{ width:100%; border-collapse:collapse; margin-bottom:2.5mm; } td,th{ border:0.7pt solid #333; padding:1.6mm 2.5mm; } th{ background:#E3E8EF; width:28mm; text-align:center; white-space:nowrap; } .big{ font-size:14pt; font-weight:900; } .warn{ border:1.1pt solid #175CD3; color:#175CD3; font-weight:800; padding:1.5mm; margin-bottom:2mm; text-align:center; font-size:9pt; } .sg td{ height:14mm; text-align:center; } .sg th{ width:auto; }</style></head><body>'
+    +one.replace('@@CP@@','현장용')+'<div class="cut"><span>✂ 자르는 선</span></div>'+one.replace('@@CP@@','보관용')+'</body></html>';
+  var wn=(typeof qmsPrintWin_==="function")?qmsPrintWin_():window.open("","_blank"); if(!wn){ alert("인쇄 창을 열 수 없습니다."); return; } wn.document.write(html); wn.document.close(); setTimeout(function(){ try{ wn.focus(); wn.print(); }catch(_){} }, 300); }
+function wpXlsx_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; } var S=wpCalc_(), a=[["도번","품명","기초","입고","사용","조정","현재 보유","납기 합계","가장 빠른 납기","부족수","작업지시 중"]];
+  Object.keys(S).sort().forEach(function(k){ var e=S[k]; a.push([e.draw,e.name,e.base,e.in,e.use,e.adj,e.have,e.dem,e.due,e.lack,e.wo]); });
+  var t=[["일자","구분","자동","도번","수량","ORDER NO.","PROJECT NO.","비고","등록"]]; (__wp.d.tx||[]).forEach(function(x){ t.push([x.date,WP_TX[x.type]||x.type,x.auto?"자동":"",x.draw,x.qty,x.orderNo||"",x.pj||"",x.note||"",x.by||""]); });
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a), "반제품 현황"); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(t), "입고·사용 내역"); XLSX.writeFile(wb, "반제품관리_"+ftToday_()+".xlsx"); }
+// ── 동작
+function wpClick_(ev){ var a=ev.target.closest && ev.target.closest("[data-a]"); if(!a) return; var k=a.getAttribute("data-a"), id=a.getAttribute("data-id"), kk=a.getAttribute("data-k")||"", d=__wp.d;
+  if(k==="wtab"){ __wp.tab=a.getAttribute("data-t"); wpRender_(); return; }
+  if(k==="wpull"){ wpPull_(true); return; }
+  if(k==="wq"){ var qi=document.getElementById("wp-q"); __wp.q=qi?qi.value.trim():""; wpRender_(); return; }
+  if(k==="wopen"){ __wp.open[kk]=!__wp.open[kk]; wpRender_(); return; }
+  if(k==="win") return wpTxPop_("in", kk); if(k==="wadj") return wpTxPop_("adj", kk); if(k==="wwo") return wpWoPop_(kk); if(k==="wxlsx") return wpXlsx_();
+  if(k==="wtedit") return wpTxPop_(null, "", id);
+  if(k==="wtdel"){ var t=(d.tx||[]).filter(function(x){ return x.id===id; })[0]; if(!t) return; if(!confirm((t.auto?"자동 사용 "+t.orderNo+" ("+t.qty+"개)을 지울까요?\n이 관리번호는 다시 자동으로 들어오지 않습니다.":"이 내역을 지울까요?"))) return;
+    if(t.auto && t.ok) d.ign[t.ok]={ k:t.ok, label:t.orderNo+(t.pj?" "+t.pj:"")+" · "+t.draw, ts:Date.now() }; d.tx=d.tx.filter(function(x){ return x.id!==id; }); wpSave_(); wpRender_(); return; }
+  if(k==="wunign"){ delete d.ign[kk]; if(wpAuto_()){} wpSave_(); wpRender_(); return; }
+  if(k==="wwodone"){ var w=(d.wo||[]).filter(function(x){ return x.id===id; })[0]; if(!w) return; var qs=prompt(w.draw+" 작업지시 "+w.qty+"개 — 실제로 만든 수량 (이 수량이 입고됩니다)", w.qty); if(qs===null) return; var q=ftN_(qs); if(q<0){ alert("수량을 확인하세요."); return; }
+    var dt=ftToday_(); w.done={ date:dt, qty:q, by:ftWho_() }; w.ts2=Date.now(); if(q>0) d.tx.push({ id:wpId_("wt"), type:"in", date:dt, draw:w.draw, qty:q, woId:w.id, note:"작업지시 완료 ("+w.date+(w.to?" · "+w.to:"")+")", by:ftWho_(), ts:Date.now() }); wpSave_(); wpRender_(); return; }
+  if(k==="wwoprint"){ var w2=(d.wo||[]).filter(function(x){ return x.id===id; })[0]; if(w2) wpWoPrint_(w2); return; }
+  if(k==="wwodel"){ if(!confirm("이 작업지시를 지울까요?")) return; d.wo=d.wo.filter(function(x){ return x.id!==id; }); wpSave_(); wpRender_(); return; }
+  if(k==="wkw"){ var v=String((document.getElementById("wp-kw")||{}).value||"").trim(); if(!v){ alert("공정 이름을 넣으세요."); return; } d.cfg.kw=v; wpSave_(); wpRender_(); return; }
+  if(k==="witem"){ var dr=prompt("반제품 도번 (완제품과 같은 도번)"); if(!dr) return; var dk=wpK_(dr); if(!dk) return; d.items[dk]={ draw:dr.trim(), name:wpNameOf_(dk), ts:0 }; wpSave_(); wpRender_(); return; }
+  if(k==="widel"){ if(!confirm((d.items[kk]||{}).draw+" 을(를) 관리 품목에서 뺄까요? (내역은 그대로 남음)")) return; delete d.items[kk]; wpSave_(); wpRender_(); return; }
+  if(k==="wstart" || k==="wbase"){ var md=(typeof mainData!=="undefined"&&mainData)||[]; if(!md.length){ alert("MAIN 데이터가 아직 없습니다 — MAIN 화면을 한 번 연 뒤 다시 누르세요"); return; }
+    if(typeof processMap!=="undefined" && !Object.keys(processMap||{}).length){ alert("생산공정현황(현재진행공정)이 아직 안 들어왔습니다 — 잠시 후 다시 누르세요"); return; }
+    var map=(k==="wbase" && typeof __stockData!=="undefined" && __stockData.map)?__stockData.map:{}, n=Object.keys(map).length;
+    if(!confirm((d.cfg.start?"이미 "+d.cfg.start+"에 시작했습니다. 다시 시작하면 '시작 시점 생산 중 주문' 목록을 새로 잡습니다.\n\n":"")+(k==="wbase"?"공정재고LIST "+n+"개 도번을 관리 품목으로 넣고 그 보유수를 기초 재고로 넣습니다.\n":"")+"오늘부터 사상·C.P 자동 사용을 시작할까요?")) return;
+    var t=ftToday_(), who=ftWho_();
+    if(k==="wbase" && d.cfg.start){ var nowTs=Date.now(); d.tx.forEach(function(x){ if(!x.arch && map[wpK_(x.draw)]!=null){ x.arch=t; x.ts2=nowTs; } }); }   // [중복 방지] 다시 시작: 새 공정재고 값에 이미 반영된 예전 입고·사용은 보관 (계산 제외 · 사용 기록은 남아 다시 차감 안 됨)
+    if(k==="wbase"){ Object.keys(map).forEach(function(dk){ var q=ftN_(map[dk]); if(!d.items[dk]) d.items[dk]={ draw:dk, name:wpNameOf_(dk), ts:0 }; if(q) d.tx.push({ id:wpId_("wb"), type:"base", date:t, draw:dk, qty:q, note:"공정재고LIST "+(__stockData.at||""), by:who, ts:Date.now() }); }); }
+    d.cfg.start=t; d.cfg.pre0=wpStart_(); wpSave_(); __wp.tab="st"; wpRender_(); alert("시작했습니다 — 지금 생산 중인 주문 "+d.cfg.pre0.length+"건이 사상·C.P에 들어가면 자동으로 사용 처리됩니다."); return; }
+  if(k==="wprest"){ if(!confirm("지운 자료를 되살릴까요?")) return; if(shRestore_(d, id)){ wpSave_(); wpRender_(); } return; } }
 // ===== [추가] 도면 NOTES 해석 — 도면 PDF(또는 사진)의 NOTES(주기)를 글자 인식(OCR)해 한글로 풀어 줌 =====
 //  · 도면 글자가 선(벡터)으로 그려진 PDF가 많아 글자 추출이 안 됨 → 화면에 그린 뒤 OCR (tesseract.js, 처음 한 번 약 5MB 내려받음)
 //  · 해석 순서: ① 표준 문구(도면에 자주 나오는 문장, 사람이 확인한 번역) ② 자동 번역(GAS mode=translate → 구글 번역) ③ 용어 풀이는 항상 표시
