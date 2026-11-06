@@ -2935,9 +2935,9 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
     <style>
       /* [추가] 일정 달력 전체화면 (금일 납품현황판처럼 모니터 고정용) */
       #view-sched:fullscreen{ background:#fff; overflow:auto; padding:12px 16px; }
-      #view-sched:fullscreen .sched-day{ min-height:calc((100vh - 150px) / 6) !important; }
-      #view-sched:fullscreen .sched-chip{ font-size:13px !important; line-height:1.45 !important; }
-      #view-sched:fullscreen .sched-day > div:first-child{ font-size:15px !important; }
+      #view-sched:fullscreen .sched-grid{ --sched-h:calc((100vh - 185px) / var(--sched-w,6)) !important; --sched-fs:16px !important; }
+      #view-sched:fullscreen .sched-chip{ line-height:1.45 !important; }
+      #view-sched:fullscreen .sched-day > div:first-child{ font-size:16px !important; }
     </style>
     <!-- ===================== 검사 일보 VIEW ===================== -->
     <style>
@@ -33127,9 +33127,11 @@ function schedRender(){
     + '<button type="button" class="sched-nav-in" data-nav="today" style="height:32px;padding:0 12px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;font-weight:700;font-size:12px;">오늘</button>'
     + '<button type="button" class="sched-nav-in" data-nav="full" title="'+(schedIsFull_()?'전체화면 끝내기 (Esc)':'전체 화면 (모니터 고정용 · 5분마다 자동 새로고침)')+'" style="height:32px;padding:0 12px;border:1px solid #C9D3E0;border-radius:8px;background:#fff;cursor:pointer;font-weight:700;font-size:12px;">'+(schedIsFull_()?'✕ 전체화면 끝':'⛶ 전체화면')+'</button>'
     + '</div>';
-  html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">';
+  // [수정] 토·일은 좁게, 월~금은 넓게 · 칸 높이는 화면 남는 만큼 채움(주 수 기준) → 글씨 크게
+  var __wk=Math.ceil((first+dim)/7);
+  html+='<div class="sched-grid" style="display:grid;grid-template-columns:minmax(0,.6fr) repeat(5,minmax(0,1.36fr)) minmax(0,.6fr);gap:4px;--sched-w:'+__wk+';--sched-h:max(104px, calc((100vh - 360px) / '+__wk+'));--sched-fs:12px;">';
   dows.forEach(function(d,i){ html+='<div style="text-align:center;font-weight:700;font-size:12px;padding:4px 0;color:'+(i===0?"#C0392B":(i===6?"#0B5CAB":"#5A6478"))+';">'+d+'</div>'; });
-  for(var b=0;b<first;b++){ html+='<div style="min-height:104px;background:#FAFBFC;border-radius:8px;"></div>'; }
+  for(var b=0;b<first;b++){ html+='<div style="min-height:var(--sched-h,104px);background:#FAFBFC;border-radius:8px;"></div>'; }
   for(var day=1;day<=dim;day++){
     var evs=byDay[day]||[];
     var dow=(first+day-1)%7;
@@ -33137,9 +33139,9 @@ function schedRender(){
     var dateStr=y+"-"+String(m+1).padStart(2,"0")+"-"+String(day).padStart(2,"0");
     var hol=(showHol && typeof SCHED_HOLIDAYS!=="undefined")?(SCHED_HOLIDAYS[dateStr]||""):"";
     var numColor=hol?"#C0392B":(dow===0?"#C0392B":(dow===6?"#0B5CAB":"#26324A"));
-    html+='<div class="sched-day" data-date="'+dateStr+'" style="min-height:104px;border:1px solid #EEF1F5;border-radius:8px;padding:4px;cursor:pointer;'+(isToday?"outline:2px solid #0B5CAB;background:#F5FAFF;":(hol?"background:#FEF2F2;":""))+'">';
-    html+='<div style="font-size:12px;font-weight:700;color:'+numColor+';margin-bottom:2px;">'+day+(isToday?' <span style="font-size:9px;color:#0B5CAB;">오늘</span>':'')+'</div>';
-    if(hol){ html+='<div class="sched-chip" title="'+schedEsc(hol)+'" style="font-size:10.5px;line-height:1.35;padding:1px 5px;margin-bottom:2px;border-radius:5px;background:#FDE2E2;color:#B3261E;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🎌 '+schedEsc(hol)+'</div>'; }
+    html+='<div class="sched-day" data-date="'+dateStr+'" style="min-height:var(--sched-h,104px);border:1px solid #EEF1F5;border-radius:8px;padding:4px;cursor:pointer;'+(isToday?"outline:2px solid #0B5CAB;background:#F5FAFF;":(hol?"background:#FEF2F2;":""))+'">';
+    html+='<div style="font-size:13px;font-weight:700;color:'+numColor+';margin-bottom:2px;">'+day+(isToday?' <span style="font-size:9px;color:#0B5CAB;">오늘</span>':'')+'</div>';
+    if(hol){ html+='<div class="sched-chip" title="'+schedEsc(hol)+'" style="font-size:var(--sched-fs,12px);line-height:1.35;padding:1px 5px;margin-bottom:2px;border-radius:5px;background:#FDE2E2;color:#B3261E;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🎌 '+schedEsc(hol)+'</div>'; }
     var __cap=schedIsFull_()?10:5;
     evs.slice(0,__cap).forEach(function(ev){
       var attrs=''; var clickable=false;
@@ -33154,11 +33156,11 @@ function schedRender(){
       if((isInsp||isDue) && proj){
         var _dest = isInsp ? "insplist" : "main";
         var _title = isInsp ? "검수LIST 보기" : "MAIN 대시보드 보기";
-        html+='<div class="sched-chip sched-insp" data-proj="'+schedEsc(proj)+'" data-dest="'+_dest+'" data-eid="'+schedEsc(ev.eid)+'" title="클릭: '+_title+' · ✏️: 수정" style="display:flex;align-items:center;gap:3px;font-size:10.5px;line-height:1.35;padding:1px 3px 1px 5px;margin-bottom:2px;border-radius:5px;background:'+ev.bg+';color:'+ev.color+';overflow:hidden;white-space:nowrap;cursor:pointer;">'
+        html+='<div class="sched-chip sched-insp" data-proj="'+schedEsc(proj)+'" data-dest="'+_dest+'" data-eid="'+schedEsc(ev.eid)+'" title="클릭: '+_title+' · ✏️: 수정" style="display:flex;align-items:center;gap:3px;font-size:var(--sched-fs,12px);line-height:1.35;padding:1px 3px 1px 5px;margin-bottom:2px;border-radius:5px;background:'+ev.bg+';color:'+ev.color+';overflow:hidden;white-space:nowrap;cursor:pointer;">'
           +'<span class="sched-insp-text" style="flex:1;overflow:hidden;text-overflow:ellipsis;">'+schedEsc(ev.label)+'</span>'
           +'<span class="sched-insp-edit" data-eid="'+schedEsc(ev.eid)+'" title="수정" style="flex-shrink:0;cursor:pointer;padding:0 2px;opacity:0.75;">✏️</span></div>';
       } else {
-        html+='<div class="sched-chip"'+attrs+' title="'+schedEsc(ev.full||ev.label)+'" style="font-size:10.5px;line-height:1.35;padding:1px 5px;margin-bottom:2px;border-radius:5px;background:'+ev.bg+';color:'+ev.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(clickable?"cursor:pointer;":"")+'">'+schedEsc(ev.label)+'</div>';
+        html+='<div class="sched-chip"'+attrs+' title="'+schedEsc(ev.full||ev.label)+'" style="font-size:var(--sched-fs,12px);line-height:1.35;padding:1px 5px;margin-bottom:2px;border-radius:5px;background:'+ev.bg+';color:'+ev.color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(clickable?"cursor:pointer;":"")+'">'+schedEsc(ev.label)+'</div>';
       }
     });
     if(evs.length>__cap) html+='<div style="font-size:10px;color:#8A93A6;">+'+(evs.length-__cap)+'건 더</div>';
