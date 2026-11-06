@@ -30982,11 +30982,38 @@ function insSheetAutoLoad_(type){
   var badge=document.getElementById("insrep-srcBadge");
   insReadTypeFromSheet_(type, function(res){
     if(!res || !res.filtered){ if(badge && type===insType){ badge.textContent="출처: 기존(blob·폴백)"; badge.style.background="#8A93A6"; } try{ insCloudAutoLoad(); }catch(_){}; return; }
+    insHealResolved_(type, res, function(){
     insState[type].rows = insEnsureIds_(res.filtered);
     window.__insEditedAt=Date.now();
     try{ insSavedSigSet_(type); }catch(_){}
     if(type===insType){ if(typeof insRender==="function") insRender(); if(badge){ badge.textContent="출처: 시트 ("+res.filtered.length+"행 · 30일+미처리)"; badge.style.background="#1E7A46"; } }
+    });
   });
+}
+/* [추가] 조치 완료가 되살아나는 문제 방지 — 시트에서 불러온 '미조치' 행이라도
+   같은 행(_id) 또는 같은 검사건(검사일·도번·S/N·검사수)이 시트·공유본 어딘가에 '조치 완료'로 있으면 완료로 맞춤
+   (시트 저장 누락·중복 행 때문에 다음 날 미조치로 다시 나오던 것) → 맞춘 행은 시트에도 바로 고쳐 씀 */
+function insHealResolved_(type, res, cb){
+  var done=false, fin=function(blobRows){ if(done) return; done=true;
+    try{
+      var key=function(r){ return [String(r.insDate||"").slice(0,10), insNormDraw_(r.draw), String(r.sn||"").replace(/\s+/g,""), Number(r.insCnt)||0].join("|"); };
+      var byId={}, byKey={}, add=function(r){ if(!r || !String(r.actDate||"").trim()) return; if(r._id && !r.__genId) byId[r._id]=r; byKey[key(r)]=r; };
+      (res.all||[]).forEach(add); (blobRows||[]).forEach(add);
+      var healed=[], today=new Date().toISOString().slice(0,10);
+      (res.all||[]).forEach(function(r){ if(!r || String(r.actDate||"").trim() || !insRowDefect_(type,r)) return;
+        var m=(r._id && byId[r._id]) || byKey[key(r)]; if(!m) return;
+        r.actDate=String(m.actDate).trim(); if(!String(r.act||"").trim() && m.act) r.act=m.act; healed.push(r); });
+      if(healed.length){
+        res.filtered=res.filtered.filter(function(r){ if(healed.indexOf(r)<0) return true; var dd=insDaysBetween_(r.insDate, today); return (dd!=="" && dd>=0 && dd<=30); });
+        try{ insSheetUpsertRows_(type, healed); }catch(_){}
+        try{ console.log("[검사일보] 조치완료 복구", type, healed.length+"행", healed.map(function(r){ return r.draw+" "+r.insDate; })); }catch(_){}
+      }
+    }catch(e){}
+    cb(); };
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():""; if(!url){ fin([]); return; }
+  setTimeout(function(){ fin([]); }, 8000);
+  fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(type)+"&_t="+Date.now(),{cache:"no-store"}).then(function(r){ return r.json(); })
+    .then(function(o){ var rows=[]; try{ var j=JSON.parse(o.json||"{}"); if(Array.isArray(j.rows)) rows=j.rows; }catch(_){} fin(rows); }).catch(function(){ fin([]); });
 }
 window.insVerifySheetRead_=function(type){
   type=type||insType;
