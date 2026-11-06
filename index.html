@@ -32995,12 +32995,17 @@ function schedEsc(t){ return docmasterEsc(t); }
 function schedChk(id){ var e=document.getElementById(id); return e? e.checked : true; }
 function schedCatOf(text){
   var t=String(text||"");
-  if(t.indexOf("검수")>=0) return {key:"검수",color:"#ffffff",bg:"#2563eb"};
+  // [수정] 검수는 품목 계열별 색 (BL=보라 · QXP=청록 · B0=주황 · 그 외=파랑), 납기는 진회색으로 검수와 구분
+  if(t.indexOf("검수")>=0){ var u=t.replace(/^\s+/,"").toUpperCase();
+    if(u.indexOf("BL")===0) return {key:"검수",sub:"BL",color:"#ffffff",bg:"#7c3aed"};
+    if(u.indexOf("QXP")===0) return {key:"검수",sub:"QXP",color:"#ffffff",bg:"#0891b2"};
+    if(u.indexOf("B0")===0) return {key:"검수",sub:"B0",color:"#ffffff",bg:"#ea580c"};
+    return {key:"검수",color:"#ffffff",bg:"#2563eb"}; }
   if(t.indexOf("연차")>=0) return {key:"연차",color:"#166534",bg:"#dcfce7"};
   if(t.indexOf("반차")>=0) return {key:"반차",color:"#854d0e",bg:"#fef9c3"};
   if(t.indexOf("훈련")>=0||t.indexOf("교육")>=0) return {key:"교육",color:"#3730a3",bg:"#e0e7ff"};
   if(t.indexOf("이슈")>=0) return {key:"이슈",color:"#ffffff",bg:"#ef4444"};
-  if(t.indexOf("납기")>=0||t.indexOf("납품")>=0) return {key:"납기",color:"#ffffff",bg:"#2563eb"};
+  if(t.indexOf("납기")>=0||t.indexOf("납품")>=0) return {key:"납기",color:"#ffffff",bg:"#475569"};
   return {key:"기타",color:"#334155",bg:"#eef2f7"};
 }
 
@@ -33148,7 +33153,8 @@ function schedRender(){
     html+='</div>';
   }
   html+='</div>';
-  html+='<div style="margin-top:8px;font-size:11px;color:var(--text-mute);">빈 날짜 클릭=일정 추가 · 공유일정 클릭=수정/삭제 · 📦ERP납기 클릭=전일에 출장검수 자동 등록. 🔧교정은 계측기 데이터에서 자동 표시.</div>';
+  html+='<div style="margin-top:8px;font-size:11px;color:var(--text-mute);">빈 날짜 클릭=일정 추가 · 공유일정 클릭=수정/삭제 · 📦ERP납기 클릭=전일에 출장검수 자동 등록. 🔧교정은 계측기 데이터에서 자동 표시.</div>'
+    +'<div style="margin-top:4px;font-size:11px;color:var(--text-mute);display:flex;gap:10px;flex-wrap:wrap;align-items:center;">색상: '+[["#7c3aed","BL 검수"],["#0891b2","QXP 검수"],["#ea580c","B0 검수"],["#2563eb","기타 검수"],["#475569","납기"]].map(function(c){ return '<span style="display:inline-flex;align-items:center;gap:4px;"><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:'+c[0]+';"></i>'+c[1]+'</span>'; }).join("")+'</div>';
   html+='</div>';
   el.innerHTML=html;
   schedSetNote(null);
@@ -33172,7 +33178,7 @@ function schedOpenForm(editId, presetDate, presetText){
     + fld("날짜 <span style=\'color:#C0392B\'>*</span>",'<input id="sc-f-date" type="date" value="'+vDate+'" style="'+inp+'">')
     + '<div><div style="font-size:12.5px;color:#5A6478;margin-bottom:4px;">빠른 입력 (내용에 추가됩니다)</div><div style="display:flex;gap:5px;flex-wrap:wrap;">'+tagBtns+'</div></div>'
     + fld("내용 <span style=\'color:#C0392B\'>*</span>",'<textarea id="sc-f-text" style="'+inp+'height:70px;resize:vertical;" placeholder="예: 홍길동 연차 / 개인사정   또는   QXP831248 검수/26-98 챔버-리드">'+schedEsc(vText)+'</textarea>')
-    + '<div style="font-size:11px;color:#8A93A6;">※ 내용에 <b>검수</b>=파랑, <b>연차</b>=초록, <b>반차</b>=노랑, <b>이슈</b>=빨강, <b>납기</b>=파랑 으로 자동 색상. (기존 달력과 동일)</div>'
+    + '<div style="font-size:11px;color:#8A93A6;">※ 내용에 <b>검수</b>=BL 보라·QXP 청록·B0 주황·그 외 파랑, <b>납기</b>=회색, <b>연차</b>=초록, <b>반차</b>=노랑, <b>이슈</b>=빨강 으로 자동 색상.</div>'
     + '<div id="sc-f-err" style="color:#C0392B;font-size:12.5px;min-height:16px;"></div>'
     + '<div style="display:flex;justify-content:space-between;gap:8px;">'
     +   '<div>'+(editing?'<button type="button" id="sc-f-del" style="padding:9px 14px;border:1px solid #E4B4B4;border-radius:8px;background:#fff;color:#C0392B;font-weight:700;cursor:pointer;">🗑️ 삭제</button>':'')+'</div>'
