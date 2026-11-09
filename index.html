@@ -19670,7 +19670,7 @@ function ftTxEdit_(id){
     body.innerHTML=specs+'<div class="ft-g"><label>일자<input id="fte-date" type="date" value="'+E(st.date)+'"></label><label style="grid-column:span 3;">비고<input id="fte-note" value="'+E(st.note)+'"></label></div>'
       +'<table class="ft-tb"><thead><tr><th>규격</th><th>품명</th><th>수량</th>'+(isUse?'<th>업체자재 사용</th>':'')+'<th></th></tr></thead><tbody>'
       +st.lines.map(function(l,i){ var it=__ft.d.items[ftK_(l.spec)]||{}; return '<tr><td><input class="fte-s" data-i="'+i+'" list="fte-specs" value="'+E(l.spec)+'"></td><td class="nm">'+E(it.name||"")+'</td><td><input class="fte-q" data-i="'+i+'" type="number" value="'+E(l.qty)+'" style="width:100px;"></td>'+(isUse?'<td><input class="fte-o" data-i="'+i+'" type="number" min="0" value="'+E(l.own||0)+'" style="width:90px;color:#6941C6;"></td>':'')+'<td><button type="button" class="ft-btn sm del" data-x="erm" data-i="'+i+'">✕</button></td></tr>'; }).join("")
-      +'</tbody><tfoot><tr><th colspan="2">합계 '+st.lines.length+'종</th><th id="fte-sum">'+sum+'</th>'+(isUse?'<th></th>':'')+'<th></th></tr></tfoot></table><button type="button" class="ft-btn sm" data-x="eadd" style="margin-top:6px;">＋ 규격 추가</button>'
+      +'</tbody><tfoot><tr><th colspan="2">합계 '+st.lines.length+'종</th><th id="fte-sum">'+sum+'</th>'+(isUse?'<th></th>':'')+'<th></th></tr></tfoot></table><button type="button" class="ft-btn sm" data-x="eadd" style="margin-top:6px;">＋ 규격 추가</button>'+(isUse?' <button type="button" class="ft-btn sm" data-x="ebom" style="margin-top:6px;" title="제품 BOM에는 있는데 이 사용 내역에 빠진 피팅을 업체자재 사용으로 채웁니다">🧩 BOM으로 빠진 피팅 채우기 (업체자재)</button>':'')
       +'<div class="m" style="margin-top:8px;">수량을 0으로 하거나 ✕로 지우면 그 규격은 빠집니다 · 저장하면 재고가 바로 다시 계산됩니다</div>';
     body.querySelectorAll(".fte-s").forEach(function(x){ x.addEventListener("change", function(){ st.lines[+x.getAttribute("data-i")].spec=x.value.trim(); draw(); }); });
     body.querySelectorAll(".fte-q").forEach(function(x){ x.addEventListener("input", function(){ st.lines[+x.getAttribute("data-i")].qty=x.value; var sm=body.querySelector("#fte-sum"); if(sm) sm.textContent=st.lines.reduce(function(s2,l){ return s2+ftN_(l.qty); },0); }); });
@@ -19680,12 +19680,22 @@ function ftTxEdit_(id){
   draw(); ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn pri" data-x="esave">수정 저장</button>';
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x"); if(!x) return;
     if(x==="eadd"){ st.lines.push({ spec:"", qty:"", own:0 }); draw(); return; }
+    // [추가] 예전에 일부 피팅만 넣은 사용 내역 → 제품 BOM 기준으로 빠진 피팅을 '업체자재 사용'으로 채움 (인계 안 한 피팅 = 용접업체 자기 피팅)
+    if(x==="ebom"){ var pr=(t.prods||[]).filter(function(p){ return p.prod && ftN_(p.qty)>0; });
+      if(!pr.length){ var a=prompt("이 사용 내역의 제품 품목코드와 수량을 입력하세요 (예: 61180-00 32)",""); if(!a) return; var mm=String(a).trim().split(/[\s,×x*]+/); if(mm.length<2 || !(ftN_(mm[1])>0)){ alert("예: 61180-00 32 처럼 품목코드와 수량을 입력해 주세요."); return; } pr=[{ prod:mm[0], qty:ftN_(mm[1]) }]; }
+      var c=ftBomCalc_(pr); if(c.miss.length){ alert("BOM이 없는 제품: "+c.miss.join(", ")+"\n[제품별 피팅 BOM]에 먼저 등록해 주세요."); return; }
+      var have={}; st.lines.forEach(function(l){ if(l.spec) have[ftK_(l.spec)]=1; });
+      var add=Object.keys(c.lines).filter(function(k){ return !have[k] && c.lines[k]>0; }).map(function(k){ return { spec:(R.S[k]&&R.S[k].spec)||(__ft.d.items[k]&&__ft.d.items[k].spec)||k, qty:c.lines[k], own:c.lines[k] }; });
+      if(!add.length){ alert("BOM의 피팅이 이미 모두 들어 있습니다."); return; }
+      if(!confirm(pr.map(function(p){ return p.prod+" × "+p.qty; }).join(", ")+" 기준으로 빠진 피팅 "+add.length+"종을 업체자재 사용으로 추가합니다.\n\n"+add.map(function(l){ return "· "+l.spec+"  "+l.qty+"개"; }).join("\n")+"\n\n[수정 저장]을 눌러야 반영됩니다.")) return;
+      if(!(t.prods||[]).length) st.prodsFill=pr;
+      st.lines=st.lines.concat(add); draw(); return; }
     if(x==="erm"){ st.lines.splice(+e.target.getAttribute("data-i"),1); draw(); return; }
     if(x==="esave"){ var L=st.lines.filter(function(l){ return l.spec && ftN_(l.qty)!==0; }).map(function(l){ var o={ spec:l.spec, qty:ftN_(l.qty) }; if(isUse){ var ow=Math.min(Math.abs(o.qty), Math.max(0, ftN_(l.own))); if(ow) o.own=ow; } return o; });
       if(!L.length && !confirm("규격이 하나도 없습니다. 이 내역을 지울까요?")) return;
       if(!L.length){ __ft.d.tx=__ft.d.tx.filter(function(z){ return z.id!==t.id; }); }
       else{ var before=(t.lines||[]).reduce(function(s2,l){ return s2+ftN_(l.qty); },0), after=L.reduce(function(s2,l){ return s2+ftN_(l.qty); },0);
-        t.date=st.date||t.date; t.lines=L; t.note=st.note.trim(); t.edit=(t.edit||[]).concat([{ by:ftWho_(), ts:Date.now(), from:before, to:after }]).slice(-10); t.ts2=Date.now();
+        t.date=st.date||t.date; t.lines=L; t.note=st.note.trim(); if(st.prodsFill && !(t.prods||[]).length) t.prods=st.prodsFill; t.edit=(t.edit||[]).concat([{ by:ftWho_(), ts:Date.now(), from:before, to:after }]).slice(-10); t.ts2=Date.now();
         L.forEach(function(l){ var k=ftK_(l.spec); if(!__ft.d.items[k]) __ft.d.items[k]={ code:"", name:"", spec:l.spec, unit:"EA" }; }); }
       ftSave_("수정"); ov.remove(); ftRender_(); } }); }
 function ftNextNo_(){ var d=ftToday_().replace(/-/g,""), n=(__ft.d.tx||[]).filter(function(t){ return t.type==="out" && String(t.no||"").indexOf(d)===0; }).length+1; return d+"-"+String(n).padStart(2,"0"); }
