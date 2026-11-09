@@ -6621,7 +6621,7 @@ var NCR_COLS=[
   ["src","구분"],["draw","도번"],["sn","S/N"],["customer","고객"],["date","발생일"],["types","불량유형/내용"],["grade","등급"],
   ["temp","임시조치(D3)"],["cause","발생원인"],["escape","유출원인"],["why","근본원인(5Why)"],
   ["corrective","시정조치"],["preventive","재발방지"],["horiz","수평전개·문서개정(D7)"],["effect","효과확인"],
-  ["by","작성자"],["appr","승인자"],["apprDate","승인일"],["created","최초작성일"],["updated","최종수정일"],["cap","대책서(JSON)"],["ts","_ts"]
+  ["by","작성자"],["appr","승인자"],["apprDate","승인일"],["created","최초작성일"],["updated","최종수정일"],["cap","대책서(JSON)"],["qa","경위질문(JSON)"],["ts","_ts"]
 ];
 var __ncrMeta={}, __ncrOpenTs=0, __ncrSheetLoaded=false;
 function ncrNowStr_(){ var d=new Date(),z=function(n){return String(n).padStart(2,"0");}; return ncrToday_()+" "+z(d.getHours())+":"+z(d.getMinutes()); }
@@ -6672,7 +6672,7 @@ function ncrBtnCell_(r, key, meta){
     +(__m.src==="고객"?' <button type="button" title="고객 클레임 대책서(8D) 초안" onclick="qdoc8dByKey_(\''+k+'\')" style="background:#4A3B7A;color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">📄 8D</button>':''); }
 // 고객부적합 행 → NCR (키: 일자|고객|도번)
 function ncrBtnCellCust_(r){ if(!r) return ""; var key=ncrCustKey_(r); __qd8dRows[key]=r;
-  return ncrBtnCell_({ draw:r.partNo, types:r.content }, key, { src:"고객", draw:r.partNo||"", sn:"", customer:r.customer||"", date:r.date||"", types:r.content||"" }); }
+  return ncrBtnCell_({ draw:r.partNo, types:r.content }, key, { src:"고객", draw:r.partNo||"", sn:"", customer:r.customer||"", date:r.date||"", types:r.content||"", qty:r.qty||"", finder:r.finder||"", ctemp:r.temp||"", ctreat:r.treatment||"", doneDate:r.doneDate||"" }); }
 /* ===== [추가] NCR 자동 초안 — 부적합 유형·공정·검사일보 조치내용·과거 이력으로 빈 칸을 미리 채움 (반드시 검토 후 저장) ===== */
 var NCR_TPL={
   "기스":{ cause:"가공·취급 중 공구/지그 접촉 또는 적재·운반 시 제품 간 접촉으로 표면 긁힘 발생 추정", escape:"외관검사 조명·각도 기준 미흡 또는 샘플링 검사로 전수 확인 누락", corrective:"해당 LOT 전수 외관 재검사, 부적합품 격리 후 재작업(연마)/폐기 판정", preventive:"제품 간 간지·전용 트레이 적용, 운반·적재 방법 표준화, 외관 한도견본 게시 및 작업자 교육" },
@@ -6712,6 +6712,95 @@ function ncrFillDraft_(key){
   var d=ncrFillFromKey_(key, Object.assign({}, __ncrMeta[key]||{}, __ncrDetail[key]||{})), dr=ncrDraft_(d), n=0;
   NCR_DRAFT_FIELDS.forEach(function(f){ var el=document.getElementById(f[1]); if(el && !String(el.value||"").trim() && dr[f[0]]){ el.value=dr[f[0]]; el.style.background="#FFFCF0"; n++; } });
   var b=document.getElementById("ncr-draft-note"); if(b) b.innerHTML="🤖 빈 칸 "+n+"개를 자동 초안으로 채웠습니다 — <b>실제 상황에 맞게 고친 뒤 저장</b>하세요. (노란 칸 = 초안)";
+}
+/* ===== [추가] NCR 경위 질문형 초안 — 실제 경위(무엇을 보고·왜·검사 때·4M·조치)를 답하면 원인 유형별 틀에 넣어 ⓪~⑦ 작성 ===== */
+var NCR_QA_T={
+ rev:{ l:"도면·REV (구본 사용·오출력)", cons:"구 REV 도면 기준으로 작업", w4:"신 REV 접수 시 구본을 분리·폐기하지 않아 동일 도번 도면이 공존하고, 파일명으로 REV 구분이 어려움", root:"도면 REV 변경 시 구본 분리 기준과 최신본 출력 경로가 정해져 있지 않음", esc:"검사 기준에 출력본-최신 REV 대조 항목이 없음", corr:"현장 출력본 회수·폐기 후 최신 REV 재배포, 구본 출력 폴더 분리", prev:["도면 출력은 도면 검색 서버(최신 REV 자동 표시)로만 실시","도면 접수 시 파일명 REV 표기 의무화(최초본 _REV0 포함)","도면 서버 '동일 도번 중복 목록' 월 1회 점검 → 구본 분리","출력본 출력일 기입, 작업지시 1건 사용 후 폐기","출하검사 시 출력본 HISTORY 최종 일자와 최신 도면 대조","신 REV 접수 시 구·신 도면 비교로 변경점 확인(변경 이력 미기재 항목 포함)"], horiz:"전 고객사 도면 폴더 동일 도번 중복 일괄 점검 및 구본 분리\n관련 문서 개정: 도면관리 절차서 / 출하검사 기준서", eff:"개정 후 3개월간 REV 불일치 부적합 0건, 월 1회 중복 도면 점검 미정리 0건" },
+ read:{ l:"도면 해독 오류·지시 누락 (최신 도면 오독)", cons:"도면 지시사항을 잘못 해석하여 작업", w4:"도면 특이 지시(방향·위치·NOTE)를 작업 전 확인하는 절차 없음", root:"작업 전 도면 검토(특이 지시 표시) 기준 미성립", esc:"검사 시 도면 특이 지시 항목을 별도 확인하지 않음", corr:"해당 도면 특이 지시 공유·재교육, 검사 체크시트에 항목 추가", prev:["신규·변경 도면 작업 전 도면 검토(특이 지시 형광 표시) 실시","도면 NOTE·방향 지시를 작업지시서에 별도 기재","검사 체크시트에 특이 지시 확인 항목 추가"], horiz:"동일 고객 유사 지시(방향·NOTE) 도번 일괄 확인\n관련 문서 개정: 작업표준 / 검사 체크시트", eff:"개정 후 3개월간 도면 해독 오류 부적합 0건" },
+ mach:{ l:"가공 조건·치수 (공구·프로그램·보정)", cons:"가공 조건 이상으로 치수 이탈", w4:"공구 마모·보정 관리 주기와 초·중·종물 측정 기준이 미흡", root:"가공 조건 변경·공구 수명 관리 기준 미성립", esc:"초·중·종물 측정 누락 또는 측정 주기 부족", corr:"해당 LOT 전수 측정, 공구 교체·보정 후 재가공/폐기 판정", prev:["공구 수명 관리 기준 설정","초·중·종물 측정 체크시트 운영","가공 조건·프로그램 변경 시 초물 승인"], horiz:"동일 설비·공구 사용 도번 확인\n관련 문서 개정: 작업표준 / 공구관리 기준", eff:"시정 후 연속 3 LOT 치수 부적합 0건" },
+ miss:{ l:"공정 누락 (TAP·PIN·디버링 등)", cons:"필요 공정이 누락된 채 다음 공정 진행", w4:"공정 완료 확인(체크) 절차 없음", root:"필수 공정 확인 체계 미성립", esc:"검사 기준서에 해당 공정 확인 항목 미반영", corr:"해당 LOT 전수 확인 후 누락 공정 추가 작업", prev:["공정 체크시트·도면 필수공정 표시","QMS TAP/PIN 자동 알림 활용","검사 기준서에 확인 항목 추가"], horiz:"동일 공정 적용 도번 전체 확인\n관련 문서 개정: 작업표준 / 검사기준서", eff:"개정 후 3개월간 공정 누락 부적합 0건" },
+ asm:{ l:"조립·방향·위치 오류", cons:"방향·위치를 잘못 조립", w4:"방향·위치 기준(표시·지그) 없이 작업자 판단으로 조립", root:"조립 방향 오류 방지(풀프루프) 수단 미적용", esc:"검사 시 방향·위치 확인 항목 없음", corr:"해당 제품 재작업, 동일 조립품 전수 확인", prev:["방향 기준 표시·전용 지그 적용(풀프루프)","작업지시서에 방향 사진 첨부","검사 체크시트에 방향 확인 항목 추가"], horiz:"동일 조립 형태(헬리코일·인서트·PIN) 도번 확인\n관련 문서 개정: 작업표준 / 검사 체크시트", eff:"개정 후 3개월간 조립 방향 부적합 0건" },
+ hand:{ l:"취급·운반 (기스·찍힘)", cons:"취급·적재 중 제품 손상", w4:"제품 보호(간지·트레이) 기준 미흡", root:"취급·포장 기준 미성립", esc:"외관검사 조명·각도 기준 미흡", corr:"해당 LOT 전수 외관 재검사, 재작업/폐기 판정", prev:["간지·전용 트레이 적용","1회 적재 수량 제한","한도견본 제정 및 외관검사 기준 보완"], horiz:"유사 형상·재질 도번 적용\n관련 문서 개정: 포장·취급 기준", eff:"시정 후 연속 3 LOT 외관 부적합 0건" },
+ clean:{ l:"세척·오염·방청", cons:"세척·방청 불량으로 오염/녹 발생", w4:"세척·방청 조건 관리 기준 미흡", root:"세척·보관 조건 표준 미성립", esc:"세척 후 외관 확인 기준 미흡", corr:"재세척·재처리 후 전수 외관 재검사", prev:["세척 조건(세척액 교체 주기·건조 시간) 표준화","장갑 착용 의무화","보관 환경(온습도) 관리"], horiz:"동일 세척 공정 도번 적용\n관련 문서 개정: 세척 작업표준", eff:"시정 후 연속 3 LOT 오염 부적합 0건" },
+ vend:{ l:"외주·구매품", cons:"외주/구매처 공정에서 부적합 발생", w4:"외주처에 공정 관리 요구사항 전달 미흡", root:"외주처 품질 관리 기준 미성립", esc:"수입검사 항목·샘플링 미흡", corr:"해당 LOT 선별, 거래처 시정조치 요구서(SCAR) 발행", prev:["거래처 SCAR 회신 대책 검증","일정 기간 수입검사 전수 강화","거래처 공정 점검"], horiz:"동일 거래처 공급 품목 확인\n관련 문서 개정: 수입검사 기준서", eff:"시정 후 연속 3 LOT 수입 부적합 0건" },
+ insp:{ l:"검사 누락·오판정", cons:"검사 단계에서 부적합을 걸러내지 못함", w4:"검사 항목·방법 기준이 불명확", root:"검사 기준서 및 검사자 자격 관리 미흡", esc:"검사 누락 또는 판정 기준 불명확", corr:"해당 LOT 재검사", prev:["검사 기준서 보완","검사자 재교육·자격 확인","검사 체크시트 운영"], horiz:"동일 검사 항목 도번 확인\n관련 문서 개정: 검사기준서", eff:"개정 후 3개월간 동일 유형 유출 0건" },
+ etc:{ l:"기타 (직접 작성)", cons:"", w4:"", root:"", esc:"", corr:"", prev:[], horiz:"관련 문서 개정: (문서번호 기입)", eff:"시정 후 3개월간 동일 부적합 0건" }
+};
+var NCR_QA_Q=[["basis","① 무엇을 보고 작업했나? (도면·출력본·작업지시·설비)","예) 공용폴더에서 출력한 REV0 도면"],["why","② 왜 그렇게 됐나? (경위)","예) 폴더에 REV0/REV2 공존, 출력 담당이 구본을 오출력"],["insp","③ 검사 때 무엇과 대조했나 / 왜 못 걸렀나?","예) 출력본 기준으로 검사, 최신 REV 대조 항목 없음"],["diff","④ 이전 출하분과 달라진 점 (4M: 사람·설비·방법·자재)","예) 이전 LOT는 REV2 출력본 사용 / 변경 없음"],["act","⑤ 실제 조치한 내용 (현장 재작업·선별·회수 등)","예) 고객사 방문 재작업 11-04, 사내 재고 전수 확인"]];
+function ncrQaParse_(v){ if(!v) return null; if(typeof v==="object") return v; try{ return JSON.parse(v); }catch(_){ return null; } }
+function ncrQaGuess_(d){ var t=String(d.types||"")+" "+String(d.ctreat||"");
+  if(/REV|리비전|구본|오출력|도면\s*배포/i.test(t)) return "rev";
+  if(/방향|조립|삽입|헬리코일|인서트|위치/.test(t)) return "asm";
+  if(/수입/.test(String(d.proc||""))) return "vend";
+  if(/해독|오독|도면\s*지시|NOTE/i.test(t)) return "read";
+  if(/기스|스크래치|긁힘|찍힘|타흔|덴트|눌림/.test(t)) return "hand";
+  if(/얼룩|오염|이물|지문|변색|녹|부식/.test(t)) return "clean";
+  if(/누락|미가공|TAP|탭|PIN|핀|버\b|burr/i.test(t)) return "miss";
+  if(/치수|공차|측정|규격/.test(t)) return "mach";
+  return "etc"; }
+function ncrQaHtml_(key, d){
+  var E=ncrEsc_, qa=ncrQaParse_(d.qa)||{}, has=!!qa.type;
+  if(!has){ qa={ type:ncrQaGuess_(d), act:[d.ctemp||"", d.act?("검사일보 조치: "+d.act):""].filter(Boolean).join("\n"), qty:d.qty||"" }; }
+  var opt=Object.keys(NCR_QA_T).map(function(k){ return '<option value="'+k+'"'+(qa.type===k?" selected":"")+'>'+E(NCR_QA_T[k].l)+'</option>'; }).join("");
+  var rec=(d.ctemp||d.ctreat)?('<div style="font-size:12px;color:#475467;background:#F2F4F7;border-radius:6px;padding:6px 8px;">📋 고객부적합 기록 — 임시조치: <b>'+E(d.ctemp||"-")+'</b> · 시정조치: <b>'+E(d.ctreat||"-")+'</b>'+(d.finder?(' · 발견: '+E(d.finder)):'')+'</div>'):'';
+  return '<details id="ncr-qa" '+(ncrHasKey_(key)?'':'open')+' style="border:1px solid #B2CCFF;border-radius:9px;background:#F5F8FF;">'
+   +'<summary style="cursor:pointer;padding:9px 11px;font-weight:800;color:#1849A9;font-size:13px;">🧭 경위 질문 — 답하면 실제 내용으로 ⓪~⑦ 초안 작성'+(has?' <span style="font-weight:500;color:#475467;">(저장된 답 있음)</span>':'')+'</summary>'
+   +'<div style="padding:0 11px 11px;display:flex;flex-direction:column;gap:8px;">'+rec
+   +'<div style="display:flex;gap:8px;flex-wrap:wrap;"><label style="flex:2;min-width:220px;font-size:12px;color:#5A6478;font-weight:700;">원인 유형<select id="ncr-qa-type" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;">'+opt+'</select></label>'
+   +'<label style="flex:1;min-width:120px;font-size:12px;color:#5A6478;font-weight:700;">부적합 수량<input id="ncr-qa-qty" value="'+E(qa.qty||"")+'" placeholder="예) 1EA" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;"></label></div>'
+   +NCR_QA_Q.map(function(q){ return '<label style="font-size:12px;color:#5A6478;font-weight:700;">'+q[1]+'<textarea id="ncr-qa-'+q[0]+'" rows="2" placeholder="'+E(q[2])+'" style="width:100%;padding:7px;border:1px solid #D6DEE8;border-radius:7px;margin-top:3px;box-sizing:border-box;font-size:13px;resize:vertical;">'+E(qa[q[0]]||"")+'</textarea></label>'; }).join("")
+   +'<div style="display:flex;align-items:center;gap:8px;"><span style="flex:1;font-size:11.5px;color:#475467;">모르는 칸은 비워 두세요 — 빈 곳은 [ ]로 남깁니다. 사실만 적으면 문장은 유형별 틀로 만듭니다.</span>'
+   +'<button type="button" onclick="ncrQaApply_(\''+ncrEscAttr_(key)+'\')" style="background:#1849A9;color:#fff;border:none;border-radius:7px;padding:7px 12px;font-weight:800;cursor:pointer;white-space:nowrap;">✍ 경위로 초안 작성</button></div>'
+   +'</div></details>';
+}
+function ncrQaGet_(){ var g=function(id){ var el=document.getElementById(id); return el?String(el.value||"").trim():""; };
+  if(!document.getElementById("ncr-qa-type")) return null;
+  var o={ type:g("ncr-qa-type"), qty:g("ncr-qa-qty") }; NCR_QA_Q.forEach(function(q){ o[q[0]]=g("ncr-qa-"+q[0]); });
+  return o; }
+function ncrQaFilled_(qa){ return !!(qa && NCR_QA_Q.some(function(q){ return qa[q[0]]; })); }
+function ncrDraftQa_(d, qa){
+  var t=NCR_QA_T[qa.type]||NCR_QA_T.etc, cust=(d.src==="고객"), defect=String(d.types||"부적합").trim(), draw=String(d.draw||"");
+  var B="[ ]", one=function(v){ return String(v||"").replace(/\s*\n\s*/g," / ").trim(); };
+  var hist=""; try{ var h=String((ncrDraft_(d)||{}).horiz||"").split("\n"); hist=h[h.length-1]||""; }catch(_){}
+  var qty=qa.qty||B;
+  var o={};
+  // ⓪ 임시조치: 실제 조치 + 표준 봉쇄
+  var tl=String(qa.act||"").split("\n").map(function(x){ return x.trim(); }).filter(Boolean);
+  if(cust && !tl.length) tl.push("고객 보유·운송 중 제품 확인 및 교체/선별 협의");
+  tl.push("사내 재고·공정 중 도번 "+draw+" 전수 확인 → "+B+"EA 중 이상 "+B+"EA");
+  if(!cust) tl.push("출하분 영향 여부 확인 (필요 시 출하정지 HOLD 등록)");
+  if(t.corr && qa.type==="rev") tl.push("현장 출력본 회수, 최신 REV 재배포");
+  o.temp=tl.map(function(x,i){ return (i+1)+") "+x; }).join("\n");
+  // ① 발생 원인
+  var c=[one(qa.basis)&&("작업 기준: "+one(qa.basis)), one(qa.why)].filter(Boolean).join(". ");
+  o.cause=(c?c+" → ":"")+(t.cons?(t.cons+"하여 "):"")+defect+" 발생"+(qa.diff?("\n이전 출하분과 차이(4M): "+one(qa.diff)):"\n이전 출하분과 차이(4M): "+B);
+  // ② 유출 원인
+  o.escape=(one(qa.insp)||(cust?"출하검사에서 미검출":"검사 단계 미검출")+" — 경위 "+B)+((t.esc && !one(qa.insp))?("\n→ "+t.esc):"");
+  // ③ 5Why
+  o.why=["1) 왜 발생했나? → "+defect+(qa.qty?(" ("+qa.qty+")"):""),
+    "2) 왜 그 조건이 생겼나? → "+(one(qa.basis)?(one(qa.basis)+" 기준으로 작업함"):(t.cons||B)),
+    "3) 왜? → "+(one(qa.why)||B),
+    "4) 왜 관리되지 않았나? → "+(t.w4||B),
+    "5) 근본 원인 → "+(t.root||B)].join("\n")+(hist?("\n※ "+hist):"");
+  // ④ 시정 조치
+  o.corrective=[one(qa.act), t.corr].filter(Boolean).join("\n")||("해당 LOT 전수 선별 및 부적합품 재작업/폐기 판정");
+  // ⑤ 재발 방지
+  o.preventive=t.prev.length?t.prev.map(function(x,i){ return (i+1)+") "+x; }).join("\n"):"1) "+B;
+  // ⑥ 수평전개
+  o.horiz=t.horiz+(hist?("\n"+hist):"");
+  // ⑦ 효과 확인
+  o.effect=t.eff+" (확인일: "+B+", 확인자: "+B+")";
+  return o;
+}
+function ncrQaApply_(key){
+  var qa=ncrQaGet_(); if(!qa) return;
+  if(!ncrQaFilled_(qa) && !confirm("경위 질문이 모두 비어 있습니다.\n유형 틀만으로 작성할까요? (빈 곳은 [ ]로 남습니다)")) return;
+  var filled=NCR_DRAFT_FIELDS.filter(function(f){ var el=document.getElementById(f[1]); return el && String(el.value||"").trim(); }).length;
+  if(filled && !confirm("①~⑦ 칸에 이미 내용이 있습니다 ("+filled+"칸).\n경위 답으로 다시 작성(덮어쓰기)할까요?")) return;
+  var d=ncrFillFromKey_(key, Object.assign({}, __ncrMeta[key]||{}, __ncrDetail[key]||{})), dr=ncrDraftQa_(d, qa), n=0;
+  NCR_DRAFT_FIELDS.forEach(function(f){ var el=document.getElementById(f[1]); if(el && dr[f[0]]!=null){ el.value=dr[f[0]]; el.style.background="#FFFCF0"; n++; } });
+  var b=document.getElementById("ncr-draft-note"); if(b) b.innerHTML="🧭 경위 답으로 "+n+"칸을 작성했습니다 — <b>[ ] 칸을 채우고 사실과 맞는지 확인한 뒤 저장</b>하세요.";
+  try{ var ta=document.getElementById("ncr-temp"); if(ta) ta.scrollIntoView({behavior:"smooth",block:"center"}); }catch(_){}
 }
 /* ==================== 📄 문서 초안 (IATF 16949 기준 표준 양식) ====================
    · SCAR(거래처 시정요구서) · 8D(고객 클레임 대책서) · 월간 품질 보고서 · HOLD 해제 보고서
@@ -7004,6 +7093,7 @@ function ncrOpen_(key){
     +'<div style="font-weight:400;font-size:12px;opacity:.9;margin-top:2px;">'+E(d.types)+(sub?(" · "+E(sub)):"")+'</div></div>'
     +'<div style="padding:16px;display:flex;flex-direction:column;gap:11px;">'
     +'<div style="display:flex;align-items:center;gap:8px;background:#FFF8E6;border:1px solid #FEC84B;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#7A4A00;"><span id="ncr-draft-note" style="flex:1;">🤖 부적합 유형·공정·과거 이력으로 <b>초안</b>을 채울 수 있습니다.</span><button type="button" onclick="ncrFillDraft_(\''+ncrEscAttr_(key)+'\')" style="background:#B54708;color:#fff;border:none;border-radius:7px;padding:6px 10px;font-weight:700;cursor:pointer;white-space:nowrap;">✍ 빈 칸 초안 채우기</button></div>'
+    +ncrQaHtml_(key, d)
     + ta("ncr-temp","⓪ 임시조치 (격리·선별·재고/출하분 확인·HOLD)", d.temp,2)
     + ta("ncr-cause","① 발생 원인 (왜 발생?)", d.cause,2)
     + ta("ncr-escape","② 유출 원인 (왜 걸러지지 못했나?)", d.escape,2)
@@ -7024,7 +7114,11 @@ function ncrOpen_(key){
   var w=document.createElement("div"); w.innerHTML=html; document.body.appendChild(w.firstChild);
   var ov=document.getElementById("ncr-ov"); if(ov) ov.addEventListener("click",function(e){ if(e.target===ov) ov.remove(); });
   try{ if(typeof capBindSection_==="function") capBindSection_(key); }catch(_){}
-  if(!ncrHasKey_(key) && !String((__ncrDetail[key]||{}).temp||"").trim()) ncrFillDraft_(key);   // [추가] 처음 여는 NCR은 초안 자동 채움
+  if(!ncrHasKey_(key) && !String((__ncrDetail[key]||{}).temp||"").trim()){   // [수정] 처음 여는 NCR: 유형 단어가 맞을 때만 자동 초안, 아니면 경위 질문 안내
+    var __kw=NCR_KEYS.some(function(k){ return k[0].test(String(d.types||"")); });
+    if(__kw) ncrFillDraft_(key);
+    else { var __nb=document.getElementById("ncr-draft-note"); if(__nb) __nb.innerHTML="🧭 이 부적합은 정해진 유형 틀이 없습니다 — 아래 <b>경위 질문</b>에 답한 뒤 <b>✍ 경위로 초안 작성</b>을 누르세요."; }
+  }
 }
 function ncrCommit_(key){
   var g=function(id){ return String((document.getElementById(id)||{}).value||"").trim(); };
@@ -7034,6 +7128,7 @@ function ncrCommit_(key){
   var rec=Object.assign({}, base, { grade:grade, temp:g("ncr-temp"), cause:g("ncr-cause"), escape:g("ncr-escape"), why:g("ncr-why"), corrective:g("ncr-corrective"), preventive:g("ncr-preventive"), horiz:g("ncr-horiz"), effect:g("ncr-effect"),
     by:g("ncr-by")||ncrWho_(), appr:g("ncr-appr"), apprDate:g("ncr-apprDate"), created:base.created||ncrNowStr_(), updated:ncrNowStr_(), ts:Date.now() });
   try{ var capC=(typeof capCollect_==="function")?capCollect_():null; if(capC) rec.cap=JSON.stringify(capC); }catch(_){}
+  try{ var __qa=ncrQaGet_(); if(__qa && ncrQaFilled_(__qa)) rec.qa=JSON.stringify(__qa); }catch(_){}
   var btn=document.getElementById("ncr-save-btn"); if(btn){ btn.disabled=true; btn.textContent="저장 중…"; }
   var doSave=function(){
     __ncrDetail[key]=rec; ncrSave_(); ncrPostRows_([ncrRowFromRec_(key,rec)]);
