@@ -1382,6 +1382,10 @@
   html.theme-new .qlist-row2 .qlist-pair button{ background:#fff !important; color:#344054 !important; border:1px solid #E4E7EC !important; }
   html.theme-new .qlist-row2 .qlist-pair button + button{ color:#98A2B3 !important; padding-left:10px !important; padding-right:10px !important; }
   html.theme-new .qlist-row2 .qlist-pair button + button:hover{ color:#D92D20 !important; }
+  /* [추가] 검수LIST 재고사용 ⇄ 옮기기 — 흐린 '취소' 모양이 아니라 눈에 띄게 */
+  html.theme-new .qlist-row2 .qlist-pair button.qlist-move{ color:#1D4ED8 !important; font-weight:800 !important; background:#EFF4FF !important; }
+  html.theme-new .qlist-row2 .qlist-pair button.qlist-move:hover{ color:#fff !important; background:#1D4ED8 !important; }
+  .qlist-pair > button.qlist-move{ opacity:1 !important; }
   /* 전체/미완료/완료 탭 버튼 (원래 선택칸은 숨김·동기화) */
   html.theme-new .qx-seg{ display:inline-flex; background:#EEF0F3; border-radius:10px; padding:3px; height:40px; box-sizing:border-box; flex:none; }
   html.theme-new .qx-seg button{ min-height:0 !important; height:34px; border:0 !important; background:transparent !important; color:#667085 !important; padding:0 14px !important; border-radius:8px !important; font-size:13px !important; font-weight:600 !important; cursor:pointer; }
@@ -3102,7 +3106,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
             <button onclick="renderInspList()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🔍 검색</button>
             <button id="insplist-overdueBtn" onclick="insplistOverdueToggle_()" title="일정 달력에 '검수'로 등록된 PROJECT 중 미완료(부족>0) + 최종납기 지난 건만, 납기 오래된 순으로 표시" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">⏰ 납기지연</button>
             <select id="insplist-state" onchange="renderInspList()" title="완료 여부로 걸러보기 — 완료만 고른 뒤 전체 체크하면 완료품 라벨을 한 번에 인쇄" style="padding:7px 8px;border:1px solid #C9D3E0;border-radius:8px;font-size:13px;font-weight:700;color:#33415C;"><option value="all" selected>전체</option><option value="lack">미완료만</option><option value="done">완료만</option></select>
-            <span class="qlist-pair"><button onclick="insplistStockUseOpen_()" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">📦 재고사용</button><button onclick="insplistStockUseCancel_()" style="background:#B0662A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;" title="재고사용된 항목을 다시 되돌립니다">↩ 취소</button><button onclick="insplistStockUseMove_()" style="background:#3B5BA9;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;" title="체크한 재고사용 건을 다른 PROJECT의 같은 도번 ORDER로 옮깁니다 (S/N·수량 그대로)">⇄ 옮기기</button></span>
+            <span class="qlist-pair"><button onclick="insplistStockUseOpen_()" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">📦 재고사용</button><button onclick="insplistStockUseCancel_()" style="background:#B0662A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;" title="재고사용된 항목을 다시 되돌립니다">↩ 취소</button><button class="qlist-move" onclick="insplistStockUseMove_()" style="background:#3B5BA9;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;" title="체크한 재고사용 건을 다른 PROJECT의 같은 도번 ORDER로 옮깁니다 (S/N·수량 그대로)">⇄ 옮기기</button></span>
             <span class="qlist-pair"><button onclick="insplistPreShip_()" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🚚 선출고</button><button onclick="insplistPreShipCancel_()" style="background:#7F8C8D;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">↩ 취소</button></span></div>
         </div>
         <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">ORDER NO.(예: 26-386)를 입력하면 세부(26-386-1, 2 …)가 펼쳐집니다 · 완료 = 재고 출고수량(관리번호 매칭) · 부족 = 수량 − 완료 · S/N은 재고관리에서 · 수량 0·PR&PO 미등록 건은 제외 · 비고는 인쇄 후 수기 체크용</div>
@@ -31969,6 +31973,7 @@ function qasAuto_(a,label){
 }
 
 function stockUseNotifShow_(a, label){ var __lbl=label||"재고분출";
+  var __mv={}, __mvL=(a&&a.extra&&Array.isArray(a.extra.moved))?a.extra.moved:[]; __mvL.forEach(function(x){ var p=String(x).split("→"); if(p.length===2) __mv[p[1]]=p[0]; });   // [추가] 재고사용 옮기기 알림: 새 ORDER → 원래 ORDER
   // [수정] 색으로 구분: 재고사용(검수LIST) = 초록 / 납기분출(분출LIST) = 파랑
   var __isD=(__lbl==="납기분출"), __C=__isD?{ main:"#0B5CAB", bd:"#A9C6EA", ic:"🚚", src:"분출LIST" }:{ main:"#1E7A46", bd:"#A9D5B9", ic:"📦", src:"검수LIST" };
   var orders=(a && a.extra && a.extra.orders)||[];
@@ -31987,13 +31992,14 @@ function stockUseNotifShow_(a, label){ var __lbl=label||"재고분출";
   card.style.cssText="background:#fff;border:2px solid "+__C.bd+";border-left:10px solid "+__C.main+";border-radius:16px;box-shadow:0 12px 44px rgba(0,0,0,0.24);padding:22px 26px;font-size:19px;color:#26324A;min-width:440px;max-width:760px;";
   card.innerHTML=
      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
-    +  '<b style="color:'+__C.main+';font-size:22px;">'+__C.ic+' '+insEsc(__lbl)+' '+insEsc(String(a.qty||orders.length))+'건 <span style="font-size:14px;font-weight:700;color:#5A6478;">· '+__C.src+'</span></b>'
+    +  '<b style="color:'+__C.main+';font-size:22px;">'+__C.ic+' '+insEsc(__lbl)+(__mvL.length?' <span style="background:#FEF0C7;color:#B54708;border-radius:999px;padding:1px 10px;font-size:15px;">⇄ ORDER 변경</span>':'')+' '+insEsc(String(a.qty||orders.length))+'건 <span style="font-size:14px;font-weight:700;color:#5A6478;">· '+__C.src+'</span></b>'
     +  '<span style="color:#8A93A6;font-size:15px;">'+insEsc(when)+'</span>'
     +'</div>'
+    +(__mvL.length?('<div style="background:#FFFAEB;border:1px solid #FEC84B;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:15px;color:#7A2E0E;line-height:1.55;"><b>재고사용 ORDER가 바뀌었습니다</b> — 이전 알림의 ORDER 대신 아래 ORDER로 출고하세요.<br>'+__mvL.map(function(x){ return insEsc(x); }).join(" · ")+'<br><span style="color:#B54708;">재고 엑셀(제품 입출고현황) 출고 관리번호도 같이 바꿔 주세요.</span></div>'):'')
     +((function(){ var R=(a&&a.extra&&Array.isArray(a.extra.rows))?a.extra.rows:[]; if(!R.length) return '<div style="line-height:1.6;margin-bottom:6px;font-size:20px;"><b>'+insEsc(head||"-")+'</b></div>';   // [추가] 알림 내용을 표로: ORDER NO. · 기존도번 · 품명 · 수량 · S/N
         var td='padding:5px 8px;border:1px solid #E1E8F0;font-size:14px;', th=td+'background:#1F2A44;color:#fff;font-weight:700;white-space:nowrap;';
         return '<div style="max-height:260px;overflow:auto;margin-bottom:8px;"><table style="border-collapse:collapse;width:100%;"><thead><tr><th style="'+th+'">ORDER NO.</th><th style="'+th+'">기존도번</th><th style="'+th+'">품명</th><th style="'+th+'">수량</th><th style="'+th+'">S/N</th></tr></thead><tbody>'
-          +R.map(function(x){ return '<tr><td style="'+td+'font-weight:700;white-space:nowrap;">'+insEsc(x[0]||"")+'</td><td style="'+td+'font-weight:700;color:#1D4ED8;white-space:nowrap;">'+insEsc(x[2]||__drOf[x[0]]||"")+'</td><td style="'+td+'">'+insEsc(x[3]||"")+'</td><td style="'+td+'text-align:center;">'+insEsc(x[4]||"")+'</td><td style="'+td+'font-size:12.5px;">'+insEsc(x[5]||"")+'</td></tr>'; }).join("")+'</tbody></table></div>'; })())
+          +R.map(function(x){ return '<tr><td style="'+td+'font-weight:700;white-space:nowrap;">'+insEsc(x[0]||"")+(__mv[x[0]]?'<div style="font-size:11.5px;color:#B54708;font-weight:600;">← '+insEsc(__mv[x[0]])+'</div>':'')+'</td><td style="'+td+'font-weight:700;color:#1D4ED8;white-space:nowrap;">'+insEsc(x[2]||__drOf[x[0]]||"")+'</td><td style="'+td+'">'+insEsc(x[3]||"")+'</td><td style="'+td+'text-align:center;">'+insEsc(x[4]||"")+'</td><td style="'+td+'font-size:12.5px;">'+insEsc(x[5]||"")+'</td></tr>'; }).join("")+'</tbody></table></div>'; })())
     +'<div style="color:#5A6478;font-size:16px;">리스트 참조 · LIST는 엑셀 다운로드</div>'
     +(a.by?('<div style="color:#5A6478;font-size:15px;margin-top:4px;">등록자 : '+insEsc(a.by)+'</div>'):'')
     +'<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px;">'
@@ -32025,8 +32031,9 @@ function dispatchNotifExcel_(a, label, auto){ var __nm=label||"납기분출";
     rows=orders.map(function(o){ var m=by[String(o).trim()]||{}; return { orderNo:o, project:m.vendor||"", oldDraw:m.oldDrawingNo||"", name:m.partName||"", qty:Number(m.qty)||0, sn:"" }; });
   }
   if(!rows.length){ alert(__nm+" 내역이 없습니다."); return; }
-  var aoa=[["ORDER NO.","PROJECT NO.","기존도번","품명","수량","S/N"]];
-  rows.forEach(function(r){ aoa.push([ r.orderNo||"", r.project||"", r.oldDraw||"", r.name||"", Number(r.qty||0), r.sn||"" ]); });
+  var __mvX={}; (Array.isArray(ex.moved)?ex.moved:[]).forEach(function(x){ var p=String(x).split("→"); if(p.length===2) __mvX[p[1]]=p[0]; }); var __hasMv=Object.keys(__mvX).length>0;   // [추가] 옮기기 알림 → '변경 전 ORDER' 열
+  var aoa=[["ORDER NO.","PROJECT NO.","기존도번","품명","수량","S/N"].concat(__hasMv?["변경 전 ORDER"]:[])];
+  rows.forEach(function(r){ aoa.push([ r.orderNo||"", r.project||"", r.oldDraw||"", r.name||"", Number(r.qty||0), r.sn||"" ].concat(__hasMv?[__mvX[r.orderNo]||""]:[])); });
   var ws=XLSX.utils.aoa_to_sheet(aoa);
   ws["!cols"]=[{wch:12},{wch:16},{wch:14},{wch:26},{wch:6},{wch:24}];
   if(typeof insplistStyleSheet_==="function") insplistStyleSheet_(ws, aoa, rows, -1);
