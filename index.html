@@ -10,9 +10,11 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/500.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/500.css"></noscript>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/600.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/600.css"></noscript>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/700.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-kr@5.3.0/700.css"></noscript>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" defer></script>
+<!-- [안정화] 엑셀·CSV 라이브러리: QMS와 같은 곳(lib/)의 사본을 먼저 쓰고, 없으면 외부 CDN으로 -->
+<script>function qLibFallback_(u){ try{ var s=document.createElement("script"); s.src=u; document.head.appendChild(s); }catch(_){} }</script>
+<script src="lib/papaparse.min.js" defer onerror="qLibFallback_('https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js')"></script>
 <!-- xlsx-js-style: 기존 SheetJS 0.18.5와 API 동일 + 셀 스타일(색/테두리/폰트) 지원 -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js" defer></script>
+<script src="lib/xlsx.min.js" defer onerror="qLibFallback_('https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js')"></script>
 <style>
   :root{
     --navy:#1F2A44;
@@ -10357,7 +10359,7 @@ async function fetchMainData(yearsParam){
      if(res.rows && res.rows[0]) console.log("MAIN 시트 열 이름 목록:", Object.keys(res.rows[0]));
      // 생산공정현황, 수입검사 데이터 로드
      processData = processRes.success ? processRes.rows : [];
-     try{ if(typeof buildProcessMap==="function" && processData.length){ processMap = buildProcessMap(processData); cacheSet("cache_processMap", processMap); } }catch(_){ }   // [수정] 현재진행공정 맵을 MAIN 로드 때 함께 생성 (스플래시 경로에선 fetchProcessData가 생략돼 비어있던 문제)
+     try{ if(typeof buildProcessMap==="function" && processData.length){ processMap = buildProcessMap(processData); qBigSet_("cache_processMap", JSON.stringify(processMap)); } }catch(_){ }   // [수정] 현재진행공정 맵을 MAIN 로드 때 함께 생성 (스플래시 경로에선 fetchProcessData가 생략돼 비어있던 문제)
      incomingInspectionData = incomingRes.success ? incomingRes.rows : [];
      inhouseInspectionData = (inhouseRes && inhouseRes.success) ? inhouseRes.rows : [];
      shipInspectionData = (shipRes && shipRes.success) ? shipRes.rows : [];
@@ -10534,14 +10536,28 @@ async function fetchProcessData(){
     const res = await fetch(url + "?dataset=" + encodeURIComponent("생산공정현황")).then(r=>r.json());
     if(!res.success) return;
     processMap = buildProcessMap(res.rows||[]);
-    cacheSet("cache_processMap", processMap);
+    qBigSet_("cache_processMap", JSON.stringify(processMap));
     cacheSet("processLastSync", Date.now());
     if(typeof mainListRevealed !== "undefined" && mainListRevealed) mainApplySearch();
   }catch(e){ /* 조용히 무시: 이 데이터는 보조 정보라 실패해도 나머지 화면은 정상 동작해야 합니다 */ }
 }
+/* [안정화] 큰 보조 캐시(현재공정 맵·최종납기 변경 기록·납기 스냅샷 ≈ 2.4MB)는 빠른 저장소(5MB 한도) 대신 대용량 저장소(IndexedDB)에 보관
+   → 빠른 저장소는 검사일보 등 중요한 데이터 몫으로 남김. 기존에 빠른 저장소에 있던 값은 처음 한 번 옮기고 지움 */
+var QBIG_KEYS=["cache_processMap","dclCache","dclSnap"];
+var __qbig={ m:{}, ready:false, q:[] };
+function qBigReady_(fn){ if(__qbig.ready) fn(); else __qbig.q.push(fn); }
+function qBigGet_(k){ if(Object.prototype.hasOwnProperty.call(__qbig.m,k)) return __qbig.m[k]; try{ return localStorage.getItem(k); }catch(_){ return null; } }
+function qBigSet_(k,s){ __qbig.m[k]=s;
+  try{ idbSet("qbig_"+k, s).then(function(ok){ if(ok){ try{ localStorage.removeItem(k); }catch(_){} } else { try{ localStorage.setItem(k, s); }catch(_){} } }); }catch(_){ try{ localStorage.setItem(k, s); }catch(__){} } }
+(function(){ var n=QBIG_KEYS.length, fin=function(){ if(--n>0) return; __qbig.ready=true; var q=__qbig.q; __qbig.q=[]; q.forEach(function(f){ try{ f(); }catch(_){} }); };
+  QBIG_KEYS.forEach(function(k){ var legacy=null; try{ legacy=localStorage.getItem(k); }catch(_){}
+    var p; try{ p=idbGet("qbig_"+k); }catch(_){ p=Promise.resolve(null); }
+    p.then(function(v){
+      if(v!=null){ __qbig.m[k]=v; if(legacy!=null){ try{ localStorage.removeItem(k); }catch(_){} } }
+      else if(legacy!=null){ __qbig.m[k]=legacy; idbSet("qbig_"+k, legacy).then(function(ok){ if(ok){ try{ localStorage.removeItem(k); }catch(_){} } }); }
+      fin(); }, function(){ fin(); }); }); })();
 (function initProcessCached(){
-  const cached = cacheGet("cache_processMap");
-  if(cached) processMap = cached;
+  qBigReady_(function(){ var s=qBigGet_("cache_processMap"); if(!s) return; try{ var c=JSON.parse(s); if(c && (!processMap || !Object.keys(processMap).length)) processMap=c; }catch(_){} });
 })();
 // 위치별 점유 캐시: {"A-1":[{partNo,stock},...]} + 도번별 {loc,stock}  — invData 로드 시에만 갱신
 var invLocMap=null, invPartInfo=null;
@@ -14537,20 +14553,21 @@ var __dcl={ list:[], loaded:false, ref:null, len:-1, filter:{ q:"", st:"", days:
 function dclUniq_(list){ var last={}; return (list||[]).slice().sort(function(a,b){ return (a.ts||0)-(b.ts||0); }).filter(function(x){ if(last[x.ord]===x.to) return false; last[x.ord]=x.to; return true; }); }
 function dclShipped_(ord){ return (typeof sdAutoDone_==="function") && sdAutoDone_(ord); }
 function dclMerge_(a,b){ var m={}; (a||[]).concat(b||[]).forEach(function(x){ if(!x||!x.id) return; var p=m[x.id]; if(!p || (x.rts||0)>(p.rts||0)) m[x.id]=x; }); return Object.keys(m).map(function(k){ return m[k]; }).sort(function(x,y){ return x.ts-y.ts; }); }
-function dclLoad_(cb){ try{ var c=JSON.parse(localStorage.getItem("dclCache")||"null"); if(Array.isArray(c)) __dcl.list=dclMerge_(__dcl.list,c); }catch(_){}
+function dclLoad_(cb){ try{ var c=JSON.parse(qBigGet_("dclCache")||"null"); if(Array.isArray(c)) __dcl.list=dclMerge_(__dcl.list,c); }catch(_){}
   if(typeof qShareLoad_!=="function"){ __dcl.loaded=true; cb&&cb(); return; }
-  qShareLoad_(DCL_KEY, function(v){ if(v && Array.isArray(v.list)) __dcl.list=dclMerge_(__dcl.list, v.list); __dcl.loaded=true; try{ localStorage.setItem("dclCache", JSON.stringify(__dcl.list.slice(-2000))); }catch(_){} cb&&cb(); }); }
-function dclSave_(){ try{ localStorage.setItem("dclCache", JSON.stringify(__dcl.list.slice(-2000))); }catch(_){}
+  qShareLoad_(DCL_KEY, function(v){ if(v && Array.isArray(v.list)) __dcl.list=dclMerge_(__dcl.list, v.list); __dcl.loaded=true; try{ qBigSet_("dclCache", JSON.stringify(__dcl.list.slice(-2000))); }catch(_){} cb&&cb(); }); }
+function dclSave_(){ try{ qBigSet_("dclCache", JSON.stringify(__dcl.list.slice(-2000))); }catch(_){}
   if(typeof qShareLoad_!=="function" || typeof qShareUrl_!=="function" || !qShareUrl_()) return;
   qShareLoad_(DCL_KEY, function(v){ var L=dclMerge_(v && Array.isArray(v.list)?v.list:[], __dcl.list); if(L.length>2000) L=L.slice(-2000); __dcl.list=L; try{ qSharePost_(qShareUrl_(), DCL_KEY, JSON.stringify({ list:L, ts:Date.now() })); }catch(_){} }); }
 // 감지: 이 PC가 직전에 본 최종납기(로컬 스냅샷)와 비교
 function dclDetect_(){
+  if(!__qbig.ready){ qBigReady_(dclDetect_); return; }   // [안정화] 직전 납기 기억(대용량 저장소)을 다 읽은 뒤에 비교
   try{ var md=(typeof mainData!=="undefined"&&mainData)||[]; if(!md.length) return; if(__dcl.ref===md && __dcl.len===md.length) return; __dcl.ref=md; __dcl.len=md.length;
-    var snap={}; try{ snap=JSON.parse(localStorage.getItem("dclSnap")||"{}")||{}; }catch(_){}
+    var snap={}; try{ snap=JSON.parse(qBigGet_("dclSnap")||"{}")||{}; }catch(_){}
     var had=Object.keys(snap).length>0, now={}, found=[], today=(typeof qmsToday_==="function")?qmsToday_():new Date().toISOString().slice(0,10);
     md.forEach(function(r){ var o=String(r.orderNo||"").trim(), d=String(r.dueDate||"").slice(0,10); if(!o || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return; now[o]=d;
       var p=snap[o]; if(had && p && p!==d) found.push({ id:o+"|"+p+"|"+d, ord:o, proj:String(r.vendor||""), cust:String(r.customer||""), draw:String(r.oldDrawingNo||r.partNo||""), name:String(r.partName||""), from:p, to:d, day:today, ts:Date.now() }); });
-    try{ localStorage.setItem("dclSnap", JSON.stringify(now)); }catch(_){}
+    try{ qBigSet_("dclSnap", JSON.stringify(now)); }catch(_){}
     if(!found.length) return;
     var go=function(){ var have={}; __dcl.list.forEach(function(x){ have[x.id]=1; }); var lastTo={}; dclUniq_(__dcl.list).forEach(function(x){ lastTo[x.ord]=x.to; }); var add=found.filter(function(x){ if(have[x.id]) return false; if(lastTo[x.ord]===x.to) return false; lastTo[x.ord]=x.to; return true; }); if(!add.length) return;
       __dcl.list=__dcl.list.concat(add); dclSave_(); try{ if(typeof showToast==="function") showToast("📆 최종납기 변경 "+add.length+"건 기록됨 (특별납기 ▸ 최종납기 변경)"); }catch(_){} };
