@@ -6926,6 +6926,69 @@ function ncrAiApply_(key){
   var ov=document.getElementById("ncr-ai-ov"); if(ov) ov.remove();
   var b=document.getElementById("ncr-draft-note"); if(b) b.innerHTML="🤖 Claude 답으로 "+n+"칸을 채웠습니다 (파란 칸) — <b>사실과 맞는지, [ ] 칸을 확인한 뒤 저장</b>하세요.";
 }
+/* ===== [추가] 🤖 Claude에게 문의 — 어느 화면에서든 질문 + 화면 정보(메뉴·버전·최근 오류·검색어)를 요청문으로 복사하고 Claude 열기 ===== */
+function qaskCtx_(){
+  var o={}, v=document.querySelector(".view.active");
+  try{ var hs=Array.prototype.slice.call(document.querySelectorAll(".topbar h1, .view.active h1, .view.active h2")).filter(function(x){ return x.offsetParent!==null && x.textContent.trim(); }); o.menu=hs.length?hs[0].textContent.trim().replace(/\s+/g," ").slice(0,40):""; }catch(_){}
+  o.view=v?v.id.replace(/^view-/,""):"";
+  o.ver="V"+(window.APP_VER_NUM||"");
+  o.dev=/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)?"모바일":"PC";
+  o.at=new Date().toLocaleString("sv-SE").slice(0,16);
+  o.inputs=[]; try{ if(v) Array.prototype.slice.call(v.querySelectorAll('input[type=text],input[type=search],input:not([type]),select')).forEach(function(el){ if(o.inputs.length>=6) return; if(el.offsetParent===null) return; var val=String(el.tagName==="SELECT"?(el.options[el.selectedIndex]||{}).text||"":el.value||"").trim(); if(!val || val.length>60) return; var lb=el.getAttribute("placeholder")||el.getAttribute("title")||el.id||el.name||""; o.inputs.push((lb?lb.slice(0,24)+": ":"")+val); }); }catch(_){}
+  o.errs=[]; try{ o.errs=(JSON.parse(localStorage.getItem("qmsErrLog")||"[]")||[]).slice(-5).map(function(x){ return x.t+" ["+(x.v||"-")+"] "+x.m+(x.s?(" ("+x.s+")"):""); }); }catch(_){}
+  try{ var sel=String(window.getSelection?window.getSelection():"").trim(); if(sel) o.sel=sel.slice(0,300); }catch(_){}
+  return o;
+}
+function qaskPrompt_(q, inc){
+  var c=qaskCtx_(), L=[];
+  L.push("나는 ㈜엔티엘 품질팀에서 쓰는 사내 웹 프로그램 'NTL QMS Portal'에 대해 질문이 있어.");
+  L.push("(QMS는 GitHub Pages의 단일 HTML 웹앱 + 구글 Apps Script·구글시트 저장 구조이고, 너는 코드를 볼 수 없어.)");
+  L.push("");
+  L.push("[질문]"); L.push(q);
+  if(inc){
+    L.push(""); L.push("[화면 정보]");
+    L.push("- 메뉴: "+(c.menu||"-")+(c.view?(" ("+c.view+")"):"")+" / 버전: "+c.ver+" / "+c.dev+" / "+c.at);
+    if(c.inputs.length) L.push("- 화면 입력값: "+c.inputs.join(" · "));
+    if(c.sel) L.push("- 선택한 글: "+c.sel);
+    L.push("- 최근 오류: "+(c.errs.length?("\n  "+c.errs.join("\n  ")):"없음"));
+  }
+  L.push(""); L.push("[답변 방법]");
+  L.push("1) 사용법 질문이면 화면에서 따라 할 수 있게 순서대로 짧게 알려줘.");
+  L.push("2) 오류·이상 동작이면 가능한 원인과 내가 직접 확인할 것(새로고침, 캐시, 네트워크, 입력값 등)을 알려줘. 추측은 추측이라고 말해줘.");
+  L.push("3) 프로그램 수정·기능 추가가 필요하면 마지막에 '### 개발 요청' 제목으로, 개발 담당(이팀장)에게 그대로 전달할 요청서를 써줘: 현상 / 원하는 동작 / 재현 방법 / 화면 정보.");
+  L.push("- 문서(Doc)·아티팩트로 만들지 말고 채팅 답변으로만, 간결한 한국어로 답해줘.");
+  return L.join("\n");
+}
+function qaskOpen_(){
+  var old=document.getElementById("qask-ov"); if(old){ old.remove(); return; }
+  var c=qaskCtx_(), E=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); };
+  var ov=document.createElement("div"); ov.id="qask-ov";
+  ov.innerHTML='<div class="qask-h"><b>🤖 Claude에게 문의</b><button type="button" data-q="close">✕</button></div>'
+   +'<div class="qask-b"><div class="qask-ctx">현재 화면: <b>'+E(c.menu||c.view||"-")+'</b> · '+E(c.ver)+(c.errs.length?(' · <span style="color:#B42318;">최근 오류 '+c.errs.length+'건</span>'):'')+'</div>'
+   +'<textarea id="qask-q" rows="5" placeholder="예) 출고No가 왜 빨간색이야? / 저장이 안 돼 / 이 화면에 ○○ 기능 추가해 줘"></textarea>'
+   +'<label class="qask-chk"><input type="checkbox" id="qask-inc" checked> 화면 정보 같이 보내기 (메뉴·버전·검색어·최근 오류)</label>'
+   +'<button type="button" data-q="go" class="qask-go">복사하고 Claude 열기</button>'
+   +'<div class="qask-tip">Claude 창이 열리면 <b>Ctrl+V → Enter</b>. 수정이 필요한 답이면 맨 아래 <b>"개발 요청"</b>을 복사해 팀장에게 보내 주세요.</div></div>';
+  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-q"); if(x==="close"){ ov.remove(); return; }
+    if(x==="go"){ var q=String((document.getElementById("qask-q")||{}).value||"").trim(); if(!q){ alert("질문을 적어 주세요."); return; }
+      var t=qaskPrompt_(q, !!(document.getElementById("qask-inc")||{}).checked); var w=null; try{ w=window.open("https://claude.ai/new","_blank"); }catch(_){}
+      ncrAiCopy_(t, function(ok){ var tip=ov.querySelector(".qask-tip"); if(tip) tip.innerHTML=ok?("✔ 요청문을 복사했습니다 — Claude 창에 <b>Ctrl+V → Enter</b>"+(w?"":" (새 창이 막혔으면 claude.ai를 직접 여세요)")):"복사 실패 — 다시 눌러 주세요."; if(!ok){ try{ prompt("아래 내용을 복사(Ctrl+C)하세요", t); }catch(_){} } }); } });
+  document.body.appendChild(ov); setTimeout(function(){ var t=document.getElementById("qask-q"); if(t) t.focus(); }, 50);
+}
+(function qaskInit_(){
+  var go=function(){ if(document.getElementById("qask-fab")) return;
+    var st=document.createElement("style");
+    st.textContent='#qask-fab{position:fixed;right:24px;bottom:80px;z-index:99984;height:36px;padding:0 12px;border-radius:18px;border:0;background:#5925DC;color:#fff;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 6px 18px rgba(89,37,220,.35);}#qask-fab:hover{background:#4A1FB8;}'
+     +'#qask-ov{position:fixed;right:18px;bottom:124px;z-index:100080;width:360px;max-width:calc(100vw - 24px);background:#fff;border-radius:14px;box-shadow:0 18px 50px rgba(16,24,40,.3);font-family:inherit;overflow:hidden;}'
+     +'#qask-ov *{box-sizing:border-box;}.qask-h{display:flex;align-items:center;justify-content:space-between;background:#5925DC;color:#fff;padding:10px 12px;}.qask-h button{background:transparent;border:0;color:#fff;font-size:16px;cursor:pointer;}'
+     +'.qask-b{padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:#344054;}.qask-ctx{background:#F4F3FF;border-radius:8px;padding:6px 8px;}'
+     +'#qask-q{width:100%;border:1px solid #D0D5DD;border-radius:8px;padding:8px;font-size:13px;resize:vertical;font-family:inherit;}.qask-chk{display:flex;gap:6px;align-items:center;}'
+     +'.qask-go{background:#5925DC;color:#fff;border:0;border-radius:8px;padding:9px;font-weight:800;cursor:pointer;}.qask-tip{color:#667085;font-size:11.5px;}'
+     +'@media (max-width:860px){#qask-fab{right:12px;bottom:68px;}#qask-ov{right:12px;bottom:110px;}}@media print{#qask-fab,#qask-ov{display:none!important;}}';
+    document.head.appendChild(st);
+    var b=document.createElement("button"); b.type="button"; b.id="qask-fab"; b.title="QMS 사용법·오류·기능 요청을 Claude에게 문의"; b.textContent="🤖 문의"; b.onclick=qaskOpen_; document.body.appendChild(b); };
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", go); else go();
+})();
 /* ==================== 📄 문서 초안 (IATF 16949 기준 표준 양식) ====================
    · SCAR(거래처 시정요구서) · 8D(고객 클레임 대책서) · 월간 품질 보고서 · HOLD 해제 보고서
    · 장기재고 재검사 판정서 · 계측기 교정 계획표 · PCN(공정변경 통보·승인 요청서)
