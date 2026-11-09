@@ -6792,14 +6792,55 @@ function ncrDraftQa_(d, qa){
   o.effect=t.eff+" (확인일: "+B+", 확인자: "+B+")";
   return o;
 }
+// [추가] 대책서 항목용 — 유형별 대책 유형·관련 문서·유출 Why4·유출 대책·검증 항목
+var NCR_QA_CAP={
+ rev:["표준개정","도면관리 절차서","출하검사 기준서","도면 REV 변경 시 검사 기준·출력본 관리 절차 없음","출하검사 체크시트에 '출력본 REV(HISTORY 최종 일자) = 최신 도면' 대조 항목 추가","REV 불일치 부적합 / 중복 도면 미정리"],
+ read:["표준개정","작업표준 (도면 검토)","검사 체크시트","검사 체크시트에 도면 특이 지시 반영 절차 없음","검사 체크시트에 도면 특이 지시(방향·NOTE) 확인 항목 추가","도면 해독 오류 부적합"],
+ mach:["표준개정","공구관리 기준","검사기준서","측정 주기·항목 기준 미흡","초·중·종물 측정 주기·항목 강화","치수 부적합"],
+ miss:["Poka-Yoke","작업표준","검사기준서","검사 항목 갱신 절차 없음","검사 기준서에 필수 공정 확인 항목 추가","공정 누락 부적합"],
+ asm:["Poka-Yoke","작업표준","검사 체크시트","검사 체크시트에 조립 방향 항목 미반영","검사 체크시트에 방향 확인 항목·기준 사진 추가","조립 방향 부적합"],
+ hand:["표준개정","포장·취급 기준","외관검사 기준서","최종 외관검사 기준 미흡","외관검사 조명·각도 기준 및 한도견본 적용","외관 부적합"],
+ clean:["표준개정","세척 작업표준","외관검사 기준서","외관검사 기준 미흡","세척 후 외관 확인 항목 추가","오염 부적합"],
+ vend:["기타","협력사 관리 절차서","수입검사 기준서","수입검사 기준 미흡","일정 기간 수입검사 전수 강화","수입 부적합"],
+ insp:["교육","검사기준서","검사기준서","검사 기준서·체크시트 미흡","검사 기준서 보완 및 검사자 재교육","동일 유형 유출"],
+ etc:["","","","","","동일 부적합"]
+};
+// 대책서 항목 채우기 (담당자·날짜·Report No.·사진은 건드리지 않음)
+function ncrQaCap_(d, qa){
+  if(!document.getElementById("cap-sec")) return 0;
+  var t=NCR_QA_T[qa.type]||NCR_QA_T.etc, x=NCR_QA_CAP[qa.type]||NCR_QA_CAP.etc, B="[ ]", n=0, defect=String(d.types||"부적합").trim();
+  var one=function(v){ return String(v||"").replace(/\s*\n\s*/g," / ").trim(); };
+  var set=function(id,v){ var el=document.getElementById(id); if(!el || v==null) return; if(el.tagName==="SELECT"){ if(!v) return; el.value=v; } else el.value=v; el.style.background="#FFFCF0"; n++; };
+  set("cap-place", [d.customer||"", d.finder||""].filter(Boolean).join(" ")||B);
+  set("cap-dtype", defect);
+  set("cap-phen", defect+(qa.qty?(" · 수량 "+qa.qty):" · 수량 "+B)+(d.finder?(" · 발견: "+d.finder):"")+(d.date?(" ("+d.date+")"):""));
+  set("cap-ttarget", (d.src==="고객"?"고객 보유품 + ":"")+"사내 재고·공정품 (도번 "+(d.draw||"")+")");
+  set("cap-tres", (one(qa.act)||B)+" / 사내 확인 "+B+"EA 중 NG "+B+"EA");
+  // 발생 원인 Why
+  set("cap-wo0", defect);
+  [defect+(qa.qty?(" ("+qa.qty+")"):""), one(qa.basis)?(one(qa.basis)+" 기준으로 작업함"):(t.cons||B), one(qa.why)||B, t.w4||B, t.root||B].forEach(function(v,i){ set("cap-wo"+(i+1), v); });
+  set("cap-woev", "현장 확인·경위 조사"+(qa.type==="rev"?", 도면 REV 비교(구·신)":"")); set("cap-woj", t.root?"Why 5":"추가 분석 필요");
+  // 유출 원인 Why
+  set("cap-we0", (d.src==="고객"?"출하검사":"검사")+"에서 "+defect+" 미검출");
+  [(d.src==="고객"?"출하검사":"검사")+"에서 "+defect+" 미검출", one(qa.insp)||B, t.esc||B, x[3]||B, x[3]?"변경점·검사 기준을 생산·검사에 동시에 전달하는 체계 없음":B].forEach(function(v,i){ set("cap-we"+(i+1), v); });
+  set("cap-weev", "검사 기록·체크시트 확인"); set("cap-wej", x[3]?"Why 4":"추가 분석 필요");
+  // 대책 (내용은 비워 두면 NCR ⑤/④ 사용 → 근본 대책은 비움, 유출 대책은 유출 전용 문구)
+  set("cap-m0type", x[0]); set("cap-m0horiz", String(t.horiz||"").split("\n")[0]||B); set("cap-m0doc", x[1]||B);
+  set("cap-m1type", "검사기준 강화"); set("cap-m1txt", x[4]||B); set("cap-m1horiz", "동일 고객 전 품목 출하검사"); set("cap-m1doc", x[2]||B);
+  // 유효성
+  set("cap-v0item", x[5]+" 건수"); set("cap-v0how", "월 1회 부적합 이력·현장 점검 집계"); set("cap-v0crit", "0건"); set("cap-v0per", "3개월");
+  set("cap-v1item", "동일 유형 유출(고객 클레임) 건수"); set("cap-v1how", "출하검사 기록·고객 클레임 집계"); set("cap-v1crit", "0건"); set("cap-v1per", "3개월");
+  return n;
+}
 function ncrQaApply_(key){
   var qa=ncrQaGet_(); if(!qa) return;
   if(!ncrQaFilled_(qa) && !confirm("경위 질문이 모두 비어 있습니다.\n유형 틀만으로 작성할까요? (빈 곳은 [ ]로 남습니다)")) return;
   var filled=NCR_DRAFT_FIELDS.filter(function(f){ var el=document.getElementById(f[1]); return el && String(el.value||"").trim(); }).length;
-  if(filled && !confirm("①~⑦ 칸에 이미 내용이 있습니다 ("+filled+"칸).\n경위 답으로 다시 작성(덮어쓰기)할까요?")) return;
+  if(filled && !confirm("①~⑦ 칸에 이미 내용이 있습니다 ("+filled+"칸).\n경위 답으로 다시 작성(덮어쓰기)할까요?\n(고객 건은 아래 대책서 항목의 원인·대책 문구도 다시 씁니다 — 담당자·날짜·사진은 유지)")) return;
   var d=ncrFillFromKey_(key, Object.assign({}, __ncrMeta[key]||{}, __ncrDetail[key]||{})), dr=ncrDraftQa_(d, qa), n=0;
   NCR_DRAFT_FIELDS.forEach(function(f){ var el=document.getElementById(f[1]); if(el && dr[f[0]]!=null){ el.value=dr[f[0]]; el.style.background="#FFFCF0"; n++; } });
-  var b=document.getElementById("ncr-draft-note"); if(b) b.innerHTML="🧭 경위 답으로 "+n+"칸을 작성했습니다 — <b>[ ] 칸을 채우고 사실과 맞는지 확인한 뒤 저장</b>하세요.";
+  var nc=0; try{ nc=ncrQaCap_(d, qa); }catch(_){}
+  var b=document.getElementById("ncr-draft-note"); if(b) b.innerHTML="🧭 경위 답으로 NCR "+n+"칸"+(nc?(" + 대책서 항목 "+nc+"칸"):"")+"을 작성했습니다 — <b>[ ] 칸을 채우고 사실과 맞는지 확인한 뒤 저장</b>하세요. (담당자·날짜·사진은 직접 입력)";
   try{ var ta=document.getElementById("ncr-temp"); if(ta) ta.scrollIntoView({behavior:"smooth",block:"center"}); }catch(_){}
 }
 /* ==================== 📄 문서 초안 (IATF 16949 기준 표준 양식) ====================
