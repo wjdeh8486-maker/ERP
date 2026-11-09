@@ -6843,6 +6843,86 @@ function ncrQaApply_(key){
   var b=document.getElementById("ncr-draft-note"); if(b) b.innerHTML="🧭 경위 답으로 NCR "+n+"칸"+(nc?(" + 대책서 항목 "+nc+"칸"):"")+"을 작성했습니다 — <b>[ ] 칸을 채우고 사실과 맞는지 확인한 뒤 저장</b>하세요. (담당자·날짜·사진은 직접 입력)";
   try{ var ta=document.getElementById("ncr-temp"); if(ta) ta.scrollIntoView({behavior:"smooth",block:"center"}); }catch(_){}
 }
+/* ===== [추가] Claude에게 요청 — NCR 기록·경위를 요청문으로 복사하고 Claude 열기 / 받은 답을 칸별로 붙여넣기 ===== */
+var NCR_AI_SEC=[["⓪","ncr-temp","임시조치"],["①","ncr-cause","발생 원인"],["②","ncr-escape","유출 원인"],["③","ncr-why","근본 원인 (5Why)"],["④","ncr-corrective","시정 조치"],["⑤","ncr-preventive","재발 방지 대책"],["⑥","ncr-horiz","수평전개·문서개정"],["⑦","ncr-effect","효과 확인"]];
+function ncrAiPrompt_(key){
+  var d=ncrFillFromKey_(key, Object.assign({}, __ncrMeta[key]||{}, __ncrDetail[key]||{})), qa=ncrQaGet_()||{}, cust=(d.src==="고객");
+  var v=function(id){ var el=document.getElementById(id); return el?String(el.value||"").trim():""; };
+  var nm=""; try{ nm=(typeof qdName_==="function")?qdName_(d.draw):""; }catch(_){}
+  var hist=""; try{ var h=String((ncrDraft_(d)||{}).horiz||"").split("\n"); hist=h[h.length-1]||""; }catch(_){}
+  var L=[];
+  L.push("너는 ㈜엔티엘(정밀 부품 가공) 품질팀의 NCR·재발방지 대책서 작성 담당이다. 아래 부적합 기록과 경위를 바탕으로 작성해줘.");
+  L.push("");
+  L.push("[작성 규칙]");
+  L.push("- 기록과 경위에 있는 사실만 사용한다. 모르는 수량·날짜·담당자·문서번호는 [ ]로 남긴다. 추정한 내용은 끝에 (추정)을 붙인다.");
+  L.push("- 회사 품질 지침(스킬)이 있으면 그 절차서·양식 이름과 문서번호를 사용한다.");
+  L.push("- 5Why는 1)~5) 한 줄씩, 마지막 줄이 근본 원인이 되게 쓴다. '주의·교육 강화' 같은 사람 탓 대책보다 구조적 대책(표준·풀프루프·검사 기준)을 우선한다.");
+  L.push("- 출력은 아래 [출력 형식]의 ### 머리표를 그대로 지키고, 각 칸에 바로 붙여 넣을 수 있는 문장만 쓴다. 머리표 밖에 설명을 쓰지 않는다.");
+  L.push("");
+  L.push("[부적합 기록]");
+  L.push("- 구분: "+(d.src||"내부")+(cust?(" / 고객: "+(d.customer||"")):"")+(d.proc?(" / 공정: "+d.proc):""));
+  L.push("- 도번: "+(d.draw||"")+(nm?(" / 품명: "+nm):"")+(d.sn?(" / S/N: "+d.sn):""));
+  L.push("- 발생일: "+(d.date||"[ ]")+(d.finder?(" / 발견: "+d.finder):"")+" / 수량: "+(qa.qty||d.qty||"[ ]"));
+  L.push("- 부적합 내용: "+(d.types||""));
+  if(d.ctemp||d.ctreat) L.push("- 고객부적합 기록: 임시조치 '"+(d.ctemp||"-")+"' / 시정조치 '"+(d.ctreat||"-")+"'");
+  if(d.act) L.push("- 검사일보 조치: "+d.act);
+  if(hist) L.push("- "+hist);
+  L.push("");
+  L.push("[경위 (담당자 답변)]");
+  var tl=(NCR_QA_T[qa.type]||{}).l; if(tl) L.push("- 원인 유형: "+tl);
+  NCR_QA_Q.forEach(function(q){ L.push("- "+q[1].replace(/\s*\(.*\)\s*$/,"")+": "+(qa[q[0]]||"(미입력)")); });
+  var cur=NCR_AI_SEC.filter(function(x){ return v(x[1]); });
+  if(cur.length){ L.push(""); L.push("[현재 작성된 초안 — 사실은 유지하고 문장·논리를 다듬어줘]"); cur.forEach(function(x){ L.push(x[0]+" "+x[2]+": "+v(x[1]).replace(/\n/g," / ")); }); }
+  L.push(""); L.push("[출력 형식]");
+  NCR_AI_SEC.forEach(function(x){ L.push("### "+x[0]+" "+x[2]); L.push("(내용)"); });
+  if(cust){ L.push("### 대책서-발생원인 Why"); L.push("1) …\n2) …\n3) …\n4) …\n5) …"); L.push("### 대책서-유출원인 Why"); L.push("1) …\n2) …\n3) …\n4) …\n5) …"); L.push("### 대책서-유출 대책"); L.push("(검사 단계에서 다시 못 나가게 하는 대책 1~2줄)"); }
+  return L.join("\n");
+}
+function ncrAiCopy_(t, done){
+  var fb=function(){ try{ var ta=document.createElement("textarea"); ta.value=t; ta.style.cssText="position:fixed;left:-9999px;top:0;"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); done(true); }catch(e){ done(false); } };
+  try{ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(function(){ done(true); }, fb); return; } }catch(_){}
+  fb();
+}
+function ncrAskClaude_(key){
+  var t=ncrAiPrompt_(key);
+  var w=null; try{ w=window.open("https://claude.ai/new","_blank"); }catch(_){}
+  ncrAiCopy_(t, function(ok){
+    var b=document.getElementById("ncr-draft-note");
+    if(b) b.innerHTML=ok?("🤖 요청문을 복사했습니다 — 열린 Claude 창에 <b>Ctrl+V → Enter</b>. 답이 나오면 답 전체를 복사해서 <b>📋 Claude 답 붙여넣기</b>를 누르세요."+(w?"":" (새 창이 막혔으면 claude.ai를 직접 여세요)")):"🤖 복사에 실패했습니다 — 다시 눌러 주세요.";
+    if(!ok){ try{ prompt("아래 내용을 복사(Ctrl+C)하세요", t); }catch(_){} }
+  });
+}
+function ncrAiParse_(txt){
+  txt=String(txt||"").replace(/\r/g,"").replace(/^```[a-z]*\s*$/gim,"");
+  var parts=txt.split(/^\s*#{2,4}\s*(.+?)\s*$/m), out={};
+  for(var i=1;i<parts.length;i+=2){ var h=parts[i], body=String(parts[i+1]||"").replace(/^\s*\n|\s+$/g,"").replace(/\*\*/g,"");
+    var hit=null; NCR_AI_SEC.forEach(function(x){ if(!hit && h.indexOf(x[0])>=0) hit=x[1]; });
+    if(!hit){ if(/대책서.*발생/.test(h)) hit="wo"; else if(/대책서.*유출.*대책/.test(h)) hit="m1"; else if(/대책서.*유출/.test(h)) hit="we"; }
+    if(hit && body) out[hit]=body; }
+  return out;
+}
+function ncrAiPasteOpen_(key){
+  var old=document.getElementById("ncr-ai-ov"); if(old) old.remove();
+  var ov=document.createElement("div"); ov.id="ncr-ai-ov"; ov.style.cssText="position:fixed;inset:0;z-index:100090;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;";
+  ov.innerHTML='<div style="background:#fff;border-radius:12px;width:min(720px,100%);padding:14px;box-shadow:0 16px 50px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:8px;">'
+    +'<b style="color:#1F2A44;">📋 Claude 답 붙여넣기</b><div style="font-size:12px;color:#475467;">Claude 답 전체를 복사해서 아래에 붙여 넣으세요(Ctrl+V). ### 머리표 기준으로 각 칸에 나눠 넣습니다.</div>'
+    +'<textarea id="ncr-ai-txt" rows="14" style="width:100%;box-sizing:border-box;border:1px solid #D6DEE8;border-radius:8px;padding:8px;font-size:12.5px;"></textarea>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;"><button type="button" data-x="ok" style="background:#1849A9;color:#fff;border:0;border-radius:8px;padding:8px 16px;font-weight:800;cursor:pointer;">칸에 넣기</button><button type="button" data-x="close" style="background:#EEF1F6;border:1px solid #D6DEE8;border-radius:8px;padding:8px 14px;cursor:pointer;">닫기</button></div></div>';
+  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x"); if(x==="close"||e.target===ov){ ov.remove(); return; } if(x==="ok") ncrAiApply_(key); });
+  document.body.appendChild(ov); setTimeout(function(){ var t=document.getElementById("ncr-ai-txt"); if(t) t.focus(); }, 50);
+}
+function ncrAiApply_(key){
+  var o=ncrAiParse_((document.getElementById("ncr-ai-txt")||{}).value), ks=Object.keys(o);
+  if(!ks.length){ alert("### 머리표(### ⓪ 임시조치 …)를 찾지 못했습니다.\nClaude 답 전체를 그대로 붙여 넣었는지 확인하세요."); return; }
+  var n=0, setv=function(id,val){ var el=document.getElementById(id); if(!el) return; el.value=val; el.style.background="#EEF4FF"; n++; };
+  NCR_AI_SEC.forEach(function(x){ if(o[x[1]]) setv(x[1], o[x[1]]); });
+  var lines=function(t){ return (typeof capSplitWhy_==="function")?capSplitWhy_(t):String(t).split("\n"); };
+  if(o.wo){ lines(o.wo).slice(0,5).forEach(function(l,i){ setv("cap-wo"+(i+1), l); }); }
+  if(o.we){ lines(o.we).slice(0,5).forEach(function(l,i){ setv("cap-we"+(i+1), l); }); }
+  if(o.m1) setv("cap-m1txt", o.m1.replace(/^\s*[-•]\s*/gm,""));
+  var ov=document.getElementById("ncr-ai-ov"); if(ov) ov.remove();
+  var b=document.getElementById("ncr-draft-note"); if(b) b.innerHTML="🤖 Claude 답으로 "+n+"칸을 채웠습니다 (파란 칸) — <b>사실과 맞는지, [ ] 칸을 확인한 뒤 저장</b>하세요.";
+}
 /* ==================== 📄 문서 초안 (IATF 16949 기준 표준 양식) ====================
    · SCAR(거래처 시정요구서) · 8D(고객 클레임 대책서) · 월간 품질 보고서 · HOLD 해제 보고서
    · 장기재고 재검사 판정서 · 계측기 교정 계획표 · PCN(공정변경 통보·승인 요청서)
@@ -7134,6 +7214,9 @@ function ncrOpen_(key){
     +'<div style="font-weight:400;font-size:12px;opacity:.9;margin-top:2px;">'+E(d.types)+(sub?(" · "+E(sub)):"")+'</div></div>'
     +'<div style="padding:16px;display:flex;flex-direction:column;gap:11px;">'
     +'<div style="display:flex;align-items:center;gap:8px;background:#FFF8E6;border:1px solid #FEC84B;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#7A4A00;"><span id="ncr-draft-note" style="flex:1;">🤖 부적합 유형·공정·과거 이력으로 <b>초안</b>을 채울 수 있습니다.</span><button type="button" onclick="ncrFillDraft_(\''+ncrEscAttr_(key)+'\')" style="background:#B54708;color:#fff;border:none;border-radius:7px;padding:6px 10px;font-weight:700;cursor:pointer;white-space:nowrap;">✍ 빈 칸 초안 채우기</button></div>'
+    +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#F4F3FF;border:1px solid #D9D6FE;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#3E1C96;"><span style="flex:1;min-width:200px;">🤖 <b>Claude</b>로 다듬기 — 기록·경위를 요청문으로 복사하고 Claude를 엽니다 (구독 그대로, 추가 비용 없음)</span>'
+    +'<button type="button" onclick="ncrAskClaude_(\''+ncrEscAttr_(key)+'\')" style="background:#5925DC;color:#fff;border:none;border-radius:7px;padding:6px 10px;font-weight:700;cursor:pointer;white-space:nowrap;">🤖 Claude에게 요청</button>'
+    +'<button type="button" onclick="ncrAiPasteOpen_(\''+ncrEscAttr_(key)+'\')" style="background:#fff;color:#5925DC;border:1px solid #5925DC;border-radius:7px;padding:6px 10px;font-weight:700;cursor:pointer;white-space:nowrap;">📋 Claude 답 붙여넣기</button></div>'
     +ncrQaHtml_(key, d)
     + ta("ncr-temp","⓪ 임시조치 (격리·선별·재고/출하분 확인·HOLD)", d.temp,2)
     + ta("ncr-cause","① 발생 원인 (왜 발생?)", d.cause,2)
