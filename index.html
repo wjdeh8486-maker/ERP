@@ -3102,7 +3102,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
             <button onclick="renderInspList()" style="background:#B8860B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🔍 검색</button>
             <button id="insplist-overdueBtn" onclick="insplistOverdueToggle_()" title="일정 달력에 '검수'로 등록된 PROJECT 중 미완료(부족>0) + 최종납기 지난 건만, 납기 오래된 순으로 표시" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;">⏰ 납기지연</button>
             <select id="insplist-state" onchange="renderInspList()" title="완료 여부로 걸러보기 — 완료만 고른 뒤 전체 체크하면 완료품 라벨을 한 번에 인쇄" style="padding:7px 8px;border:1px solid #C9D3E0;border-radius:8px;font-size:13px;font-weight:700;color:#33415C;"><option value="all" selected>전체</option><option value="lack">미완료만</option><option value="done">완료만</option></select>
-            <span class="qlist-pair"><button onclick="insplistStockUseOpen_()" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">📦 재고사용</button><button onclick="insplistStockUseCancel_()" style="background:#B0662A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;" title="재고사용된 항목을 다시 되돌립니다">↩ 취소</button></span>
+            <span class="qlist-pair"><button onclick="insplistStockUseOpen_()" style="background:#5A3E7A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">📦 재고사용</button><button onclick="insplistStockUseCancel_()" style="background:#B0662A;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;" title="재고사용된 항목을 다시 되돌립니다">↩ 취소</button><button onclick="insplistStockUseMove_()" style="background:#3B5BA9;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;" title="체크한 재고사용 건을 다른 PROJECT의 같은 도번 ORDER로 옮깁니다 (S/N·수량 그대로)">⇄ 옮기기</button></span>
             <span class="qlist-pair"><button onclick="insplistPreShip_()" style="background:#C0392B;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">🚚 선출고</button><button onclick="insplistPreShipCancel_()" style="background:#7F8C8D;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;">↩ 취소</button></span></div>
         </div>
         <div style="font-size:12px;color:#7A8598;margin-bottom:10px;">ORDER NO.(예: 26-386)를 입력하면 세부(26-386-1, 2 …)가 펼쳐집니다 · 완료 = 재고 출고수량(관리번호 매칭) · 부족 = 수량 − 완료 · S/N은 재고관리에서 · 수량 0·PR&PO 미등록 건은 제외 · 비고는 인쇄 후 수기 체크용</div>
@@ -6220,6 +6220,7 @@ function insplistShipAlloc_(shipRows, qtyOf){     // 출하검사 검사수를 �
 }
 // ===== 검수LIST 재고사용 헬퍼 =====
 var __inspUsedOrders = {};   // 서버에서 로드한 재고사용된 ORDER NO. 집합 (비고 "재고사용" 표시용)
+var __inspUsedQty = {}, __inspUsedSn = {}, __inspUsedRows = {};   // [추가] 재고사용(재고분출) 수량·S/N — 검수LIST 완료수량에 포함
   var __inspPreShipOrders = {};
 
 function insplistStockQty_(partNo, oldDraw){        // 품번 또는 도번으로 보유재고 (입고−출고). 재고관리와 동일하게 둘 다 조회
@@ -6399,6 +6400,8 @@ sns = Array.from(new Set(sns));
     //        → 두 곳에 같은 S/N이 있으면 그 개수만큼 출하검사 쪽에서 뺌. S/N이 없으면 기존과 같음
     var __dupSn=Object.keys(__shSn).filter(function(n){ return __stSn[n]; }).length;
     var done=Math.min(qty, stockOut + Math.max(0, shipDone - __dupSn) + insplistReworkDone_(orderNo, iv, shipRows));     // 완료는 수량이 상한 · [추가] 부적합 조치 완료분 포함
+    // [추가] 재고사용(재고분출)한 수량도 완료로 셈 — 재고 데이터에 출고로 이미 잡힌 만큼(stockOut)은 빼서 두 번 세지 않음 (수량 기록이 없는 옛 건은 전량)
+    if(__inspUsedOrders && __inspUsedOrders[orderNo]===true){ var __uq=(__inspUsedQty[orderNo]>0)?__inspUsedQty[orderNo]:qty; done=Math.min(qty, done+Math.max(0, __uq-stockOut)); }
     var lack=Math.max(0, qty-done);                  // 부족 = 수량 − 완료 (0 이상)
     var partNo=String(m.partNo||"").trim();
     var stockQty=insplistStockQty_(partNo, m.oldDrawingNo);          // 보유재고 (품번+도번)
@@ -6418,7 +6421,7 @@ else if(used){
 else if(stockQty>0){
   note=(lastLoc?lastLoc:"X")+"("+stockQty+")";
 }
-    return { orderNo:orderNo, project:project, vendorName:String(m.vendorName||""), name:name, qty:qty, done:done, lack:lack, sn:insplistSnLabel_(orderNo, iv, shipRows, sns).join(", "),
+    return { orderNo:orderNo, project:project, vendorName:String(m.vendorName||""), name:name, qty:qty, done:done, lack:lack, sn:(function(){ var L=insplistSnLabel_(orderNo, iv, shipRows, sns), U=(__inspUsedOrders[orderNo]===true && __inspUsedSn[orderNo])||[]; U.forEach(function(x){ var xd=String(x).replace(/\D/g,""); if(xd && !L.some(function(y){ return String(y).replace(/\D/g,"").slice(-xd.length)===xd; })) L.push(x); }); return L.join(", "); })(),
              status:m.status||"", oldDraw:m.oldDrawingNo||"", due:m.dueDate||"", loc:(locMap[partNo]||""),
              partNo:partNo, stockQty:stockQty, lastLoc:lastLoc, used:used, note:note,
              overDays:(__od?insplistOverDays_(m.dueDate, __odToday):0) };
@@ -9223,7 +9226,8 @@ function insplistStockUseShare_(){
     }catch(e){}
   }
   // 로컬 비고 즉시 반영 (서버 로드 전이라도)
-  rows.forEach(function(r){ __inspUsedOrders[r.orderNo]=true; });
+  rows.forEach(function(r){ __inspUsedOrders[r.orderNo]=true; (__inspUsedRows[r.orderNo]=__inspUsedRows[r.orderNo]||[]).push(r); __inspUsedQty[r.orderNo]=(__inspUsedQty[r.orderNo]||0)+(Number(r.qty)||0);
+    String(r.sn||"").split(/[,\s]+/).filter(Boolean).forEach(function(x){ (__inspUsedSn[r.orderNo]=__inspUsedSn[r.orderNo]||[]).indexOf(x)<0 && __inspUsedSn[r.orderNo].push(x); }); });
   insplistStockUseClose_();
   renderInspList();                          // 비고란 "재고사용" 갱신
   alert("재고분출 "+rows.length+"건을 공유했습니다.\n전체 사용자에게 알림이 전송됩니다.");
@@ -9508,6 +9512,19 @@ function insplistGoQcHist_(draw){
 function insplistLoadUsedNotes_(cb){
   var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
   if(!url){ cb&&cb(); return; }
+  // [수정] 재고사용 내역(수량·S/N 포함)을 읽어 완료수량에 반영 — 실패하면 기존 방식(ORDER 목록만)
+  fetch(url+(url.indexOf("?")>=0?"&":"?")+"mode=readStockUse&_t="+Date.now(),{cache:"no-store"})
+    .then(function(r){ return r.json(); })
+    .then(function(j){ if(!(j&&j.success&&Array.isArray(j.rows))) throw 0;
+      __inspUsedOrders={}; __inspUsedQty={}; __inspUsedSn={}; __inspUsedRows={};
+      j.rows.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(!o) return; __inspUsedOrders[o]=true; (__inspUsedRows[o]=__inspUsedRows[o]||[]).push(r); __inspUsedQty[o]=(__inspUsedQty[o]||0)+(Number(r.qty)||0);
+        String(r.sn||"").split(/[,\s]+/).filter(Boolean).forEach(function(x){ (__inspUsedSn[o]=__inspUsedSn[o]||[]).indexOf(x)<0 && __inspUsedSn[o].push(x); }); });
+      cb&&cb(); })
+    .catch(function(){ insplistLoadUsedNotesOld_(cb); });
+}
+function insplistLoadUsedNotesOld_(cb){
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"";
+  if(!url){ cb&&cb(); return; }
   fetch(url+(url.indexOf("?")>=0?"&":"?")+"mode=readInspNote")
     .then(function(r){ return r.json(); })
     .then(function(j){ if(j&&j.success&&j.orders){ __inspUsedOrders={}; j.orders.forEach(function(o){ __inspUsedOrders[o]=true; }); } cb&&cb(); })
@@ -9537,9 +9554,48 @@ function insplistStockUseCancel_(){
       body:JSON.stringify({mode:"cancelStockUse", orders:orders})}).catch(function(){});
   }
   // 로컬 즉시 반영
-  orders.forEach(function(o){ delete __inspUsedOrders[o]; });
+  orders.forEach(function(o){ delete __inspUsedOrders[o]; delete __inspUsedQty[o]; delete __inspUsedSn[o]; delete __inspUsedRows[o]; });
   renderInspList();
   alert("재고사용을 취소했습니다. ("+orders.length+"건)\n비고란이 원래대로 복구됩니다.");
+}
+/* [추가] 재고사용 옮기기 — 다른 PROJECT가 먼저 나가야 할 때 (예: 26-594로 재고사용 → 26-595로)
+   체크한 재고사용 ORDER → 받을 PROJECT에서 같은 도번(기존도번) ORDER를 찾아 S/N·수량 그대로 옮김
+   서버: 원래 ORDER 재고사용 기록 삭제(cancelStockUse) + 새 ORDER로 기록(writeStockUse) + 재고분출 알림 다시 보냄 */
+function insplistStockUseMove_(){
+  var checks=Array.prototype.slice.call(document.querySelectorAll(".insplist-chk:checked"));
+  var src=checks.map(function(c){ return c.getAttribute("data-order"); }).filter(function(o){ return __inspUsedOrders[o]===true; });
+  if(!src.length){ alert("옮길 '재고사용' 항목을 먼저 체크하세요.\n(비고가 '재고사용'인 행만 옮길 수 있습니다.)"); return; }
+  var md=(typeof mainData!=="undefined"&&mainData)||[], byNo={}; md.forEach(function(r){ var n=String(r.orderNo||"").trim(); if(n && !byNo[n]) byNo[n]=r; });
+  var tp=prompt("어느 PROJECT로 옮길까요? (예: B04050427)\n같은 도번의 ORDER로 S/N·수량을 그대로 옮깁니다.",""); if(!tp) return;
+  var T=dispatchProjBase_(String(tp).trim()); if(!T){ alert("PROJECT NO.를 확인하세요."); return; }
+  var D=function(x){ return (typeof insNormDraw_==="function")?insNormDraw_(x):String(x||"").trim().toUpperCase(); };
+  var taken={}, plan=[], miss=[];
+  src.forEach(function(o){ var sr=byNo[o]||{}, rows=__inspUsedRows[o]||[], draw=sr.oldDrawingNo||(rows[0]&&rows[0].oldDraw)||"";
+    if(dispatchProjBase_(sr.vendor||"")===T){ miss.push(o+" (이미 그 PROJECT)"); return; }
+    var cands=md.filter(function(r){ var n=String(r.orderNo||"").trim(); return n && !taken[n] && dispatchProjBase_(r.vendor||"")===T && D(r.oldDrawingNo)===D(draw) && __inspUsedOrders[n]!==true; })
+      .sort(function(a,b){ return String(a.orderNo).localeCompare(String(b.orderNo), undefined, {numeric:true}); });
+    if(!cands.length){ miss.push(o+" ("+(draw||"도번 없음")+" → "+T+"에 같은 도번 없음)"); return; }
+    var t=cands[0]; taken[String(t.orderNo).trim()]=1;
+    var q=__inspUsedQty[o]>0?__inspUsedQty[o]:(Number(sr.qty)||0), sn=(__inspUsedSn[o]||[]).join(", ");
+    plan.push({ from:o, to:String(t.orderNo).trim(), project:String(t.vendor||""), oldDraw:t.oldDrawingNo||draw, name:t.partName||sr.partName||(rows[0]&&rows[0].name)||"", qty:Math.min(q, Number(t.qty)||q), qtyFrom:q, sn:sn, loc:(rows[0]&&rows[0].loc)||"", tqty:Number(t.qty)||0 }); });
+  if(!plan.length){ alert("옮길 수 있는 건이 없습니다.\n\n"+miss.join("\n")); return; }
+  var msg="재고사용을 아래처럼 옮깁니다.\n\n"+plan.map(function(p){ return "· "+p.from+" → "+p.to+"  ("+p.oldDraw+" · "+p.qty+"개"+(p.qty<p.qtyFrom?" ※ 받을 ORDER 수량 "+p.tqty+"개라 줄임":"")+(p.sn?" · S/N "+p.sn:"")+")"; }).join("\n")
+    +(miss.length?"\n\n옮기지 못하는 건 (그대로 둠):\n"+miss.join("\n"):"")+"\n\n원래 ORDER의 재고사용은 취소되고, 재고분출 알림이 다시 전송됩니다.";
+  if(!confirm(msg)) return;
+  var url=(typeof docmasterApiUrl==="function")?docmasterApiUrl():"", by=(typeof __clientId!=="undefined")?__clientId:"";
+  var newRows=plan.map(function(p){ return { orderNo:p.to, project:p.project, oldDraw:p.oldDraw, name:p.name, qty:p.qty, sn:p.sn, loc:p.loc }; });
+  if(url){
+    fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({mode:"cancelStockUse", orders:plan.map(function(p){ return p.from; })})}).catch(function(){})
+      .then(function(){ return fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({mode:"writeStockUse", rows:newRows, by:by})}); }).catch(function(){});
+    try{ var __xr=newRows.map(function(r){ return [r.orderNo, r.project, r.oldDraw, r.name, Number(r.qty)||0, r.sn]; }), __ex={ orders:newRows.map(function(r){ return r.orderNo; }), moved:plan.map(function(p){ return p.from+"→"+p.to; }) };
+      if(JSON.stringify(__xr).length<40000) __ex.rows=__xr;
+      fetch(url,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({mode:"writeNcAlert", alerts:[{ proc:"재고분출", draw:"", qty:newRows.length, types:"__STOCKUSE__", by:by, extra:__ex }]})}).catch(function(){}); }catch(_){}
+  }
+  plan.forEach(function(p){ delete __inspUsedOrders[p.from]; delete __inspUsedQty[p.from]; delete __inspUsedSn[p.from]; delete __inspUsedRows[p.from]; });
+  newRows.forEach(function(r){ __inspUsedOrders[r.orderNo]=true; __inspUsedQty[r.orderNo]=(__inspUsedQty[r.orderNo]||0)+(Number(r.qty)||0); __inspUsedRows[r.orderNo]=[r];
+    String(r.sn||"").split(/[,\s]+/).filter(Boolean).forEach(function(x){ (__inspUsedSn[r.orderNo]=__inspUsedSn[r.orderNo]||[]).indexOf(x)<0 && __inspUsedSn[r.orderNo].push(x); }); });
+  renderInspList();
+  alert("재고사용 "+plan.length+"건을 "+T+"로 옮겼습니다."+(miss.length?"\n옮기지 못한 "+miss.length+"건은 그대로 두었습니다.":""));
 }
 // 검수LIST 라벨 인쇄 (분출LIST 공통 라벨 인쇄기 재사용, 70×40mm)
 function insplistLabelPrint_(){
@@ -31255,7 +31311,8 @@ function insGuideRows_(draw, ri){
     if(o.sd) o.tags.push(["특별납기 "+o.sd.slice(5),"#B54708","#FFFAEB"]);
     if(o.disp) o.tags.push(["분출 LIST","#175CD3","#EFF8FF"]);
     if(!isI && due && due<t) o.tags.push(["납기 지남","#B42318","#FEF3F2"]);
-    o.urg=!!(isI || o.disp || (due && due<t));   // [추가] 미납(납기 지남)·검수·분출 LIST = 출고No 지정이 필요한 건 (미래 납기만 있는 일반·특별납기는 제외)
+    o.urg=!!((isI && (!o.inspDay || o.inspDay<=W.e)) || o.disp || (due && due<t));   // [추가] 미납(납기 지남)·검수·분출 LIST = 출고No 지정이 필요한 건 (미래 납기만 있는 일반·특별납기는 제외)
+    //   [수정] 검수 건은 검수일이 이번 주~다음 주 안일 때만 빨간 표시 (검수일이 그보다 뒤면 지금 재고로 넣는 게 맞음 · 검수일 모르면 기존처럼 표시)
     o.rank=(isI && due && due<t)?0:(o.sd?1:((isI && o.inspDay && o.inspDay<=W.e)?2:(o.disp?3:(due && due<t?4:5))));
     out.push(o); });
   // [수정] MAIN에 같은 관리번호가 여러 줄(선진행+추가 등)이면 한 줄로 합침 — 전에는 두 번 나왔음
