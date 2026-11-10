@@ -16059,8 +16059,8 @@ function dnNewLoad_(cb){ if(__dnNew.busy){ cb&&cb(); return; } __dnNew.busy=true
   try{ var c=JSON.parse(localStorage.getItem("dnNewChkCache")||"null"); if(c && typeof c==="object") __dnNew.chk=c; }catch(_){}
   if(typeof qShareLoad_==="function") qShareLoad_(DN_NEW_KEY, function(v){ if(v && typeof v==="object") __dnNew.chk=dnMerge_(__dnNew.chk, v); try{ localStorage.setItem("dnNewChkCache", JSON.stringify(__dnNew.chk)); }catch(_){} fin(); }); else fin();
   var base=(typeof DRAWING_SERVER!=="undefined")?DRAWING_SERVER:"";
-  fetch(base+"/newdwg?days="+__dnNew.days+"&_t="+Date.now(), { cache:"no-store" }).then(function(r){ return r.json(); }).then(function(res){
-    if(res && res.ok){ __dnNew.items=res.items||[]; __dnNew.err=""; } else { __dnNew.err="도면 서버가 신규 도면 기능을 지원하지 않습니다 (server.py 교체 필요)"; } fin(); })
+  fetch(base+"/newdwg?days="+__dnNew.days+"&_t="+Date.now(), { cache:"no-store" }).then(function(r){ if(r.status===404) return { ok:false, old:true }; return r.json(); }).then(function(res){
+    if(res && res.ok){ __dnNew.items=res.items||[]; __dnNew.err=""; } else { __dnNew.err="도면 서버가 아직 예전 버전입니다 — 도면 서버 PC의 server.py를 새 파일로 바꾸고 도면 서버를 다시 시작하세요"; } fin(); })
    .catch(function(){ __dnNew.err="도면 서버에 연결하지 못했습니다 (사내망·도면 서버 PC 확인, 또는 server.py 교체 필요)"; fin(); }); }
 function dnNewBadge_(){ var n=dnNewCnt_(), el=document.getElementById("dn-newcnt"); if(el){ el.textContent=__dnNew.items?n:""; el.style.color=n?"#B42318":""; el.style.fontWeight=n?"800":""; }
   try{ var nb=document.querySelector('.nav-item[data-view="dnote"] .qnav-t b'); if(nb){ var sp=nb.querySelector(".dn-navb"); if(!sp){ sp=document.createElement("span"); sp.className="dn-navb"; sp.style.cssText="margin-left:6px;background:#D92D20;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:800;"; nb.appendChild(sp); } sp.textContent=n?("신규 "+n):""; sp.style.display=n?"":"none"; } }catch(_){} }
