@@ -6318,6 +6318,8 @@ function insplistBuildRows_(q, shipRows){
   // 출하검사 검사수를 순차 배분(앞 ORDER부터 수량만큼) — 전체 MAIN 수량 기준
   var qtyMap={}; md.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) qtyMap[o]=(qtyMap[o]||0)+(Number(r.qty)||0); });   // [수정] 같은 ORDER NO. 여러 줄은 합계
   var shipAlloc=insplistShipAlloc_(insplistCountShip_(shipRows, iv), function(o){ return qtyMap[o]||0; });   // [수정] 오늘 검사분만
+  // [추가] 같은 ORDER NO.가 여러 줄(예: 26-595-7 4개 x2줄)이면 완료 수량(재고출고·출하·재고사용)을 앞줄부터 나눠 채움 — 두 줄에 같은 수량이 중복으로 잡히던 문제
+  var __dupCnt={}, __dupLeft={}; matched.forEach(function(r){ var o=String(r.orderNo||"").trim(); if(o) __dupCnt[o]=(__dupCnt[o]||0)+1; });
   return matched.map(function(m){
     var orderNo=String(m.orderNo||"").trim();
     var qty=Number(m.qty)||0;
@@ -6405,12 +6407,18 @@ sns = Array.from(new Set(sns));
     var __dupSn=Object.keys(__shSn).filter(function(n){ return __stSn[n]; }).length;
     var done=Math.min(qty, stockOut + Math.max(0, shipDone - __dupSn) + insplistReworkDone_(orderNo, iv, shipRows));     // 완료는 수량이 상한 · [추가] 부적합 조치 완료분 포함
     // [추가] 재고사용(재고분출)한 수량도 완료로 셈 — 재고 데이터에 출고로 이미 잡힌 만큼(stockOut)은 빼서 두 번 세지 않음 (수량 기록이 없는 옛 건은 전량)
-    if(__inspUsedOrders && __inspUsedOrders[orderNo]===true){ var __uq=(__inspUsedQty[orderNo]>0)?__inspUsedQty[orderNo]:qty; done=Math.min(qty, done+Math.max(0, __uq-stockOut)); }
+    var __usedX=0; if(__inspUsedOrders && __inspUsedOrders[orderNo]===true){ var __uq=(__inspUsedQty[orderNo]>0)?__inspUsedQty[orderNo]:qty; __usedX=Math.max(0, __uq-stockOut); done=Math.min(qty, done+__usedX); }
+    var __usedHere=true;
+    if(__dupCnt[orderNo]>1){   // [추가] 같은 ORDER 여러 줄 → ORDER 전체 완료분을 앞줄부터 배분
+      if(!(orderNo in __dupLeft)) __dupLeft[orderNo]={ base:stockOut + Math.max(0, shipDone - __dupSn) + insplistReworkDone_(orderNo, iv, shipRows), used:__usedX };
+      var __L=__dupLeft[orderNo], __tb=Math.min(qty, __L.base); __L.base-=__tb; var __tu=Math.min(qty-__tb, __L.used); __L.used-=__tu;
+      done=__tb+__tu; __usedHere=__tu>0;
+    }
     var lack=Math.max(0, qty-done);                  // 부족 = 수량 − 완료 (0 이상)
     var partNo=String(m.partNo||"").trim();
     var stockQty=insplistStockQty_(partNo, m.oldDrawingNo);          // 보유재고 (품번+도번)
     var lastLoc=insplistLastLoc_(partNo, m.oldDrawingNo);            // 마지막 등록 위치 (품번+도번)
-   var used=(__inspUsedOrders && __inspUsedOrders[orderNo]===true);
+   var used=(__inspUsedOrders && __inspUsedOrders[orderNo]===true) && __usedHere;   // [수정] 같은 ORDER 여러 줄이면 재고사용이 배분된 줄에만 표시
 var preShip=(__inspPreShipOrders && __inspPreShipOrders[orderNo]===true);
 
 // 비고
