@@ -20426,7 +20426,8 @@ var SM_LOGK={ tx:"입고·사용 내역", alloc:"고객 할당", per:"1소재당
 //   미할당 = 소재 사급 '관리번호별' 목록에서 ❌ 할당 없음 (출고 전). 일부 할당·할당 완료·사용 완료·출고 완료가 되면 해제.
 function smHoldSync_(){
   try{
-    if(!__sm || !__sm.loaded || !__sm.d || typeof HOLD_STORE==="undefined" || !HOLD_STORE.loaded) return;
+    if(!__sm || !__sm.loaded || !__sm.d || typeof HOLD_STORE==="undefined") return;
+    if(!HOLD_STORE.loaded){ smHoldSync_.w=(smHoldSync_.w||0)+1; if(smHoldSync_.w<40) setTimeout(smHoldSync_, 5000); return; }   // 출하정지 기록을 다 불러온 뒤에만 (덮어쓰기 방지)
     var wd=__sm.withDone; __sm.withDone=false; var R=null; try{ R=smOrders_(); }finally{ __sm.withDone=wd; } if(!R) return;
     var none={}, stOf={}, U=function(x){ return String(x||"").trim().toUpperCase(); };
     R.forEach(function(r){ var n=U(r.o.no); if(!n) return; if(!stOf[n] || r.st!=="none") stOf[n]=r.st; if(r.st==="none" && !r.o.done && (Number(r.o.rest)||0)>0) (none[n]=none[n]||[]).push(r); });
@@ -20443,9 +20444,12 @@ function smHoldSync_(){
   }catch(e){ try{ console.warn("[출하정지 자동]", e); }catch(_){} }
 }
 // 어느 화면에 있든 주기적으로 맞춤 (MAIN 데이터·소재 사급·출하정지 기록이 모두 불러와졌을 때만)
-setTimeout(function smHoldTick_(){ try{ if(typeof holdEnsure_==="function") holdEnsure_(); var hasMain=(typeof smProducts_==="function") && !!smProducts_();
-  if(hasMain){ if(!__sm.loaded){ if(!__sm.loading) smLoad_(function(){ setTimeout(smHoldSync_, 500); }); } else smHoldSync_(); } }catch(_){}
-  setTimeout(smHoldTick_, 10*60000); }, 30000);
+// [수정] 소재 데이터를 불러오기 전에 smProducts_()를 부르면 오류(__sm.d 없음)로 멈춰 자동 정지가 안 되던 문제 → MAIN 데이터만 확인 후 소재부터 불러옴
+function smHoldTick_(){ try{ if(typeof holdEnsure_==="function") holdEnsure_(); var hasMain=(typeof mainData!=="undefined" && mainData && mainData.length>0);
+  if(!hasMain) return false; if(!__sm.loaded){ if(!__sm.loading) smLoad_(function(){ setTimeout(smHoldSync_, 500); }); } else smHoldSync_(); return true; }catch(e){ try{ console.warn("[출하정지 자동]", e); }catch(_){} return false; } }
+(function(){ var n=0; (function tick(){ var ok=smHoldTick_(); n++; setTimeout(tick, ok?10*60000:(n<20?30000:10*60000)); })(); })();   // MAIN 불러올 때까지 30초마다, 이후 10분마다
+// LOT 출하판정·검사일보 화면을 열 때도 바로 맞춤 (출하정지 기록을 아직 못 불러왔으면 3초 뒤 한 번 더)
+document.addEventListener("click", function(e){ var n=e.target.closest && e.target.closest('.nav-item[data-view="shipjudge"], .nav-item[data-view="insrep"]'); if(!n) return; setTimeout(smHoldTick_, 300); setTimeout(smHoldTick_, 3500); });
 // 이 관리번호가 소재 사급 미할당인가 (미할당 목록 또는 자동 출하정지 기준)
 function smUnallocNo_(no){ var n=String(no||"").trim().toUpperCase(); if(!n) return false; if(window.__smNone && window.__smNone[n]) return true;
   try{ return (__holdLog||[]).some(function(h){ return h.auto==="sm" && h.status!=="해제" && String(h.ordNo||"").trim().toUpperCase()===n; }); }catch(_){ return false; } }
