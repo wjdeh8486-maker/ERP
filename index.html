@@ -2066,6 +2066,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         <div class="nav-item nav-sub" data-view="wip" title="반제품 입고·사상·C.P 자동 사용·보유·납기·부족·작업지시"><span class="qnav-i">🧩</span><span class="qnav-t"><b>반제품 관리</b><small>입고·자동 사용·부족·작업지시</small></span></div>
         <div class="nav-item nav-sub" data-view="mnshort"><span class="qnav-i">🧩</span><span class="qnav-t"><b>반제품 현황</b><small>공정재고·미납 비교</small></span></div>
         <div class="nav-item nav-sub" data-view="procflow" title="도번·품명별 생산 공정 흐름"><span class="qnav-i">🧭</span><span class="qnav-t"><b>공정도</b><small>도번·품명별 공정 흐름</small></span></div>
+        <div class="nav-item nav-sub" data-view="xlcmp" title="전달 엑셀과 오늘 엑셀을 비교 — 변경 행 연두·납기 지난 행 빨강·추가 행 회색"><span class="qnav-i">🆚</span><span class="qnav-t"><b>변경비교</b><small>엑셀 두 개 색으로 비교</small></span></div>
         <div class="nav-item nav-sub" data-view="safety" title="월간 안전교육 자료·참석 서명부·실시 기록 (매월 인쇄해 교육)"><span class="qnav-i">🦺</span><span class="qnav-t"><b>안전교육</b><small>월간 교육자료·서명부·실시 기록</small></span></div>
       </div></div>
     <div class="qnav-cat" data-cat="insp"><button type="button" class="qnav-btn"><span class="qnav-ico">🧾</span>검사<span class="qnav-caret">▾</span></button>
@@ -2464,6 +2465,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
     <div class="view" id="view-dboard"><div id="db-root"></div></div>
     <div class="view" id="view-procflow"><div id="pf-root"></div></div>
     <div class="view" id="view-safety"><div id="se-root"></div></div>
+    <div class="view" id="view-xlcmp"><div id="xc-root"></div></div>
     <div class="view" id="view-fitting"><div id="ft-root"></div></div>
     <div class="view" id="view-smat"><div id="sm-root"></div></div>
     <div class="view" id="view-dnote"><div id="dn-root"></div></div>
@@ -4241,7 +4243,7 @@ function qxLayout_(){
       return false; };
     var views=[].slice.call(document.querySelectorAll(".main-area > .view[id^='view-']"));
     views.forEach(function(view){
-      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="dboard" || v==="safety" || v==="fitting" || v==="smat" || v==="dnote" || v==="wip" || v==="procflow" || v==="board" || v==="syshealth" || v==="authadmin" || v==="specdue" || v==="specduelog" || v==="custrev" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
+      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="dboard" || v==="safety" || v==="xlcmp" || v==="fitting" || v==="smat" || v==="dnote" || v==="wip" || v==="procflow" || v==="board" || v==="syshealth" || v==="authadmin" || v==="specdue" || v==="specduelog" || v==="custrev" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
       var inf=info(v) || (v==="history"?info("management"):null);
       var tb=document.getElementById("topbar-"+v);
       if(tb){
@@ -5308,6 +5310,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="dboard" && typeof dbShow_==="function"){ dbShow_(); }   // [추가] 금일 납품 현황판   // [추가] 수주~출하 흐름
     if(target==="procflow" && typeof pfRender_==="function"){ pfRender_(); }   // [추가] 공정도
     if(target==="safety" && typeof seShow_==="function"){ seShow_(); }   // [추가] 안전교육
+    if(target==="xlcmp" && typeof xcShow_==="function"){ xcShow_(); }   // [추가] 변경비교
     if(target==="fitting" && typeof ftShow_==="function"){ ftShow_(); }   // [추가] 사급 피팅
     if(target==="smat" && typeof smShow_==="function"){ smShow_(); }   // [추가] 사급 소재
     if(target==="dnote" && typeof dnShow_==="function"){ dnShow_(); }   // [추가] 도면 NOTES 해석
@@ -7004,6 +7007,105 @@ function qaskOpen_(){
     var b=document.createElement("button"); b.type="button"; b.id="qask-fab"; b.title="QMS 사용법·오류·기능 요청을 Claude에게 문의"; b.textContent="🤖 문의"; b.onclick=qaskOpen_; document.body.appendChild(b); };
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", go); else go();
 })();
+/* ==================== 🆚 변경비교 — 전달 엑셀 vs 오늘 엑셀 (행 색으로 한눈에) ==================== */
+var __xc={ A:null, B:null, an:"", bn:"", res:null, f:"", skip:null };
+var XC_COL={ chg:"#D9F2D0", chgCell:"#9FD98F", late:"#F8C4C4", add:"#E4E7EC", del:"#FFF1F0" };
+function xcE_(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+function xcNorm_(v){ if(v==null) return ""; if(v instanceof Date) return xcYmd_(v); var s=String(v).replace(/\s+/g," ").trim(); if(/^-?\d+(\.\d+)?$/.test(s)) return String(Number(s)); return s; }
+function xcYmd_(d){ var z=function(n){ return String(n).padStart(2,"0"); }; return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate()); }
+function xcDate_(v){ if(v==null||v==="") return ""; if(v instanceof Date && !isNaN(v)) return xcYmd_(v);
+  if(typeof v==="number" && v>30000 && v<80000){ var d=new Date(Math.round((v-25569)*86400000)); return d.toISOString().slice(0,10); }
+  var s=String(v).trim(), m=s.match(/(\d{4})[.\-\/년\s]+(\d{1,2})[.\-\/월\s]+(\d{1,2})/); if(m) return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+  m=s.match(/^(\d{2})[.\-\/](\d{1,2})[.\-\/](\d{1,2})$/); if(m) return "20"+m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0"); return ""; }
+// 엑셀 → { head:[..], rows:[[..]], sheet }
+function xcRead_(file, cb){ var rd=new FileReader(); rd.onload=function(){ try{
+    var wb=XLSX.read(new Uint8Array(rd.result), { type:"array", cellDates:true }), best=null;
+    wb.SheetNames.forEach(function(sn){ var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn], { header:1, raw:true, defval:"" }); if(!aoa.length) return;
+      for(var r=0;r<Math.min(20,aoa.length);r++){ var row=aoa[r].map(function(x){ return String(x).replace(/\s/g,"").toUpperCase(); }), n=row.filter(Boolean).length;
+        var sc=n+(row.some(function(x){ return /ORDER|관리번호/.test(x); })?50:0)+(row.some(function(x){ return /납기/.test(x); })?20:0);
+        if(n>=3 && (!best || sc>best.sc || (sc===best.sc && aoa.length-r>best.n))) best={ sc:sc, sn:sn, r:r, aoa:aoa, n:aoa.length-r }; } });
+    if(!best){ cb(null, "표 머리글(ORDER NO. 등)을 찾지 못했습니다"); return; }
+    var head=best.aoa[best.r].map(function(x,i){ var h=String(x).replace(/\s+/g," ").trim(); return h||("열"+(i+1)); });
+    var rows=best.aoa.slice(best.r+1).filter(function(rw){ return rw.some(function(x){ return String(x).trim()!==""; }); });
+    cb({ head:head, rows:rows, sheet:best.sn }); }catch(e){ cb(null, e.message||String(e)); } }; rd.readAsArrayBuffer(file); }
+function xcFind_(head, re){ for(var i=0;i<head.length;i++){ if(re.test(String(head[i]).replace(/\s/g,""))) return i; } return -1; }
+function xcCompare_(){
+  var A=__xc.A, B=__xc.B; if(!A||!B) return null;
+  var kB=xcFind_(B.head, /ORDER|관리번호/i), kA=xcFind_(A.head, /ORDER|관리번호/i); if(kB<0) kB=0; if(kA<0) kA=0;
+  var pB=xcFind_(B.head, /PROJECT/i), pA=xcFind_(A.head, /PROJECT/i);
+  var dB=xcFind_(B.head, /최종납기/); if(dB<0) dB=xcFind_(B.head, /납기/);
+  var key=function(rw, k, pj){ return xcNorm_(rw[k]).toUpperCase()+"|"+(pj>=0?xcNorm_(rw[pj]).toUpperCase():""); };
+  var mapA={}, seenA={}; A.rows.forEach(function(rw){ var k=key(rw,kA,pA); if(!xcNorm_(rw[kA])) return; var n=(seenA[k]=(seenA[k]||0)+1); mapA[k+"#"+n]=rw; });
+  var colA={}; A.head.forEach(function(h,i){ colA[String(h).replace(/\s/g,"")]=i; });
+  if(!__xc.skip){ var sk={}; try{ sk=JSON.parse(localStorage.getItem("xcSkip")||"{}")||{}; }catch(_){} __xc.skip=sk; }
+  var today=(typeof qmsToday_==="function")?qmsToday_():xcYmd_(new Date()), seenB={}, used={}, out=[], cnt={ chg:0, late:0, add:0, same:0, del:0 };
+  B.rows.forEach(function(rw){ var raw=xcNorm_(rw[kB]); if(!raw){ out.push({ rw:rw, t:"blank", diff:{} }); return; }
+    var k=key(rw,kB,pB), n=(seenB[k]=(seenB[k]||0)+1), old=mapA[k+"#"+n], diff={}, nd=0;
+    if(old){ used[k+"#"+n]=1; B.head.forEach(function(h,i){ var hk=String(h).replace(/\s/g,""); if(__xc.skip[hk]) return; var ia=colA[hk]; if(ia===undefined) return;
+        var a=xcNorm_(old[ia]), b=xcNorm_(rw[i]); if(/납기|일자|일$|date/i.test(hk)){ a=xcDate_(old[ia])||a; b=xcDate_(rw[i])||b; } if(a!==b){ diff[i]=a; nd++; } }); }
+    var due=dB>=0?xcDate_(rw[dB]):"", late=!!(due && due<today);
+    var t=late?"late":(!old?"add":(nd?"chg":"same")); cnt[t]++; if(late && !old) cnt.add++; if(late && nd) cnt.chg++;
+    out.push({ rw:rw, t:t, isNew:!old, nd:nd, diff:diff, due:due }); });
+  var dels=[]; Object.keys(mapA).forEach(function(k){ if(!used[k]) dels.push(mapA[k]); }); cnt.del=dels.length;
+  return { out:out, dels:dels, cnt:cnt, today:today, kB:kB, dB:dB };
+}
+function xcShow_(){ xcRender_(); }
+function xcRender_(){ var host=document.getElementById("xc-root"); if(!host) return; var E=xcE_, R=__xc.res=xcCompare_();
+  if(!host.__bound){ host.__bound=true; host.addEventListener("change", xcChange_); host.addEventListener("click", xcClick_); }
+  var sw=function(c){ return '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:'+c+';border:1px solid #D0D5DD;vertical-align:-2px;margin-right:4px;"></span>'; };
+  var h='<div style="padding:18px 22px;"><div style="font-size:12px;color:#667085;">생산 › 변경비교</div><h2 style="margin:4px 0 2px;font-size:22px;">🆚 변경비교</h2>'
+    +'<div style="font-size:12.5px;color:#475467;margin-bottom:12px;">전달에 작성한 엑셀과 오늘 다운로드한 엑셀을 넣으면 ORDER NO.(관리번호)+PROJECT NO.로 같은 줄을 찾아 비교합니다 · 파일은 이 PC에서만 읽고 어디에도 올리지 않습니다</div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">'
+    +['A','B'].map(function(w){ var nm=w==="A"?__xc.an:__xc.bn, ok=w==="A"?__xc.A:__xc.B; return '<label style="flex:1;min-width:260px;border:1.5px dashed '+(ok?'#12B76A':'#98A2B3')+';border-radius:10px;padding:12px 14px;cursor:pointer;background:'+(ok?'#F6FEF9':'#fff')+';" data-xdrop="'+w+'"><b>'+(w==="A"?"① 이전 파일 (전달 작성본)":"② 오늘 파일 (금일 다운로드)")+'</b><div style="font-size:12.5px;color:'+(ok?'#067647':'#667085')+';margin-top:4px;">'+(ok?('✔ '+E(nm)+' · '+ok.rows.length+'행 · 시트 '+E(ok.sheet)):'클릭해서 고르거나 파일을 끌어 놓기')+'</div><input type="file" data-xf="'+w+'" accept=".xlsx,.xls,.xlsm,.csv" style="display:none;"></label>'; }).join("")
+    +'</div>';
+  if(!R){ host.innerHTML=h+'<div style="color:#667085;padding:30px;text-align:center;border:1px solid #EAECF0;border-radius:10px;">두 파일을 모두 넣으면 결과가 나옵니다</div></div>'; xcDropBind_(host); return; }
+  var C=R.cnt, B=__xc.B, f=__xc.f;
+  var chip=function(k, label, col, n){ return '<button type="button" data-xfilt="'+k+'" style="border:1.5px solid '+(f===k?'#1F2A44':'#D0D5DD')+';background:#fff;border-radius:18px;padding:5px 12px;font-size:13px;cursor:pointer;font-weight:'+(f===k?'800':'600')+';">'+(col?sw(col):'')+label+' <b>'+n+'</b></button>'; };
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">'
+    +chip("", "전체", "", R.out.length)+chip("chg","변경",XC_COL.chg,C.chg)+chip("late","최종납기 지남",XC_COL.late,C.late)+chip("add","추가",XC_COL.add,C.add)+chip("del","삭제(오늘 파일에 없음)",XC_COL.del,C.del)
+    +'<span style="flex:1;"></span><button type="button" data-xa="xlsx" style="background:#1D6F42;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:800;cursor:pointer;">📊 색칠한 엑셀 받기</button></div>'
+    +'<div style="font-size:12px;color:#475467;margin-bottom:8px;">'+sw(XC_COL.chgCell)+'바뀐 칸 (마우스를 올리면 이전 값) · 행 색 우선순위: 최종납기 지남 › 추가 › 변경 · 기준일 '+R.today+(R.dB<0?' · <b style="color:#B42318;">최종납기 열을 못 찾아 납기 지남은 표시 안 됨</b>':'')+'</div>';
+  // 비교 제외 열
+  h+='<details style="margin-bottom:10px;"><summary style="cursor:pointer;font-size:12.5px;color:#344054;">⚙ 비교에서 뺄 열 (매일 바뀌는 진행공정·재고 같은 열은 빼면 진짜 변경만 남음)</summary><div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;">'
+    +B.head.map(function(hh){ var hk=String(hh).replace(/\s/g,""); return '<label style="font-size:12px;border:1px solid #D0D5DD;border-radius:6px;padding:3px 8px;background:'+(__xc.skip[hk]?'#F2F4F7':'#fff')+';"><input type="checkbox" data-xskip="'+E(hk)+'"'+(__xc.skip[hk]?' checked':'')+'> '+E(hh)+'</label>'; }).join("")+'</div></details>';
+  var td='padding:5px 7px;border:1px solid #E4E7EC;font-size:12px;white-space:nowrap;';
+  var th='padding:7px;border:1px solid #C9D3E0;background:#1F2A44;color:#fff;font-size:12px;white-space:nowrap;position:sticky;top:0;z-index:1;';
+  var rowsH;
+  if(f==="del"){ rowsH=R.dels.map(function(rw){ return '<tr style="background:'+XC_COL.del+';color:#98A2B3;text-decoration:line-through;"><td style="'+td+'">삭제</td>'+__xc.A.head.map(function(_,i){ return '<td style="'+td+'">'+E(xcCell_(rw[i]))+'</td>'; }).join("")+'</tr>'; }).join("");
+    h+='<div style="overflow:auto;max-height:calc(100vh - 330px);border:1px solid #EAECF0;border-radius:8px;"><table style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="'+th+'">구분</th>'+__xc.A.head.map(function(x){ return '<th style="'+th+'">'+E(x)+'</th>'; }).join("")+'</tr></thead><tbody>'+(rowsH||'<tr><td style="'+td+'">없음</td></tr>')+'</tbody></table></div></div>'; host.innerHTML=h; xcDropBind_(host); return; }
+  var L=R.out.filter(function(o){ return o.t!=="blank" && (!f || o.t===f || (f==="add" && o.isNew) || (f==="chg" && o.nd)); });
+  rowsH=L.map(function(o){ var bg=XC_COL[o.t]||"#fff", lab={ chg:"변경", late:"납기 지남", add:"추가", same:"" }[o.t]+(o.t==="late"?(o.isNew?" · 추가":(o.nd?" · 변경":"")):"");
+    return '<tr style="background:'+bg+';"><td style="'+td+'font-weight:700;">'+lab+'</td>'+B.head.map(function(_,i){ var d=o.diff.hasOwnProperty(i);
+      return '<td style="'+td+(d?'background:'+XC_COL.chgCell+';font-weight:800;':'')+(i===R.dB && o.t==="late"?'color:#B42318;font-weight:800;':'')+'"'+(d?' title="이전: '+E(o.diff[i]||"(빈칸)")+'"':'')+'>'+E(xcCell_(o.rw[i]))+'</td>'; }).join("")+'</tr>'; }).join("");
+  h+='<div style="overflow:auto;max-height:calc(100vh - 330px);border:1px solid #EAECF0;border-radius:8px;"><table style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="'+th+'">구분</th>'+B.head.map(function(x){ return '<th style="'+th+'">'+E(x)+'</th>'; }).join("")+'</tr></thead><tbody>'+(rowsH||'<tr><td colspan="'+(B.head.length+1)+'" style="'+td+'text-align:center;color:#667085;">해당 행 없음</td></tr>')+'</tbody></table></div></div>';
+  host.innerHTML=h; xcDropBind_(host); }
+function xcCell_(v){ if(v instanceof Date) return xcYmd_(v); if(typeof v==="number" && v>30000 && v<80000 && String(v).indexOf(".")<0) return v; return v==null?"":v; }
+function xcLoad_(w, file){ if(!file) return; if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다. 잠시 후 다시 넣어 주세요."); return; }
+  xcRead_(file, function(d, err){ if(!d){ alert("파일을 읽지 못했습니다: "+(err||"")); return; } if(w==="A"){ __xc.A=d; __xc.an=file.name; } else { __xc.B=d; __xc.bn=file.name; } __xc.f=""; xcRender_(); }); }
+function xcDropBind_(host){ host.querySelectorAll("[data-xdrop]").forEach(function(el){ if(el.__b) return; el.__b=true; var w=el.getAttribute("data-xdrop");
+  el.addEventListener("dragover", function(e){ e.preventDefault(); el.style.background="#EFF8FF"; }); el.addEventListener("dragleave", function(){ el.style.background=""; });
+  el.addEventListener("drop", function(e){ e.preventDefault(); xcLoad_(w, e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]); }); }); }
+function xcChange_(e){ var t=e.target, w=t.getAttribute&&t.getAttribute("data-xf"); if(w){ xcLoad_(w, t.files&&t.files[0]); t.value=""; return; }
+  var sk=t.getAttribute&&t.getAttribute("data-xskip"); if(sk!=null){ if(t.checked) __xc.skip[sk]=1; else delete __xc.skip[sk]; try{ localStorage.setItem("xcSkip", JSON.stringify(__xc.skip)); }catch(_){} xcRender_(); var d=document.querySelector("#xc-root details"); if(d) d.open=true; } }
+function xcClick_(e){ var b=e.target.closest&&e.target.closest("[data-xfilt],[data-xa]"); if(!b) return; if(b.hasAttribute("data-xfilt")){ __xc.f=b.getAttribute("data-xfilt"); xcRender_(); return; } if(b.getAttribute("data-xa")==="xlsx") xcXlsx_(); }
+function xcXlsx_(){ var R=__xc.res; if(!R) return; if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
+  var B=__xc.B, aoa=[["구분"].concat(B.head)], meta=[];
+  R.out.forEach(function(o){ if(o.t==="blank") return; aoa.push([{ chg:"변경", late:"납기 지남", add:"추가", same:"" }[o.t]+(o.t==="late"?(o.isNew?"·추가":(o.nd?"·변경":"")):"")].concat(B.head.map(function(_,i){ return xcCell_(o.rw[i]); }))); meta.push(o); });
+  R.dels.forEach(function(rw){ aoa.push(["삭제"].concat(__xc.A.head.map(function(_,i){ return xcCell_(rw[i]); }))); meta.push({ t:"del", diff:{} }); });
+  var ws=XLSX.utils.aoa_to_sheet(aoa), bd={ top:{style:"thin",color:{rgb:"D0D5DD"}}, bottom:{style:"thin",color:{rgb:"D0D5DD"}}, left:{style:"thin",color:{rgb:"D0D5DD"}}, right:{style:"thin",color:{rgb:"D0D5DD"}} };
+  var hex=function(c){ return c.replace("#",""); }, nC=B.head.length+1;
+  for(var c=0;c<nC;c++){ var a=XLSX.utils.encode_cell({ r:0, c:c }); if(ws[a]) ws[a].s={ font:{ bold:true, color:{ rgb:"FFFFFF" } }, fill:{ fgColor:{ rgb:"1F2A44" } }, border:bd, alignment:{ horizontal:"center", vertical:"center", wrapText:true } }; }
+  meta.forEach(function(o, k){ var r=k+1, bg=o.t==="same"?null:(XC_COL[o.t]); for(var c2=0;c2<nC;c2++){ var ad=XLSX.utils.encode_cell({ r:r, c:c2 }); if(!ws[ad]) ws[ad]={ t:"s", v:"" };
+      var d=o.diff && o.diff.hasOwnProperty(c2-1), st={ border:bd, font:{ bold:d||c2===0 } };
+      if(d) st.fill={ fgColor:{ rgb:hex(XC_COL.chgCell) } }; else if(bg) st.fill={ fgColor:{ rgb:hex(bg) } };
+      if(o.t==="del") st.font.strike=true;
+      ws[ad].s=st; if(d){ ws[ad].c=[{ a:"QMS", t:"이전: "+(o.diff[c2-1]||"(빈칸)") }]; ws[ad].c.hidden=true; } } });
+  ws["!cols"]=[{ wch:10 }].concat(B.head.map(function(h){ return { wch:Math.min(30, Math.max(8, String(h).length*2)) }; }));
+  ws["!freeze"]={ xSplit:0, ySplit:1 }; ws["!views"]=[{ state:"frozen", ySplit:1 }]; ws["!autofilter"]={ ref:XLSX.utils.encode_range({ s:{ r:0, c:0 }, e:{ r:aoa.length-1, c:nC-1 } }) };
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "변경비교");
+  var lg=XLSX.utils.aoa_to_sheet([["구분","색","설명"],["변경","연두","같은 ORDER NO.의 값이 바뀐 행 (진한 연두 칸 = 바뀐 칸, 메모에 이전 값)"],["납기 지남","빨강","최종납기가 기준일("+R.today+")보다 지난 행"],["추가","연회색","전달 파일에 없던 행"],["삭제","연분홍·취소선","오늘 파일에 없는 행 (맨 아래)"],[],["이전 파일",__xc.an],["오늘 파일",__xc.bn]]);
+  XLSX.utils.book_append_sheet(wb, lg, "범례");
+  XLSX.writeFile(wb, "변경비교_"+R.today+".xlsx"); }
 /* ==================== 📄 문서 초안 (IATF 16949 기준 표준 양식) ====================
    · SCAR(거래처 시정요구서) · 8D(고객 클레임 대책서) · 월간 품질 보고서 · HOLD 해제 보고서
    · 장기재고 재검사 판정서 · 계측기 교정 계획표 · PCN(공정변경 통보·승인 요청서)
