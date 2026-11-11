@@ -16783,7 +16783,7 @@ async function coaFindDrawDirs_(root, draw, diag){
     var ents; try{ ents=await coaDirList_(dir); }catch(_){ return; } seen+=ents.length;
     var ds=ents.filter(function(e){ return e.kind==="directory"; });
     if(diag && depth<=2) diag.push((path||"(연결 폴더)")+" → "+(ds.length?ds.slice(0,12).map(function(e){ return e.name; }).join(", ")+(ds.length>12?(" … 외 "+(ds.length-12)+"개"):""):"(하위 폴더 없음)"));
-    ents.forEach(function(e){ if(e.kind==="file" && coaDrawKey_(e.name).indexOf(key)>=0 && /\.(xlsx|xlsm|xls)$/i.test(e.name)) fileHits.push({ dir:dir, path:path }); });
+    ents.forEach(function(e){ if(e.kind==="file" && coaDrawKey_(e.name).indexOf(key)>=0 && /\.(xlsx|xlsm|xls|txt)$/i.test(e.name)) fileHits.push({ dir:dir, path:path }); });
     var found=ds.filter(function(e){ return coaDirIsDraw_(e.name, draw); });
     found.forEach(function(e){ hits.push({ h:e, path:(path?path+"\\":"")+e.name }); });
     if(found.length) return;
@@ -16803,7 +16803,7 @@ async function coaCollectXls_(dir, path, depth, acc){
   coaProg_(36+9*(1-Math.exp(-acc.length/300)), "② 도번 폴더 안의 측정 파일 목록 읽는 중… ("+acc.length+"개)", path);
   for(const e of await coaDirList_(dir)){
     if(e.kind==="directory"){ if(depth<3) await coaCollectXls_(e, path+"\\"+e.name, depth+1, acc); continue; }
-    if(/^~\$/.test(e.name) || !/\.(xlsx|xlsm|xls)$/i.test(e.name)) continue;
+    if(/^~\$/.test(e.name) || !/\.(xlsx|xlsm|xls|txt)$/i.test(e.name)) continue;   // [추가] 구형 측정기(DIMS) TXT
     acc.push({ h:e, name:e.name, path:path+"\\"+e.name });
   }
   return acc;
@@ -17087,23 +17087,48 @@ function coaFormulaCheck_(fi, tails, sheets){
   return { checked:checked, bad:bad };
 }
 // 측정이력 폴더에서 S/N별 측정 파일 찾기 (도번·S/N 확인)
+// [추가] 구형 측정기(DIMS) TXT → 측정 엑셀과 같은 표(No.·Item·Actual·Nominal)로 바꿈
+//   머리: "Part NO.: M200-001-15A" · "Ser NO.: 10768-093" / 본문: "  9 원1(I)" 다음 줄 "D 409.989 410.000 0.250 -0.250 -0.011 ..."
+function coaTxtDecode_(buf){ var u=new Uint8Array(buf); try{ return new TextDecoder("utf-8", { fatal:true }).decode(u); }catch(_){} try{ return new TextDecoder("euc-kr").decode(u); }catch(_){ return new TextDecoder().decode(u); } }
+function coaTxtAoa_(text){ var L=String(text||"").replace(/\r/g,"").split("\n"), part="", sn="", when="";
+  L.slice(0,12).forEach(function(l){ var m=l.match(/Part\s*NO\.?\s*:\s*([^\s]+)/i); if(m) part=m[1]; m=l.match(/Ser(?:ial)?\s*NO\.?\s*:\s*([^\s]+)/i); if(m) sn=m[1]; m=l.match(/측정시간\s*:\s*([\d.\-\/]+)/); if(m) when=m[1]; });
+  if(!part && !sn) return null;
+  var aoa=[["품번",part],["S/N",sn],["측정시간",when],["No.","Item","Actual","Nominal","Upper","Lower","Deviation"]], n=0;
+  L.forEach(function(l){ var h=l.match(/^\s{0,6}(\d{1,5})\s+(\S.*)$/); if(h && !/^\s*[-\d.]+\s+[-\d.]+/.test(h[2])){ aoa.push([h[1], h[2].trim()]); return; }
+    var d=l.match(/^\s+(\S+)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)(?:\s+(-?\d+\.\d+))?(?:\s+(-?\d+\.\d+))?(?:\s+(-?\d+\.\d+))?/); if(!d || aoa.length<5) return;
+    aoa.push(["", d[1], Number(d[2]), Number(d[3]), d[4]!=null?Number(d[4]):"", d[5]!=null?Number(d[5]):"", d[6]!=null?Number(d[6]):""]); n++; });
+  return n?{ aoa:aoa, part:part, sn:sn }:null; }
+function coaTxtXlsx_(aoa){ var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "DATA"); return XLSX.write(wb, { type:"array", bookType:"xlsx" }); }
 async function coaFindMeas_(root, draw, tails, log){
   var diag=[], dirs=await coaFindDrawDirs_(root, draw, diag);
-  if(!dirs.length) return { dirs:[], found:{}, why:{}, diag:diag };
-  var files=[]; for(const d of dirs) await coaCollectXls_(d.h, d.path, 0, files);
+  var files=[];
+  if(!dirs.length){   // [추가] 도번 폴더가 없고 TXT가 한 폴더에 모여 있는 경우(예: ...\유진\15A.txt) → 연결 폴더의 TXT 안 'Part NO.'로 찾기
+    var all=[]; try{ await coaCollectXls_(root, "", 0, all); }catch(_){}
+    var pk=coaFillPartNorm_(draw), k0=0, tl=all.filter(function(f){ return /\.txt$/i.test(f.name); });
+    for(const f of tl){ if(++k0>3000) break; if(k0%20===0) coaProg_(40, "② 도번 폴더가 없어 측정 TXT에서 품번 찾는 중… ("+k0+" / "+tl.length+")", f.name);
+      try{ var fl=await f.h.getFile(), tx=coaTxtAoa_(coaTxtDecode_(await fl.slice(0, 2000).arrayBuffer())); if(tx && coaFillPartNorm_(tx.part)===pk) files.push(f); }catch(_){} }
+    if(!files.length) return { dirs:[], found:{}, why:{}, diag:diag };
+    dirs=[{ h:root, path:"(연결 폴더 TXT "+files.length+"개)" }];
+  } else for(const d of dirs) await coaCollectXls_(d.h, d.path, 0, files);
   // [속도] 저장일은 입력한 S/N 이름이 들어간 파일만 확인 (도번 폴더에 측정 파일이 수백 개여도 빠르게)
   var tset={}; tails.forEach(function(t){ tset[String(parseInt(t,10))]=1; });
   coaProg_(46, "② 측정 파일 "+files.length+"개 중 입력한 S/N 파일 고르는 중…", "");
-  for(const f of files){ if(!coaNameTails_(f.name).some(function(x){ return tset[x]; })) continue; try{ f.file=await f.h.getFile(); f.mt=f.file.lastModified||0; }catch(_){ f.mt=0; } }
+  // [추가] TXT는 파일 이름에 S/N이 없는 경우가 많음(예: 15A.txt) → 파일 안 'Ser NO.'로 S/N을 읽어 둠
+  var txts=files.filter(function(f){ return /\.txt$/i.test(f.name); }), ti0=0;
+  for(const f of txts){ ti0++; if(ti0>400) break; coaProg_(46, "② 측정 TXT 읽는 중… ("+ti0+" / "+txts.length+")", f.name);
+    try{ f.file=await f.h.getFile(); f.mt=f.file.lastModified||0; var tx=coaTxtAoa_(coaTxtDecode_(await f.file.arrayBuffer())); if(tx){ f.txt=tx; var tt=coaFillSnTail_(tx.sn); f.tt=tt?[tt]:[]; } }catch(_){ f.mt=0; } }
+  var tailsOf=function(f){ return coaNameTails_(f.name).concat(f.tt||[]); };
+  for(const f of files){ if(f.txt || !coaNameTails_(f.name).some(function(x){ return tset[x]; })) continue; try{ f.file=await f.h.getFile(); f.mt=f.file.lastModified||0; }catch(_){ f.mt=0; } }
   var found={}, why={};
   var ti=0;
   for(const t of tails){ ti++;
-    var tn=String(parseInt(t,10)), cands=files.filter(function(f){ return coaNameTails_(f.name).indexOf(tn)>=0; }).sort(function(a,b){ return b.mt-a.mt; });
+    var tn=String(parseInt(t,10)), cands=files.filter(function(f){ return tailsOf(f).indexOf(tn)>=0; }).sort(function(a,b){ return b.mt-a.mt; });
     coaProg_(50+40*(ti-1)/Math.max(1,tails.length), "③ S/N "+t+" 측정 파일 읽는 중… ("+ti+" / "+tails.length+")", cands.length?("후보 "+cands.length+"개 · "+cands[0].name):"파일 없음");
     if(!cands.length){ why[t]="파일 없음"; continue; }
     var reasons=[];
     for(const c of cands){
-      try{ var buf=await c.file.arrayBuffer(), w=XLSX.read(new Uint8Array(buf), { type:"array" }), ok=null, okWs=null;
+      try{ if(/\.txt$/i.test(c.name) && !c.txt){ reasons.push(c.name+": TXT 형식 아님"); continue; }
+        var buf=c.txt?coaTxtXlsx_(c.txt.aoa):await c.file.arrayBuffer(), w=XLSX.read(new Uint8Array(buf), { type:"array" }), ok=null, okWs=null;
         for(const sn of w.SheetNames){ var m=coaFillDataMap_(XLSX.utils.sheet_to_json(w.Sheets[sn], { header:1, raw:true, defval:"" })); if(!m || !Object.keys(m.map).length) continue;
           if(m.sn && coaFillSnTail_(m.sn)!==tn){ reasons.push(c.name+": 파일 안 S/N "+m.sn.trim()); continue; }
           if(m.part && coaFillPartNorm_(m.part)!==coaFillPartNorm_(draw)){ reasons.push(c.name+": 파일 안 품번 "+m.part.trim()); continue; }
