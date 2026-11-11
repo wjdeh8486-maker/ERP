@@ -17879,6 +17879,37 @@ function coaGenManualGroups_(L){
   no.forEach(function(f){ G.push({ "":f }); });
   return G;
 }
+// [추가] 구형 측정기 TXT를 양식 안 기존 측정 시트(엑셀로 붙여 넣은 TXT, 예: '068')와 똑같은 칸 배치로 만듦
+//   기존 시트: B열 = 번호(9) / 다음 줄 B=항목(D)·C=측정값·D=기준값·E·F=공차·G=편차·H=판정  → 성적서 수식 INDIRECT("'"&S/N&"'!C11") 그대로 사용
+//   번호가 같은 줄에 새 TXT 값을 넣고, 새 TXT에 없는 번호의 옛 값은 지움 (옛 값이 남지 않게). 상·하가 나뉘면 상 → 하 순서로 합침
+function coaTxtAlign_(tplBuf, infos, sx, F, tail){
+  var ks=Object.keys((F&&F.sides)||{}); if(!ks.length) ks=[""]; var ents=ks.map(function(k){ return (F.sides&&F.sides[k])||F; });
+  if(!ents.some(function(e){ return /\.txt$/i.test(e.name||""); })) return null;   // TXT일 때만
+  var twb=XLSX.read(new Uint8Array(tplBuf), { type:"array" }), rpt={}; infos.forEach(function(f){ rpt[f.sheet]=1; });
+  var cand=[]; (infos[0].oldTails||[]).forEach(function(t){ cand.push(String(t).trim()+sx); });
+  twb.SheetNames.forEach(function(n){ if(!rpt[n] && /^\d{1,5}(상|하)?$/.test(n) && (sx?n.slice(-1)===sx:!/(상|하)$/.test(n))) cand.push(n); });
+  var refN=cand.find(function(n){ return twb.Sheets[n]; }); if(!refN) return null;
+  var ref=twb.Sheets[refN], rg=XLSX.utils.decode_range(ref["!ref"]||"A1"), ws=JSON.parse(JSON.stringify(ref));
+  // 새 데이터: 번호 → [{item,val,nom}] (상 먼저, 그다음 하, 그 외)
+  var ord={ "상":0, "":1, "하":2 }, D={}; ents.slice().sort(function(a,b){ return (ord[a.side||""]||1)-(ord[b.side||""]||1); }).forEach(function(e){ var mp=(e.m&&e.m.map)||{}; Object.keys(mp).forEach(function(no){ (D[no]=D[no]||[]).push.apply(D[no], mp[no]); }); });
+  var cell=function(r,c){ return ws[XLSX.utils.encode_cell({ r:r, c:c })]; }, put=function(r,c,v){ var a=XLSX.utils.encode_cell({ r:r, c:c }); if(v===""||v==null){ delete ws[a]; return; } ws[a]={ t:(typeof v==="number"?"n":"s"), v:v }; };
+  // 번호 열 찾기: 정수가 가장 많은 열(앞쪽 4열 중)
+  var best=-1, bn=0; for(var c=rg.s.c;c<=Math.min(rg.e.c, rg.s.c+3);c++){ var n=0; for(var r=rg.s.r;r<=rg.e.r;r++){ var x=cell(r,c); if(x && x.t==="n" && Number.isInteger(x.v)) n++; } if(n>bn){ bn=n; best=c; } }
+  if(best<0 || bn<3) return null;
+  var cur=null, occ=0, filled=0, cleared=0;
+  for(var r2=rg.s.r;r2<=rg.e.r;r2++){ var b=cell(r2,best), v1=cell(r2,best+1);
+    if(b && b.t==="n" && Number.isInteger(b.v)){ cur=String(b.v); occ=0; continue; }
+    if(cur!==null && b && b.t==="s" && v1 && v1.t==="n"){ var sub=(D[cur]||[])[occ++];
+      if(sub){ put(r2,best+1,sub.val); put(r2,best+2,isNaN(sub.nom)?"":sub.nom); if(!isNaN(sub.nom)) put(r2,best+5,Math.round((sub.val-sub.nom)*1000)/1000); put(r2,best+6,""); filled++; }
+      else { [1,2,3,4,5,6].forEach(function(k){ put(r2,best+k,""); }); cleared++; } } }
+  // 머리: S/N·품번·측정시간
+  var m0=(ents[0].m)||{}; for(var r3=rg.s.r;r3<=Math.min(rg.e.r,rg.s.r+8);r3++){ for(var c3=rg.s.c;c3<=rg.e.c;c3++){ var x3=cell(r3,c3); if(!x3 || x3.t!=="s") continue;
+      if(/^\d{5}-\d+$/.test(String(x3.v).trim()) && m0.sn) put(r3,c3,String(m0.sn).trim());
+      else if(/^[A-Z]\d{3}-\d{3}-\w+$|^\d{5}-\d{2}$/i.test(String(x3.v).trim()) && m0.part) put(r3,c3,String(m0.part).trim());
+      else if(/^(상|하)$/.test(String(x3.v).trim()) && sx) put(r3,c3,sx); } }
+  if(!filled) return null;
+  try{ console.log("[성적서 TXT] "+tail+sx+" ← 양식 시트 '"+refN+"' 배치 · 값 "+filled+"칸, 없는 번호 지움 "+cleared+"칸"); }catch(_){}
+  return ws; }
 async function coaGenRun_(ov){
   var res=ov.querySelector("#cg-res"), E=coaXmlEsc_;
   var fail=function(m){ res.innerHTML='<div style="color:#B42318;font-weight:700;">⚠ '+E(m)+'</div>'; };
@@ -17940,7 +17971,8 @@ async function coaGenRun_(ov){
     p.tails.forEach(function(t){ var F=fm.found[t]; if(!F) return;
       var tl=fi.suffixes.slice(); ((dref&&dref.sx)||[]).forEach(function(x){ if(tl.indexOf(x)<0) tl.push(x); }); if(!tl.length) tl=[""];
       tl.forEach(function(sx){ var e=F.sides[sx] || (sx===""?F:null) || (tl.length===1?F:null);
-        if(e && e.ws){ addList.push({ name:t+sx, ws:e.ws }); sheetsBy[t+sx]=e.ws; } else missSide.push(t+sx); }); });
+        if(e && e.ws){ var wsA=e.ws; try{ var al=coaTxtAlign_(tplBuf, infos, sx, F, t); if(al){ wsA=al; } }catch(_){}   // [추가] TXT → 양식의 기존 측정 시트(예: 068)와 같은 칸 배치로 (INDIRECT 'S/N'!C11 이 맞는 값을 가리키게)
+          addList.push({ name:t+sx, ws:wsA }); sheetsBy[t+sx]=wsA; } else missSide.push(t+sx); }); });
     var oldData=[], oldFmt={}; try{ var twb=XLSX.read(new Uint8Array(tplBuf), { type:"array" }); var rpt={}; infos.forEach(function(f){ rpt[f.sheet]=1; }); twb.SheetNames.forEach(function(sn){ if(rpt[sn]) return; var m=coaFillDataMap_(XLSX.utils.sheet_to_json(twb.Sheets[sn], { header:1, raw:true, defval:"" })); if(m && Object.keys(m.map).length){ oldData.push(sn); oldFmt[sn]=twb.Sheets[sn]; } }); }catch(_){}
     var addRes={}; try{ w.out=coaAddSheets_(w.out, addList, oldData, addRes, oldFmt); }catch(e){ w.fail.push("S/N 시트 추가 실패: "+(e&&e.message||e)); addList=[]; }
     // [추가] 검사 시트(LEAK·FLOW·가압·TAP): 검사 일자 = 검사이력조회 날짜, 검사 사진 지움
