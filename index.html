@@ -16157,9 +16157,18 @@ function dnNewClick_(k, a){ var path=a.getAttribute("data-p")||"", who=(typeof f
     __dnNew.chk[path]={ memo:String(memo||"").trim()||"확인 완료", by:who, ts:Date.now() }; dnNewSaveChk_(); dnRender_(); dnNewBadge_(); return; }
   if(k==="nw-uncheck"){ __dnNew.chk[path]={ del:true, ts:Date.now() }; dnNewSaveChk_(); dnRender_(); dnNewBadge_(); return; }
   if(k==="nw-open"){ var name=a.getAttribute("data-n")||"drawing.pdf", base=(typeof DRAWING_SERVER!=="undefined")?DRAWING_SERVER:"", url=base+"/"+path.split("/").map(encodeURIComponent).join("/");
-    a.textContent="여는 중…";
-    fetch(url, { cache:"no-store" }).then(function(r){ if(!r.ok) throw new Error(r.status); return r.blob(); }).then(function(b){ var f; try{ f=new File([b], name, { type:"application/pdf" }); }catch(_){ f=b; f.name=name; } __dn.tab="read"; dnOpenFile_(f); })
-     .catch(function(){ a.textContent="열기"; if(confirm("도면을 바로 불러오지 못했습니다 (도면 서버 server.py 교체 필요).\n새 창으로 도면을 열까요? — 연 뒤 PDF를 내려받아 [📄 도면 읽기]에 넣으면 됩니다.")) window.open(url, "_blank"); }); return; } }
+    a.textContent="여는 중…"; a.disabled=true;
+    // [수정] 진행률 표시 — 큰 CAD PDF(수 MB)는 받는 데 시간이 걸려 멈춘 것처럼 보였음 / 브라우저 캐시 사용(같은 도면 두 번째부터 빠름) / 90초 넘으면 새 창 안내
+    var ac=(typeof AbortController!=="undefined")?new AbortController():null, to=setTimeout(function(){ try{ ac&&ac.abort(); }catch(_){} }, 90000), t0=Date.now();
+    var mb=function(n){ return (n/1048576).toFixed(1)+"MB"; };
+    fetch(url, ac?{ signal:ac.signal }:{}).then(function(r){ if(!r.ok) throw new Error(r.status);
+      var tot=Number(r.headers.get("Content-Length"))||0;
+      if(!r.body || !r.body.getReader) return r.blob();
+      var rd=r.body.getReader(), got=0, parts=[];
+      return (function pump(){ return rd.read().then(function(st){ if(st.done) return new Blob(parts, { type:"application/pdf" });
+        parts.push(st.value); got+=st.value.length; a.textContent=tot?("받는 중 "+Math.round(got/tot*100)+"% · "+mb(tot)):("받는 중 "+mb(got)); return pump(); }); })();
+    }).then(function(b){ clearTimeout(to); try{ console.log("[신규도면] "+name+" "+mb(b.size)+" "+((Date.now()-t0)/1000).toFixed(1)+"초"); }catch(_){} var f; try{ f=new File([b], name, { type:"application/pdf" }); }catch(_){ f=b; f.name=name; } __dn.tab="read"; dnOpenFile_(f); })
+     .catch(function(){ clearTimeout(to); a.textContent="열기"; a.disabled=false; if(confirm("도면을 바로 불러오지 못했습니다 (90초 초과 또는 도면 서버 연결 문제).\n새 창으로 도면을 열까요? — 연 뒤 PDF를 내려받아 [📄 도면 읽기]에 넣으면 됩니다.")) window.open(url, "_blank"); }); return; } }
 // 시작 후 메뉴에 미확인 건수 표시 (도면 서버 접속 가능할 때만)
 setTimeout(function(){ try{ dnNewLoad_(function(){}); }catch(_){} }, 8000);
 // 이벤트
