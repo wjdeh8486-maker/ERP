@@ -16665,7 +16665,7 @@ function coaFillPlan_(buf, extras, skip){ skip=skip||{};
     var m=coaFillDataMap_(aoa); if(m && Object.keys(m.map).length) data[sn]=m; else reports.push({ name:sn, aoa:aoa, rOff:rg.s.r, cOff:rg.s.c }); });
   var plans=[];
   reports.forEach(function(rp){ var aoa=rp.aoa, r0=-1, rm=-1, rmC=-1;
-    for(var r=0;r<aoa.length;r++){ var row=aoa[r]||[]; for(var c=0;c<row.length;c++){ var t=coaFillNorm_(row[c]); if(r0<0 && t.indexOf("3d측정번호")>=0) r0=r; if(rm<0 && t==="측정치"){ rm=r; rmC=c; } } }
+    for(var r=0;r<aoa.length;r++){ var row=aoa[r]||[]; for(var c=0;c<row.length;c++){ var t=coaFillNorm_(row[c]); if(r0<0 && /3d측정(번호|순번)/.test(t)) r0=r; if(rm<0 && t==="측정치"){ rm=r; rmC=c; } } }
     if(r0<0 || rm<0) return;
     var tPart0=""; for(var q=0;q<Math.min(aoa.length,r0) && !tPart0;q++){ var rq=aoa[q]||[]; for(var qc=0;qc<rq.length;qc++){ var qt=coaFillNorm_(rq[qc]); if(qt==="partcode" || qt==="partno." || qt==="partno"){ for(var q2=qc+1;q2<Math.min(rq.length,qc+12);q2++){ var qv=String(rq[q2]==null?"":rq[q2]).trim(); if(qv){ tPart0=qv; break; } } break; } } }
     var findData=function(v){ var keys=Object.keys(data), tail=coaFillSnTail_(v);
@@ -16826,7 +16826,7 @@ function coaTplInfos_(buf){
   var list=[], wb=XLSX.read(new Uint8Array(buf), { type:"array" });
   for(const sn of wb.SheetNames){ var ws=wb.Sheets[sn], aoa=XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:"" }), rg=ws["!ref"]?XLSX.utils.decode_range(ws["!ref"]):{ s:{ r:0, c:0 } };
     var r0=-1, rm=-1, rmC=-1;
-    for(var r=0;r<aoa.length;r++){ var row=aoa[r]||[]; for(var c=0;c<row.length;c++){ var t=coaFillNorm_(row[c]); if(r0<0 && t.indexOf("3d측정번호")>=0) r0=r; if(rm<0 && t==="측정치"){ rm=r; rmC=c; } } }
+    for(var r=0;r<aoa.length;r++){ var row=aoa[r]||[]; for(var c=0;c<row.length;c++){ var t=coaFillNorm_(row[c]); if(r0<0 && /3d측정(번호|순번)/.test(t)) r0=r; if(rm<0 && t==="측정치"){ rm=r; rmC=c; } } }
     if(r0<0 || rm<0) continue;
     var right=function(rr, cc){ var rw=aoa[rr]||[]; for(var k=cc+1;k<Math.min(rw.length,cc+14);k++){ var v=rw[k]; if(v!==""&&v!=null) return { c:k, v:String(v).trim() }; } return null; };
     var part="", snCell=null, qtyCell=null;
@@ -17807,7 +17807,7 @@ function coaGenLoadTpl_(file, ov){
         st.innerHTML='<b>'+E(file.name)+'</b> · <b style="color:#0B5CAB;">유지너스 양식</b> · 도번 '+E(eu.part||"?")+' · '+eu.pages.length+'장 · S/N '+eu.nSlots+'칸 · 치수 '+eu.nCells+'칸 ('+E(eu.sides.join("/"))+'부 측정 파일'+(eu.ext?' · 외부 링크':'')+')'+(eu.labels.length?(' · 양식의 기존 S/N '+E(eu.labels.join(", "))):'');
         var dr0=ov.querySelector("#cg-draw"); if(dr0) dr0.value=eu.part||""; var nm0=ov.querySelector("#cg-name"); if(nm0) nm0.value=file.name;
         var sn0=ov.querySelector("#cg-sn"); if(sn0){ sn0.placeholder="예: 00020-26112-1,2,3 / 26281-1  ·  20252-17~20 (로트-번호, 로트가 여럿이면 / 로 구분)"; sn0.focus(); } coaGenNameSync_(ov); return; }
-      __coaGen.tpl=null; coaGenCntSync_(ov); st.innerHTML='<span style="color:#B42318;">⚠ 성적서 양식이 아닙니다 ("3D측정번호"·"측정치" 칸 없음)</span>'; return; }
+      __coaGen.tpl=null; coaGenCntSync_(ov); st.innerHTML='<span style="color:#B42318;">⚠ 성적서 양식이 아닙니다 ("3D측정번호(순번)"·"측정치" 칸 없음)</span>'; return; }
     var fi0=null; try{ fi0=coaFormulaInfo_(buf, infos); }catch(_){}
     __coaGen.tpl={ name:file.name, buf:buf, info:info, infos:infos };
     st.innerHTML='<b>'+E(file.name)+'</b> · 도번 '+E(info.part||"?")+(infos.length>1?(' · '+infos.length+'페이지'):'')+' · 한 장에 S/N '+info.slots.length+'개 · 측정번호 '+infos.reduce(function(a,x){ return a+x.rows3d.length; },0)+'줄'
@@ -18030,7 +18030,7 @@ function coaFillRun_(files, box){
   Promise.all(files.map(function(f){ return f.arrayBuffer().then(function(b){ return { name:f.name, buf:b }; }); })).then(function(all){
     try{
       // 성적서 파일 = '3D측정번호' 칸이 있는 xlsx/xlsm (첫 번째). 나머지는 측정 파일
-      var isRep=function(x){ if(!/\.xls[xm]$/i.test(x.name)) return false; try{ var w=XLSX.read(new Uint8Array(x.buf), { type:"array" }); return w.SheetNames.some(function(sn){ return XLSX.utils.sheet_to_json(w.Sheets[sn], { header:1, raw:true, defval:"" }).some(function(r){ return (r||[]).some(function(c){ return coaFillNorm_(c).indexOf("3d측정번호")>=0; }); }); }); }catch(_){ return false; } };
+      var isRep=function(x){ if(!/\.xls[xm]$/i.test(x.name)) return false; try{ var w=XLSX.read(new Uint8Array(x.buf), { type:"array" }); return w.SheetNames.some(function(sn){ return XLSX.utils.sheet_to_json(w.Sheets[sn], { header:1, raw:true, defval:"" }).some(function(r){ return (r||[]).some(function(c){ return /3d측정(번호|순번)/.test(coaFillNorm_(c)); }); }); }); }catch(_){ return false; } };
       var reps=all.filter(isRep); if(!reps.length){ box.innerHTML='<div style="color:#B42318;font-weight:700;">⚠ 성적서 양식 파일이 없습니다 ("3D측정번호" 칸이 있는 .xlsx/.xlsm)</div>'; return; }
       var rep=reps[0], extras=all.filter(function(x){ return x!==rep; }), file={ name:rep.name };
       var buf=rep.buf, plan=coaFillPlan_(buf, extras);
