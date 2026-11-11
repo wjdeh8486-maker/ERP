@@ -13757,7 +13757,12 @@ function sdWashSplitDone_(x){ var q=(typeof cleanQtyFor_==="function")?cleanQtyF
   var o=String(x.ord||"").trim(), L=__sd.items.filter(function(y){ return y && !y.del && String(y.ord||"").trim()===o; });
   L.sort(function(a,b){ var p=a.avail||"9999", r=b.avail||"9999"; return p<r?-1:(p>r?1:String(a.due||"").localeCompare(String(b.due||""))); });
   var cum=0; for(var i=0;i<L.length;i++){ cum+=Number(L[i].qty)||0; if(L[i]===x) return cum<=q; } return false; }
-function sdWashOk_(x){ if(!sdWashDone_(x.ord)) return false; return sdSplit_(x.ord)?sdWashSplitDone_(x):true; }
+// [추가] 이 줄 수량 중 이미 세정으로 나간 수량 — 세정LIST 수량을 같은 ORDER 줄에 가능일자 빠른 줄부터 배분 (보유·부족 계산에서 빼기)
+function sdWashPart_(x){ var q=(typeof cleanQtyFor_==="function")?cleanQtyFor_(x.ord):null; if(!q) return 0;
+  var o=String(x.ord||"").trim(); if(!o) return 0; var L=__sd.items.filter(function(y){ return y && !y.del && String(y.ord||"").trim()===o; });
+  L.sort(function(a,b){ var p=a.avail||"9999", r=b.avail||"9999"; return p<r?-1:(p>r?1:String(a.due||"").localeCompare(String(b.due||""))); });
+  var cum=0; for(var i=0;i<L.length;i++){ var n=Number(L[i].qty)||0; if(L[i]===x) return Math.max(0, Math.min(n, q-cum)); cum+=n; } return 0; }
+function sdWashOk_(x){ if(!sdWashDone_(x.ord)) return false; var q=(typeof cleanQtyFor_==="function")?cleanQtyFor_(x.ord):null; if(q) return sdWashSplitDone_(x); return !sdSplit_(x.ord); }   // [수정] 세정 수량을 알면 한 줄짜리도 수량으로 판정 (3개 중 2개 세정 → 미완료)
 function sdDone_(x){ return !!(x && (x.done || sdAutoDone_(x.ord) || sdWashOk_(x))); }
 /* [추가] 자동 완료 기준 = 실제 출고: 재고 출고(관리번호) + 출하검사 일보 분출(출고NO). MAIN 납품완료는 늦게 들어와 보조로만 둠
    · 같은 관리번호가 여러 줄이면 가능일자 빠른 줄부터 채움 · 이미 완료한 줄 수량은 먼저 뺌
@@ -13872,9 +13877,10 @@ function sdCompute_(){
   var byDraw={};
   open.forEach(function(x){ var k=x.draw||"(품번 없음)"; if(!byDraw[k]){ var hi=sdHoldInfo_(x.draw, x.ord); var u=used[k]||{ s:0, w:0 }, st2=Math.max(0, hi.stock-u.s), wt2=Math.max(0, hi.wait-u.w);
       byDraw[k]={ draw:k, hold:st2+wt2, wait:wt2, stock:st2, usedS:u.s, usedW:u.w, kind:hi.kind, vision:hi.vision, name:hi.name, need:0, runS:st2, runW:wt2, shortFrom:"", lines:[] }; } x._vision=byDraw[k].vision;
-    var g=byDraw[k], fs=Math.min(x.qty, g.runS); g.runS-=fs; var rest=x.qty-fs, fw=Math.min(rest, g.runW); g.runW-=fw;
-    x._ready=fs; x._fromWait=fw; x._short=rest-fw; x._insp=x.qty-fs;   // 검사 필요 = 재고로 못 채운 수량
-    if(x._short>0 && !g.shortFrom) g.shortFrom=x.avail; g.need+=x.qty; g.lines.push(x); });
+    var wq=sdWashPart_(x), nd=Math.max(0, x.qty-wq);   // [추가] 이미 세정으로 나간 수량은 보유에서 채울 필요 없음 (예: 3개 중 2개 세정 → 1개만 필요)
+    var g=byDraw[k], fs=Math.min(nd, g.runS); g.runS-=fs; var rest=nd-fs, fw=Math.min(rest, g.runW); g.runW-=fw;
+    x._washed=wq; x._ready=fs; x._fromWait=fw; x._short=rest-fw; x._insp=nd-fs;   // 검사 필요 = 재고로 못 채운 수량
+    if(x._short>0 && !g.shortFrom) g.shortFrom=x.avail; g.need+=nd; g.washed=(g.washed||0)+wq; g.lines.push(x); });
   // 비젼검사 준비 일정: 출고 전날까지 끝나도록, 늦은 출고부터 거꾸로 1일 cap개 배정
   var used={}, plan={};
   open.slice().sort(function(a,b){ return a.avail<b.avail?1:(a.avail>b.avail?-1:0); }).forEach(function(x){
@@ -14055,7 +14061,7 @@ function sdRender_(){
   var ks=Object.keys(C.byDraw).sort(function(a,b){ var A=C.byDraw[a], B=C.byDraw[b]; return (A.start||"9")<(B.start||"9")?-1:1; });
   h+='<div class="sd-grid"><section class="sd-card"><h3>품번별 보유·부족</h3>'
     +(ks.length?'<table class="sd-tb"><thead><tr><th>품번</th><th>검사</th><th class="n" title="검사 끝나 출고만 남은 수량">재고</th><th class="n" title="아직 검사 전">검사대기</th><th class="n">보유 합계</th><th class="n">출고 합계</th><th class="n">부족</th><th>부족 시작</th><th>검사 시작</th></tr></thead><tbody>'
-    +ks.map(function(k){ var g=C.byDraw[k], diff=g.hold-g.need; return '<tr><td class="k" title="'+sdE_(g.name||"")+'">'+sdDwgLink_(k)+'</td><td><span class="sd-kind'+(g.vision?' v':'')+'">'+g.kind+'</span></td><td class="n"'+(g.usedS?' title="오늘 완료분 '+g.usedS+'개 미리 뺌 (업로드 전)"':'')+'>'+g.stock+(g.usedS?'<small class="m"> −'+g.usedS+'</small>':'')+'</td><td class="n"'+(g.usedW?' title="오늘 완료분 '+g.usedW+'개 미리 뺌 (업로드 전)"':'')+'>'+g.wait+(g.usedW?'<small class="m"> −'+g.usedW+'</small>':'')+'</td><td class="n"><b>'+g.hold+'</b></td><td class="n">'+g.need+'</td><td class="n"><span class="sd-pill '+(diff<0?"bad":"ok")+'">'+diff+'</span></td>'
+    +ks.map(function(k){ var g=C.byDraw[k], diff=g.hold-g.need; return '<tr><td class="k" title="'+sdE_(g.name||"")+'">'+sdDwgLink_(k)+'</td><td><span class="sd-kind'+(g.vision?' v':'')+'">'+g.kind+'</span></td><td class="n"'+(g.usedS?' title="오늘 완료분 '+g.usedS+'개 미리 뺌 (업로드 전)"':'')+'>'+g.stock+(g.usedS?'<small class="m"> −'+g.usedS+'</small>':'')+'</td><td class="n"'+(g.usedW?' title="오늘 완료분 '+g.usedW+'개 미리 뺌 (업로드 전)"':'')+'>'+g.wait+(g.usedW?'<small class="m"> −'+g.usedW+'</small>':'')+'</td><td class="n"><b>'+g.hold+'</b></td><td class="n">'+g.need+(g.washed?'<div class="m" style="font-size:11px;white-space:nowrap;" title="세정LIST 수량 기준 — 이미 세정으로 나가 보유에서 채울 필요 없는 수량">세정 '+g.washed+' 제외</div>':'')+'</td><td class="n"><span class="sd-pill '+(diff<0?"bad":"ok")+'">'+diff+'</span></td>'
       +'<td>'+(g.shortFrom?'<b class="r">'+sdMD_(g.shortFrom)+'('+sdDow_(g.shortFrom)+')부터</b>':'<span class="m">-</span>')+'</td><td>'+(g.start?('<b class="'+(g.late?"r":"")+'">'+sdMD_(g.start)+'('+sdDow_(g.start)+')'+(g.late?' 늦음':'')+'</b>'):'-')+'</td></tr>'; }).join("")+'</tbody></table>':'<div class="sd-empty">등록된 미완료 항목이 없습니다</div>')
     +'</section>';
   // 비젼검사 준비 일정 (밀린 것 + 오늘부터 10근무일)
@@ -14145,7 +14151,7 @@ function sdKpiPop_(k){
     var ks=Object.keys(C.byDraw).filter(function(d){ return C.byDraw[d].shortFrom; }).sort(function(a,b){ return C.byDraw[a].shortFrom.localeCompare(C.byDraw[b].shortFrom); });
     head='<tr><th>품번</th><th>품명</th><th>검사</th><th class="n">재고</th><th class="n">검사대기</th><th class="n">보유</th><th class="n">출고 합계</th><th class="n">부족</th><th>부족 시작</th><th>부족한 출고 (관리번호 · 가능일 · 부족 수량)</th></tr>';
     rows=ks.map(function(d){ var g=C.byDraw[d], ln=g.lines.filter(function(x){ return x._short>0; });
-      return '<tr><td>'+sdDwgLink_(d)+'</td><td class="nm">'+E(g.name||"")+'</td><td>'+E(g.kind||"")+'</td><td class="n">'+g.stock+'</td><td class="n">'+g.wait+'</td><td class="n">'+g.hold+'</td><td class="n">'+g.need+'</td><td class="n"><b class="r">'+(g.hold-g.need)+'</b></td><td><b class="r">'+sdMD_(g.shortFrom)+'('+sdDow_(g.shortFrom)+')</b></td>'
+      return '<tr><td>'+sdDwgLink_(d)+'</td><td class="nm">'+E(g.name||"")+'</td><td>'+E(g.kind||"")+'</td><td class="n">'+g.stock+'</td><td class="n">'+g.wait+'</td><td class="n">'+g.hold+'</td><td class="n">'+g.need+(g.washed?' <small class="m">(세정 '+g.washed+' 제외)</small>':'')+'</td><td class="n"><b class="r">'+(g.hold-g.need)+'</b></td><td><b class="r">'+sdMD_(g.shortFrom)+'('+sdDow_(g.shortFrom)+')</b></td>'
         +'<td class="nm">'+ln.map(function(x){ return E(x.ord||"-")+' · '+sdMD_(x.avail)+' · <b class="r">'+x._short+'</b>'; }).join('<br>')+'</td></tr>'; });
     foot='부족 품번 '+ks.length+'개 · 제품 입고(생산)가 먼저 필요합니다';
   } else return;
