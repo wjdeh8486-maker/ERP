@@ -16717,7 +16717,11 @@ function coaFillWrite_(buf, plan, over){ over=over||{};
   var find=function(p){ var i=cfb.FullPaths.findIndex(function(x){ return x.replace(/^Root Entry\//,"")===p; }); return i>=0?cfb.FileIndex[i]:null; };
   var wbF=find("xl/workbook.xml"), relF=find("xl/_rels/workbook.xml.rels"); if(!wbF||!relF) throw new Error("엑셀(xlsx) 형식이 아닙니다");
   var wbx=dec.decode(wbF.content), rel=dec.decode(relF.content), fail=[], kept=[];
-  plan.plans.forEach(function(p){ if(!p.cells.length && !(p.blanks||[]).length) return;
+  // [추가] 측정 데이터가 없는 S/N 열의 INDIRECT 칸도 수식을 지우고 빈칸 (측정 시트를 지우므로 #REF! 방지)
+  var byS={}, plans=plan.plans.slice(); Object.keys(over).forEach(function(k){ var i=k.lastIndexOf("!"), sn=k.slice(0,i); (byS[sn]=byS[sn]||[]).push(k.slice(i+1)); });
+  Object.keys(byS).forEach(function(sn){ var p=plans.find(function(q){ return q.sheet===sn; }); if(!p){ p={ sheet:sn, cells:[], blanks:[] }; plans.push(p); }
+    var done={}; p.cells.forEach(function(c){ done[c.ref]=1; }); var bl=(p.blanks||[]).slice(); byS[sn].forEach(function(r){ if(!done[r] && bl.indexOf(r)<0) bl.push(r); }); p._bl=bl; });
+  plans.forEach(function(p){ if(!p.cells.length && !(p._bl||p.blanks||[]).length) return;
     var sm=wbx.match(new RegExp('<sheet [^>]*name="'+p.sheet.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/&/g,"&amp;")+'"[^>]*r:id="([^"]+)"'));
     var rid=sm&&sm[1], tm=rid&&rel.match(new RegExp('Id="'+rid+'"[^>]*Target="([^"]+)"|Target="([^"]+)"[^>]*Id="'+rid+'"'));
     var target=tm&&(tm[1]||tm[2]); if(!target){ fail.push(p.sheet+": 시트를 찾지 못함"); return; }
@@ -16727,7 +16731,7 @@ function coaFillWrite_(buf, plan, over){ over=over||{};
         if(!over[key] || /<f[^>]*t="shared"[^>]*ref=/.test(inner)){ kept.push(key); return; }   // 판정 등 다른 수식·공유수식 원본은 그대로
         x=x.replace(new RegExp('(<c r="'+c.ref+'"[^>]*?)\\s+cm="[^"]*"'), "$1"); }   // INDIRECT 수식 → 값 (동적배열 표시 cm 제거)
       var nx=coaFillSetCell_(x, c.ref, c.val); if(nx===null) fail.push(p.sheet+"!"+c.ref); else x=nx; });
-    (p.blanks||[]).forEach(function(ref){ if(!over[p.sheet+"!"+ref]) return;   // [추가] 측정값 없는 INDIRECT 칸 → 수식 지우고 빈칸 (서식 유지)
+    (p._bl||p.blanks||[]).forEach(function(ref){ if(!over[p.sheet+"!"+ref]) return;   // [추가] 측정값 없는 INDIRECT 칸 → 수식 지우고 빈칸 (서식 유지)
       x=x.replace(new RegExp('<c r="'+ref+'"((?:\\s[^>]*?)?)(\\/>|>([\\s\\S]*?)<\\/c>)'), function(all, at){ at=(at||"").replace(/\s+(t|cm)="[^"]*"/g,"").replace(/\/$/,""); return '<c r="'+ref+'"'+at+'/>'; }); });
     f.content=enc.encode(x); f.size=f.content.length; });
   wbx=/<calcPr[^>]*fullCalcOnLoad=/.test(wbx)?wbx:wbx.replace(/<calcPr/, '<calcPr fullCalcOnLoad="1"');   // 열 때 판정 수식 다시 계산
@@ -17142,11 +17146,14 @@ async function coaFindMeas_(root, draw, tails, log){
         if(/\.txt$/i.test(c.name) && !c.txt){ reasons.push(c.name+": TXT 형식 아님"); continue; }
         var buf=c.txt?coaTxtXlsx_(c.txt.aoa):await c.file.arrayBuffer(), w=XLSX.read(new Uint8Array(buf), { type:"array" }), ok=null, okWs=null;
         for(const sn of w.SheetNames){ var m=coaFillDataMap_(XLSX.utils.sheet_to_json(w.Sheets[sn], { header:1, raw:true, defval:"" })); if(!m || !Object.keys(m.map).length) continue;
-          if(m.sn && coaFillSnTail_(m.sn)!==tn){ reasons.push(c.name+": 파일 안 S/N "+m.sn.trim()); continue; }
+          var snW="";
+          if(m.sn && coaFillSnTail_(m.sn)!==tn){
+            if(c.txt && coaNameTails_(c.name).indexOf(tn)>=0){ snW=m.sn.trim(); }   // [추가] 구형 측정기 TXT: 파일 이름 S/N이 맞으면 사용 (측정기에 Ser NO.를 안 바꾸고 저장한 경우) → 경고 표시
+            else { reasons.push(c.name+": 파일 안 S/N "+m.sn.trim()); continue; } }
           if(m.part && coaFillPartNorm_(m.part)!==coaFillPartNorm_(draw)){ reasons.push(c.name+": 파일 안 품번 "+m.part.trim()); continue; }
-          ok=m; okWs=w.Sheets[sn]; break; }
+          ok=m; okWs=w.Sheets[sn]; ok.snW=snW; break; }
         if(ok){ var side=(/^(상|하)$/.test(ok.side)?ok.side:((c.name.replace(/\.[^.]+$/,"").match(/(상|하)(?!.*(상|하))/)||[])[1]||""));
-          var ent={ name:c.name, path:c.path, buf:buf, m:ok, ws:okWs, mt:c.mt, side:side };
+          var ent={ name:c.name, path:c.path, buf:buf, m:ok, ws:okWs, mt:c.mt, side:side, snW:ok.snW||"" };
           if(!found[t]){ found[t]=Object.assign({ others:cands.length-1, sides:{} }, ent); }
           if(!found[t].sides[side]) found[t].sides[side]=ent; }
       }catch(e){ reasons.push(c.name+": 읽기 실패"); }
@@ -17965,8 +17972,9 @@ async function coaGenRun_(ov){
     var newBuf=coaTplPrepare_(tplBuf, infos, prefix, p.tails, { keepSn:autoNo }), fi=coaFormulaInfo_(newBuf, infos);
     var dref=null; try{ dref=coaDirectRefFix_(newBuf, infos, p.tails, tplBuf); if(dref.n) newBuf=dref.buf; }catch(e){ dref=null; }
     var extras=p.tails.filter(function(t){ return fm.found[t]; }).map(function(t){ var F=fm.found[t], ks=Object.keys(F.sides||{});
-      if(ks.length>1){ try{ return { name:F.name, buf:coaSidesMerge_(F, ks), forSn:manual?t:null }; }catch(_){} }   // [추가] 상·하 측정 파일이 나뉜 경우 한 S/N 데이터로 합침 (구형 측정기 TXT 등)
-      return { name:F.name, buf:F.buf, forSn:manual?t:null }; });
+      var snW=ks.some(function(k){ return F.sides[k].snW; }) || F.snW;
+      if(ks.length>1){ try{ return { name:F.name, buf:coaSidesMerge_(F, ks), forSn:(manual||snW)?t:null }; }catch(_){} }   // [추가] 상·하 측정 파일이 나뉜 경우 한 S/N 데이터로 합침 (구형 측정기 TXT 등)
+      return { name:F.name, buf:F.buf, forSn:(manual||snW)?t:null }; });
     // [변경] INDIRECT/직접참조 수식 칸도 측정값으로 직접 채움 (수식 삭제 → 값). 값이 없는 칸만 수식 유지
     var over={}; fi.refs.forEach(function(r){ over[r.sheet+"!"+r.ref]=1; }); ((dref&&dref.cells)||[]).forEach(function(k){ over[k]=1; });
     var plan=coaFillPlan_(newBuf, extras, {}), w=coaFillWrite_(newBuf, plan, over);
@@ -18014,7 +18022,7 @@ async function coaGenRun_(ov){
       +p.tails.map(function(t){ var f=fm.found[t];
         var sl=f?Object.keys(f.sides||{}).filter(function(k){ return k; }):[];
         return '<tr><td style="padding:5px;border:1px solid #EAECF0;text-align:center;font-weight:700;">'+E(t)+'</td>'
-          +(f?('<td style="padding:5px;border:1px solid #EAECF0;">'+(sl.length?sl.map(function(k){ return '<b>['+E(k)+']</b> '+E(f.sides[k].path); }).join("<br>"):E(f.path))+(f.others?(' <span style="color:#B54708;">(같은 S/N 파일 '+f.others+'개 더 있음 → 최근 것 사용)</span>'):'')+'</td><td style="padding:5px;border:1px solid #EAECF0;white-space:nowrap;">'+E(dfmt(f.mt))+'</td>')
+          +(f?('<td style="padding:5px;border:1px solid #EAECF0;">'+(sl.length?sl.map(function(k){ return '<b>['+E(k)+']</b> '+E(f.sides[k].path)+(f.sides[k].snW?(' <span style="color:#B54708;font-weight:700;">⚠ 파일 안 S/N '+E(f.sides[k].snW)+' (측정기 Ser NO. 미변경 추정) → 파일 이름 기준 사용</span>'):''); }).join("<br>"):E(f.path)+(f.snW?(' <span style="color:#B54708;font-weight:700;">⚠ 파일 안 S/N '+E(f.snW)+' → 파일 이름 기준 사용</span>'):''))+(f.others?(' <span style="color:#B54708;">(같은 S/N 파일 '+f.others+'개 더 있음 → 최근 것 사용)</span>'):'')+'</td><td style="padding:5px;border:1px solid #EAECF0;white-space:nowrap;">'+E(dfmt(f.mt))+'</td>')
              :('<td colspan="2" style="padding:5px;border:1px solid #EAECF0;color:#B42318;">⛔ '+E(fm.why[t]||"없음")+'</td>'))+'</tr>'; }).join("")+'</table>';
     plan.plans.forEach(function(q){
       if(q.bad && q.bad.length) html+='<div style="color:#B42318;font-size:12.5px;font-weight:700;margin-bottom:6px;">⛔ 도번·S/N 불일치로 비운 열: '+E(q.bad.join(" / "))+'</div>';
