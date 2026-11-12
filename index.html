@@ -29864,7 +29864,7 @@ function insRender(){
             +'<span class="ins-sn-ocr" data-ri="'+ri+'" title="S/N 사진 인식(업로드)" style="cursor:pointer;font-size:14px;color:#0B7A8A;padding:0 2px;user-select:none;flex:0 0 auto;">📷</span>'
             +'</div>';
         } else if(c.key==="outNo"){
-          var __urg=[]; try{ if(insType==="shipping" && !String(v||"").trim() && row.draw && String(row.insDate||"").slice(0,10)===insToday_() && typeof insGuideUrgent_==="function") __urg=insGuideUrgent_(row.draw, ri); }catch(_){}
+          var __urg=[]; try{ if(insType==="shipping" && !String(v||"").trim() && row.draw && String(row.seg||"").split(",").indexOf("재고")<0 && String(row.insDate||"").slice(0,10)===insToday_() && typeof insGuideUrgent_==="function") __urg=insGuideUrgent_(row.draw, ri); }catch(_){}
           cell='<div class="'+(__urg.length?'ins-urgwrap':'')+'" data-ri="'+ri+'" style="display:flex;align-items:center;gap:1px;'+(__urg.length?'background:#FEE4E2;outline:2px solid #F04438;border-radius:4px;':'')+'">'
             +'<input type="'+typ+'" data-ri="'+ri+'" data-key="'+c.key+'" value="'+insEsc(v)+'"'+extraAttr+' style="flex:1;min-width:0;border:none;'+bgStyle+'font-size:12px;" placeholder="예: 261-13,263-13">'
             +(__urg.length?('<span class="ins-urg" data-ri="'+ri+'" title="이 도번에 미납·검수·분출 LIST 건이 있는데 출고No가 비어 있음 — 눌러서 그 건만 보기" style="cursor:pointer;white-space:nowrap;font-size:11px;font-weight:800;color:#fff;background:#D92D20;border-radius:5px;padding:2px 5px;flex:0 0 auto;user-select:none;">⚠ '+__urg.length+'건</span>'):'')
@@ -29960,6 +29960,12 @@ function insRender(){
   }
 
   r[key]=cur.join(",");
+
+  // [추가] 재고 체크 → 출고NO 빨간 표시(미납·검수·분출 안내) 끄기, 체크 해제 → 다시 판정
+  if(key==="seg" && opt==="재고"){
+    if(inp.checked){ try{ var wr=el.querySelector('.ins-urgwrap[data-ri="'+ri+'"]'); if(wr){ wr.classList.remove("ins-urgwrap"); wr.style.background=""; wr.style.outline=""; var ub=wr.querySelector(".ins-urg"); if(ub) ub.remove(); } }catch(_){} }
+    else { try{ insSaveLocal(); setTimeout(function(){ try{ insRender(); }catch(_){} }, 0); }catch(_){} }
+  }
 
   // 검수/분출 체크 시 출고NO(관리번호) 입력
   //  · 검수 = 바코드 스캔한 관리번호 그대로 (기존 동작)
@@ -34730,4 +34736,3 @@ try{ RV_STAGE.push({ title:"🤝 협력사 NCR 대리 작성", desc:"1인 사업
 
 </body>
 </html>
-    
