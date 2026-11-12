@@ -17048,7 +17048,7 @@ function coaMeasDirPick_(){
 function coaMeasPerm_(h){ if(!h) return Promise.resolve(false);
   var q=h.queryPermission?h.queryPermission({ mode:"read" }):Promise.resolve("granted");
   return Promise.resolve(q).then(function(p){ if(p==="granted") return true; return h.requestPermission?Promise.resolve(h.requestPermission({ mode:"read" })).then(function(p2){ return p2==="granted"; }):false; }).catch(function(){ return false; }); }
-async function coaDirList_(dir){ var out=[]; for await (const e of dir.values()) out.push(e); return out; }
+async function coaDirList_(dir){ coaAbortChk_(); var out=[]; for await (const e of dir.values()) out.push(e); return out; }
 function coaDrawKey_(v){ return String(v==null?"":v).toUpperCase().replace(/[^A-Z0-9]/g,""); }
 function coaDirIsDraw_(name, draw){ var n=String(name||"").toUpperCase().trim(), d=String(draw||"").toUpperCase().trim(); if(!d) return false;
   if(coaDrawKey_(n)===coaDrawKey_(d)) return true;
@@ -17072,7 +17072,7 @@ function coaProgStart_(res, title){
     b.style.width=Math.max(2, last.p)+"%"; pc.textContent=Math.round(last.p)+"%"; tx.textContent=last.t; sb.textContent=last.s; };
   return function(){ __coaProg=null; clearInterval(tm); };
 }
-function coaYield_(){ return new Promise(function(r){ setTimeout(r, 30); }); }
+function coaYield_(){ return new Promise(function(r){ setTimeout(r, 30); }).then(function(){ coaAbortChk_(); }); }
 async function coaFindDrawDirs_(root, draw, diag){
   var key=coaDrawKey_(draw), hits=[], fileHits=[], seen=0;
   var looksDraw=function(n){ return /[A-Z]?\d{3}-\d{3}|\d{5}-\d{2}|\b1\d{8}\b|\d{6,}/i.test(n); };
@@ -17417,10 +17417,14 @@ async function coaFindMeas_(root, draw, tails, log){
   var diag=[], dirs=await coaFindDrawDirs_(root, draw, diag);
   var files=[];
   if(!dirs.length){   // [추가] 도번 폴더가 없고 TXT가 한 폴더에 모여 있는 경우(예: ...\유진\15A.txt) → 연결 폴더의 TXT 안 'Part NO.'로 찾기
-    var all=[]; try{ await coaCollectXls_(root, "", 0, all); }catch(_){}
-    var pk=coaFillPartNorm_(draw), k0=0, tl=all.filter(function(f){ return /\.txt$/i.test(f.name); });
-    for(const f of tl){ if(++k0>3000) break; if(k0%20===0) coaProg_(40, "② 도번 폴더가 없어 측정 TXT에서 품번 찾는 중… ("+k0+" / "+tl.length+")", f.name);
-      try{ var fl=await f.h.getFile(), tx=coaTxtAoa_(coaTxtDecode_(await fl.slice(0, 2000).arrayBuffer())); if(tx && coaFillPartNorm_(tx.part)===pk) files.push(f); }catch(_){} }
+    // [성능] TXT마다 앞부분을 읽어 품번 확인한 결과를 기억 (반복 작성 때 같은 파일 수천 개를 다시 읽지 않음 → NAS 부하 감소)
+    var TC=__coaGen.txtIdx; if(!TC || TC.root!==root || Date.now()-TC.at>3600000) TC=__coaGen.txtIdx={ root:root, at:Date.now(), part:{} };   // 파일별 품번 판정은 1시간 기억 (목록은 매번 새로 → 새 TXT도 찾음)
+    var all=[]; try{ await coaCollectXls_(root, "", 0, all); }catch(_){} coaAbortChk_(); TC.tl=all.filter(function(f){ return /\.txt$/i.test(f.name); });
+    var pk=coaFillPartNorm_(draw), k0=0, tl=TC.tl;
+    for(const f of tl){ if(++k0>3000) break; coaAbortChk_(); var fk=(f.path||"")+"/"+f.name;
+      if(TC.part[fk]!==undefined){ if(TC.part[fk]===pk) files.push(f); continue; }
+      if(k0%20===0) coaProg_(40, "② 도번 폴더가 없어 측정 TXT에서 품번 찾는 중… ("+k0+" / "+tl.length+")", f.name);
+      try{ var fl=await f.h.getFile(), tx=coaTxtAoa_(coaTxtDecode_(await fl.slice(0, 2000).arrayBuffer())); TC.part[fk]=tx?coaFillPartNorm_(tx.part):""; if(tx && TC.part[fk]===pk) files.push(f); }catch(_){ TC.part[fk]=""; } }
     if(!files.length) return { dirs:[], found:{}, why:{}, diag:diag };
     dirs=[{ h:root, path:"(연결 폴더 TXT "+files.length+"개)" }];
   } else for(const d of dirs) await coaCollectXls_(d.h, d.path, 0, files);
@@ -18221,7 +18225,14 @@ function coaTxtAlign_(tplBuf, infos, sx, F, tail){
   if(!filled) return null;
   try{ console.log("[성적서 TXT] "+tail+sx+" ← 양식 시트 '"+refN+"' 배치 · 값 "+filled+"칸, 없는 번호 지움 "+cleared+"칸"); }catch(_){}
   return ws; }
+// [추가] 작성 중복 실행 방지 · 창을 닫으면 진행 중인 NAS 읽기 중단
+function coaAbortChk_(){ if(__coaGen.abort) throw new Error("작성 취소됨 (창 닫힘)"); }
 async function coaGenRun_(ov){
+  if(__coaGen.busy && Date.now()-__coaGen.busy<300000){ alert("성적서를 작성하는 중입니다. 끝난 뒤 다시 눌러 주세요."); return; }
+  __coaGen.busy=Date.now(); __coaGen.abort=false;
+  try{ return await coaGenRun0_(ov); } finally{ __coaGen.busy=0; __coaGen.abort=false; }
+}
+async function coaGenRun0_(ov){
   var res=ov.querySelector("#cg-res"), E=coaXmlEsc_;
   var fail=function(m){ res.innerHTML='<div style="color:#B42318;font-weight:700;">⚠ '+E(m)+'</div>'; };
   try{
@@ -18371,7 +18382,7 @@ function coaFillOpen_(){
   coaMeasDirLoad_().then(function(){ coaGenDirLabel_(ov); });
   if(__coaGen.tpl){ ov.querySelector("#cg-draw").value=__coaGen.tpl.info.part||""; ov.querySelector("#cg-tplname").innerHTML="<b>"+coaXmlEsc_(__coaGen.tpl.name)+"</b> (이전에 고른 성적서)"; ov.querySelector("#cg-name").value=__coaGen.tpl.name; }
   ov.addEventListener("click", function(e){ var x=e.target.getAttribute&&e.target.getAttribute("data-x");
-    if(x==="close"||e.target===ov) ov.remove(); else if(x==="pick") fi.click(); else if(x==="tpl") ft.click();
+    if(x==="close"||e.target===ov){ if(__coaGen.busy) __coaGen.abort=true; ov.remove(); } else if(x==="pick") fi.click(); else if(x==="tpl") ft.click();
     else if(x==="dir") coaMeasDirPick_().then(function(){ coaGenDirLabel_(ov); });
     else if(x==="gen") coaGenRun_(ov);
     else if(x==="mpick") ov.querySelector("#cg-mfile").click();
