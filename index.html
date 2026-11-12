@@ -2092,6 +2092,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
       <div class="qnav-panel">
         <div class="nav-item nav-sub" data-view="quality"><span class="qnav-i">📈</span><span class="qnav-t"><b>품질분석</b><small>PPM·CAPA·CTQ·NCR·변경점·품질목표</small></span></div>
         <div class="nav-item nav-sub" data-view="nc"><span class="qnav-i">⚠️</span><span class="qnav-t"><b>고객부적합관리</b><small>클레임 접수·조치</small></span></div>
+        <div class="nav-item nav-sub" data-view="inspm" title="수주~출하 검사 공정도 · 도번별 검사 항목(LEAK·FLOW·가압·수압)·기준·진행 장소·집중 사항"><span class="qnav-i">🧪</span><span class="qnav-t"><b>검사 방법</b><small>검사 공정도 · 도번별 집중 사항</small></span></div>
         <div class="nav-item nav-sub" data-view="creq" title="도번·품명별 고객 품질 요청사항 — QMS 어디서든 그 도번에 📌 표시"><span class="qnav-i">📌</span><span class="qnav-t"><b>고객 요청사항</b><small>도번·품명별 · 전체 표시</small></span></div>
         <div class="nav-item nav-sub" data-view="instr"><span class="qnav-i">🔧</span><span class="qnav-t"><b>계측기 관리</b><small>교정 주기·이력</small></span></div>
         <div class="nav-item nav-sub" data-view="qdocs"><span class="qnav-i">📄</span><span class="qnav-t"><b>문서 초안</b><small>SCAR·8D·월간 보고서·PCN 등</small></span></div>
@@ -2469,6 +2470,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
     <div class="view" id="view-safety"><div id="se-root"></div></div>
     <div class="view" id="view-xlcmp"><div id="xc-root"></div></div>
     <div class="view" id="view-creq"><div id="creq-root"></div></div>
+    <div class="view" id="view-inspm"><div id="inspm-root"></div></div>
     <div class="view" id="view-fitting"><div id="ft-root"></div></div>
     <div class="view" id="view-smat"><div id="sm-root"></div></div>
     <div class="view" id="view-dnote"><div id="dn-root"></div></div>
@@ -4246,7 +4248,7 @@ function qxLayout_(){
       return false; };
     var views=[].slice.call(document.querySelectorAll(".main-area > .view[id^='view-']"));
     views.forEach(function(view){
-      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="dboard" || v==="safety" || v==="xlcmp" || v==="creq" || v==="fitting" || v==="smat" || v==="dnote" || v==="wip" || v==="procflow" || v==="board" || v==="syshealth" || v==="authadmin" || v==="specdue" || v==="specduelog" || v==="custrev" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
+      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="dboard" || v==="safety" || v==="xlcmp" || v==="creq" || v==="inspm" || v==="fitting" || v==="smat" || v==="dnote" || v==="wip" || v==="procflow" || v==="board" || v==="syshealth" || v==="authadmin" || v==="specdue" || v==="specduelog" || v==="custrev" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
       var inf=info(v) || (v==="history"?info("management"):null);
       var tb=document.getElementById("topbar-"+v);
       if(tb){
@@ -5315,6 +5317,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="safety" && typeof seShow_==="function"){ seShow_(); }   // [추가] 안전교육
     if(target==="xlcmp" && typeof xcShow_==="function"){ xcShow_(); }   // [추가] 변경비교
     if(target==="creq" && typeof creqShow_==="function"){ creqShow_(); }   // [추가] 고객 요청사항
+    if(target==="inspm" && typeof inspmShow_==="function"){ inspmShow_(); }   // [추가] 검사 방법
     if(target==="fitting" && typeof ftShow_==="function"){ ftShow_(); }   // [추가] 사급 피팅
     if(target==="smat" && typeof smShow_==="function"){ smShow_(); }   // [추가] 사급 소재
     if(target==="dnote" && typeof dnShow_==="function"){ dnShow_(); }   // [추가] 도면 NOTES 해석
@@ -7108,11 +7111,12 @@ function creqHtml_(draw, hits){ var E=qmsEsc_;
     +(r.draw&&r.name?' <span style="color:#667085;">'+E(r.name)+'</span>':'')+' <span style="color:#98A2B3;font-size:11px;">'+E(r.date||"")+(r.by?' · '+E(r.by):'')+'</span>'
     +'<div style="white-space:pre-wrap;color:#101828;font-weight:600;margin-top:2px;">'+E(r.req||"")+'</div>'+(r.note?'<div style="white-space:pre-wrap;color:#475467;font-size:12px;">비고: '+E(r.note)+'</div>':'')+'</div>'; }).join(""); }
 // ── 오른쪽 아래 알림 (도번 입력·도면 열기) — 같은 도번은 10분에 한 번
-function creqToast_(draw, force){ var hits=creqFor_(draw); if(!hits.length) return; var d=creqNd_(draw), now=Date.now(); creqToast_.t=creqToast_.t||{};
+function creqToast_(draw, force){ var hits=creqFor_(draw), ims=(typeof inspmFor_==="function")?inspmFor_(draw):[]; if(!hits.length && !ims.length) return; var d=creqNd_(draw), now=Date.now(); creqToast_.t=creqToast_.t||{};
   if(!force && creqToast_.t[d] && now-creqToast_.t[d]<600000) return; creqToast_.t[d]=now;
   var w=document.getElementById("creq-toast"); if(!w){ w=document.createElement("div"); w.id="creq-toast"; w.style.cssText="position:fixed;right:18px;bottom:130px;z-index:99990;width:min(380px,calc(100vw - 24px));max-height:60vh;overflow:auto;background:#FFFAEB;border:2px solid #F79009;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:10px 12px;font-size:13px;"; document.body.appendChild(w);
-    w.addEventListener("click", function(e){ if(e.target.closest("[data-x]")) w.style.display="none"; }); }
-  w.innerHTML='<div style="display:flex;align-items:center;gap:6px;"><b style="font-size:14px;color:#B54708;flex:1;">📌 고객 요청사항 · '+qmsEsc_(String(draw).trim())+'</b><button data-x="1" style="border:none;background:none;font-size:16px;cursor:pointer;color:#667085;">✕</button></div>'+creqHtml_(draw, hits);
+    w.addEventListener("click", function(e){ if(e.target.closest("[data-x]")) w.style.display="none"; if(e.target.closest("[data-imgo]")){ e.preventDefault(); w.style.display="none"; if(typeof qstdGo_==="function") qstdGo_("inspm"); } }); }
+  w.innerHTML='<div style="display:flex;align-items:center;gap:6px;"><b style="font-size:14px;color:#B54708;flex:1;">'+(hits.length?'📌 고객 요청사항':'🧪 검사 방법')+' · '+qmsEsc_(String(draw).trim())+'</b><button data-x="1" style="border:none;background:none;font-size:16px;cursor:pointer;color:#667085;">✕</button></div>'+(hits.length?creqHtml_(draw, hits):'')
+    +(ims.length?((hits.length?'<div style="margin-top:6px;font-weight:800;color:#175CD3;">🧪 검사 방법</div>':'')+inspmHtml_(ims)+'<div style="text-align:right;margin-top:4px;"><a href="#" data-imgo="1" style="font-size:12px;color:#175CD3;">검사 방법 화면 ▸</a></div>'):'');
   w.style.display=""; clearTimeout(creqToast_.h); creqToast_.h=setTimeout(function(){ w.style.display="none"; }, 15000); }
 // ── 화면 전체 📌 표시: 보이는 화면의 글자·도번 입력칸에서 도번을 찾아 표시 (내용은 바꾸지 않고 속성만 붙임)
 function creqScanSoon_(){ clearTimeout(creqScanSoon_.h); var wait=Math.max(400, 1200-(Date.now()-(creqScan_.at||0)));   // [성능] 연속 변경 시 1.2초에 한 번만
@@ -7144,7 +7148,8 @@ function creqScan_(){
   var noHover=window.matchMedia && window.matchMedia("(hover: none)").matches;   // 터치 기기: 누르면 내용 표시 (원래 동작은 그대로)
   if(noHover) document.addEventListener("click", function(e){ var el=e.target && e.target.closest && e.target.closest("[data-creq]"); if(!el) return; show(el, e); clearTimeout(show.h); show.h=setTimeout(function(){ if(tip) tip.style.display="none"; }, 5000); }, true);
   // 도번 입력칸에 도번을 넣으면 알림
-  document.addEventListener("change", function(e){ var t=e.target; if(!t || t.tagName!=="INPUT" || !__creq.length) return; var v=String(t.value||"").trim(); if(v && v.length<=60){ var k=creqNd_(v.split(/[\s,]+/)[0]); if(creqFor_(k).length) creqToast_(k); } creqScanSoon_(); }, true);
+  document.addEventListener("change", function(e){ var t=e.target; if(!t || t.tagName!=="INPUT") return; var imN=(typeof __im!=="undefined")?__im.list.length:0; if(!__creq.length && !imN) return; if(t.closest && t.closest("#view-creq,#view-inspm")) return;
+    var v=String(t.value||"").trim(); if(v && v.length<=60){ var k=creqNd_(v.split(/[\s,]+/)[0]); if(k.length>=4 && /\d/.test(k) && (creqFor_(k).length || (imN && inspmFor_(k).length))) creqToast_(k); } if(__creq.length) creqScanSoon_(); }, true);
   // 화면이 바뀌면 다시 찾기 (속성 변경은 감시 안 함 → 반복 없음)
   var mo=new MutationObserver(function(recs){ if(!__creq.length) return;   // 알림·말풍선 자체 변경은 무시 (반복 방지)
     for(var i=0;i<recs.length;i++){ var t=recs[i].target, el=t.nodeType===1?t:t.parentElement; if(!el || !el.closest || !el.closest("#creq-toast,#creq-tip")){ creqScanSoon_(); return; } } });
@@ -7206,6 +7211,128 @@ function creqRender_(){ var root=document.getElementById("creq-root"); if(!root)
   root.querySelectorAll("[data-del]").forEach(function(b){ b.onclick=function(){ var r=__creq.find(function(x){ return x.id===b.getAttribute("data-del"); }); if(!r) return;
     if(!confirm("이 요청사항을 삭제할까요?\n\n"+(r.draw||("품명 "+r.name))+" — "+String(r.req||"").slice(0,80))) return; __creq=__creq.filter(function(x){ return x!==r; }); __creqIdx=null; CREQ_STORE.save(__creq); creqRender_(); creqScanSoon_(); }; });
 }
+/* ===================== 🧪 검사 방법 (품질관리) — 수주~출하 검사 공정도 + 도번별 검사 집중 사항 =====================
+   · 공정도: 단계별 장소·담당·기준 (편집 가능, id "__FLOW" 한 줄로 저장) — QMS 데이터 흐름은 '업무흐름·품질기준' 메뉴
+   · 도번별: 검사 항목(LEAK·FLOW·가압·수압…) · 기준 · 진행 공정/장소 · 집중 사항. 도번 없이 품명만 → 그 품명 전체(제외 도번 가능)
+   · 도번 입력·도면 열기 알림(📌 고객 요청사항 알림)에 같이 표시 · 저장: 공유 시트 INSPM_Master */
+var __im={ list:[], q:"", edit:null }, INSPM_ITEMS=["LEAK","FLOW","가압","수압","진공","치수","외관","TAP","세정도","기타"];
+var INSPM_FLOW0=[
+  { t:"수주", where:"영업·생산관리", who:"", std:"ERP 등록 · MAIN 자동 업로드" },
+  { t:"소재 입고", where:"자재창고", who:"품질", std:"Mill sheet · 수입검사" },
+  { t:"가공", where:"1·2공장 MCT", who:"생산", std:"작업표준서" },
+  { t:"수입검사(가공품)", where:"수입검사실", who:"품질", std:"치수·외관·TAP" },
+  { t:"측정", where:"3차원 측정실", who:"품질", std:"도면 치수 · 성적서" },
+  { t:"기능검사", where:"기능검사실", who:"품질", std:"LEAK · FLOW · 가압/수압 · 진공" },
+  { t:"비젼검사", where:"비젼실", who:"품질", std:"SHOWERHEAD HOLE" },
+  { t:"세정", where:"외주 세정", who:"생산관리", std:"세정LIST" },
+  { t:"출하검사", where:"크린룸", who:"품질", std:"외관·포장 · 검사_출하" },
+  { t:"출고·납품", where:"출하장", who:"생산관리", std:"출고NO · 납품서" } ];
+var INSPM_STORE=qmsSyncStore_({ tab:"INSPM_Master", idb:"inspmStore",
+  cols:[["draw","도번"],["name","품명"],["ex","제외도번"],["focus","집중사항"],["itemsTxt","검사항목"],["by","작성자"],["date","작성일"],["_ts","_ts"],["_del","_del"]],
+  apply:function(list){ __im.list=list||[]; __im.idx=null; try{ inspmRender_(); }catch(_){} } });
+function inspmFlow_(){ var f=__im.list.find(function(x){ return x.id==="__FLOW"; }); return (f && Array.isArray(f.steps) && f.steps.length)?f.steps:INSPM_FLOW0; }
+function inspmRecs_(){ return __im.list.filter(function(x){ return x.id!=="__FLOW"; }); }
+function inspmItemsTxt_(r){ return (r.items||[]).map(function(it){ return it.k+(it.std?(": "+it.std):"")+(it.where?(" @"+it.where):""); }).join(" / "); }
+// 이 도번의 검사 방법 (도번 지정 + 품명 전체)
+function inspmFor_(draw){ var d=creqNd_(draw); if(!d) return []; var nm=creqNameMap_(), n=creqNn_(nm[d]||"");
+  return inspmRecs_().filter(function(r){ var rd=creqNd_(r.draw); if(rd) return rd===d; var k=creqNn_(r.name); if(!k || !n || n.indexOf(k)<0) return false; return creqExList_(r).indexOf(d)<0; }); }
+function inspmHtml_(recs){ var E=qmsEsc_; return recs.map(function(r){ return '<div style="padding:5px 0;border-top:1px dashed #84CAFF;"><b style="color:#175CD3;">🧪 '+(r.draw?E(r.draw):('품명 「'+E(r.name)+'」 전체'))+'</b>'
+  +(r.items||[]).map(function(it){ return '<div style="font-size:12.5px;"><b>'+E(it.k)+'</b>'+(it.std?' — '+E(it.std):'')+(it.where?' <span style="color:#175CD3;">@ '+E(it.where)+'</span>':'')+'</div>'; }).join("")
+  +(r.focus?'<div style="white-space:pre-wrap;font-size:12.5px;color:#101828;font-weight:600;margin-top:2px;">⚑ '+E(r.focus)+'</div>':'')+'</div>'; }).join(""); }
+function inspmShow_(){ INSPM_STORE.load(); inspmRender_(); }
+function inspmRender_(){ var root=document.getElementById("inspm-root"); if(!root) return; var E=qmsEsc_, fl=inspmFlow_(), ed=__im.edit;
+  var inp="border:1px solid #D0D5DD;border-radius:8px;padding:6px 8px;font-size:13px;box-sizing:border-box;";
+  var q=creqNn_(__im.q), L=inspmRecs_().slice().sort(function(a,b){ return String(a.draw||a.name).localeCompare(String(b.draw||b.name), undefined, {numeric:true}); })
+    .filter(function(r){ return !q || creqNn_([r.draw,r.name,r.focus,inspmItemsTxt_(r)].join(" ")).indexOf(q)>=0; });
+  var h='<div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;"><div style="flex:1;min-width:240px;"><div style="font-size:20px;font-weight:800;">🧪 검사 방법</div><div style="font-size:12.5px;color:#667085;">수주~출하 검사 공정도 · 도번별 검사 항목·기준·진행 장소·집중 사항 — 도번 입력·도면 열기 때 알림에 같이 표시 · QMS 데이터 흐름은 <a href="#" data-go="flow">업무흐름·품질기준</a></div></div>'
+    +'<button data-a="xls" style="'+inp+'background:#fff;cursor:pointer;font-weight:700;">⬇ 엑셀</button><button data-a="prt" style="'+inp+'background:#fff;cursor:pointer;font-weight:700;">🖨 인쇄</button></div>';
+  // ① 공정도
+  h+='<div class="im-card"><div style="display:flex;align-items:center;gap:8px;"><b style="font-size:15px;flex:1;">① 수주~출하 검사 공정도</b>'+(__im.flowEdit?'<button data-a="flowsave" class="im-b im-p">저장</button><button data-a="flowcancel" class="im-b">취소</button><button data-a="flowreset" class="im-b">기본값</button>':'<button data-a="flowedit" class="im-b">✏ 수정</button>')+'</div>';
+  if(__im.flowEdit){ h+='<div style="overflow:auto;"><table class="im-t"><thead><tr><th>#</th><th>단계</th><th>장소</th><th>담당</th><th>기준·내용</th><th></th></tr></thead><tbody>'
+      +__im.flowEdit.map(function(s,i){ return '<tr><td>'+(i+1)+'</td>'+["t","where","who","std"].map(function(k){ return '<td><input data-fi="'+i+'" data-fk="'+k+'" value="'+E(s[k]||"")+'" style="'+inp+'width:100%;min-width:'+(k==="std"?200:90)+'px;"></td>'; }).join("")
+        +'<td style="white-space:nowrap;"><button data-a="fup" data-i="'+i+'" class="im-b">↑</button><button data-a="fdel" data-i="'+i+'" class="im-b">✕</button></td></tr>'; }).join("")
+      +'</tbody></table></div><button data-a="fadd" class="im-b" style="margin-top:6px;">＋ 단계 추가</button>'; }
+  else h+='<div class="im-flow">'+fl.map(function(s,i){ var fx=/기능|LEAK|FLOW/i.test(s.t+s.std); return (i?'<span class="im-ar">➜</span>':'')+'<div class="im-st'+(fx?' fx':'')+'"><div class="im-n">'+(i+1)+'. '+E(s.t)+'</div>'+(s.where?'<div class="im-w">📍 '+E(s.where)+'</div>':'')+(s.who?'<div class="im-w">👤 '+E(s.who)+'</div>':'')+(s.std?'<div class="im-s">'+E(s.std)+'</div>':'')+'</div>'; }).join("")+'</div>';
+  h+='</div>';
+  // ② 도번별 입력
+  var e=ed||{ items:[] }, where=fl.map(function(s){ return s.t+(s.where?(" ("+s.where+")"):""); });
+  h+='<div class="im-card" style="background:#F5FAFF;border-color:#B2DDFF;"><b style="font-size:15px;">② 도번별 검사 집중 사항 '+(e.id?'— 수정':'— 등록')+'</b>'
+    +'<div class="im-form"><label>도번 <small>(비우면 품명 전체)</small><input id="im-draw" value="'+E(e.draw||"")+'" style="'+inp+'width:100%;text-transform:uppercase;" placeholder="예: M200-005-70A"></label>'
+    +'<label>품명<input id="im-name" value="'+E(e.name||"")+'" style="'+inp+'width:100%;" placeholder="예: SHOWER HEAD"></label>'
+    +'<label>제외 도번 <small>(품명 전체일 때)</small><input id="im-ex" value="'+E(e.ex||"")+'" style="'+inp+'width:100%;text-transform:uppercase;"></label></div>'
+    +'<datalist id="im-wl">'+where.map(function(w){ return '<option value="'+E(w)+'">'; }).join("")+'</datalist><datalist id="im-kl">'+INSPM_ITEMS.map(function(w){ return '<option value="'+E(w)+'">'; }).join("")+'</datalist>'
+    +'<div style="overflow:auto;margin-top:6px;"><table class="im-t"><thead><tr><th style="width:110px;">검사 항목</th><th>기준</th><th style="width:220px;">진행 공정 · 장소</th><th>비고</th><th></th></tr></thead><tbody id="im-items">'
+    +(e.items.length?e.items:[{k:"",std:"",where:"",note:""}]).map(function(it,i){ return '<tr><td><input list="im-kl" data-ii="'+i+'" data-ik="k" value="'+E(it.k||"")+'" style="'+inp+'width:100%;min-width:90px;"></td><td><input data-ii="'+i+'" data-ik="std" value="'+E(it.std||"")+'" placeholder="예: He 1×10⁻⁹ mbar·l/s 이하" style="'+inp+'width:100%;min-width:180px;"></td>'
+      +'<td><input list="im-wl" data-ii="'+i+'" data-ik="where" value="'+E(it.where||"")+'" placeholder="목록에서 선택 또는 입력" style="'+inp+'width:100%;min-width:160px;"></td><td><input data-ii="'+i+'" data-ik="note" value="'+E(it.note||"")+'" style="'+inp+'width:100%;min-width:120px;"></td><td><button data-a="idel" data-i="'+i+'" class="im-b">✕</button></td></tr>'; }).join("")
+    +'</tbody></table></div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"><button data-a="iadd" class="im-b">＋ 항목 추가</button><button data-a="imaster" class="im-b" title="MASTER의 기능검사(LEAK·FLOW·수압/가압·진공) Y 항목을 불러와 넣음">⤓ MASTER 기능검사 불러오기</button></div>'
+    +'<label style="display:block;margin-top:8px;font-size:12px;color:#475467;">검사 집중 사항<textarea id="im-focus" rows="2" style="'+inp+'width:100%;resize:vertical;" placeholder="예: 가압 후 O-ring 홈 버 재확인 · FLOW는 세정 후 재측정">'+E(e.focus||"")+'</textarea></label>'
+    +'<div style="display:flex;gap:8px;margin-top:8px;"><button data-a="save" class="im-b im-p">'+(e.id?'수정 저장':'＋ 등록')+'</button>'+(e.id?'<button data-a="cancel" class="im-b">취소</button>':'')+'</div></div>';
+  // ③ 목록
+  h+='<div style="display:flex;align-items:center;gap:8px;margin:10px 0 6px;flex-wrap:wrap;"><input id="im-q" value="'+E(__im.q)+'" placeholder="검색 (도번·품명·항목·기준)" style="'+inp+'width:280px;max-width:100%;"><span style="font-size:12.5px;color:#667085;">'+L.length+'건'+(INSPM_STORE.loaded?'':' · 불러오는 중…')+'</span></div>'
+    +'<div style="overflow:auto;border:1px solid #EAECF0;border-radius:12px;background:#fff;"><table class="im-t" style="width:100%;"><thead><tr><th>도번</th><th>품명</th><th>검사 항목 · 기준 · 장소</th><th>집중 사항</th><th>작성</th><th></th></tr></thead><tbody>'
+    +(L.length?L.map(function(r){ var nm=r.name||((r.draw&&creqNameMap_()[creqNd_(r.draw)])||""); return '<tr><td style="font-weight:700;white-space:nowrap;">'+(r.draw?E(r.draw):'<span style="color:#175CD3;">품명 전체</span>'+(creqExList_(r).length?'<br><small style="color:#667085;font-weight:400;">제외 '+creqExList_(r).length+'개</small>':''))+'</td><td>'+E(nm)+'</td>'
+      +'<td style="min-width:240px;">'+(r.items||[]).map(function(it){ return '<div><b>'+E(it.k)+'</b>'+(it.std?' — '+E(it.std):'')+(it.where?' <span style="color:#175CD3;">@ '+E(it.where)+'</span>':'')+(it.note?' <span style="color:#667085;">('+E(it.note)+')</span>':'')+'</div>'; }).join("")+'</td>'
+      +'<td style="white-space:pre-wrap;min-width:160px;">'+E(r.focus||"")+'</td><td style="white-space:nowrap;color:#667085;font-size:12px;">'+E(r.date||"")+(r.by?'<br>'+E(r.by):'')+'</td>'
+      +'<td style="white-space:nowrap;"><button data-a="ed" data-id="'+E(r.id)+'" class="im-b">수정</button> <button data-a="del" data-id="'+E(r.id)+'" class="im-b" style="color:#D92D20;border-color:#FDA29B;">삭제</button></td></tr>'; }).join("")
+      :'<tr><td colspan="6" style="padding:22px;text-align:center;color:#98A2B3;">등록된 검사 방법이 없습니다. ②에서 도번과 검사 항목을 넣고 [＋ 등록]을 누르세요.</td></tr>')+'</tbody></table></div>';
+  root.innerHTML=h; inspmBind_(root); }
+function inspmGrab_(root){ var e=__im.edit||{}, items=[]; root.querySelectorAll("#im-items tr").forEach(function(tr){ var o={}; tr.querySelectorAll("[data-ik]").forEach(function(x){ o[x.getAttribute("data-ik")]=String(x.value||"").trim(); }); items.push(o); });
+  var $=function(id){ return document.getElementById(id); };
+  return { id:e.id, draw:String($("im-draw").value||"").trim().toUpperCase(), name:String($("im-name").value||"").trim(), ex:creqExList_({ ex:$("im-ex").value }).join(", "), focus:String($("im-focus").value||"").trim(), items:items, by:e.by, date:e.date }; }
+function inspmBind_(root){ var $=function(id){ return document.getElementById(id); };
+  var dI=$("im-draw"), nI=$("im-name"); if(dI){ var au=function(){ var n=creqNameMap_()[creqNd_(dI.value)]||""; if(n && (!String(nI.value||"").trim() || nI.getAttribute("data-auto")==="1")){ nI.value=n; nI.setAttribute("data-auto","1"); } };
+    dI.addEventListener("change", au); dI.addEventListener("blur", au); nI.addEventListener("input", function(){ nI.removeAttribute("data-auto"); }); }
+  var qI=$("im-q"); if(qI) qI.oninput=function(){ __im.q=this.value; var pos=this.selectionStart; clearTimeout(inspmRender_.qh); inspmRender_.qh=setTimeout(function(){ __im.edit=__im.edit?inspmGrab_(root):null; inspmRender_(); var q2=$("im-q"); if(q2){ q2.focus(); try{ q2.setSelectionRange(pos,pos); }catch(_){} } }, 250); };
+  root.querySelectorAll("[data-fi]").forEach(function(x){ x.oninput=function(){ __im.flowEdit[+x.getAttribute("data-fi")][x.getAttribute("data-fk")]=x.value; }; });
+  root.onclick=function(ev){ var g=ev.target.closest("[data-go]"); if(g){ ev.preventDefault(); if(typeof qstdGo_==="function") qstdGo_(g.getAttribute("data-go")); return; }
+    var b=ev.target.closest("[data-a]"); if(!b) return; var a=b.getAttribute("data-a"), i=+b.getAttribute("data-i"), cur=function(){ __im.edit=inspmGrab_(root); };
+    if(a==="flowedit"){ __im.flowEdit=JSON.parse(JSON.stringify(inspmFlow_())); return inspmRender_(); }
+    if(a==="flowcancel"){ __im.flowEdit=null; return inspmRender_(); }
+    if(a==="flowreset"){ if(!confirm("공정도를 기본값으로 되돌릴까요? (저장을 눌러야 반영)")) return; __im.flowEdit=JSON.parse(JSON.stringify(INSPM_FLOW0)); return inspmRender_(); }
+    if(a==="fadd"){ __im.flowEdit.push({ t:"", where:"", who:"", std:"" }); return inspmRender_(); }
+    if(a==="fdel"){ __im.flowEdit.splice(i,1); return inspmRender_(); }
+    if(a==="fup" && i>0){ var t=__im.flowEdit[i]; __im.flowEdit[i]=__im.flowEdit[i-1]; __im.flowEdit[i-1]=t; return inspmRender_(); }
+    if(a==="flowsave"){ var st=__im.flowEdit.filter(function(s){ return String(s.t||"").trim(); }); var f=__im.list.find(function(x){ return x.id==="__FLOW"; });
+      if(f) f.steps=st; else __im.list.push({ id:"__FLOW", draw:"", name:"(검사 공정도)", steps:st, itemsTxt:st.map(function(s){ return s.t; }).join(" → "), by:creqMe_(), date:creqToday_() });
+      if(f) f.itemsTxt=st.map(function(s){ return s.t; }).join(" → "); __im.flowEdit=null; INSPM_STORE.save(__im.list); return inspmRender_(); }
+    if(a==="iadd"){ cur(); __im.edit.items.push({ k:"", std:"", where:"", note:"" }); return inspmRender_(); }
+    if(a==="idel"){ cur(); __im.edit.items.splice(i,1); return inspmRender_(); }
+    if(a==="imaster"){ cur(); var d=creqNd_(__im.edit.draw); if(!d){ alert("도번을 먼저 넣어 주세요."); return; }
+      var go=function(){ var M=(typeof __of!=="undefined" && __of.master)||null, m=M && (M[d]||M[String(__im.edit.draw||"").trim()]); if(!m){ alert("MASTER에서 "+d+" 기능검사 정보를 찾지 못했습니다."); return; }
+        var fw=(inspmFlow_().filter(function(s){ return /기능/.test(s.t); })[0]), w=fw?(fw.t+(fw.where?(" ("+fw.where+")"):"")):"", have={}; __im.edit.items=__im.edit.items.filter(function(it){ return it.k||it.std; }); __im.edit.items.forEach(function(it){ have[String(it.k).toUpperCase()]=1; }); var add=0;
+        (typeof OF_FUNC!=="undefined"?OF_FUNC:[]).forEach(function(f){ if(String(m[f.k]||"").toUpperCase()==="Y" && !have[String(f.t).toUpperCase()]){ __im.edit.items.push({ k:f.t, std:"", where:w, note:"MASTER Y" }); add++; } });
+        inspmRender_(); if(!add) alert("MASTER에 Y로 된 기능검사 항목이 없거나 이미 들어 있습니다."); };
+      if(typeof __of!=="undefined" && __of.master) go(); else if(typeof reqEnsureMaster==="function"){ b.textContent="불러오는 중…"; reqEnsureMaster().then(function(M){ if(M){ __of.master=M; } go(); }).catch(function(){ alert("MASTER를 불러오지 못했습니다."); inspmRender_(); }); } return; }
+    if(a==="save"){ var r=inspmGrab_(root); r.items=r.items.filter(function(it){ return it.k||it.std||it.where; });
+      if(!r.draw && !r.name){ alert("도번 또는 품명을 넣어 주세요."); return; } if(!r.draw && creqNn_(r.name).length<3){ alert("품명 전체 적용은 품명을 3글자 이상 넣어 주세요."); return; }
+      if(!r.items.length && !r.focus){ alert("검사 항목이나 집중 사항을 넣어 주세요."); return; }
+      if(!r.id){ var dup=r.draw && inspmRecs_().find(function(x){ return creqNd_(x.draw)===creqNd_(r.draw); }); if(dup){ if(!confirm(r.draw+"는 이미 등록되어 있습니다. 기존 것을 이 내용으로 바꿀까요?")) return; r.id=dup.id; } }
+      r.id=r.id||("IM-"+Date.now().toString(36)); r.date=creqToday_(); r.by=creqMe_()||r.by||""; r.itemsTxt=inspmItemsTxt_(r);
+      var k=__im.list.findIndex(function(x){ return x.id===r.id; }); if(k>=0) __im.list[k]=r; else __im.list.push(r); __im.edit=null; INSPM_STORE.save(__im.list); return inspmRender_(); }
+    if(a==="cancel"){ __im.edit=null; return inspmRender_(); }
+    if(a==="ed"){ var x=__im.list.find(function(o){ return o.id===b.getAttribute("data-id"); }); __im.edit=x?JSON.parse(JSON.stringify(x)):null; if(__im.edit && !__im.edit.items) __im.edit.items=[]; inspmRender_(); var c=root.querySelector(".im-card:nth-of-type(2)"); try{ (document.getElementById("im-draw")||root).scrollIntoView({ block:"center" }); }catch(_){} return; }
+    if(a==="del"){ var y=__im.list.find(function(o){ return o.id===b.getAttribute("data-id"); }); if(!y || !confirm("이 검사 방법을 삭제할까요?\n\n"+(y.draw||("품명 "+y.name)))) return; __im.list=__im.list.filter(function(o){ return o!==y; }); INSPM_STORE.save(__im.list); return inspmRender_(); }
+    if(a==="xls"){ try{ var aoa=[["도번","품명","제외 도번","검사 항목","기준","진행 공정·장소","비고","집중 사항","작성일","작성자"]];
+        inspmRecs_().forEach(function(r){ var its=(r.items&&r.items.length)?r.items:[{}]; its.forEach(function(it,j){ aoa.push([r.draw||"(품명 전체)", r.name||"", r.ex||"", it.k||"", it.std||"", it.where||"", it.note||"", j?"":(r.focus||""), r.date||"", r.by||""]); }); });
+        var ws=XLSX.utils.aoa_to_sheet(aoa), wf=XLSX.utils.aoa_to_sheet([["#","단계","장소","담당","기준·내용"]].concat(inspmFlow_().map(function(s,i){ return [i+1,s.t,s.where,s.who,s.std]; })));
+        ws["!cols"]=[{wch:16},{wch:20},{wch:16},{wch:10},{wch:34},{wch:24},{wch:16},{wch:40},{wch:11},{wch:8}]; wf["!cols"]=[{wch:4},{wch:16},{wch:16},{wch:10},{wch:40}];
+        var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, wf, "검사공정도"); XLSX.utils.book_append_sheet(wb, ws, "도번별 검사방법"); XLSX.writeFile(wb, "검사방법_"+creqToday_()+".xlsx"); }catch(err){ alert("엑셀 저장 실패: "+err.message); } return; }
+    if(a==="prt"){ var w=window.open("","_blank"); if(!w){ alert("팝업이 막혀 있습니다."); return; } var E=qmsEsc_;
+      w.document.write('<html><head><meta charset="utf-8"><title>검사 방법</title><style>body{font-family:sans-serif;padding:16px;}table{border-collapse:collapse;width:100%;margin-top:8px;}th,td{border:1px solid #999;padding:4px 6px;font-size:11px;vertical-align:top;}th{background:#eee;}.f{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px;}.s{border:1px solid #0B5CAB;border-radius:6px;padding:4px 6px;}</style></head><body><h2>검사 방법 — '+creqToday_()+'</h2>'
+        +'<h3>① 수주~출하 검사 공정도</h3><div class="f">'+inspmFlow_().map(function(s,i){ return (i?'➜':'')+'<div class="s"><b>'+(i+1)+'. '+E(s.t)+'</b><br>'+E(s.where||"")+(s.who?' · '+E(s.who):'')+'<br><small>'+E(s.std||"")+'</small></div>'; }).join("")+'</div>'
+        +'<h3>② 도번별 검사 집중 사항</h3><table><tr><th>도번</th><th>품명</th><th>검사 항목 · 기준 · 장소</th><th>집중 사항</th></tr>'+inspmRecs_().map(function(r){ return '<tr><td>'+E(r.draw||"(품명 전체)")+'</td><td>'+E(r.name||"")+'</td><td>'+(r.items||[]).map(function(it){ return '<b>'+E(it.k)+'</b> '+E(it.std||"")+(it.where?' @'+E(it.where):''); }).join("<br>")+'</td><td>'+E(r.focus||"")+'</td></tr>'; }).join("")+'</table></body></html>');
+      w.document.close(); setTimeout(function(){ try{ w.print(); }catch(_){} }, 300); return; }
+  }; }
+(function(){ var css=document.createElement("style"); css.textContent="#view-inspm .im-card{ background:#fff; border:1px solid #EAECF0; border-radius:12px; padding:12px 14px; margin-top:12px; }"
+  +" #view-inspm .im-b{ border:1px solid #D0D5DD; background:#fff; border-radius:7px; padding:4px 10px; font-size:12.5px; cursor:pointer; } #view-inspm .im-p{ background:#1570EF; border-color:#1570EF; color:#fff; font-weight:800; }"
+  +" #view-inspm .im-flow{ display:flex; flex-wrap:wrap; gap:8px 4px; align-items:stretch; margin-top:10px; } #view-inspm .im-ar{ align-self:center; color:#98A2B3; font-weight:800; }"
+  +" #view-inspm .im-st{ border:1.5px solid #84CAFF; background:#F5FAFF; border-radius:10px; padding:6px 9px; min-width:120px; max-width:190px; } #view-inspm .im-st.fx{ border-color:#F79009; background:#FFFAEB; }"
+  +" #view-inspm .im-n{ font-weight:800; font-size:13px; } #view-inspm .im-w{ font-size:11.5px; color:#475467; } #view-inspm .im-s{ font-size:11.5px; color:#175CD3; margin-top:2px; }"
+  +" #view-inspm .im-t{ border-collapse:collapse; font-size:13px; } #view-inspm .im-t th{ background:#F9FAFB; color:#475467; text-align:left; padding:7px 8px; border-bottom:1px solid #EAECF0; white-space:nowrap; } #view-inspm .im-t td{ padding:6px 8px; border-top:1px solid #F2F4F7; vertical-align:top; }"
+  +" #view-inspm .im-form{ display:grid; grid-template-columns:200px 220px 1fr; gap:8px; margin-top:8px; } #view-inspm .im-form label{ font-size:11.5px; color:#667085; }"
+  +" @media (max-width:860px){ #view-inspm .im-form{ grid-template-columns:1fr 1fr; } #view-inspm .im-form label:nth-child(3){ grid-column:1/-1; } #view-inspm .im-st{ max-width:none; flex:1 1 140px; } }"
+  +" @media (max-width:520px){ #view-inspm .im-form{ grid-template-columns:1fr; } #view-inspm .im-ar{ display:none; } #view-inspm .im-st{ flex:1 1 calc(50% - 4px); min-width:0; } }";
+  document.head.appendChild(css); setTimeout(function(){ try{ INSPM_STORE.load(); }catch(_){} }, 3000); })();
 function xcShow_(){ xcRender_(); }
 function xcRender_(){ var host=document.getElementById("xc-root"); if(!host) return; var E=xcE_, R=__xc.res=xcCompare_();
   if(!host.__bound){ host.__bound=true; host.addEventListener("change", xcChange_); host.addEventListener("click", xcClick_); }
