@@ -7293,9 +7293,10 @@ function inspmRender_(){ var root=document.getElementById("inspm-root"); if(!roo
   h+='</div>';
   // ② 도번별 입력
   var e=ed||{ items:[] }; if(!Array.isArray(e.flow) || !e.flow.length) e.flow=JSON.parse(JSON.stringify(fl)); __im.edit=ed?e:__im.edit; var where=e.flow.map(inspmLbl_);
-  h+='<div class="im-card" style="background:#F5FAFF;border-color:#B2DDFF;"><b style="font-size:15px;">② 도번별 검사 집중 사항 '+(e.id?'— 수정':'— 등록')+'</b>'
+  h+='<div class="im-card" style="background:#F5FAFF;border-color:#B2DDFF;"><b style="font-size:15px;">② 도번별 검사 집중 사항 '+(e.id?'— 수정':(e.copyOf?'— 복사해서 등록':'— 등록'))+'</b>'
+    +(e.copyOf&&!e.id?'<div style="margin-top:6px;padding:7px 10px;border-radius:9px;background:#EFF8FF;border:1px solid #84CAFF;color:#175CD3;font-size:12.5px;font-weight:700;">📄 「'+E(e.copyOf)+'」 내용을 복사했습니다 — <u>도번</u>을 넣고, 부족한 항목은 [＋ 항목 추가]·[＋ 단계], 필요 없는 것은 ✕ 로 뺀 뒤 [＋ 등록] <button data-a="cancel" class="im-b" style="margin-left:6px;">복사 취소</button></div>':'')
     +'<div class="im-form"><label>도번 <small>(비우면 품명 전체)</small><input id="im-draw" value="'+E(e.draw||"")+'" style="'+inp+'width:100%;text-transform:uppercase;" placeholder="예: M200-005-70A"></label>'
-    +'<label>품명<input id="im-name" value="'+E(e.name||"")+'" style="'+inp+'width:100%;" placeholder="예: SHOWER HEAD"></label>'
+    +'<label>품명<input id="im-name"'+(e.copyOf&&!e.id?' data-auto="1"':'')+' value="'+E(e.name||"")+'" style="'+inp+'width:100%;" placeholder="예: SHOWER HEAD"></label>'
     +'<label>제외 도번 <small>(품명 전체일 때)</small><input id="im-ex" value="'+E(e.ex||"")+'" style="'+inp+'width:100%;text-transform:uppercase;"></label></div>'
     +'<div style="margin-top:8px;"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"><b style="font-size:13px;">제품별 공정도</b><small style="color:#667085;">이 도번의 실제 순서 · 검사 항목의 「진행 공정」은 여기 단계에서 고름</small><span style="flex:1"></span>'
     +'<button data-a="pfprod" class="im-b" title="생산 › 공정도에 등록된 이 도번(품명)의 공정을 가져옴">⤓ 생산 공정도 불러오기</button><button data-a="pftpl" class="im-b">↺ 기본 공정도로</button></div>'
@@ -7314,13 +7315,13 @@ function inspmRender_(){ var root=document.getElementById("inspm-root"); if(!roo
     +(L.length?L.map(function(r){ var nm=r.name||((r.draw&&creqNameMap_()[creqNd_(r.draw)])||""); return '<tr><td style="font-weight:700;white-space:nowrap;">'+(r.draw?E(r.draw):'<span style="color:#175CD3;">품명 전체</span>'+(creqExList_(r).length?'<br><small style="color:#667085;font-weight:400;">제외 '+creqExList_(r).length+'개</small>':''))+'</td><td>'+E(nm)+'</td>'
       +'<td style="min-width:320px;">'+inspmMiniFlow_(r)+'</td>'
       +'<td style="white-space:pre-wrap;min-width:160px;">'+E(r.focus||"")+'</td><td style="white-space:nowrap;color:#667085;font-size:12px;">'+E(r.date||"")+(r.by?'<br>'+E(r.by):'')+'</td>'
-      +'<td style="white-space:nowrap;"><button data-a="one" data-id="'+E(r.id)+'" class="im-b" title="이 제품 상세 1장 인쇄 (A4 가로)" style="background:#EFF8FF;border-color:#84CAFF;color:#175CD3;font-weight:800;">🖨 상세 출력</button> <button data-a="ed" data-id="'+E(r.id)+'" class="im-b">수정</button> <button data-a="del" data-id="'+E(r.id)+'" class="im-b" style="color:#D92D20;border-color:#FDA29B;">삭제</button></td></tr>'; }).join("")
+      +'<td style="white-space:nowrap;"><button data-a="one" data-id="'+E(r.id)+'" class="im-b" title="이 제품 상세 1장 인쇄 (A4 가로)" style="background:#EFF8FF;border-color:#84CAFF;color:#175CD3;font-weight:800;">🖨 상세 출력</button> <button data-a="ed" data-id="'+E(r.id)+'" class="im-b">수정</button> <button data-a="cp" data-id="'+E(r.id)+'" class="im-b" title="이 카드를 복사해서 새 도번으로 등록 (부족한 항목만 추가·필요 없는 항목만 ✕)">📄 복사</button> <button data-a="del" data-id="'+E(r.id)+'" class="im-b" style="color:#D92D20;border-color:#FDA29B;">삭제</button></td></tr>'; }).join("")
       :'<tr><td colspan="6" style="padding:22px;text-align:center;color:#98A2B3;">등록된 검사 방법이 없습니다. ②에서 도번과 검사 항목을 넣고 [＋ 등록]을 누르세요.</td></tr>')+'</tbody></table></div>';
   root.innerHTML=h; inspmBind_(root); }
 function inspmGrab_(root){ var e=__im.edit||{}, items=[]; root.querySelectorAll("#im-items tr").forEach(function(tr){ var o={}; tr.querySelectorAll("[data-ik]").forEach(function(x){ o[x.getAttribute("data-ik")]=String(x.value||"").trim(); }); items.push(o); });
   var $=function(id){ return document.getElementById(id); };
   var flow=[]; root.querySelectorAll("[data-pf]").forEach(function(x){ var i=+x.getAttribute("data-pf"); flow[i]=flow[i]||{ t:"", where:"", who:"", std:"" }; flow[i][x.getAttribute("data-pk")]=String(x.value||"").trim(); });
-  return { id:e.id, flow:flow.filter(function(s){ return s && s.t; }), draw:String($("im-draw").value||"").trim().toUpperCase(), name:String($("im-name").value||"").trim(), ex:creqExList_({ ex:$("im-ex").value }).join(", "), focus:String($("im-focus").value||"").trim(), items:items, by:e.by, date:e.date }; }
+  return { id:e.id, copyOf:e.copyOf, flow:flow.filter(function(s){ return s && s.t; }), draw:String($("im-draw").value||"").trim().toUpperCase(), name:String($("im-name").value||"").trim(), ex:creqExList_({ ex:$("im-ex").value }).join(", "), focus:String($("im-focus").value||"").trim(), items:items, by:e.by, date:e.date }; }
 function inspmBind_(root){ var $=function(id){ return document.getElementById(id); };
   var dI=$("im-draw"), nI=$("im-name"); if(dI){ var au=function(){ var n=creqNameMap_()[creqNd_(dI.value)]||""; if(n && (!String(nI.value||"").trim() || nI.getAttribute("data-auto")==="1")){ nI.value=n; nI.setAttribute("data-auto","1"); } };
     dI.addEventListener("change", au); dI.addEventListener("blur", au); nI.addEventListener("input", function(){ nI.removeAttribute("data-auto"); }); }
@@ -7359,9 +7360,12 @@ function inspmBind_(root){ var $=function(id){ return document.getElementById(id
       if(!r.draw && !r.name){ alert("도번 또는 품명을 넣어 주세요."); return; } if(!r.draw && creqNn_(r.name).length<3){ alert("품명 전체 적용은 품명을 3글자 이상 넣어 주세요."); return; }
       if(!r.items.length && !r.focus){ alert("검사 항목이나 집중 사항을 넣어 주세요."); return; }
       if(!r.id){ var dup=r.draw && inspmRecs_().find(function(x){ return creqNd_(x.draw)===creqNd_(r.draw); }); if(dup){ if(!confirm(r.draw+"는 이미 등록되어 있습니다. 기존 것을 이 내용으로 바꿀까요?")) return; r.id=dup.id; } }
-      r.id=r.id||("IM-"+Date.now().toString(36)); r.date=creqToday_(); r.by=creqMe_()||r.by||""; r.itemsTxt=inspmItemsTxt_(r);
+      delete r.copyOf; r.id=r.id||("IM-"+Date.now().toString(36)); r.date=creqToday_(); r.by=creqMe_()||r.by||""; r.itemsTxt=inspmItemsTxt_(r);
       var k=__im.list.findIndex(function(x){ return x.id===r.id; }); if(k>=0) __im.list[k]=r; else __im.list.push(r); __im.edit=null; INSPM_STORE.save(__im.list); return inspmRender_(); }
     if(a==="cancel"){ __im.edit=null; return inspmRender_(); }
+    if(a==="cp"){ var sc=__im.list.find(function(o){ return o.id===b.getAttribute("data-id"); }); if(!sc) return;   // [추가] 복사해서 새로 (생산 공정도 복사와 같은 방식)
+      var c=JSON.parse(JSON.stringify(sc)); delete c.id; delete c._ts; c.draw=""; c.ex=""; c.date=""; c.by=""; c.copyOf=sc.draw||("품명 "+sc.name); if(!Array.isArray(c.items)) c.items=[]; if(!Array.isArray(c.flow) || !c.flow.length) c.flow=JSON.parse(JSON.stringify(inspmRecFlow_(sc)));
+      __im.edit=c; inspmRender_(); try{ var di=document.getElementById("im-draw"); di.scrollIntoView({ block:"center" }); di.focus(); }catch(_){} return; }
     if(a==="one"){ return inspmPrintOne_(__im.list.find(function(o){ return o.id===b.getAttribute("data-id"); })); }
     if(a==="oneed"){ var g1=inspmGrab_(root); g1.items=(g1.items||[]).filter(function(it){ return it.k||it.std||it.where; }); if(!g1.items.length && !g1.focus){ alert("검사 항목이 비어 있습니다. 목록의 [🖨 상세 출력]을 누르거나 항목을 넣은 뒤 출력하세요."); return; } return inspmPrintOne_(g1); }
     if(a==="ed"){ var x=__im.list.find(function(o){ return o.id===b.getAttribute("data-id"); }); __im.edit=x?JSON.parse(JSON.stringify(x)):null; if(__im.edit && !__im.edit.items) __im.edit.items=[]; inspmRender_(); var c=root.querySelector(".im-card:nth-of-type(2)"); try{ (document.getElementById("im-draw")||root).scrollIntoView({ block:"center" }); }catch(_){} return; }
