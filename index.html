@@ -29966,7 +29966,8 @@ function insRender(){
   //  · 분출 = 도번 기준 분출 LIST 후보에서 선택(여러 개면 모달)
   if(key==="seg" && (opt==="검수" || opt==="분출")){
     var outInp = el.querySelector('input[data-ri="'+ri+'"][data-key="outNo"]');
-    var __applyOut=function(no){ if(!no) return; r.outNo=no; if(outInp) outInp.value=no; try{ insSaveLocal(); }catch(_){} setTimeout(function(){ try{ insMaybeSplitOverQty_(ri); }catch(_){} }, 0); };
+    var __applyOut=function(no){ if(!no) return; if(String(r.outNo||"").trim()) return;   // [수정] 이미 넣은 출고NO(안내판·직접 입력)는 덮어쓰지 않음
+      r.outNo=no; r.__autoOut=no; if(outInp) outInp.value=no; try{ insSaveLocal(); }catch(_){} setTimeout(function(){ try{ insMaybeSplitOverQty_(ri); }catch(_){} }, 0); };
     var __scanFill=function(){ var res2=(typeof scanResolveDrawing==="function")?scanResolveDrawing(r.scanCode):null; if(res2 && res2.row){ var ctrlNo=String(res2.row["관리번호"]||"").trim(); var seq=String(res2.row["순번"]||"").trim(); if(ctrlNo){ __applyOut(ctrlNo + (seq ? "-" + seq : "")); } } };
     if(inp.checked){
       if(opt==="검수"){
@@ -29979,7 +29980,8 @@ function insRender(){
         // 후보 없으면 빈칸(채우지 않음)
       }
     } else {
-      r.outNo=""; if(outInp) outInp.value="";
+      if(String(r.outNo||"").trim()===String(r.__autoOut||"").trim()){ r.outNo=""; if(outInp) outInp.value=""; }   // [수정] 체크로 자동 넣은 값일 때만 지움 (직접 넣은 출고NO는 유지)
+      r.__autoOut="";
     }
   }
 
@@ -32027,12 +32029,12 @@ function insDrawGuide_(draw, ri, urgOnly){
     +(L.length && narrow?L.map(function(o){ var late=o.due && o.due<((typeof insplistToday_==="function")?insplistToday_():"");
         return '<div style="border-top:1px solid #EAECF0;padding:8px 10px;'+(o.noMat?'opacity:.6;background:#F2F4F7;':(o.full?'opacity:.55;':(o.rank===0?'background:#FFFBFA;':'')))+'"><div>'+(o.taken>0?'<span style="display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:800;color:#344054;background:#EAECF0;border-radius:5px;padding:1px 6px;margin:1px 3px 1px 0;">✔ '+o.takenRows.join(',')+'행에 '+(o.full?'지정됨':o.taken+'개 지정')+'</span>':'')+(o.tags.length?o.tags.map(function(g){ return '<span style="display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:800;color:'+g[1]+';background:'+g[2]+';border-radius:5px;padding:1px 6px;margin:1px 3px 1px 0;">'+E(g[0])+'</span>'; }).join(""):'<span style="color:#98A2B3;font-size:12px;">일반</span>')+'</div>'
           +'<div style="display:flex;align-items:center;gap:8px;margin-top:4px;"><div style="flex:1;min-width:0;"><b style="font-size:14px;">'+E(o.no)+'</b> <span style="font-size:12px;color:#475467;">'+E(o.pj)+'</span><div style="font-size:12px;color:#475467;">남은 <b style="color:#101828;">'+(o.left!=null?o.left:o.rest)+'</b>'+((o.left!=null?o.left:o.rest)!==o.qty?'/'+o.qty:'')+' · 납기 <span style="'+(late?'color:#B42318;font-weight:700;':'')+'">'+E(o.due)+'</span> · '+E(o.st)+'</div></div>'
-          +(ri==null?'':o.noMat?'<span style="font-size:11.5px;color:#475467;font-weight:800;white-space:nowrap;" title="소재 사급에서 이 관리번호로 할당 등록 후 지정할 수 있습니다">🧱 할당 후 가능</span>':'<button type="button" data-g="add" data-no=""'+E(o.no)+'" style="flex:none;border:1px solid #1570EF;background:#EFF8FF;color:#1570EF;font-weight:800;border-radius:8px;padding:8px 10px;cursor:pointer;">➕ 출고NO</button>')+'</div></div>'; }).join("")
+          +(ri==null?'':o.noMat?'<span style="font-size:11.5px;color:#475467;font-weight:800;white-space:nowrap;" title="소재 사급에서 이 관리번호로 할당 등록 후 지정할 수 있습니다">🧱 할당 후 가능</span>':'<button type="button" data-g="add" data-no="'+E(o.no)+'" style="flex:none;border:1px solid #1570EF;background:#EFF8FF;color:#1570EF;font-weight:800;border-radius:8px;padding:8px 10px;cursor:pointer;">➕ 출고NO</button>')+'</div></div>'; }).join("")
      :L.length?'<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#F2F4F7;color:#344054;font-size:12px;"><th style="padding:5px 6px;text-align:left;">구분</th><th style="padding:5px 6px;text-align:left;">ORDER NO.</th><th style="padding:5px 6px;text-align:left;">PROJECT</th><th style="padding:5px 6px;text-align:right;">남은/주문</th><th style="padding:5px 6px;">최종납기</th><th style="padding:5px 6px;">상태</th><th></th></tr></thead><tbody>'
       +L.map(function(o){ var late=o.due && o.due<((typeof insplistToday_==="function")?insplistToday_():""); return '<tr style="border-top:1px solid #EAECF0;'+(o.noMat?'opacity:.6;background:#F2F4F7;':(o.full?'opacity:.55;':(o.rank===0?'background:#FFFBFA;':'')))+'"><td style="padding:5px 6px;">'+(o.taken>0?'<span style="display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:800;color:#344054;background:#EAECF0;border-radius:5px;padding:1px 6px;margin:1px 3px 1px 0;">✔ '+o.takenRows.join(',')+'행에 '+(o.full?'지정됨':o.taken+'개 지정')+'</span>':'')+(o.tags.length?o.tags.map(function(g){ return '<span style="display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:800;color:'+g[1]+';background:'+g[2]+';border-radius:5px;padding:1px 6px;margin:1px 3px 1px 0;">'+E(g[0])+'</span>'; }).join(""):'<span style="color:#98A2B3;font-size:12px;">일반</span>')+'</td>'
         +'<td style="padding:5px 6px;white-space:nowrap;"><b>'+E(o.no)+'</b></td><td style="padding:5px 6px;font-size:12px;">'+E(o.pj)+'</td><td style="padding:5px 6px;text-align:right;white-space:nowrap;"><b>'+(o.left!=null?o.left:o.rest)+'</b>'+((o.left!=null?o.left:o.rest)!==o.qty?' <span style="color:#667085;">/ '+o.qty+'</span>':'')+'</td>'
         +'<td style="padding:5px 6px;white-space:nowrap;text-align:center;'+(late?'color:#B42318;font-weight:700;':'')+'">'+E(o.due)+'</td><td style="padding:5px 6px;text-align:center;font-size:12px;">'+E(o.st)+'</td>'
-        +'<td style="padding:5px 6px;white-space:nowrap;">'+(ri==null?'':o.noMat?'<span style="font-size:11.5px;color:#475467;font-weight:800;white-space:nowrap;" title="소재 사급에서 이 관리번호로 할당 등록 후 지정할 수 있습니다">🧱 할당 후 가능</span>':'<button type="button" data-g="add" data-no=""'+E(o.no)+'" style="border:1px solid #1570EF;background:#EFF8FF;color:#1570EF;font-weight:800;border-radius:6px;padding:3px 9px;cursor:pointer;">➕ 출고NO</button>')+'</td></tr>'; }).join("")+'</tbody></table>'
+        +'<td style="padding:5px 6px;white-space:nowrap;">'+(ri==null?'':o.noMat?'<span style="font-size:11.5px;color:#475467;font-weight:800;white-space:nowrap;" title="소재 사급에서 이 관리번호로 할당 등록 후 지정할 수 있습니다">🧱 할당 후 가능</span>':'<button type="button" data-g="add" data-no="'+E(o.no)+'" style="border:1px solid #1570EF;background:#EFF8FF;color:#1570EF;font-weight:800;border-radius:6px;padding:3px 9px;cursor:pointer;">➕ 출고NO</button>')+'</td></tr>'; }).join("")+'</tbody></table>'
       :'<div style="padding:14px;color:#667085;">MAIN에 이 도번의 출고 전 주문이 없습니다 (이미 출고됐거나 도번이 다름)</div>');
   document.body.appendChild(box);
   box.addEventListener("click", function(e){ var b=e.target.closest("[data-g]"); if(!b) return; var g=b.getAttribute("data-g");
@@ -34728,3 +34730,4 @@ try{ RV_STAGE.push({ title:"🤝 협력사 NCR 대리 작성", desc:"1인 사업
 
 </body>
 </html>
+    
