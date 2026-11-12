@@ -7181,7 +7181,7 @@ function creqRender_(){ var root=document.getElementById("creq-root"); if(!root)
     +['작성일','도번','품명','요청사항','비고','작성자',''].map(function(h){ return '<th style="padding:8px 10px;text-align:left;border-bottom:1px solid #EAECF0;white-space:nowrap;">'+h+'</th>'; }).join("")+'</tr></thead><tbody>'
     +(L.length?L.map(function(r){ var ac=creqApplyCnt_(r); return '<tr style="border-top:1px solid #F2F4F7;vertical-align:top;"><td style="padding:7px 10px;white-space:nowrap;">'+E(r.date||"")+'</td>'
       +'<td style="padding:7px 10px;white-space:nowrap;font-weight:700;">'+(r.draw?E(r.draw):'<span style="color:#B54708;">품명 전체</span>'+(ac!==""?'<br><button data-exp="'+E(r.id)+'" title="적용 도번 보기 · 체크를 풀어 제외" style="margin-top:3px;border:1px solid #FEC84B;background:#FFFAEB;color:#B54708;border-radius:6px;padding:2px 7px;font-size:11.5px;cursor:pointer;">적용 '+ac+'개'+(creqExList_(r).length?' · 제외 '+creqExList_(r).length+'개':'')+' ▸</button>':''))+'</td>'
-      +'<td style="padding:7px 10px;">'+E(r.name||"")+'</td><td style="padding:7px 10px;white-space:pre-wrap;min-width:220px;">'+E(r.req||"")+'</td><td style="padding:7px 10px;white-space:pre-wrap;color:#475467;">'+E(r.note||"")+'</td>'
+      +'<td style="padding:7px 10px;">'+(r.name?E(r.name):(r.draw&&creqNameMap_()[creqNd_(r.draw)]?'<span style="color:#98A2B3;">'+E(creqNameMap_()[creqNd_(r.draw)])+'</span>':''))+'</td><td style="padding:7px 10px;white-space:pre-wrap;min-width:220px;">'+E(r.req||"")+'</td><td style="padding:7px 10px;white-space:pre-wrap;color:#475467;">'+E(r.note||"")+'</td>'
       +'<td style="padding:7px 10px;white-space:nowrap;color:#667085;">'+E(r.by||"")+'</td>'
       +'<td style="padding:7px 10px;white-space:nowrap;"><button data-ed="'+E(r.id)+'" style="border:1px solid #D0D5DD;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;">수정</button> <button data-del="'+E(r.id)+'" style="border:1px solid #FDA29B;background:#fff;color:#D92D20;border-radius:6px;padding:3px 8px;cursor:pointer;">삭제</button></td></tr>'; }).join("")
       :'<tr><td colspan="7" style="padding:22px;text-align:center;color:#98A2B3;">등록된 요청사항이 없습니다. 위에서 도번(또는 품명)과 요청사항을 넣고 [＋ 등록]을 누르세요.</td></tr>')
@@ -7193,6 +7193,10 @@ function creqRender_(){ var root=document.getElementById("creq-root"); if(!root)
     if(!r.draw && creqNn_(r.name).length<3){ alert("품명 전체 적용은 품명을 3글자 이상 넣어 주세요."); return; }
     var i=__creq.findIndex(function(x){ return x.id===r.id; }); if(i>=0) __creq[i]=r; else __creq.push(r); __creqIdx=null; __creqEdit=null;
     CREQ_STORE.save(__creq); creqRender_(); creqScanSoon_(); };
+  // [추가] 도번 입력 → 품명 칸이 비어 있으면 MAIN·재고 품명 자동 채움 (직접 고친 품명은 유지)
+  var dI=$("creq-draw"), nI=$("creq-name"), autoN=function(){ var d=creqNd_(dI.value); if(!d) return; var n=creqNameMap_()[d]||"";
+    if(n && (!String(nI.value||"").trim() || nI.getAttribute("data-auto")==="1")){ nI.value=n; nI.setAttribute("data-auto","1"); } };
+  dI.addEventListener("change", autoN); dI.addEventListener("blur", autoN); nI.addEventListener("input", function(){ nI.removeAttribute("data-auto"); });
   if($("creq-cancel")) $("creq-cancel").onclick=function(){ __creqEdit=null; creqRender_(); };
   $("creq-q").oninput=function(){ __creqQ=this.value; clearTimeout(creqRender_.qh); var pos=this.selectionStart; creqRender_.qh=setTimeout(function(){ creqRender_(); var q2=$("creq-q"); if(q2){ q2.focus(); try{ q2.setSelectionRange(pos,pos); }catch(_){} } }, 250); };
   $("creq-xls").onclick=function(){ try{ var aoa=[["작성일","도번","품명","요청사항","비고","작성자"]].concat(L.map(function(r){ return [r.date||"", r.draw||"(품명 전체)", r.name||"", r.req||"", (r.note||"")+(r.ex?((r.note?"\n":"")+"제외 도번: "+r.ex):""), r.by||""]; }));
