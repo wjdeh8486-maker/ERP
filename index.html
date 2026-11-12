@@ -18282,10 +18282,10 @@ async function coaGenRun_(ov){
     //   수식 양식이면 수식이 찾는 이름(S/N+하, S/N+상 …)으로, 아니면 S/N 이름으로
     var addList=[], missSide=[], sheetsBy={};
     p.tails.forEach(function(t){ var F=fm.found[t]; if(!F) return;
-      var txK=Object.keys(F.sides||{}).filter(function(k){ var e=F.sides[k]; return /\.txt$/i.test(e.name||"") && e.raw; });
+      var txK=Object.keys(F.sides||{}).filter(function(k){ var e=F.sides[k]; return e && ((/\.txt$/i.test(e.name||"") && e.raw) || e.ws); });   // [변경] TXT·엑셀 측정 파일 모두: 상·하 파일마다 탭 1개 (파일 이름)
       if(txK.length){ txK.sort(function(a,b){ var o={ "상":0, "":1, "하":2 }; return (o[a]==null?1:o[a])-(o[b]==null?1:o[b]); }).forEach(function(k){ var e=F.sides[k];   // [변경] TXT 파일마다 탭 1개 (상·하 모두)
-          var tn=String(e.name).replace(/^.*[\\\/]/,"").replace(/\.txt$/i,"").replace(/[\[\]:*?\/\\]/g,"_").slice(0,31), k0=tn, kk=2; while(addList.some(function(a){ return a.name===tn; })) tn=k0.slice(0,28)+"("+(kk++)+")";
-          var wsR=coaTxtRawWs_(e.raw); addList.push({ name:tn, ws:wsR }); sheetsBy[t+k]=wsR; }); return; }
+          var tn=String(e.name).replace(/^.*[\\\/]/,"").replace(/\.(txt|xlsx|xlsm|xls|csv)$/i,"").replace(/[\[\]:*?\/\\]/g,"_").slice(0,31), k0=tn, kk=2; while(addList.some(function(a){ return a.name===tn; })) tn=k0.slice(0,28)+"("+(kk++)+")";
+          var wsR=(/\.txt$/i.test(e.name||"") && e.raw)?coaTxtRawWs_(e.raw):e.ws; addList.push({ name:tn, ws:wsR }); sheetsBy[t+k]=wsR; }); return; }
       var tl=fi.suffixes.slice(); ((dref&&dref.sx)||[]).forEach(function(x){ if(tl.indexOf(x)<0) tl.push(x); }); if(!tl.length) tl=[""];
       tl.forEach(function(sx){ var e=F.sides[sx] || (sx===""?F:null) || (tl.length===1?F:null);
         if(e && e.ws){ var wsA=e.ws; try{ var al=coaTxtAlign_(tplBuf, infos, sx, F, t); if(al){ wsA=al; } }catch(_){}   // [추가] TXT → 양식의 기존 측정 시트(예: 068)와 같은 칸 배치로 (INDIRECT 'S/N'!C11 이 맞는 값을 가리키게)
