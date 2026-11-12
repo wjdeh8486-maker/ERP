@@ -7255,13 +7255,34 @@ function inspmMiniFlow_(r, small){ var E=qmsEsc_, fl=inspmRecFlow_(r), used={}, 
     return (i?'<span class="im-ar">➜</span>':'')+'<div class="im-ms'+(mine.length?' on':'')+'"><b>'+E(s.t)+'</b>'+(s.where&&!small?'<small>'+E(s.where)+'</small>':'')+mine.map(function(it){ var sd=inspmStd_(it); return '<span class="im-bd" title="'+E(sd+(it.note?" · "+it.note:""))+'">'+E(it.k)+(sd&&!small?' <i>'+E(sd)+'</i>':'')+'</span>'; }).join("")+'</div>'; }).join("");
   var rest=its.filter(function(it,j){ return !used[j] && (it.k||it.std); });
   return '<div class="im-mf">'+cells+'</div>'+(rest.length?'<div style="font-size:12px;margin-top:3px;">'+rest.map(function(it){ return '<b>'+E(it.k)+'</b>'+(it.std?' — '+E(it.std):'')+(it.where?' @'+E(it.where):''); }).join(" · ")+'</div>':''); }
+// [추가] 한 제품 상세 1장 인쇄 (A4 가로): 제품별 공정도(검사 단계 강조) + 검사 항목·기준·진행 공정·비고 + 집중 사항
+function inspmPrintOne_(r){ if(!r) return; var E=qmsEsc_, fl=inspmRecFlow_(r), its=(r.items||[]).filter(function(it){ return it.k||it.std||it.where; });
+  var key=function(v){ return String(v||"").toUpperCase().replace(/\s+/g,""); }, nm=r.name||((r.draw&&creqNameMap_()[creqNd_(r.draw)])||"");
+  var stepOf=function(it){ var w=key(it.where); if(!w) return -1; for(var i=0;i<fl.length;i++){ if(w===key(inspmLbl_(fl[i])) || w===key(fl[i].t)) return i; } return -1; };
+  var flow=fl.map(function(s,i){ var mine=its.filter(function(it){ return stepOf(it)===i; });
+    return (i?'<span class="ar">➜</span>':'')+'<div class="st'+(mine.length?' on':'')+'"><b>'+(i+1)+'. '+E(s.t)+'</b>'+(s.where?'<small>'+E(s.where)+'</small>':'')+mine.map(function(it){ return '<span class="bd">'+E(it.k)+'</span>'; }).join("")+'</div>'; }).join("");
+  var rows=its.map(function(it){ var si=stepOf(it); return '<tr><td class="k">'+E(it.k||"")+'</td><td>'+E(inspmStd_(it))+'</td><td class="nw">'+(si>=0?'<b>'+(si+1)+'.</b> ':'')+E(it.where||"")+'</td><td>'+E(it.note||"")+'</td></tr>'; }).join("");
+  var html='<!doctype html><html><head><meta charset="utf-8"><title>검사 방법 '+E(r.draw||nm)+'</title><style>@page{ size:A4 landscape; margin:9mm 10mm; } *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }'
+    +'body{ font-family:"Malgun Gothic",sans-serif; font-size:10pt; margin:0; color:#111; } h1{ font-size:17pt; margin:0 0 1mm; } .hd{ display:flex; align-items:flex-end; gap:6mm; border-bottom:1.5pt solid #1D2939; padding-bottom:2mm; margin-bottom:3mm; } .hd .m{ font-size:10pt; color:#475467; }'
+    +'.big{ font-size:15pt; font-weight:900; background:#FFF3A3; padding:0.5mm 2mm; border-radius:1mm; } h2{ font-size:11.5pt; margin:3mm 0 1.5mm; border-left:2mm solid #1570EF; padding-left:2mm; }'
+    +'.fl{ display:flex; flex-wrap:wrap; gap:2mm 1mm; align-items:flex-start; } .ar{ align-self:center; color:#667085; font-weight:800; } .st{ border:0.8pt solid #98A2B3; border-radius:1.5mm; padding:1mm 2mm; display:flex; flex-direction:column; gap:0.8mm; min-width:22mm; font-size:10.5pt; }'
+    +'.st small{ color:#475467; font-size:8.5pt; } .st.on{ border:1.4pt solid #DC6803; background:#FFFAEB; } .bd{ background:#F79009; color:#fff; font-weight:800; border-radius:1mm; padding:0 1.5mm; font-size:9.5pt; }'
+    +'table{ width:100%; border-collapse:collapse; } th,td{ border:0.7pt solid #344054; padding:2.2mm 2.6mm; vertical-align:top; font-size:11.5pt; } th{ background:#E3E8EF; } td.k{ font-weight:900; width:24mm; background:#FFFAEB; } td.nw{ white-space:nowrap; width:48mm; }'
+    +'.fc{ border:1pt solid #DC6803; background:#FFFAEB; border-radius:1.5mm; padding:2mm 3mm; white-space:pre-wrap; font-weight:700; font-size:11.5pt; } .ft{ margin-top:3mm; font-size:8pt; color:#667085; display:flex; justify-content:space-between; }</style></head><body>'
+    +'<div class="hd"><h1>검사 방법</h1><span class="big">'+(r.draw?E(r.draw):'품명 전체')+'</span><span class="m">'+E(nm)+(r.ex?' · 제외 도번: '+E(r.ex):'')+'</span></div>'
+    +'<h2>제품별 공정도</h2><div class="fl">'+flow+'</div>'
+    +'<h2>검사 항목</h2><table><tr><th>검사 항목</th><th>기준</th><th>진행 공정 · 장소</th><th>비고</th></tr>'+(rows||'<tr><td colspan="4" style="text-align:center;color:#667085;">등록된 검사 항목 없음</td></tr>')+'</table>'
+    +(r.focus?'<h2>검사 집중 사항</h2><div class="fc">'+E(r.focus)+'</div>':'')
+    +'<div class="ft"><span>작성 '+E(r.date||"")+(r.by?' · '+E(r.by):'')+'</span><span>NTL QMS · 출력 '+creqToday_()+'</span></div></body></html>';
+  var w=(typeof qmsPrintWin_==="function")?qmsPrintWin_():window.open("","_blank"); if(!w){ alert("팝업이 막혀 있습니다."); return; }
+  w.document.write(html); w.document.close(); setTimeout(function(){ try{ w.focus(); w.print(); }catch(_){} }, 300); }
 function inspmShow_(){ INSPM_STORE.load(); inspmRender_(); }
 function inspmRender_(){ var root=document.getElementById("inspm-root"); if(!root) return; var E=qmsEsc_, fl=inspmFlow_(), ed=__im.edit;
   var inp="border:1px solid #D0D5DD;border-radius:8px;padding:6px 8px;font-size:13px;box-sizing:border-box;";
   var q=creqNn_(__im.q), L=inspmRecs_().slice().sort(function(a,b){ return String(a.draw||a.name).localeCompare(String(b.draw||b.name), undefined, {numeric:true}); })
     .filter(function(r){ return !q || creqNn_([r.draw,r.name,r.focus,inspmItemsTxt_(r)].join(" ")).indexOf(q)>=0; });
   var h='<div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;"><div style="flex:1;min-width:240px;"><div style="font-size:20px;font-weight:800;">🧪 검사 방법</div><div style="font-size:12.5px;color:#667085;">수주~출하 검사 공정도 · 도번별 검사 항목·기준·진행 장소·집중 사항 — 도번 입력·도면 열기 때 알림에 같이 표시 · QMS 데이터 흐름은 <a href="#" data-go="flow">업무흐름·품질기준</a></div></div>'
-    +'<button data-a="xls" style="'+inp+'background:#fff;cursor:pointer;font-weight:700;">⬇ 엑셀</button><button data-a="prt" style="'+inp+'background:#fff;cursor:pointer;font-weight:700;">🖨 인쇄</button></div>';
+    +'<button data-a="xls" style="'+inp+'background:#fff;cursor:pointer;font-weight:700;">⬇ 엑셀</button><button data-a="prt" style="'+inp+'background:#fff;cursor:pointer;font-weight:700;" title="기본 공정도 + 전체 도번 목록">🖨 전체 인쇄</button></div>';
   // ① 공정도
   h+='<div class="im-card"><div style="display:flex;align-items:center;gap:8px;"><b style="font-size:15px;flex:1;">① 기본 검사 공정도 <small style="font-weight:500;color:#667085;">— 새 도번 등록 때 시작값 · 도번별 공정도는 ②에서</small></b>'+(__im.flowEdit?'<button data-a="flowsave" class="im-b im-p">저장</button><button data-a="flowcancel" class="im-b">취소</button><button data-a="flowreset" class="im-b">기본값</button>':'<button data-a="flowedit" class="im-b">✏ 수정</button>')+'</div>';
   if(__im.flowEdit){ h+='<div style="overflow:auto;"><table class="im-t"><thead><tr><th>#</th><th>단계</th><th>장소</th><th>담당</th><th>기준·내용</th><th></th></tr></thead><tbody>'
@@ -7286,14 +7307,14 @@ function inspmRender_(){ var root=document.getElementById("inspm-root"); if(!roo
       +'<td><input list="im-wl" data-ii="'+i+'" data-ik="where" value="'+E(it.where||"")+'" placeholder="목록에서 선택 또는 입력" style="'+inp+'width:100%;min-width:160px;"></td><td><input data-ii="'+i+'" data-ik="note" value="'+E(it.note||"")+'" style="'+inp+'width:100%;min-width:120px;"></td><td><button data-a="idel" data-i="'+i+'" class="im-b">✕</button></td></tr>'; }).join("")
     +'</tbody></table></div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"><button data-a="iadd" class="im-b">＋ 항목 추가</button><button data-a="imaster" class="im-b" title="MASTER의 기능검사(LEAK·FLOW·수압/가압·진공) Y 항목을 불러와 넣음">⤓ MASTER 기능검사 불러오기</button></div>'
     +'<label style="display:block;margin-top:8px;font-size:12px;color:#475467;">검사 집중 사항<textarea id="im-focus" rows="2" style="'+inp+'width:100%;resize:vertical;" placeholder="예: 가압 후 O-ring 홈 버 재확인 · FLOW는 세정 후 재측정">'+E(e.focus||"")+'</textarea></label>'
-    +'<div style="display:flex;gap:8px;margin-top:8px;"><button data-a="save" class="im-b im-p">'+(e.id?'수정 저장':'＋ 등록')+'</button>'+(e.id?'<button data-a="cancel" class="im-b">취소</button>':'')+'</div></div>';
+    +'<div style="display:flex;gap:8px;margin-top:8px;"><button data-a="save" class="im-b im-p">'+(e.id?'수정 저장':'＋ 등록')+'</button>'+(e.id?'<button data-a="cancel" class="im-b">취소</button>':'')+'<button data-a="oneed" class="im-b" title="지금 입력한 내용으로 1장 인쇄">🖨 이 제품 1장 인쇄</button></div></div>';
   // ③ 목록
   h+='<div style="display:flex;align-items:center;gap:8px;margin:10px 0 6px;flex-wrap:wrap;"><input id="im-q" value="'+E(__im.q)+'" placeholder="검색 (도번·품명·항목·기준)" style="'+inp+'width:280px;max-width:100%;"><span style="font-size:12.5px;color:#667085;">'+L.length+'건'+(INSPM_STORE.loaded?'':' · 불러오는 중…')+'</span></div>'
     +'<div style="overflow:auto;border:1px solid #EAECF0;border-radius:12px;background:#fff;"><table class="im-t" style="width:100%;"><thead><tr><th>도번</th><th>품명</th><th>제품별 공정도 · 검사 항목(기준)</th><th>집중 사항</th><th>작성</th><th></th></tr></thead><tbody>'
     +(L.length?L.map(function(r){ var nm=r.name||((r.draw&&creqNameMap_()[creqNd_(r.draw)])||""); return '<tr><td style="font-weight:700;white-space:nowrap;">'+(r.draw?E(r.draw):'<span style="color:#175CD3;">품명 전체</span>'+(creqExList_(r).length?'<br><small style="color:#667085;font-weight:400;">제외 '+creqExList_(r).length+'개</small>':''))+'</td><td>'+E(nm)+'</td>'
       +'<td style="min-width:320px;">'+inspmMiniFlow_(r)+'</td>'
       +'<td style="white-space:pre-wrap;min-width:160px;">'+E(r.focus||"")+'</td><td style="white-space:nowrap;color:#667085;font-size:12px;">'+E(r.date||"")+(r.by?'<br>'+E(r.by):'')+'</td>'
-      +'<td style="white-space:nowrap;"><button data-a="ed" data-id="'+E(r.id)+'" class="im-b">수정</button> <button data-a="del" data-id="'+E(r.id)+'" class="im-b" style="color:#D92D20;border-color:#FDA29B;">삭제</button></td></tr>'; }).join("")
+      +'<td style="white-space:nowrap;"><button data-a="one" data-id="'+E(r.id)+'" class="im-b" title="이 제품 상세 1장 인쇄">🖨</button> <button data-a="ed" data-id="'+E(r.id)+'" class="im-b">수정</button> <button data-a="del" data-id="'+E(r.id)+'" class="im-b" style="color:#D92D20;border-color:#FDA29B;">삭제</button></td></tr>'; }).join("")
       :'<tr><td colspan="6" style="padding:22px;text-align:center;color:#98A2B3;">등록된 검사 방법이 없습니다. ②에서 도번과 검사 항목을 넣고 [＋ 등록]을 누르세요.</td></tr>')+'</tbody></table></div>';
   root.innerHTML=h; inspmBind_(root); }
 function inspmGrab_(root){ var e=__im.edit||{}, items=[]; root.querySelectorAll("#im-items tr").forEach(function(tr){ var o={}; tr.querySelectorAll("[data-ik]").forEach(function(x){ o[x.getAttribute("data-ik")]=String(x.value||"").trim(); }); items.push(o); });
@@ -7341,6 +7362,8 @@ function inspmBind_(root){ var $=function(id){ return document.getElementById(id
       r.id=r.id||("IM-"+Date.now().toString(36)); r.date=creqToday_(); r.by=creqMe_()||r.by||""; r.itemsTxt=inspmItemsTxt_(r);
       var k=__im.list.findIndex(function(x){ return x.id===r.id; }); if(k>=0) __im.list[k]=r; else __im.list.push(r); __im.edit=null; INSPM_STORE.save(__im.list); return inspmRender_(); }
     if(a==="cancel"){ __im.edit=null; return inspmRender_(); }
+    if(a==="one"){ return inspmPrintOne_(__im.list.find(function(o){ return o.id===b.getAttribute("data-id"); })); }
+    if(a==="oneed"){ return inspmPrintOne_(inspmGrab_(root)); }
     if(a==="ed"){ var x=__im.list.find(function(o){ return o.id===b.getAttribute("data-id"); }); __im.edit=x?JSON.parse(JSON.stringify(x)):null; if(__im.edit && !__im.edit.items) __im.edit.items=[]; inspmRender_(); var c=root.querySelector(".im-card:nth-of-type(2)"); try{ (document.getElementById("im-draw")||root).scrollIntoView({ block:"center" }); }catch(_){} return; }
     if(a==="del"){ var y=__im.list.find(function(o){ return o.id===b.getAttribute("data-id"); }); if(!y || !confirm("이 검사 방법을 삭제할까요?\n\n"+(y.draw||("품명 "+y.name)))) return; __im.list=__im.list.filter(function(o){ return o!==y; }); INSPM_STORE.save(__im.list); return inspmRender_(); }
     if(a==="xls"){ try{ var aoa=[["도번","품명","제외 도번","제품별 공정도","검사 항목","기준","진행 공정·장소","비고","집중 사항","작성일","작성자"]];
