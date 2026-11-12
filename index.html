@@ -1537,6 +1537,7 @@
   #view-specdue .sd-ci.over{ color:#B42318; background:#FEF3F2; } #view-specdue .sd-ci.past{ opacity:.6; }
   #view-specdue .sd-cchip{ font-size:11.5px; line-height:1.35; color:#101828; background:#FFF6E5; border-left:3px solid #F79009; border-radius:5px; padding:2px 5px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   #view-specdue .sd-cchip b{ font-weight:700; }
+  #view-specdue .sd-cchip[data-dwg]{ cursor:pointer; } #view-specdue .sd-cchip[data-dwg]:hover{ outline:1px solid #1570EF; text-decoration:underline; }
   #view-specdue .sd-cchip.short{ background:#FEF3F2; border-left-color:#D92D20; } #view-specdue .sd-cchip.late{ background:#FEF3F2; border-left-color:#B42318; }
   #view-specdue .sd-cchip.done{ background:#F2F4F7; border-left-color:#98A2B3; color:#98A2B3; text-decoration:line-through; }
   #view-specdue .sd-csum{ font-size:10.5px; color:#667085; text-align:right; margin-top:3px; }
@@ -2091,6 +2092,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
       <div class="qnav-panel">
         <div class="nav-item nav-sub" data-view="quality"><span class="qnav-i">📈</span><span class="qnav-t"><b>품질분석</b><small>PPM·CAPA·CTQ·NCR·변경점·품질목표</small></span></div>
         <div class="nav-item nav-sub" data-view="nc"><span class="qnav-i">⚠️</span><span class="qnav-t"><b>고객부적합관리</b><small>클레임 접수·조치</small></span></div>
+        <div class="nav-item nav-sub" data-view="creq" title="도번·품명별 고객 품질 요청사항 — QMS 어디서든 그 도번에 📌 표시"><span class="qnav-i">📌</span><span class="qnav-t"><b>고객 요청사항</b><small>도번·품명별 · 전체 표시</small></span></div>
         <div class="nav-item nav-sub" data-view="instr"><span class="qnav-i">🔧</span><span class="qnav-t"><b>계측기 관리</b><small>교정 주기·이력</small></span></div>
         <div class="nav-item nav-sub" data-view="qdocs"><span class="qnav-i">📄</span><span class="qnav-t"><b>문서 초안</b><small>SCAR·8D·월간 보고서·PCN 등</small></span></div>
         <div class="nav-item nav-sub" data-view="flow"><span class="qnav-i">🗺</span><span class="qnav-t"><b>업무흐름·품질기준</b><small>흐름도·기준표</small></span></div>
@@ -2466,6 +2468,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
     <div class="view" id="view-procflow"><div id="pf-root"></div></div>
     <div class="view" id="view-safety"><div id="se-root"></div></div>
     <div class="view" id="view-xlcmp"><div id="xc-root"></div></div>
+    <div class="view" id="view-creq"><div id="creq-root"></div></div>
     <div class="view" id="view-fitting"><div id="ft-root"></div></div>
     <div class="view" id="view-smat"><div id="sm-root"></div></div>
     <div class="view" id="view-dnote"><div id="dn-root"></div></div>
@@ -4243,7 +4246,7 @@ function qxLayout_(){
       return false; };
     var views=[].slice.call(document.querySelectorAll(".main-area > .view[id^='view-']"));
     views.forEach(function(view){
-      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="dboard" || v==="safety" || v==="xlcmp" || v==="fitting" || v==="smat" || v==="dnote" || v==="wip" || v==="procflow" || v==="board" || v==="syshealth" || v==="authadmin" || v==="specdue" || v==="specduelog" || v==="custrev" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
+      var v=view.id.slice(5); if(v==="insrep" || v==="qdash" || v==="orderflow" || v==="dboard" || v==="safety" || v==="xlcmp" || v==="creq" || v==="fitting" || v==="smat" || v==="dnote" || v==="wip" || v==="procflow" || v==="board" || v==="syshealth" || v==="authadmin" || v==="specdue" || v==="specduelog" || v==="custrev" || v==="duechg" || v==="meet" || v==="qdocs" || v==="insall" || v==="review" || v==="mailbox" || v==="coareq" || v==="measprog") return;   // 검사일보·품질대시보드는 자체 배치
       var inf=info(v) || (v==="history"?info("management"):null);
       var tb=document.getElementById("topbar-"+v);
       if(tb){
@@ -5306,11 +5309,12 @@ document.querySelectorAll(".nav-item").forEach(item=>{
       schedRender();
     }
     if(target==="qdash" && typeof qdRender_==="function"){ qdRender_(); }   // 품질 대시보드
-    if(target==="orderflow" && typeof ofRender_==="function"){ ofRender_(); }
+    if(target==="orderflow" && typeof ofRender_==="function"){ ofRender_(); try{ if(typeof __sdVx!=="undefined" && !__sdVx.loaded && !__sdVx.ing){ __sdVx.ing=true; sdVxLoad_(function(ch){ __sdVx.ing=false; if(ch) ofRender_(); }); } }catch(_){} }   // [추가] 비젼 제외 품번(공유) 불러와 반영
     if(target==="dboard" && typeof dbShow_==="function"){ dbShow_(); }   // [추가] 금일 납품 현황판   // [추가] 수주~출하 흐름
     if(target==="procflow" && typeof pfRender_==="function"){ pfRender_(); }   // [추가] 공정도
     if(target==="safety" && typeof seShow_==="function"){ seShow_(); }   // [추가] 안전교육
     if(target==="xlcmp" && typeof xcShow_==="function"){ xcShow_(); }   // [추가] 변경비교
+    if(target==="creq" && typeof creqShow_==="function"){ creqShow_(); }   // [추가] 고객 요청사항
     if(target==="fitting" && typeof ftShow_==="function"){ ftShow_(); }   // [추가] 사급 피팅
     if(target==="smat" && typeof smShow_==="function"){ smShow_(); }   // [추가] 사급 소재
     if(target==="dnote" && typeof dnShow_==="function"){ dnShow_(); }   // [추가] 도면 NOTES 해석
@@ -7054,6 +7058,123 @@ function xcCompare_(){
     out.push({ rw:rw, t:t, isNew:!old, nd:nd, diff:diff, due:due }); });
   var dels=[]; Object.keys(mapA).forEach(function(k){ if(!used[k]) dels.push(mapA[k]); }); cnt.del=dels.length;
   return { out:out, dels:dels, cnt:cnt, today:today, kB:kB, dB:dB };
+}
+/* ===================== 📌 고객 요청사항 (도번·품명별) — QMS 전체에 표시 =====================
+   · 작성일 / 도번 / 품명 / 요청사항 / 비고 / 작성자 → 공유 시트 CREQ_Master (행 단위, 삭제는 _del)
+   · 도번을 적으면 그 도번만, 도번 없이 품명만 적으면 품명이 들어간 모든 도번(예: SHOWER HEAD 전체)
+   · 화면 어디든 그 도번이 보이면 📌 표시(마우스 올리면 내용), 도번 입력·도면 열기 때는 오른쪽 아래 알림 */
+var __creq=[], __creqIdx=null;
+var CREQ_STORE=qmsSyncStore_({ tab:"CREQ_Master", idb:"creqStore",
+  cols:[["date","작성일"],["draw","도번"],["name","품명"],["req","요청사항"],["note","비고"],["by","작성자"],["_ts","_ts"],["_del","_del"]],
+  apply:function(list){ __creq=list||[]; __creqIdx=null; try{ creqRender_(); }catch(_){} creqScanSoon_(); } });
+function creqNd_(x){ return String(x==null?"":x).trim().toUpperCase().replace(/\s+/g,""); }
+function creqNn_(x){ return String(x==null?"":x).toUpperCase().replace(/[^A-Z0-9가-힣]/g,""); }
+// 도번 → 품명 (MAIN·재고) — 품명 기준 요청 판정용
+function creqNameMap_(){ var md=(typeof mainData!=="undefined"&&mainData)||[], iv=(typeof invData!=="undefined"&&invData)||[], sig=md.length+"|"+iv.length;
+  if(creqNameMap_.c && creqNameMap_.s===sig) return creqNameMap_.c; var m={};
+  md.forEach(function(r){ var n=String(r.partName||"").trim(); if(!n) return; [r.oldDrawingNo, r.partNo].forEach(function(d){ d=creqNd_(d); if(d && !m[d]) m[d]=n; }); });
+  iv.forEach(function(r){ var n=String(r.name||r.partName||r.pname||"").trim(), d=creqNd_(r.partNo); if(n && d && !m[d]) m[d]=n; });
+  creqNameMap_.c=m; creqNameMap_.s=sig; return m; }
+function creqIdx_(){ if(__creqIdx) return __creqIdx; var by={}, names=[];
+  __creq.forEach(function(r){ var d=creqNd_(r.draw); if(d){ (by[d]=by[d]||[]).push(r); } else if(creqNn_(r.name)) names.push({ k:creqNn_(r.name), r:r }); });
+  __creqIdx={ by:by, names:names, hit:{} }; return __creqIdx; }
+// 이 도번에 해당하는 요청 (도번 지정 + 품명 포함)
+function creqFor_(draw, name){ var d=creqNd_(draw); if(!d || !__creq.length) return []; var X=creqIdx_();
+  var ck=d+"|"+(name||""); if(X.hit[ck]) return X.hit[ck];
+  var out=(X.by[d]||[]).slice();
+  if(X.names.length){ var n=creqNn_(name || creqNameMap_()[d] || ""); if(n) X.names.forEach(function(o){ if(n.indexOf(o.k)>=0) out.push(o.r); }); }
+  X.hit[ck]=out; return out; }
+function creqHtml_(draw, hits){ var E=qmsEsc_;
+  return hits.map(function(r){ return '<div style="padding:5px 0;border-top:1px dashed #F5C26B;"><b style="color:#B54708;">'+(r.draw?E(r.draw):('품명 「'+E(r.name)+'」 전체'))+'</b>'
+    +(r.draw&&r.name?' <span style="color:#667085;">'+E(r.name)+'</span>':'')+' <span style="color:#98A2B3;font-size:11px;">'+E(r.date||"")+(r.by?' · '+E(r.by):'')+'</span>'
+    +'<div style="white-space:pre-wrap;color:#101828;font-weight:600;margin-top:2px;">'+E(r.req||"")+'</div>'+(r.note?'<div style="white-space:pre-wrap;color:#475467;font-size:12px;">비고: '+E(r.note)+'</div>':'')+'</div>'; }).join(""); }
+// ── 오른쪽 아래 알림 (도번 입력·도면 열기) — 같은 도번은 10분에 한 번
+function creqToast_(draw, force){ var hits=creqFor_(draw); if(!hits.length) return; var d=creqNd_(draw), now=Date.now(); creqToast_.t=creqToast_.t||{};
+  if(!force && creqToast_.t[d] && now-creqToast_.t[d]<600000) return; creqToast_.t[d]=now;
+  var w=document.getElementById("creq-toast"); if(!w){ w=document.createElement("div"); w.id="creq-toast"; w.style.cssText="position:fixed;right:18px;bottom:90px;z-index:99990;width:min(380px,92vw);max-height:60vh;overflow:auto;background:#FFFAEB;border:2px solid #F79009;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:10px 12px;font-size:13px;"; document.body.appendChild(w);
+    w.addEventListener("click", function(e){ if(e.target.closest("[data-x]")) w.style.display="none"; }); }
+  w.innerHTML='<div style="display:flex;align-items:center;gap:6px;"><b style="font-size:14px;color:#B54708;flex:1;">📌 고객 요청사항 · '+qmsEsc_(String(draw).trim())+'</b><button data-x="1" style="border:none;background:none;font-size:16px;cursor:pointer;color:#667085;">✕</button></div>'+creqHtml_(draw, hits);
+  w.style.display=""; clearTimeout(creqToast_.h); creqToast_.h=setTimeout(function(){ w.style.display="none"; }, 15000); }
+// ── 화면 전체 📌 표시: 보이는 화면의 글자·도번 입력칸에서 도번을 찾아 표시 (내용은 바꾸지 않고 속성만 붙임)
+function creqScanSoon_(){ clearTimeout(creqScanSoon_.h); creqScanSoon_.h=setTimeout(creqScan_, 500); }
+function creqScan_(){
+  document.querySelectorAll("[data-creq]").forEach(function(el){ el.removeAttribute("data-creq"); el.classList.remove("creq-hit","creq-inp"); });
+  if(!__creq.length) return;
+  var act=document.querySelector(".view.active"), roots=act?[act]:[];
+  [].slice.call(document.body.children).forEach(function(el){ if(el.tagName==="SCRIPT"||el.tagName==="STYLE"||el.id==="creq-toast"||el.id==="creq-tip") return; if(act && el.contains(act)) return; if(el.offsetParent===null && getComputedStyle(el).position!=="fixed") return; roots.push(el); });
+  var tokHit=function(t){ var k=creqNd_(t).replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/g,""); if(k.length<4 || !/\d/.test(k)) return ""; return creqFor_(k).length?k:""; };
+  var n=0;
+  roots.forEach(function(root){ if(!root || (root.closest && root.closest("#view-creq"))) return;
+    var tw=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), node;
+    while((node=tw.nextNode()) && n<30000){ n++; var s=node.nodeValue; if(!s || s.length>200 || !/\d/.test(s)) continue; var p=node.parentElement; if(!p || p.hasAttribute("data-creq")) continue;
+      var tg=p.tagName; if(tg==="SCRIPT"||tg==="STYLE"||tg==="TEXTAREA"||tg==="OPTION"||p.closest("#view-creq")) continue;
+      var toks=s.split(/[\s,·\/()\[\]|:;<>]+/), hitK=""; for(var i=0;i<toks.length && !hitK;i++){ if(toks[i]) hitK=tokHit(toks[i]); }
+      if(hitK){ p.setAttribute("data-creq", hitK); p.classList.add("creq-hit"); } }
+    root.querySelectorAll("input[type=text],input:not([type])").forEach(function(inp){ var v=String(inp.value||""); if(!v || v.length>60) return; var k=tokHit(v.split(/[\s,]+/)[0]||""); if(k){ inp.setAttribute("data-creq", k); inp.classList.add("creq-inp"); } });
+  }); }
+(function(){
+  var css=document.createElement("style"); css.textContent=".creq-hit::after{ content:'📌'; font-size:11px; margin-left:2px; cursor:help; } .creq-inp{ box-shadow:inset 0 0 0 2px #F79009 !important; background:#FFFAEB !important; }"
+    +" #creq-tip{ position:fixed; z-index:99991; max-width:380px; background:#FFFAEB; border:1.5px solid #F79009; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.18); padding:8px 10px; font-size:12.5px; pointer-events:none; }";
+  document.head.appendChild(css);
+  var tip=null, show=function(el, e){ var k=el.getAttribute("data-creq"), hits=creqFor_(k); if(!hits.length) return; if(!tip){ tip=document.createElement("div"); tip.id="creq-tip"; document.body.appendChild(tip); }
+    tip.innerHTML='<b style="color:#B54708;">📌 고객 요청사항 · '+qmsEsc_(k)+'</b>'+creqHtml_(k, hits); tip.style.display="";
+    var x=Math.min(e.clientX+14, window.innerWidth-400), y=e.clientY+16; if(y+tip.offsetHeight>window.innerHeight) y=Math.max(8, e.clientY-tip.offsetHeight-10); tip.style.left=Math.max(8,x)+"px"; tip.style.top=y+"px"; };
+  document.addEventListener("mouseover", function(e){ var el=e.target && e.target.closest && e.target.closest("[data-creq]"); if(el) show(el, e); else if(tip) tip.style.display="none"; }, true);
+  // 도번 입력칸에 도번을 넣으면 알림
+  document.addEventListener("change", function(e){ var t=e.target; if(!t || t.tagName!=="INPUT" || !__creq.length) return; var v=String(t.value||"").trim(); if(v && v.length<=60){ var k=creqNd_(v.split(/[\s,]+/)[0]); if(creqFor_(k).length) creqToast_(k); } creqScanSoon_(); }, true);
+  // 화면이 바뀌면 다시 찾기 (속성 변경은 감시 안 함 → 반복 없음)
+  var mo=new MutationObserver(function(){ if(__creq.length) creqScanSoon_(); }); var st=function(){ try{ mo.observe(document.body, { childList:true, subtree:true, characterData:true }); }catch(_){} };
+  if(document.body) st(); else document.addEventListener("DOMContentLoaded", st);
+  setTimeout(function(){ try{ CREQ_STORE.load(); }catch(_){} }, 2500);
+  // 도면 열기 때 알림
+  setTimeout(function(){ try{ if(typeof openDrawing==="function" && !openDrawing.__creq){ var o=openDrawing; window.openDrawing=openDrawing=function(no){ try{ creqToast_(no, true); }catch(_){} return o.apply(this, arguments); }; openDrawing.__creq=1; } }catch(_){} }, 0);
+})();
+// ── 메뉴 화면: 입력·목록·엑셀
+var __creqEdit=null, __creqQ="";
+function creqShow_(){ CREQ_STORE.load(); creqRender_(); }
+function creqToday_(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function creqMe_(){ try{ return (typeof ctMe_==="function" && ctMe_()) || ((typeof bdMe_==="function" && bdMe_())||{}).name || ""; }catch(_){ return ""; } }
+function creqApplyCnt_(r){ var nm=creqNameMap_(), k=creqNn_(r.name), seen={}, c=0; if(r.draw) return ""; if(!k) return "";
+  Object.keys(nm).forEach(function(d){ if(creqNn_(nm[d]).indexOf(k)>=0 && !seen[d]){ seen[d]=1; c++; } }); return c; }
+function creqRender_(){ var root=document.getElementById("creq-root"); if(!root) return; var E=qmsEsc_, e=__creqEdit||{};
+  var q=creqNn_(__creqQ), L=__creq.slice().sort(function(a,b){ return String(b.date||"").localeCompare(String(a.date||"")) || String(a.draw||a.name).localeCompare(String(b.draw||b.name)); })
+    .filter(function(r){ return !q || creqNn_([r.draw,r.name,r.req,r.note,r.by].join(" ")).indexOf(q)>=0; });
+  var inp="border:1px solid #D0D5DD;border-radius:8px;padding:7px 9px;font-size:13px;box-sizing:border-box;";
+  root.innerHTML='<div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:6px;"><div style="flex:1;min-width:260px;"><div style="font-size:20px;font-weight:800;color:#101828;">📌 고객 요청사항</div>'
+    +'<div style="font-size:12.5px;color:#667085;">도번별 고객 품질 요청 — QMS 어디서든 그 도번이 보이면 📌 표시(마우스 올리면 내용) · 도번 입력·도면 열기 때 오른쪽 아래 알림 · 도번 없이 <b>품명</b>만 적으면 그 품명이 들어간 모든 도번(예: SHOWER HEAD 전체)</div></div>'
+    +'<button id="creq-xls" style="'+inp+'background:#fff;cursor:pointer;font-weight:700;">⬇ 엑셀</button></div>'
+    +'<div style="background:#FFFAEB;border:1px solid #FEDF89;border-radius:12px;padding:10px 12px;margin:8px 0 12px;display:grid;grid-template-columns:130px 170px 190px 1fr 1fr auto;gap:8px;align-items:start;">'
+    +'<label style="font-size:11.5px;color:#667085;">작성일<input id="creq-date" type="date" value="'+E(e.date||creqToday_())+'" style="'+inp+'width:100%;"></label>'
+    +'<label style="font-size:11.5px;color:#667085;">도번 <small>(비우면 품명 전체)</small><input id="creq-draw" value="'+E(e.draw||"")+'" placeholder="예: M200-005-70A" style="'+inp+'width:100%;text-transform:uppercase;"></label>'
+    +'<label style="font-size:11.5px;color:#667085;">품명<input id="creq-name" value="'+E(e.name||"")+'" placeholder="예: SHOWER HEAD" style="'+inp+'width:100%;"></label>'
+    +'<label style="font-size:11.5px;color:#667085;">요청사항<textarea id="creq-req" rows="2" style="'+inp+'width:100%;resize:vertical;">'+E(e.req||"")+'</textarea></label>'
+    +'<label style="font-size:11.5px;color:#667085;">비고<textarea id="creq-note" rows="2" style="'+inp+'width:100%;resize:vertical;">'+E(e.note||"")+'</textarea></label>'
+    +'<div style="display:flex;flex-direction:column;gap:5px;padding-top:15px;"><button id="creq-save" style="'+inp+'background:#F79009;color:#fff;border-color:#F79009;font-weight:800;cursor:pointer;">'+(e.id?'수정 저장':'＋ 등록')+'</button>'
+    +(e.id?'<button id="creq-cancel" style="'+inp+'background:#fff;cursor:pointer;">취소</button>':'')+'</div></div>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><input id="creq-q" value="'+E(__creqQ)+'" placeholder="검색 (도번·품명·내용)" style="'+inp+'width:280px;"><span style="font-size:12.5px;color:#667085;">'+L.length+'건'+(CREQ_STORE.loaded?'':' · 불러오는 중…')+'</span></div>'
+    +'<div style="overflow:auto;border:1px solid #EAECF0;border-radius:12px;background:#fff;"><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="background:#F9FAFB;color:#475467;">'
+    +['작성일','도번','품명','요청사항','비고','작성자',''].map(function(h){ return '<th style="padding:8px 10px;text-align:left;border-bottom:1px solid #EAECF0;white-space:nowrap;">'+h+'</th>'; }).join("")+'</tr></thead><tbody>'
+    +(L.length?L.map(function(r){ var ac=creqApplyCnt_(r); return '<tr style="border-top:1px solid #F2F4F7;vertical-align:top;"><td style="padding:7px 10px;white-space:nowrap;">'+E(r.date||"")+'</td>'
+      +'<td style="padding:7px 10px;white-space:nowrap;font-weight:700;">'+(r.draw?E(r.draw):'<span style="color:#B54708;">품명 전체</span>'+(ac!==""?'<br><small style="color:#667085;font-weight:400;">적용 도번 '+ac+'개</small>':''))+'</td>'
+      +'<td style="padding:7px 10px;">'+E(r.name||"")+'</td><td style="padding:7px 10px;white-space:pre-wrap;min-width:220px;">'+E(r.req||"")+'</td><td style="padding:7px 10px;white-space:pre-wrap;color:#475467;">'+E(r.note||"")+'</td>'
+      +'<td style="padding:7px 10px;white-space:nowrap;color:#667085;">'+E(r.by||"")+'</td>'
+      +'<td style="padding:7px 10px;white-space:nowrap;"><button data-ed="'+E(r.id)+'" style="border:1px solid #D0D5DD;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;">수정</button> <button data-del="'+E(r.id)+'" style="border:1px solid #FDA29B;background:#fff;color:#D92D20;border-radius:6px;padding:3px 8px;cursor:pointer;">삭제</button></td></tr>'; }).join("")
+      :'<tr><td colspan="7" style="padding:22px;text-align:center;color:#98A2B3;">등록된 요청사항이 없습니다. 위에서 도번(또는 품명)과 요청사항을 넣고 [＋ 등록]을 누르세요.</td></tr>')
+    +'</tbody></table></div>';
+  var $=function(id){ return document.getElementById(id); };
+  $("creq-save").onclick=function(){ var r={ id:e.id||("CR-"+Date.now().toString(36)), date:$("creq-date").value||creqToday_(), draw:String($("creq-draw").value||"").trim().toUpperCase(), name:String($("creq-name").value||"").trim(),
+      req:String($("creq-req").value||"").trim(), note:String($("creq-note").value||"").trim(), by:e.by||creqMe_() };
+    if(!r.draw && !r.name){ alert("도번 또는 품명을 넣어 주세요."); return; } if(!r.req){ alert("요청사항을 넣어 주세요."); return; }
+    if(!r.draw && creqNn_(r.name).length<3){ alert("품명 전체 적용은 품명을 3글자 이상 넣어 주세요."); return; }
+    var i=__creq.findIndex(function(x){ return x.id===r.id; }); if(i>=0) __creq[i]=r; else __creq.push(r); __creqIdx=null; __creqEdit=null;
+    CREQ_STORE.save(__creq); creqRender_(); creqScanSoon_(); };
+  if($("creq-cancel")) $("creq-cancel").onclick=function(){ __creqEdit=null; creqRender_(); };
+  $("creq-q").oninput=function(){ __creqQ=this.value; clearTimeout(creqRender_.qh); var pos=this.selectionStart; creqRender_.qh=setTimeout(function(){ creqRender_(); var q2=$("creq-q"); if(q2){ q2.focus(); try{ q2.setSelectionRange(pos,pos); }catch(_){} } }, 250); };
+  $("creq-xls").onclick=function(){ try{ var aoa=[["작성일","도번","품명","요청사항","비고","작성자"]].concat(L.map(function(r){ return [r.date||"", r.draw||"(품명 전체)", r.name||"", r.req||"", r.note||"", r.by||""]; }));
+      var ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=[{wch:11},{wch:18},{wch:22},{wch:50},{wch:30},{wch:10}]; var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "고객요청사항"); XLSX.writeFile(wb, "고객요청사항_"+creqToday_()+".xlsx"); }catch(err){ alert("엑셀 저장 실패: "+err.message); } };
+  root.querySelectorAll("[data-ed]").forEach(function(b){ b.onclick=function(){ __creqEdit=__creq.find(function(x){ return x.id===b.getAttribute("data-ed"); })||null; creqRender_(); window.scrollTo(0,0); }; });
+  root.querySelectorAll("[data-del]").forEach(function(b){ b.onclick=function(){ var r=__creq.find(function(x){ return x.id===b.getAttribute("data-del"); }); if(!r) return;
+    if(!confirm("이 요청사항을 삭제할까요?\n\n"+(r.draw||("품명 "+r.name))+" — "+String(r.req||"").slice(0,80))) return; __creq=__creq.filter(function(x){ return x!==r; }); __creqIdx=null; CREQ_STORE.save(__creq); creqRender_(); creqScanSoon_(); }; });
 }
 function xcShow_(){ xcRender_(); }
 function xcRender_(){ var host=document.getElementById("xc-root"); if(!host) return; var E=xcE_, R=__xc.res=xcCompare_();
@@ -14027,6 +14148,8 @@ function sdVisDone_(){   // [{d, n}] 최근 날짜별 완료(추정)
   for(var i=1;i<ds.length;i++){ var a=o[ds[i-1]], b=o[ds[i]], n=0; Object.keys(a).forEach(function(k){ if(k in b) n+=Math.max(0,(Number(a[k])||0)-(Number(b[k])||0)); }); out.push({ d:ds[i], n:n }); }
   return out.slice(-5).reverse();
 }
+// [추가] 출고 달력 품번 클릭 → 도면 열기 (한 번만 등록)
+if(!window.__sdCalDwgBound){ window.__sdCalDwgBound=1; document.addEventListener("click", function(e){ var c=e.target && e.target.closest && e.target.closest("#view-specdue .sd-cchip[data-dwg]"); if(!c) return; var d=c.getAttribute("data-dwg"); if(d && typeof openDrawing==="function"){ e.stopPropagation(); openDrawing(d); } }, true); }
 /* ---------- [추가] 출고 달력: 가능일자에 "품번(수량)", 날짜별 검사 수량, 주·월 합계 ---------- */
 function sdCalHtml_(C){
   var today=C.today, ym=__sd.calMonth||today.slice(0,7);
@@ -14053,7 +14176,7 @@ function sdCalHtml_(C){
     var sq=0, open=0; ks.forEach(function(k){ sq+=sh[k].q; open+=sh[k].q-sh[k].done; });
     var iq=insp[ds]||0;
     var chips=ks.map(function(k){ var g=sh[k], allDone=g.done>=g.q;
-      return '<div class="sd-cchip'+(allDone?' done':(g.short>0?' short':(g.late?' late':'')))+'" title="'+sdE_(k+" — "+g.ords.join(", ")+(g.short>0?" · 부족 "+g.short:""))+'">'+sdE_(k)+' <b>('+g.q+')</b>'+(g.short>0&&!allDone?' ⚠':'')+'</div>'; }).join("");
+      return '<div class="sd-cchip'+(allDone?' done':(g.short>0?' short':(g.late?' late':'')))+'"'+(k!=="-"?' data-dwg="'+sdE_(k)+'"':'')+' title="'+sdE_(k+" — "+g.ords.join(", ")+(g.short>0?" · 부족 "+g.short:"")+(k!=="-"?"\n클릭 = 도면 열기":""))+'">'+sdE_(k)+' <b>('+g.q+')</b>'+(g.short>0&&!allDone?' ⚠':'')+'</div>'; }).join("");
     var hol=qmsHolidayName_(ds);
     return '<td class="'+(inM?'':'out ')+(ds===today?'today ':'')+(dow===0||hol?'sun ':(dow===6?'sat ':''))+'"><div class="sd-cd"><span>'+(+ds.slice(8))+(hol?'<small class="sd-hol">'+sdE_(hol)+'</small>':'')+'</span>'
       +(iq?'<span class="sd-ci'+(C.cap && (C.used[ds]||0)>C.cap?' over':'')+(ds<today?' past':'')+'" title="이날 검사해야 할 수량">검사 '+iq+'</span>':'')+'</div>'
@@ -18711,7 +18834,7 @@ function ofRow_(r){
   var ev=(__of.log && __of.log.e && __of.log.e[r.orderNo])||[], last=ev.length?ev[ev.length-1]:null;
   var today=ofToday_(), due0=String(r.dueDate||"").slice(0,10), sdi=__of.sdIdx && __of.sdIdx[String(r.orderNo||"").trim()], due=(sdi && sdi.avail)||due0, dd=due?ofDays_(today, due):null;
   var od=__of.outIdx && __of.outIdx[String(r.orderNo||"").trim()], outD=od?Object.keys(od).sort().join(", "):"";   // 출고일 = 미리 만든 색인 (건마다 재고 전체를 훑으면 멈춤)
-  var isSH=/SHOWER\s*HEAD/i.test(String(r.partName||"")) || st==="비젼";
+  var isSH=((typeof sdIsVisDraw_==="function")?(sdIsVisDraw_(r.oldDrawingNo, r.partName) && sdIsVisDraw_(r.partNo, r.partName)):/SHOWER\s*HEAD/i.test(String(r.partName||""))) || st==="비젼";   // [수정] 특별납기에서 '비젼 제외'한 품번은 비젼 단계 없음 (공통 제외 목록)
   // 기능검사 필요 항목 (MASTER 'Y') — 수압/가압 1건
   var fm=null, fn=null; if(__of.master){ var mk=String(r.oldDrawingNo||"").trim(), m=__of.master[mk]||__of.master[String(r.partNo||"").trim()];
     fn=[]; if(m) OF_FUNC.forEach(function(f){ if(String(m[f.k]||"").toUpperCase()==="Y") fn.push(f.t); }); fm=!!m; }
