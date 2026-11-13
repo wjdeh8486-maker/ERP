@@ -11071,6 +11071,11 @@ function pushSharedCache(url, section, payload){
   try{
     var __touch=(window.matchMedia && matchMedia("(pointer:coarse)").matches) || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent||"");
     if(__touch) return;
+    // [안전] 받기 실패로 빈 데이터·급감한 데이터를 공유 캐시에 덮어쓰지 않음 (네트워크 끊김 시 다른 PC가 빈 화면을 받는 문제 방지)
+    var __n=0; try{ Object.keys(payload||{}).forEach(function(k){ var v=payload[k]; __n+=Array.isArray(v)?v.length:(v?1:0); }); }catch(_){}
+    var __nk="sharedPushN_"+section, __pn=Number(localStorage.getItem(__nk)||0);
+    if(!__n || (__pn>50 && __n<__pn*0.5)) return;
+    localStorage.setItem(__nk, String(__n));
     var __k="sharedPushAt_"+section, __last=Number(localStorage.getItem(__k)||0);
     if(Date.now()-__last < 2*60*60*1000) return;
     localStorage.setItem(__k, String(Date.now()));
