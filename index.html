@@ -18981,7 +18981,7 @@ function qmsLoadUnresolvedShared_(cb){
     var get=function(k){ return fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(k),{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return null;}); };
     Promise.all([get("incoming"),get("shipping"),get("measureS"),get("measureL")]).then(function(res){
       var pull=function(x){ if(x&&x.success&&x.json){ try{ return JSON.parse(x.json); }catch(e){} } return null; };
-      var mk=function(o){ return { rows:(o&&Array.isArray(o.rows))?o.rows:[], insp:(o&&o.inspector)||"" }; };
+      var mk=function(o){ return { rows:(o&&Array.isArray(o.rows))?o.rows:[], insp:(o&&o.inspector)||"", ibd:(o&&o.inspByDate)||{} }; };
       try{ insUnresolvedSrc={ incoming:mk(pull(res[0])), shipping:mk(pull(res[1])), measureS:mk(pull(res[2])), measureL:mk(pull(res[3])) }; }catch(e){}
       cb&&cb();
     }).catch(function(){ cb&&cb(); });
@@ -32796,7 +32796,9 @@ function insUnresolvedList_(useSrc){
       if(!draw && !sn) return;
       var sig=t+"|"+draw+"|"+sn+"|"+String(r.insDate||"")+"|"+d.types+"|"+d.qty;   // 완전 동일 항목 중복 제거
       if(seen[sig]) return; seen[sig]=1;
-      out.push({ label:insTypeLabel(t), draw:draw, sn:sn, insDate:String(r.insDate||""), qty:d.qty, types:d.types, by:by });
+      var __ib=(useSrc && insUnresolvedSrc)?((insUnresolvedSrc[t]&&insUnresolvedSrc[t].ibd)||{}):((insMetaByType[t]&&insMetaByType[t].inspByDate)||{});
+      var __by=String(r.inspector||"").trim() || String(__ib[String(r.insDate||"").slice(0,10)]||"").trim() || by;   // [수정] 그 행의 검사자 → 그 날짜 검사자 → (없을 때만) 유형 대표 검사자
+      out.push({ label:insTypeLabel(t), draw:draw, sn:sn, insDate:String(r.insDate||""), qty:d.qty, types:d.types, by:__by });
     });
   });
   out.sort(function(a,b){ return String(b.insDate).localeCompare(String(a.insDate)); });
@@ -32860,7 +32862,7 @@ function insUnrCloudLoad(){
   var get=function(k){ return fetch(url+"?mode=insrepMaster&key="+encodeURIComponent(k),{cache:"no-store"}).then(function(r){return r.json();}).catch(function(){return null;}); };
   Promise.all([get("incoming"),get("shipping"),get("measureS"),get("measureL")]).then(function(res){
     var pull=function(x){ if(x&&x.success&&x.json){ try{ return JSON.parse(x.json); }catch(e){} } return null; };
-    var mk=function(o){ return { rows:(o&&Array.isArray(o.rows))?o.rows:[], insp:(o&&o.inspector)||"" }; };
+    var mk=function(o){ return { rows:(o&&Array.isArray(o.rows))?o.rows:[], insp:(o&&o.inspector)||"", ibd:(o&&o.inspByDate)||{} }; };
     var a=pull(res[0]),b=pull(res[1]),c=pull(res[2]),d=pull(res[3]);
     insUnresolvedSrc={ incoming:mk(a), shipping:mk(b), measureS:mk(c), measureL:mk(d) };
     insOpenUnresolved();
