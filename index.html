@@ -32370,8 +32370,14 @@ function insGuideTaken_(exceptRi){ var out={ q:{}, rows:{} }; try{ if(typeof ins
     insState.shipping.rows.forEach(function(r, i){ if(String(i)===String(exceptRi) || String(r.insDate||"").slice(0,10)!==t) return; var list=insplistExpandOutNo_(r.outNo), cnt=Number(r.insCnt||r.goodCnt||0)||0;
       list.forEach(function(o, j){ (out.rows[o]=out.rows[o]||[]).push(i+1); if(list.length===1 || j===list.length-1) out.q[o]=(out.q[o]||0)+(cnt>0?cnt:1e9); else out.q[o]=(out.q[o]||0)+0; }); });   // 여러 개를 쓴 행은 마지막 것에 남은 수량
   }catch(_){} return out; }
+// [추가] 검수LIST의 재고사용·선출고 목록을 출하검사 일보에서도 쓰도록 5분마다 불러옴 (불러온 뒤 빨간 표시 다시 판정)
+function insGuideUsedEnsure_(){ var t=Date.now(); if(window.__insUsedAt && t-window.__insUsedAt<300000) return; window.__insUsedAt=t;
+  try{ if(typeof insplistLoadUsedNotes_!=="function") return; insplistLoadUsedNotes_(function(){ var fin=function(){ try{ __insUrgC={}; var ae=document.activeElement, typing=ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName);
+      if(!typing && typeof insType!=="undefined" && insType==="shipping" && typeof insRender==="function"){ var v=document.getElementById("view-insrep"); if(v && v.classList.contains("active")) insRender(); } }catch(_){} };
+    if(typeof insplistLoadPreShip_==="function") insplistLoadPreShip_(fin); else fin(); }); }catch(_){} }
 function insGuideRows_(draw, ri){
   var D=insNormDraw_(draw), md=(typeof mainData!=="undefined"&&mainData)||[]; if(!D || !md.length) return null;
+  insGuideUsedEnsure_();
   try{ if(typeof mainStatusMapDirty!=="undefined" && mainStatusMapDirty && typeof computeAllStatuses==="function"){ mainStatusMap=computeAllStatuses(mainData); mainStatusMapDirty=false; } }catch(_){}
   var t=(typeof insplistToday_==="function")?insplistToday_():new Date().toISOString().slice(0,10), W=insGuideWeek_(), sdI=(typeof ofSdIndex_==="function")?ofSdIndex_():{}, insp=(typeof dispatchInspProjSet_==="function")?dispatchInspProjSet_():{};
   var inspDay={}; try{ (schedEvents||[]).forEach(function(e){ var x=String(e.text||""); if(x.indexOf("검수")<0) return; var m=x.match(/([A-Za-z]{1,4}\d[\w\-]*)/); if(!m) return; var k=dispatchProjBase_(m[1]), dt=String(e.date||"").slice(0,10); if(dt && (!inspDay[k] || Math.abs(Date.parse(dt)-Date.parse(t))<Math.abs(Date.parse(inspDay[k])-Date.parse(t)))) inspDay[k]=dt; }); }catch(_){}
@@ -32380,6 +32386,10 @@ function insGuideRows_(draw, ri){
   md.forEach(function(r){ if(insNormDraw_(r.oldDrawingNo)!==D) return; var q=Number(r.qty)||0; if(q<=0) return;
     var st=""; try{ st=computeProductStatus(r)||""; }catch(_){} if(/완료|출고/.test(st)) return;
     var shp=0; try{ shp=Math.max(0, Math.min(q, Number(computeStockPreShip(r))||0)); }catch(_){} if(q-shp<=0) return;
+    // [추가] 검수LIST에서 '재고사용'·'선출고'로 완료 처리한 ORDER는 출고NO 지정 대상에서 뺌 (검수LIST 완료와 같은 기준)
+    var __no0=String(r.orderNo||"").trim();
+    try{ if(typeof __inspPreShipOrders!=="undefined" && __inspPreShipOrders && __inspPreShipOrders[__no0]===true) return;
+      if(typeof __inspUsedOrders!=="undefined" && __inspUsedOrders && __inspUsedOrders[__no0]===true){ var __uq=(__inspUsedQty && __inspUsedQty[__no0]>0)?__inspUsedQty[__no0]:q; shp=Math.min(q, shp+__uq); if(q-shp<=0) return; } }catch(_){}
     var no=String(r.orderNo||"").trim(), pj=String(r.vendor||"").trim(), pk=dispatchProjBase_(pj), due=String(r.dueDate||"").slice(0,10), sd=sdI[no], isI=!!(pk && insp[pk]);
     var o={ no:no, pj:pj, qty:q, rest:q-shp, due:due, st:st||"생산", cust:r.customer||"", sd:(sd&&sd.open)||"", sdLast:(sd&&sd.last)||"", insp:isI, inspDay:isI?(inspDay[pk]||""):"", disp:!!disp[no], tags:[] };
     if(isI && due && due<t) o.tags.push(["검수 납기지연","#B42318","#FEF3F2"]);
