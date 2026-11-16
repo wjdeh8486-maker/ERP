@@ -12492,16 +12492,17 @@ var __qualityDup={};
 function qualityDedupe_(){ try{ (QUALITY_SHEETS||[]).forEach(function(s){ var a=qualityRawData[s.key]; if(!Array.isArray(a)) return; var seen={}, out=[], dup=0;
     a.forEach(function(r){ var k=[r.date?new Date(r.date).toISOString().slice(0,10):"", String(r.partNo||"").trim().toUpperCase(), String(r.sn||"").replace(/\s+/g,""), r.qty, r.good, r.defect, JSON.stringify(r.types||{}), String(r.note||"").trim()].join("|");
       if(seen[k]){ dup++; return; } seen[k]=1; out.push(r); });
-    qualityRawData[s.key]=out; __qualityDup[s.key]=dup; }); }catch(_){} }
+    __qualityDup[s.key]=dup; }); }catch(_){} }   // [변경] 자동 제외 안 함 — 같은 값의 행도 실제 검사 기록일 수 있어 집계는 원본 그대로 (개수만 기록)
 // [추가] 상세내역 도번 클릭 → 그 도번의 원본 행(검사종합 시트) 목록 — 집계가 이상할 때 어느 행 때문인지 확인
 function qualityDetailRows_(catKey, partNo){ var cat=QUALITY_CATEGORIES[catKey]; if(!cat) return; var E=function(t){ return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }, L=[];
   cat.sheetKeys.forEach(function(key){ var meta=QUALITY_SHEETS.find(function(x){ return x.key===key; }); (qualityRawData[key]||[]).forEach(function(r){ if(!r.date || r.date.getFullYear()!==qualityYear || (r.date.getMonth()+1)!==qualityMonth) return; if((r.partNo||"(도번 미기재)")!==partNo) return;
     L.push({ sheet:meta.label, d:r.date.toISOString().slice(0,10), sn:r.sn, qty:r.qty, good:r.good, defect:r.defect, types:Object.keys(meta.types).filter(function(tk){ return r.types[tk]>0; }).map(function(tk){ return meta.types[tk]+" "+r.types[tk]; }).join(", "), note:r.note }); }); });
   L.sort(function(a,b){ return a.d.localeCompare(b.d); });
+  var cnt={}; L.forEach(function(r){ var k=r.d+"|"+String(r.sn||"").replace(/\s+/g,""); cnt[k]=(cnt[k]||0)+1; r.k=k; });
   var w=document.createElement("div"); w.style.cssText="position:fixed;inset:0;z-index:99995;background:rgba(16,24,40,.45);display:flex;align-items:center;justify-content:center;";
   w.innerHTML='<div style="background:#fff;border-radius:14px;width:min(860px,96vw);max-height:84vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.25);"><div style="padding:12px 16px;border-bottom:1px solid #EAECF0;display:flex;gap:8px;align-items:center;"><b style="flex:1;font-size:15px;">'+E(partNo)+' · '+qualityYear+'년 '+qualityMonth+'월 원본 행 '+L.length+'개 <small style="font-weight:500;color:#667085;">(검사종합 시트 기준 · 부적합 0인 행 포함)</small></b><button data-c="1" style="border:1px solid #D0D5DD;background:#fff;border-radius:8px;padding:5px 12px;cursor:pointer;">닫기</button></div>'
     +'<div style="overflow:auto;padding:8px 16px 14px;"><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr>'+['검사일','S/N','검사수','양품수','부적합','유형','비고'].map(function(h){ return '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #EAECF0;background:#F9FAFB;white-space:nowrap;">'+h+'</th>'; }).join("")+'</tr></thead><tbody>'
-    +L.map(function(r){ return '<tr style="border-top:1px solid #F2F4F7;'+(r.defect>0?'background:#FFFBFA;':'')+'"><td style="padding:6px 8px;white-space:nowrap;">'+E(r.d)+'</td><td style="padding:6px 8px;">'+E(r.sn)+'</td><td style="padding:6px 8px;">'+E(r.qty)+'</td><td style="padding:6px 8px;">'+E(r.good)+'</td><td style="padding:6px 8px;font-weight:800;color:'+(r.defect>0?'#D92D20':'#667085')+';">'+E(r.defect)+'</td><td style="padding:6px 8px;">'+E(r.types)+'</td><td style="padding:6px 8px;color:#475467;">'+E(r.note)+'</td></tr>'; }).join("")
+    +L.map(function(r){ return '<tr style="border-top:1px solid #F2F4F7;'+(r.defect>0?'background:#FFFBFA;':'')+'"><td style="padding:6px 8px;white-space:nowrap;">'+E(r.d)+'</td><td style="padding:6px 8px;">'+E(r.sn)+(cnt[r.k]>1?' <b style="color:#B54708;" title="같은 날 같은 S/N 줄이 '+cnt[r.k]+'개">⚠ 겹침 '+cnt[r.k]+'</b>':'')+'</td><td style="padding:6px 8px;">'+E(r.qty)+'</td><td style="padding:6px 8px;">'+E(r.good)+'</td><td style="padding:6px 8px;font-weight:800;color:'+(r.defect>0?'#D92D20':'#667085')+';">'+E(r.defect)+'</td><td style="padding:6px 8px;">'+E(r.types)+'</td><td style="padding:6px 8px;color:#475467;">'+E(r.note)+'</td></tr>'; }).join("")
     +'</tbody></table><div style="font-size:12px;color:#667085;margin-top:8px;">※ 같은 날 같은 S/N이 두 줄이면 검사종합 엑셀에 중복으로 들어간 것입니다. 엑셀에서 지우면 다음 업로드(11시)부터 맞게 집계됩니다.</div></div></div>';
   document.body.appendChild(w); w.addEventListener("click", function(e){ if(e.target===w || e.target.closest("[data-c]")) w.remove(); }); }
 function renderCategoryDetailList(panel, catKey){
@@ -12555,7 +12556,7 @@ function renderCategoryDetailList(panel, catKey){
     <td class="cell-defect">${r.defect}</td><td style="text-align:center;">${r.types}</td>
   </tr>`).join("");
   section.innerHTML = `
-    <div style="font-size:13px;font-weight:400;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역 (도번 ${rows.length}건, 부적합 합계 ${totalDefect}건)${(function(){ var n=cat.sheetKeys.reduce(function(t,k){ return t+(__qualityDup[k]||0); },0); return n?' <span style="color:#B54708;font-weight:700;" title="검사종합 시트에 모든 칸이 같은 행이 두 번 이상 있어 한 번만 셌습니다">· 중복 행 '+n+'개 제외</span>':''; })()} <span style="color:#98A2B3;">· 도번을 누르면 원본 행</span></div>
+    <div style="font-size:13px;font-weight:400;color:var(--text-mute);margin-bottom:8px;">${qualityYear}년 ${qualityMonth}월 · ${cat.label} 부적합 상세내역 (도번 ${rows.length}건, 부적합 합계 ${totalDefect}건) <span style="color:#98A2B3;">· 도번을 누르면 원본 행</span></div>
     <div style="overflow-x:auto;">
     <table style="min-width:560px;">
       <thead><tr><th>도번</th><th>S/N</th><th>검사일</th><th>부적합수</th><th style="text-align:center;">불량 유형</th></tr></thead>
