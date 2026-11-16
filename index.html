@@ -6054,7 +6054,7 @@ const MAIN_CUST_HEAD = ["제품상태","현재진행공정","ORDER NO.","구매 
 const MAIN_CUST_DOC_IDX = 8, MAIN_CUST_DATE_IDX = [14], MAIN_CUST_LATE_IDX = 19, MAIN_CUST_CLEAN_RGB = "0EA5E9";
 function mainCustIsClean_(r){ try{ return (typeof labelIsClean_==="function") ? labelIsClean_(r) : /세\s*정/.test(String(r.vendorName||"").replace(/세\s*정\s*[\(（\[]\s*[xX×✕✗]\s*[\)）\]]/g,"")); }catch(_){ return false; } }
 // [추가] xlsx-js-style은 !pageSetup(용지 방향·맞춤)을 파일에 쓰지 않음 → 만든 xlsx의 시트 XML에 직접 넣어 저장
-function qmsXlsxSaveLandscape_(wb, filename){
+function qmsXlsxSaveLandscape_(wb, filename, orient){   // [변경] orient 생략 시 기존과 같이 가로
   try{
     const arr = XLSX.write(wb, { type:"array", bookType:"xlsx" });
     const cfb = XLSX.CFB.read(new Uint8Array(arr), { type:"array" });
@@ -6064,7 +6064,7 @@ function qmsXlsxSaveLandscape_(wb, filename){
       const f = cfb.FileIndex[i]; let x = dec.decode(f.content);
       if(x.indexOf("<pageSetup")>=0 || x.indexOf("<pageMargins")<0) return;
       if(x.indexOf("<sheetPr")<0) x = x.replace(/(<worksheet[^>]*>)/, "$1<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>");
-      x = x.replace(/(<pageMargins[^>]*\/>)/, "$1<pageSetup paperSize=\"9\" orientation=\"landscape\" fitToWidth=\"1\" fitToHeight=\"0\"/>");
+      x = x.replace(/(<pageMargins[^>]*\/>)/, "$1<pageSetup paperSize=\"9\" orientation=\""+(orient||"landscape")+"\" fitToWidth=\"1\" fitToHeight=\"0\"/>");
       f.content = enc.encode(x); f.size = f.content.length;
     });
     const out = XLSX.CFB.write(cfb, { fileType:"zip", type:"array", compression:true });
@@ -7503,7 +7503,80 @@ function qdocWord_(title){
   try{ if(typeof showToast==="function") showToast("⬇ "+nm+" 다운로드 — Word에서 열어 수정하세요"); }catch(_){}
 }
 // [추가] Excel(.xlsx)로 내려받기 — 문서의 제목·머리말·소제목·표를 위에서 아래 순서대로 한 시트에 나열 (화면에서 고친 내용 반영)
+// [변경] 문서 초안 엑셀 = 인쇄물과 같은 모양: 화면 배치(칸 위치·폭)를 60칸 격자로 옮겨 병합·테두리·색·줄바꿈·행 높이 적용, A4 세로 1장 폭 맞춤
 function qdocExcel_(title){
+  var pg=document.getElementById("qdoc-page"); if(!pg) return;
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 아직 불러오지 못했습니다. 잠시 후 다시 눌러 주세요."); return; }
+  try{ qdocExcel2_(title, pg); }catch(e){ try{ console.warn("qdocExcel2_", e); }catch(_){} qdocExcelOld_(title); }
+}
+function qdocExcel2_(title, pg){
+  var G=60, CW=1.75, PX=CW*7+5;   // 격자 칸 수 · 칸 폭(문자) · 칸 폭(px 근사)
+  var cs=getComputedStyle(pg), L0=pg.getBoundingClientRect().left+parseFloat(cs.paddingLeft||0), W=Math.max(1,pg.clientWidth-parseFloat(cs.paddingLeft||0)-parseFloat(cs.paddingRight||0));
+  var col=function(x){ return Math.max(0,Math.min(G,Math.round((x-L0)/W*G))); };
+  var txt=function(el){ var o=""; (function w(n){ if(n.nodeType===3){ o+=n.nodeValue; return; } if(n.nodeType!==1) return; if(n.classList&&(n.classList.contains("qd-ft")||n.classList.contains("qd-noprint"))) return;
+      if(n.classList&&n.classList.contains("qd-img")){ o+=(n.querySelector("img")?"[배치도 그림 — 인쇄/PDF에서 확인]":"(배치도 그림 칸)"); return; }
+      if(n.tagName==="BR"){ o+="\n"; return; } var blk=/^(DIV|P|LI|H\d)$/.test(n.tagName); if(blk&&o&&!/\n$/.test(o)) o+="\n"; Array.prototype.forEach.call(n.childNodes,w); if(blk&&!/\n$/.test(o)) o+="\n"; })(el);
+    return o.replace(/ /g," ").replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim(); };
+  var tw=function(t){ var n=0; for(var i=0;i<t.length;i++){ n+=(t.charCodeAt(i)>0x2E80)?12:6.5; } return n; };   // 9pt 근사 글자 폭(px)
+  var lines=function(t, span){ var w=Math.max(10, span*PX-8); return String(t).split("\n").reduce(function(a,ln){ return a+Math.max(1,Math.ceil(tw(ln)/w)); },0); };
+  var B=function(c){ c=c||"667085"; return { top:{style:"thin",color:{rgb:c}}, bottom:{style:"thin",color:{rgb:c}}, left:{style:"thin",color:{rgb:c}}, right:{style:"thin",color:{rgb:c}} }; };
+  var F=function(o){ var f={ name:"맑은 고딕", sz:9 }; for(var k in o) f[k]=o[k]; return f; };
+  var ws={}, merges=[], rows=[], R=0;
+  var set=function(r,c,v,st){ var ref=XLSX.utils.encode_cell({r:r,c:c}); ws[ref]={ v:v, t:(typeof v==="number")?"n":"s", s:st }; };
+  var place=function(c1,c2,v,st){   // c1~c2 (포함) 병합 + 테두리를 병합 칸 전체에
+    for(var c=c1;c<=c2;c++) set(R,c,c===c1?v:"",st);
+    if(c2>c1) merges.push({ s:{r:R,c:c1}, e:{r:R,c:c2} });
+  };
+  var line=function(v,st,hpt){ place(0,G-1,v,st); rows[R]={ hpt:hpt||Math.max(15,lines(v,G)*12+3) }; R++; };
+  var doTable=function(tb){
+    var sign=tb.classList.contains("sign");
+    Array.prototype.forEach.call(tb.rows,function(tr){
+      var cells=[];
+      Array.prototype.forEach.call(tr.cells,function(td){
+        var inner=td.querySelector("table");
+        if(inner&&inner.classList.contains("qd-flow")){ Array.prototype.forEach.call(inner.rows[0]?inner.rows[0].cells:[],function(x){ cells.push(x); }); }
+        else cells.push(td);
+      });
+      var prevEnd=-1, maxL=1, out=[];
+      cells.forEach(function(td){ var r=td.getBoundingClientRect(), c1=col(r.left), c2=col(r.right)-1; if(c1<=prevEnd) c1=prevEnd+1; if(c2<c1) c2=c1; if(c1>=G) return; if(c2>G-1) c2=G-1; prevEnd=c2; out.push([td,c1,c2]); });
+      out.forEach(function(o){ var td=o[0], c1=o[1], c2=o[2], th=td.tagName==="TH", fb=td.classList.contains("qd-fb"), fa=td.classList.contains("qd-fa");
+        var v=fa?"→":txt(td); if(v!==""&&/^-?\d+(\.\d+)?$/.test(v)&&v.length<12&&!/^0\d/.test(v)) v=Number(v);
+        var ctr=fb||fa||td.classList.contains("c")||sign;
+        var st={ font:F({ bold:th||(fb&&td.classList.contains("on")), color:{rgb:(sign&&!th)?"98A2B3":(fa?"667085":"101828")} }), alignment:{ horizontal:ctr?"center":"left", vertical:(fb||fa||th||sign)?"center":"top", wrapText:true } };
+        if(!fa) st.border=fb?(td.classList.contains("nw2")?{ top:{style:"medium",color:{rgb:"1570EF"}}, bottom:{style:"medium",color:{rgb:"1570EF"}}, left:{style:"medium",color:{rgb:"1570EF"}}, right:{style:"medium",color:{rgb:"1570EF"}} }:B(td.classList.contains("on")?"DC6803":"98A2B3")):B();
+        if(th) st.fill={ fgColor:{rgb:"EEF1F5"} }; if(fb&&td.classList.contains("on")) st.fill={ fgColor:{rgb:"FEC84B"} };
+        if(td.querySelector(".qd-img")) maxL=Math.max(maxL,8);
+        maxL=Math.max(maxL, lines(v, c2-c1+1));
+        place(c1,c2,v,st);
+      });
+      if(out.length){ rows[R]={ hpt:sign&&tr.rowIndex>0?40:Math.max(15, maxL*12+4) }; R++; }
+    });
+    R++;   // 표 사이 한 줄 띄움
+  };
+  var walk=function(el){
+    Array.prototype.forEach.call(el.children,function(c){
+      var tg=c.tagName;
+      if(tg==="STYLE"||tg==="SCRIPT") return;
+      if(tg==="TABLE") doTable(c);
+      else if(tg==="H1") line(txt(c), { font:F({ sz:15, bold:true }), alignment:{ horizontal:"center", vertical:"center" } }, 26);
+      else if(/^H[2-6]$/.test(tg)) line(txt(c), { font:F({ sz:10, bold:true, color:{rgb:"FFFFFF"} }), fill:{ fgColor:{rgb:"1F2A44"} }, alignment:{ vertical:"center" } }, 18);
+      else if(c.classList&&c.classList.contains("sub")){ line(txt(c), { font:F({ sz:8.5, color:{rgb:"475467"} }), alignment:{ horizontal:"center" } }); R++; }
+      else if(c.querySelector&&c.querySelector("table")) walk(c);
+      else { var t=txt(c); if(t) line(t, { font:F({ sz:8.5, color:{rgb:"667085"} }), alignment:{ wrapText:true, vertical:"top" } }); }
+    });
+  };
+  walk(pg);
+  ws["!ref"]=XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:Math.max(0,R-1),c:G-1} });
+  ws["!merges"]=merges; ws["!rows"]=rows;
+  ws["!cols"]=Array.apply(null,{length:G}).map(function(){ return { wch:CW }; });
+  ws["!margins"]={ left:0.4, right:0.4, top:0.5, bottom:0.5, header:0.2, footer:0.2 };
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "문서");
+  var nm=String(title||"문서").replace(/[\\\/:*?"<>|]/g,"_").replace(/\s+/g," ").trim()+"_"+qdToday2_().replace(/-/g,"")+".xlsx";
+  if(typeof qmsXlsxSaveLandscape_==="function") qmsXlsxSaveLandscape_(wb, nm, "portrait"); else XLSX.writeFile(wb, nm);
+  try{ if(typeof showToast==="function") showToast("⬇ "+nm+" 다운로드 (그림은 인쇄/PDF에서 확인)"); }catch(_){}
+  window.__qdocXlsWb=wb;   // 점검용
+}
+function qdocExcelOld_(title){   // [보존] 이전 방식(글자만) — 새 방식 실패 시 대신 사용
   var pg=document.getElementById("qdoc-page"); if(!pg) return;
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 아직 불러오지 못했습니다. 잠시 후 다시 눌러 주세요."); return; }
   var aoa=[], merges=[], wch=[], tx=function(el){ return String(el.innerText||el.textContent||"").replace(/\u00a0/g," ").replace(/[ \t]+\n/g,"\n").trim(); };
