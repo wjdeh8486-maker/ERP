@@ -7455,7 +7455,8 @@ function xcXlsx_(){ var R=__xc.res; if(!R) return; if(typeof XLSX==="undefined")
    · SCAR(거래처 시정요구서) · 8D(고객 클레임 대책서) · 월간 품질 보고서 · HOLD 해제 보고서
    · 장기재고 재검사 판정서 · 계측기 교정 계획표 · PCN(공정변경 통보·승인 요청서)
    · QMS 데이터로 채운 A4 문서를 화면에서 바로 고치고(노란 칸) 인쇄/PDF 저장 — 서버에 따로 저장하지 않음 */
-var QDOC_CSS='.qd-doc{font-family:"Pretendard Variable","Pretendard","맑은 고딕","Malgun Gothic",sans-serif;color:#101828;font-size:12.5px;line-height:1.55}'
+var QDOC_CSS='.qd-doc .qd-img{border:1.5px dashed #98A2B3;border-radius:4px;min-height:230px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#F9FAFB;text-align:center;color:#667085}.qd-doc .qd-img img{max-width:100%;max-height:420px;display:block;margin:0 auto}.qd-doc .qd-img.has{border-style:solid;border-color:#D0D5DD;background:#fff;min-height:0}@media print{.qd-doc .qd-img-h{display:none}}'
+ +'.qd-doc{font-family:"Pretendard Variable","Pretendard","맑은 고딕","Malgun Gothic",sans-serif;color:#101828;font-size:12.5px;line-height:1.55}'
  +'.qd-doc h1{font-size:20px;margin:0 0 2px;text-align:center;letter-spacing:1px}.qd-doc .sub{text-align:center;color:#475467;font-size:11.5px;margin-bottom:10px}'
  +'.qd-doc table{width:100%;border-collapse:collapse;margin:6px 0 10px}.qd-doc th,.qd-doc td{border:1px solid #667085;padding:5px 7px;vertical-align:top;text-align:left}'
  +'.qd-doc th{background:#EEF1F5;font-weight:700;white-space:nowrap}.qd-doc .n{text-align:right}.qd-doc .c{text-align:center}'
@@ -7481,7 +7482,9 @@ function qdocOpen_(title, html){
     +'<button type="button" data-x="xlsx" style="background:#1D6F42;color:#fff;border:0;border-radius:8px;padding:7px 14px;font-weight:800;cursor:pointer;">⬇ Excel 다운로드</button>'
     +'<button type="button" data-x="close" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:8px;padding:7px 12px;cursor:pointer;">닫기 ✕</button></div>'
     +'<div id="qdoc-page" class="qd-doc" style="background:#fff;width:min(820px,100%);box-sizing:border-box;padding:28px 30px;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.25);">'+html+'</div>';
-  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x"); if(x==="close" || e.target===ov){ ov.remove(); } else if(x==="print"){ qdocPrint_(title); } else if(x==="word"){ qdocWord_(title); } else if(x==="xlsx"){ qdocExcel_(title); } });
+  ov.addEventListener("click", function(e){ var slot=e.target.closest && e.target.closest(".qd-img"); if(slot){ var fi=document.createElement("input"); fi.type="file"; fi.accept="image/*";   // [추가] 배치도 그림 넣기
+      fi.onchange=function(){ var f=fi.files&&fi.files[0]; if(!f) return; var rd=new FileReader(); rd.onload=function(){ slot.innerHTML='<img alt="" src="'+rd.result+'">'; slot.classList.add("has"); }; rd.readAsDataURL(f); }; fi.click(); return; }
+    var x=e.target.getAttribute && e.target.getAttribute("data-x"); if(x==="close" || e.target===ov){ ov.remove(); } else if(x==="print"){ qdocPrint_(title); } else if(x==="word"){ qdocWord_(title); } else if(x==="xlsx"){ qdocExcel_(title); } });
   document.body.appendChild(ov);
 }
 // [추가] Word(.doc)로 내려받기 — 화면에서 고친 내용 그대로 저장, 받은 뒤 Word에서 자유롭게 수정 (표·노란 칸 배경 유지)
@@ -7559,7 +7562,7 @@ var QDOC_LIST=[
   { t:"출하정지(HOLD) 해제 보고서", s:"정지 사유·선별 결과·해제 근거", f:function(){ qdocHoldPick_(); } },
   { t:"장기재고 재검사 판정서", s:"150일 이상 보유 재고 목록 + 판정 칸", f:function(){ qdocAged_(); } },
   { t:"계측기 교정 계획표", s:"다음 달(또는 선택 월) 교정 도래·초과 목록", f:function(){ qdocInstrPick_(); } },
-  { t:"PCN (공정변경 통보·승인 요청서)", s:"공장 이전 — 고객별 해당 품목·검증 계획", f:function(){ qdocPcnPick_(); } }
+  { t:"PCN (변경점 승인 신청서)", s:"1·2공장 Lay-out·검사실 이동·신규 설비 — 고객별 해당 품목·배치도·검증 계획", f:function(){ qdocPcnPick_(); } }
 ];
 function qdocHub_(){ qdocPick_("📄 문서 초안 — 만들 문서를 고르세요", QDOC_LIST.map(function(d){ return { label:d.t, sub:d.s, d:d }; }), function(it){ it.d.f(); }); }
 /* ---------- 1. SCAR ---------- */
@@ -7697,20 +7700,42 @@ function qdocInstr_(ym){
 function qdocPcnPick_(){ var c={}; try{ (mainData||[]).forEach(function(r){ var k=String(r.customer||"").trim(); if(k) c[k]=(c[k]||0)+1; }); }catch(_){}
   qdocPick_("PCN — 고객 선택", Object.keys(c).sort(function(a,b){ return c[b]-c[a]; }).map(function(k){ return { label:k, sub:"MAIN 주문 "+c[k]+"건", k:k }; }), function(it){ qdocPcn_(it.k); }, "MAIN 데이터가 아직 없습니다"); }
 function qdocPcn_(cust){
+  // [변경] 2026-11 계획 기준 — 1·2공장 Lay-out 재배치 · 1공장 검사실 이동 · 신규 설비 증설 (유진테크 PCN 등급별 기준 반영) · 배치도 그림 칸
   var items={}, cut=new Date(); cut.setMonth(cut.getMonth()-12); var cs=cut.toISOString().slice(0,10);
   try{ (mainData||[]).forEach(function(r){ if(String(r.customer||"").trim()!==cust) return; var d=String(r.dueDate||""); if(d && d<cs && String(r.shipped||"")==="납품완료") return; var k=String(r.oldDrawingNo||r.partNo||"").trim(); if(!k) return; var it=items[k]=items[k]||{ k:k, pn:r.partNo||"", nm:r.partName||"", n:0 }; it.n++; }); }catch(_){}
   var L=Object.keys(items).sort().map(function(k){ return items[k]; });
-  var h=qdHead_("공정 변경 통보 및 승인 요청서 (PCN)", "PCN-"+qdToday2_().replace(/-/g,"").slice(0,6)+"-"+String(cust).slice(0,6), "수신 "+qdE2_(cust))
-   +'<table><tr><th>수신</th><td>'+qdE2_(cust)+' 품질 담당자 귀하</td><th>발신</th><td>㈜엔티엘 품질팀</td></tr><tr><th>변경 구분 (4M)</th><td colspan="3">'+qdEd_("□ Man  ■ Machine(설비 위치)  ■ Method(검사 환경)  □ Material  ■ 제조·검사 장소 변경")+'</td></tr></table>'
-   +'<h2>1. 변경 내용</h2><table><tr><th style="width:22%">변경 전</th><td>'+qdEd_("현 공장: 부품 가공설비 및 검사설비 운영 (현 검사실)")+'</td></tr>'
-   +'<tr><th>변경 후</th><td>'+qdEd_("공장 확장 이전\n· 부품 생산 가공설비 → 기존 검사실 공간으로 이전\n· 검사설비 → 신규 공장으로 이전 (검사 환경 변경)\n· 이전 공간은 바닥·내부 공사 완료 후 설비 이동")+'</td></tr>'
-   +'<tr><th>변경 사유</th><td>'+qdEd_("생산 능력 확장 및 검사 환경 개선")+'</td></tr><tr><th>적용 예정일</th><td>'+qdEd_("2026년 말 (공사 완료 후 설비 이동, 확정 일정 별도 통보)")+'</td></tr></table>'
-   +'<h2>2. 해당 품목 ('+L.length+'개)</h2><table><tr><th class="c">No</th><th>도번</th><th>품번</th><th>품명</th></tr>'+(L.length?L.map(function(it,i){ return '<tr><td class="c">'+(i+1)+'</td><td>'+qdE2_(it.k)+'</td><td>'+qdE2_(it.pn)+'</td><td>'+qdE2_(it.nm)+'</td></tr>'; }).join(""):'<tr><td colspan="4" class="c m">최근 12개월 주문 품목 없음</td></tr>')+'</table>'
-   +'<h2>3. 품질 영향 평가</h2><table><tr><th>평가 항목</th><th>예상 영향</th><th>검증 방법</th></tr>'
-   +[["치수·기하공차","영향 없음 예상 (설비·프로그램 동일)","이전 후 초물 전 치수 측정, 연속 3 LOT 측정 데이터 제출"],["외관","영향 없음 예상","초물 외관 검사, 한도견본 재확인"],["검사 신뢰성","검사 환경 변경","측정기 재교정·MSA(Gage R&R) 재실시, 검사실 온습도·청정도 기록"],["청정도·포장","영향 없음 예상","포장실·크린룸 환경 확인, 출하 포장 상태 확인"]].map(function(x){ return '<tr><td>'+x[0]+'</td><td>'+qdEd_(x[1])+'</td><td>'+qdEd_(x[2])+'</td></tr>'; }).join("")+'</table>'
-   +'<h2>4. 검증 계획 및 일정</h2><table><tr><td>'+qdEd_("① 설비 이전·설치 후 설비 점검 및 가공 조건 확인\n② 계측기 재교정 및 MSA 재실시\n③ 초물 검사(전 치수) 및 결과 제출\n④ 초기 유동관리: 이전 후 3 LOT 전수 검사 강화\n⑤ 고객 승인 후 양산 적용")+'</td></tr></table>'
-   +'<h2>5. 요청 사항</h2><table><tr><td>'+qdEd_("상기 변경에 대하여 검토 후 승인하여 주시기 바랍니다. 추가 요구 자료(PPAP 제출 수준 등)가 있으면 회신 부탁드립니다.")+'</td></tr></table>'
-   +'<table><tr><th>첨부</th><td>'+qdEd_("공장 배치도(변경 전/후), 이전 일정표, 검증 계획서")+'</td></tr></table>'+qdSign_(["작성","승인","고객 승인"]);
+  var img=function(t){ return '<div class="qd-img" title="눌러서 배치도 그림 넣기 (JPG·PNG) · 다시 누르면 바꾸기"><span class="qd-img-h">🖼 '+qdE2_(t)+'<br><small>눌러서 그림 넣기 (JPG·PNG)</small></span></div>'; };
+  var chk=function(on,t){ return (on?"■ ":"□ ")+t; };
+  var h=qdHead_("변경점(PCN) 승인 신청서", "PCN-"+qdToday2_().replace(/-/g,"").slice(0,6)+"-"+String(cust).slice(0,6), "수신 "+qdE2_(cust))
+   +'<table><tr><th style="width:16%">수신</th><td>'+qdE2_(cust)+' 품질보증팀 귀하</td><th style="width:16%">발신</th><td>㈜엔티엘 품질팀</td></tr>'
+   +'<tr><th>신청 구분</th><td colspan="3">'+qdEd_("■ 사전 신고 (세부 계획 확정 후 항목별 보완 제출)   □ 정식 승인 요청")+'</td></tr>'
+   +'<tr><th>5M+1E</th><td colspan="3">'+qdEd_([chk(0,"Man"),chk(1,"Machine (설비 신규 Set-up · Lay-out)"),chk(1,"Measurement (검사실 이동 · 측정장비 위치)"),chk(0,"Method"),chk(0,"Material"),chk(0,"Environment (생산지 변경 없음)")].join("   "))+'</td></tr>'
+   +'<tr><th>변경 등급</th><td colspan="3">'+qdEd_("A등급 — 신규 설비 Set-up (End-User 승인)\nB등급 — 1·2공장 Lay-out 재배치, 1공장 검사실 이동 (귀사 자체 승인)")+'</td></tr></table>'
+   +'<h2>1. 변경 개요</h2><table><tr><th class="c">No</th><th>공장</th><th>변경 내용</th><th class="c">5M+1E</th><th class="c">등급</th><th>적용 예정일</th></tr>'
+   +[["2공장","생산설비 Lay-out 재배치","Machine (Lay-Out)","B"],["2공장","신규 설비 증설 (기종·대수 확정 예정)","Machine (설비)","A"],["1공장","검사실 이동","Measurement · Lay-Out","B"],["1공장","설비 Lay-out 재배치","Machine (Lay-Out)","B"],["1공장","신규 설비 증설 (기종·대수 확정 예정)","Machine (설비)","A"]].map(function(x,i){ return '<tr><td class="c">'+(i+1)+'</td><td class="nw">'+x[0]+'</td><td>'+qdEd_(x[1])+'</td><td class="c nw">'+x[2]+'</td><td class="c"><b>'+x[3]+'</b></td><td>'+qdEd_("")+'</td></tr>'; }).join("")+'</table>'
+   +'<table><tr><th style="width:16%">변경 사유</th><td>'+qdEd_("생산 능력 확대(Capa. 증설) 및 공정 흐름 개선, 검사 환경 개선")+'</td></tr>'
+   +'<tr><th>생산지 변경</th><td>'+qdEd_("없음 — 기존 1·2공장 안에서의 재배치 및 설비 추가")+'</td></tr></table>'
+   +'<h2>2. 변경 전·후 배치도 (As-Is / To-be)</h2>'
+   +'<table><tr><th class="c" style="width:50%">2공장 — 변경 전 (As-Is)</th><th class="c">2공장 — 변경 후 (To-be, 예상)</th></tr><tr><td>'+img("2공장 현재 배치도")+'</td><td>'+img("2공장 예상 배치도")+'</td></tr>'
+   +'<tr><td colspan="2">'+qdEd_("변경 요약: (예) 공정 순서대로 설비 재배열, 신규 설비 ○대 추가 위치 표시")+'</td></tr></table>'
+   +'<table><tr><th class="c" style="width:50%">1공장 — 변경 전 (As-Is)</th><th class="c">1공장 — 변경 후 (To-be, 예상)</th></tr><tr><td>'+img("1공장 현재 배치도")+'</td><td>'+img("1공장 예상 배치도 (검사실 위치 포함)")+'</td></tr>'
+   +'<tr><td colspan="2">'+qdEd_("변경 요약: (예) 검사실 → ○○ 위치로 이동, 설비 재배치, 신규 설비 ○대 추가")+'</td></tr></table>'
+   +'<h2>3. 해당 품목 ('+L.length+'개 · 최근 12개월 '+qdE2_(cust)+' 주문 기준)</h2><table><tr><th class="c">No</th><th>도번</th><th>품번</th><th>품명</th><th class="c">주문</th></tr>'+(L.length?L.map(function(it,i){ return '<tr><td class="c">'+(i+1)+'</td><td class="nw">'+qdE2_(it.k)+'</td><td class="nw">'+qdE2_(it.pn)+'</td><td>'+qdE2_(it.nm)+'</td><td class="c">'+it.n+'</td></tr>'; }).join(""):'<tr><td colspan="5" class="c m">최근 12개월 주문 품목 없음</td></tr>')+'</table>'
+   +'<h2>4. 품질 영향 평가</h2><table><tr><th>평가 항목</th><th>예상 영향</th><th>검증 방법</th></tr>'
+   +[["치수·기하공차 (신규 설비)","신규 설비 가공 조건에 따라 변동 가능","초물 전 치수 측정, 연속 3 LOT 측정 데이터, CTQ 공정능력(Ppk 1.33 이상) 확인"],
+     ["치수 (Lay-out 재배치 설비)","영향 없음 예상 (설비·프로그램 동일)","이동 후 설비 수평·정도 점검, 초물 전 치수 측정"],
+     ["외관","영향 없음 예상","초물 외관 검사, 한도견본 재확인"],
+     ["검사 신뢰성 (검사실 이동)","측정장비 이동에 따른 정도 변화 가능","측정장비 재교정(공인기관), Gage R&R 재실시, 이전 전·후 동일 시료 비교 측정"],
+     ["검사 환경","검사실 위치 변경","온습도 연속 기록(QMS 온습도 관리) 비교, 청정도·조도 확인"],
+     ["기능검사 (LEAK·FLOW·가압)","장비 이동 시 설정 변동 가능","이동 후 표준 시료로 재검증, 검사 조건 기록"]].map(function(x){ return '<tr><td class="nw">'+x[0]+'</td><td>'+qdEd_(x[1])+'</td><td>'+qdEd_(x[2])+'</td></tr>'; }).join("")+'</table>'
+   +'<h2>5. 검증 계획 및 일정</h2><table><tr><th class="c">No</th><th>단계</th><th>내용</th><th>예정일</th></tr>'
+   +[["사전 신고","본 신청서 제출 · 진행 방법 협의"],["Lay-out 재배치 (B)","배치도 확정 → 설비 이동 → 설비 점검 → 초물 검사"],["검사실 이동 (B)","이동 → 측정장비 재교정 → Gage R&R → 환경 확인 → 검사 개시"],["신규 설비 (A)","기종 확정 → 설치 → 평가품 가공 → 평가 Test 자료 제출 → 승인"],["초기 유동관리","적용 후 3 LOT 전수 검사 강화 · 결과 보고"],["양산 적용","귀사 승인 후 해당 설비·검사실 적용"]].map(function(x,i){ return '<tr><td class="c">'+(i+1)+'</td><td class="nw">'+x[0]+'</td><td>'+qdEd_(x[1])+'</td><td>'+qdEd_("")+'</td></tr>'; }).join("")+'</table>'
+   +'<h2>6. 공급 및 재고 대책 (안전재고 7개월 기준 관련)</h2><table><tr><td>'+qdEd_("· 승인 전까지 귀사 품목은 기존 설비·기존 검사실에서 생산 및 검사하여 공급 중단 없음\n· 신규 설비는 승인 후 귀사 품목에 적용 (승인 전에는 평가품만 가공)\n· Lay-out 이동으로 설비가 멈추는 기간에는 반복 수주 품목을 사전 생산하여 납기 대응\n· 주문생산·다품목 소량 품목 특성상 안전재고 적용 방식은 귀사와 협의 요청")+'</td></tr></table>'
+   +'<h2>7. 제출 서류</h2><table><tr><th class="c">등급</th><th>서류</th><th class="c">제출</th></tr>'
+   +'<tr><td class="c"><b>A</b></td><td>PCN 승인 신청서, 변경 전·후 제품 평가 Test 자료, 변경 전·후 제품 Specification, 도면</td><td class="c">'+qdEd_("□")+'</td></tr>'
+   +'<tr><td class="c"><b>B</b></td><td>PCN 승인 신청서, 변경 전·후 As-Is & To-be 자료 (배치도), 측정장비 재교정 성적서</td><td class="c">'+qdEd_("□")+'</td></tr></table>'
+   +'<h2>8. 요청 사항</h2><table><tr><td>'+qdEd_("상기 변경에 대하여 사전 신고드리며, 세부 계획 확정 후 항목별 자료를 보완 제출하겠습니다.\n① B등급 항목을 A등급(신규 설비)과 분리하여 먼저 진행 가능 여부\n② 안전재고 7개월 적용 방식 (기존 설비 생산 유지로 갈음 가능 여부)\n③ 본 사전 신고일의 7개월 사전 신고 기산일 인정 여부\n검토 후 회신 부탁드립니다.")+'</td></tr></table>'
+   +qdSign_(["작성","검토","승인","고객 승인"]);
   qdocOpen_("PCN — "+cust, h);
 }
 /* 기준정보 ▸ 문서 초안 화면 (카드 목록) */
