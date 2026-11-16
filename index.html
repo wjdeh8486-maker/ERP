@@ -7699,11 +7699,39 @@ function qdocInstr_(ym){
 /* ---------- 7. PCN ---------- */
 function qdocPcnPick_(){ var c={}; try{ (mainData||[]).forEach(function(r){ var k=String(r.customer||"").trim(); if(k) c[k]=(c[k]||0)+1; }); }catch(_){}
   qdocPick_("PCN — 고객 선택", Object.keys(c).sort(function(a,b){ return c[b]-c[a]; }).map(function(k){ return { label:k, sub:"MAIN 주문 "+c[k]+"건", k:k }; }), function(it){ qdocPcn_(it.k); }, "MAIN 데이터가 아직 없습니다"); }
-function qdocPcn_(cust){
+// [추가] PCN 해당 품목 고르기 — 1,400개 전부가 아니라 검증할 품목만 골라 문서에 넣음
+function qdocPcnItems_(cust){ var items={}, cut=new Date(); cut.setMonth(cut.getMonth()-12); var cs=cut.toISOString().slice(0,10);
+  try{ (mainData||[]).forEach(function(r){ if(String(r.customer||"").trim()!==cust) return; var d=String(r.dueDate||"").slice(0,10); if(d && d<cs && String(r.shipped||"")==="납품완료") return; var k=String(r.oldDrawingNo||r.partNo||"").trim(); if(!k) return;
+    var it=items[k]=items[k]||{ k:k, pn:r.partNo||"", nm:r.partName||"", n:0, last:"" }; it.n++; if(d>it.last) it.last=d; }); }catch(_){}
+  return Object.keys(items).map(function(k){ return items[k]; }).sort(function(a,b){ return b.n-a.n || a.k.localeCompare(b.k); }); }
+function qdocPcnPickItems_(cust){
+  var L=qdocPcnItems_(cust), sel={}, q="", E=qdE2_; try{ (JSON.parse(localStorage.getItem("pcnSel_"+cust)||"[]")||[]).forEach(function(k){ sel[k]=1; }); }catch(_){}
+  var old=document.getElementById("pcn-pick"); if(old) old.remove();
+  var w=document.createElement("div"); w.id="pcn-pick"; w.style.cssText="position:fixed;inset:0;z-index:100080;background:rgba(16,24,40,.5);display:flex;align-items:center;justify-content:center;";
+  w.innerHTML='<div style="background:#fff;border-radius:14px;width:min(860px,96vw);height:min(86vh,900px);display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.25);">'
+    +'<div style="padding:12px 16px;border-bottom:1px solid #EAECF0;"><b style="font-size:16px;">PCN 해당 품목 고르기 — '+E(cust)+'</b><div style="font-size:12.5px;color:#667085;">최근 12개월 주문 '+L.length+'개 · 변경 영향을 검증할 품목만 체크하세요 (주문 많은 순). 고른 목록은 다음에도 기억합니다.</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"><input id="pcn-q" placeholder="도번·품번·품명 찾기 (예: SHOWERHEAD)" style="flex:1;min-width:200px;border:1px solid #D0D5DD;border-radius:8px;padding:7px 10px;">'
+    +'<button data-a="vis" class="pb">보이는 것 모두 선택</button><button data-a="top" class="pb">주문 많은 20개</button><button data-a="none" class="pb">전체 해제</button></div></div>'
+    +'<div id="pcn-list" style="overflow:auto;flex:1;padding:4px 16px;"></div>'
+    +'<div style="padding:10px 16px;border-top:1px solid #EAECF0;display:flex;gap:8px;align-items:center;"><span id="pcn-cnt" style="flex:1;font-weight:700;"></span>'
+    +'<button data-a="none2" class="pb">품목 없이 (별첨)</button><button data-a="cancel" class="pb">취소</button><button data-a="go" class="pb" style="background:#1570EF;color:#fff;border-color:#1570EF;font-weight:800;">문서 만들기 ▸</button></div></div>'
+    +'<style>#pcn-pick .pb{border:1px solid #D0D5DD;background:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px}#pcn-pick label{display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px solid #F2F4F7;cursor:pointer;font-size:13px}#pcn-pick label:hover{background:#F9FAFB}</style>';
+  document.body.appendChild(w);
+  var vis=function(){ var qq=q.toUpperCase().replace(/\s+/g,""); return L.filter(function(it){ return !qq || (it.k+" "+it.pn+" "+it.nm).toUpperCase().replace(/\s+/g,"").indexOf(qq)>=0; }); };
+  var draw=function(){ var V=vis(); w.querySelector("#pcn-list").innerHTML=V.slice(0,600).map(function(it){ return '<label><input type="checkbox" data-k="'+E(it.k)+'"'+(sel[it.k]?' checked':'')+' style="width:16px;height:16px;"><b style="min-width:150px;">'+E(it.k)+'</b><span style="min-width:110px;color:#475467;">'+E(it.pn)+'</span><span style="flex:1;">'+E(it.nm)+'</span><span style="color:#667085;white-space:nowrap;">주문 '+it.n+(it.last?' · '+E(it.last):'')+'</span></label>'; }).join("")+(V.length>600?'<div style="padding:8px;color:#667085;">… '+(V.length-600)+'개 더 있음 — 찾기로 좁혀 주세요</div>':'')+(V.length?'':'<div style="padding:16px;color:#98A2B3;">해당 품목 없음</div>');
+    w.querySelector("#pcn-cnt").textContent="선택 "+Object.keys(sel).length+"개"; };
+  draw();
+  w.querySelector("#pcn-q").oninput=function(){ q=this.value; draw(); };
+  w.addEventListener("change", function(e){ var k=e.target.getAttribute && e.target.getAttribute("data-k"); if(!k) return; if(e.target.checked) sel[k]=1; else delete sel[k]; w.querySelector("#pcn-cnt").textContent="선택 "+Object.keys(sel).length+"개"; });
+  w.addEventListener("click", function(e){ var a=e.target.getAttribute && e.target.getAttribute("data-a"); if(!a) return;
+    if(a==="vis"){ vis().forEach(function(it){ sel[it.k]=1; }); draw(); } else if(a==="top"){ L.slice(0,20).forEach(function(it){ sel[it.k]=1; }); draw(); } else if(a==="none"){ sel={}; draw(); }
+    else if(a==="cancel"){ w.remove(); }
+    else if(a==="go" || a==="none2"){ var ks=(a==="none2")?[]:Object.keys(sel); if(a==="go" && !ks.length){ alert("품목을 하나 이상 고르거나 [품목 없이 (별첨)]을 누르세요."); return; }
+      try{ localStorage.setItem("pcnSel_"+cust, JSON.stringify(Object.keys(sel))); }catch(_){} w.remove(); qdocPcn_(cust, ks); } }); }
+function qdocPcn_(cust, selKeys){
+  if(!Array.isArray(selKeys)){ qdocPcnPickItems_(cust); return; }
   // [변경] 2026-11 계획 기준 — 1·2공장 Lay-out 재배치 · 1공장 검사실 이동 · 신규 설비 증설 (유진테크 PCN 등급별 기준 반영) · 배치도 그림 칸
-  var items={}, cut=new Date(); cut.setMonth(cut.getMonth()-12); var cs=cut.toISOString().slice(0,10);
-  try{ (mainData||[]).forEach(function(r){ if(String(r.customer||"").trim()!==cust) return; var d=String(r.dueDate||""); if(d && d<cs && String(r.shipped||"")==="납품완료") return; var k=String(r.oldDrawingNo||r.partNo||"").trim(); if(!k) return; var it=items[k]=items[k]||{ k:k, pn:r.partNo||"", nm:r.partName||"", n:0 }; it.n++; }); }catch(_){}
-  var L=Object.keys(items).sort().map(function(k){ return items[k]; });
+  var __ks={}; selKeys.forEach(function(k){ __ks[k]=1; }); var __all=qdocPcnItems_(cust), L=__all.filter(function(it){ return __ks[it.k]; }).sort(function(a,b){ return a.k.localeCompare(b.k); });
   var img=function(t){ return '<div class="qd-img" title="눌러서 배치도 그림 넣기 (JPG·PNG) · 다시 누르면 바꾸기"><span class="qd-img-h">🖼 '+qdE2_(t)+'<br><small>눌러서 그림 넣기 (JPG·PNG)</small></span></div>'; };
   var chk=function(on,t){ return (on?"■ ":"□ ")+t; };
   var h=qdHead_("변경점(PCN) 승인 신청서", "PCN-"+qdToday2_().replace(/-/g,"").slice(0,6)+"-"+String(cust).slice(0,6), "수신 "+qdE2_(cust))
@@ -7720,7 +7748,10 @@ function qdocPcn_(cust){
    +'<tr><td colspan="2">'+qdEd_("변경 요약: (예) 공정 순서대로 설비 재배열, 신규 설비 ○대 추가 위치 표시")+'</td></tr></table>'
    +'<table><tr><th class="c" style="width:50%">1공장 — 변경 전 (As-Is)</th><th class="c">1공장 — 변경 후 (To-be, 예상)</th></tr><tr><td>'+img("1공장 현재 배치도")+'</td><td>'+img("1공장 예상 배치도 (검사실 위치 포함)")+'</td></tr>'
    +'<tr><td colspan="2">'+qdEd_("변경 요약: (예) 검사실 → ○○ 위치로 이동, 설비 재배치, 신규 설비 ○대 추가")+'</td></tr></table>'
-   +'<h2>3. 해당 품목 ('+L.length+'개 · 최근 12개월 '+qdE2_(cust)+' 주문 기준)</h2><table><tr><th class="c">No</th><th>도번</th><th>품번</th><th>품명</th><th class="c">주문</th></tr>'+(L.length?L.map(function(it,i){ return '<tr><td class="c">'+(i+1)+'</td><td class="nw">'+qdE2_(it.k)+'</td><td class="nw">'+qdE2_(it.pn)+'</td><td>'+qdE2_(it.nm)+'</td><td class="c">'+it.n+'</td></tr>'; }).join(""):'<tr><td colspan="5" class="c m">최근 12개월 주문 품목 없음</td></tr>')+'</table>'
+   +'<h2>3. 검증 대상 품목 ('+L.length+'개'+(L.length?' · 최근 12개월 주문 '+__all.length+'개 중 선정':'')+')</h2>'
+   +(L.length?'<table><tr><th class="c">No</th><th>도번</th><th>품번</th><th>품명</th><th class="c">주문</th></tr>'+L.map(function(it,i){ return '<tr><td class="c">'+(i+1)+'</td><td class="nw">'+qdE2_(it.k)+'</td><td class="nw">'+qdE2_(it.pn)+'</td><td>'+qdE2_(it.nm)+'</td><td class="c">'+it.n+'</td></tr>'; }).join("")+'</table>'
+     +'<table><tr><th style="width:16%">선정 기준</th><td>'+qdEd_("변경 설비·공정을 거치는 품목 중 대표 품목 (제품군·공정별 대표, 주문 빈도 상위)")+'</td></tr></table>'
+     :'<table><tr><td>'+qdEd_("해당 품목 목록은 별첨 (최근 12개월 주문 "+__all.length+"개 품목)")+'</td></tr></table>')
    +'<h2>4. 품질 영향 평가</h2><table><tr><th>평가 항목</th><th>예상 영향</th><th>검증 방법</th></tr>'
    +[["치수·기하공차 (신규 설비)","신규 설비 가공 조건에 따라 변동 가능","초물 전 치수 측정, 연속 3 LOT 측정 데이터, CTQ 공정능력(Ppk 1.33 이상) 확인"],
      ["치수 (Lay-out 재배치 설비)","영향 없음 예상 (설비·프로그램 동일)","이동 후 설비 수평·정도 점검, 초물 전 치수 측정"],
