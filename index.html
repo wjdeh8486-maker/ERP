@@ -15072,6 +15072,16 @@ function sdEditPop_(id){
       sdSave_(); ov.remove(); sdRender_(); } });
   setTimeout(function(){ var i=ov.querySelector(isNew?"#sde-ord":"#sde-avail"); if(i) i.focus(); }, 50);
 }
+// [추가] 특별납기 화면을 다시 그려도 보던 위치 유지 — 완료 체크·완료 해제 등으로 다시 그릴 때 표(스크롤 칸)와 화면 스크롤이 맨 위로 올라가던 문제
+var sdRender0_=sdRender_;
+sdRender_=function(){
+  var root=document.getElementById("sd-root"), keep=[], wy=window.scrollY||0, se=document.scrollingElement, sy=se?se.scrollTop:0;
+  if(root){ var cnt={}; [].forEach.call(root.querySelectorAll("*"),function(el){ if(!(el.scrollTop>0||el.scrollLeft>0)) return; var k=el.tagName+"."+String(el.className||""); cnt[k]=(cnt[k]||0); var n=[].filter.call(root.querySelectorAll(el.tagName),function(x){ return String(x.className||"")===String(el.className||""); }).indexOf(el); keep.push({ k:k, tag:el.tagName, cls:String(el.className||""), n:n, t:el.scrollTop, l:el.scrollLeft }); }); }
+  var r=sdRender0_.apply(this, arguments);
+  if(root && keep.length){ keep.forEach(function(o){ var L=[].filter.call(root.querySelectorAll(o.tag),function(x){ return String(x.className||"")===o.cls; }), el=L[o.n]; if(el){ el.scrollTop=o.t; el.scrollLeft=o.l; } }); }
+  if(se && se.scrollTop!==sy) se.scrollTop=sy; else if((window.scrollY||0)!==wy) window.scrollTo(0,wy);
+  return r;
+};
 function sdChange_(e){
   var t=e.target;
   if(t.id==="sd-cap"){ var v=Math.max(1, Math.min(50, Number(t.value)||5)); __sd.cap=v; sdSave_(); sdRender_(); return; }
