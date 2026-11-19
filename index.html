@@ -35541,6 +35541,489 @@ function scarPrint_(d){ var E=qmsEsc_, w=qmsPrintWin_(); if(!w){ alert("팝업�
     +'</body></html>');
   w.document.close(); setTimeout(function(){ try{ w.print(); }catch(_){} }, 400); }
 try{ RV_STAGE.push({ title:"🤝 협력사 NCR 대리 작성", desc:"1인 사업장 협력사 — 협력사가 알려준 원인만 넣으면 4M 분류로 시정조치 보고서(유출원인·5Why·시정·재발방지) 초안 작성, 협력사 확인 문자·서명란 포함", open:function(){ scarOpen_(); } }); }catch(_){}
+/* ==================== 📐 INCH → mm 검토 (검토 중) ==================== */
+/* ===== INCH→mm 검토 (i2m) — 독립 모듈 =====
+ * 진입: i2mRender_(container)  (container 생략 시 #i2m-root)
+ * 저장: qShareLoad_/qShareSave_ 있으면 공유저장(병합 후 저장), 없으면 localStorage
+ */
+var I2M_KEY = "i2m_v1";
+var I2M_GDT_RE = /^(위치도|평면도|평행도|직각도|동심도|진원도|원통도|윤곽도|흔들림|경사도|대칭도|POS(ITION)?|FLAT(NESS)?|PARA(LLEL(ISM)?)?|PERP(ENDICULAR(ITY)?)?|CONC(ENTRICITY)?|ROUND(NESS)?|CYL(INDRICITY)?|PROFILE|RUNOUT|SYM(METRY)?|ANG(ULARITY)?)\s*/i;
+var I2M_THREAD_RE = /(\d+\s*\/\s*\d+\s*-\s*\d+|\d+\s*-\s*\d+\s*UN|UN[CFEJ]|NPT|NPS|BSP|\bRC\b|\bRP\b|\bPT\b|\bPF\b|^M\d)/i;
+var i2mState_ = null;   // { db:{key:rec}, cur:rec }
+
+function i2mEsc_(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
+
+/* "9.875" → {v:9.875, dp:3}, "1/8" → {v:.125, frac:true}, "1-1/2" → 1.5 */
+function i2mNum_(t){
+  t = String(t||"").trim();
+  var m = t.match(/^(\d+)\s*[- ]\s*(\d+)\s*\/\s*(\d+)$/);
+  if(m) return {v:+m[1] + (+m[2])/(+m[3]), frac:true, dp:0};
+  m = t.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if(m) return {v:(+m[1])/(+m[2]), frac:true, dp:0};
+  m = t.match(/^(\d*)\.?(\d*)$/);
+  if(m && (m[1]||m[2])){
+    var dp = t.indexOf(".")>=0 ? m[2].length : 0;
+    return {v:parseFloat(t.indexOf(".")===0 ? "0"+t : t), frac:false, dp:dp};
+  }
+  return null;
+}
+function i2mFracVal_(t){ var n=i2mNum_(t); return n?n.v:null; }
+
+/* 도면 표기 한 줄 해석 */
+function i2mParse_(raw){
+  var r = {raw:raw, qty:"", pre:"", type:"", nom:null, dp:0, frac:false, up:null, lo:null, err:""};
+  var s = String(raw||"").trim().replace(/[−–—]/g,"-").replace(/⌀|∅/g,"Ø").replace(/±/g,"±");
+  if(!s){ r.type="empty"; return r; }
+  var m = s.match(/^(\d+)\s*[Xx×]\s*/);
+  if(m){ r.qty=m[1]+"X"; s=s.slice(m[0].length); }
+  if(I2M_THREAD_RE.test(s)){ r.type="thread"; return r; }
+  var g = s.match(I2M_GDT_RE);
+  if(g){
+    r.type="gdt"; r.pre=g[1];
+    var rest = s.slice(g[0].length).replace(/^Ø\s*/,function(){ r.pre+=" Ø"; return ""; });
+    var gn = i2mNum_((rest.match(/[\d.\/]+/)||[""])[0]);
+    if(!gn){ r.err="숫자 없음"; return r; }
+    r.nom=gn.v; r.dp=gn.dp; return r;
+  }
+  if(/^\(.*\)$/.test(s)){ r.type="ref"; s=s.slice(1,-1).trim(); }
+  else if(/^\[.*\]$/.test(s)){ r.type="basic"; s=s.slice(1,-1).trim(); }
+  if(/\b(BSC|BASIC)\b/i.test(s)){ r.type="basic"; s=s.replace(/\b(BSC|BASIC)\b/ig,"").trim(); }
+  s = s.replace(/\bB\.?C\.?\b/i,"").trim();
+  m = s.match(/^(Ø|DIA\.?|SR|R)\s*/i);
+  if(m){ r.pre = /^DIA/i.test(m[1]) ? "Ø" : m[1].toUpperCase(); s=s.slice(m[0].length); }
+  var ch = s.match(/^([\d.]+)\s*[Xx×]\s*(\d+(?:\.\d+)?)\s*(?:°|DEG)/i);
+  if(ch){ r.chamAng=ch[2]; s=ch[1]+s.slice(ch[0].length); }
+  var ang = !ch && /°|DEG/i.test(s);
+  if(/\bMAX\.?\b/i.test(s)){ r.type = r.type||"max"; s=s.replace(/\bMAX\.?\b/ig,"").trim(); }
+  if(/\bMIN\.?\b/i.test(s)){ r.type = r.type||"min"; s=s.replace(/\bMIN\.?\b/ig,"").trim(); }
+  s = s.replace(/°|DEG/ig,"").trim();
+  m = s.match(/^(\d+\s*[- ]\s*\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d*\.\d+|\d+\.?)\s*(.*)$/);
+  if(!m){ r.err="치수 숫자 없음"; r.type=r.type||"err"; return r; }
+  var n = i2mNum_(m[1].trim());
+  if(!n){ r.err="치수 해석 불가"; r.type=r.type||"err"; return r; }
+  r.nom=n.v; r.dp=n.dp; r.frac=n.frac;
+  var tol = m[2].replace(/\s+/g," ").trim();
+  if(ang){ r.ang=true; }
+  if(!tol){ r.type = r.type || "gen"; return r; }
+  var t1 = tol.match(/^(?:±|\+\/-|\+-)\s*(\d+\/\d+|\d*\.\d+|\d+)/);
+  if(t1){ var v=i2mFracVal_(t1[1]); if(v==null){r.err="공차 해석 불가";return r;} r.up=v; r.lo=-v; r.type=r.type||"sym"; return r; }
+  var tu = tol.match(/\+\s*(\d+\/\d+|\d*\.\d+|\d+)/), tl = tol.match(/-\s*(\d+\/\d+|\d*\.\d+|\d+)/);
+  if(tu || tl){
+    r.up = tu ? i2mFracVal_(tu[1]) : 0; r.lo = tl ? -i2mFracVal_(tl[1]) : 0;
+    if(r.up==null||isNaN(r.lo)){ r.err="공차 해석 불가"; return r; }
+    r.type=r.type||"asym"; return r;
+  }
+  r.type=r.type||"gen"; r.extra=tol; return r;
+}
+
+/* mm 반올림: 상한 내림, 하한 올림(허용범위 안쪽) */
+function i2mMm_(inch){ return Math.round(inch*25.4*1e6)/1e6; }
+function i2mFloor3_(v){ return Math.floor(v*1000+1e-6)/1000; }
+function i2mCeil3_(v){ return Math.ceil(v*1000-1e-6)/1000; }
+function i2mRound3_(v){ return Math.round(v*1000)/1000; }
+function i2mF3_(v){ return (Math.abs(v)<5e-7?0:v).toFixed(3); }
+function i2mSg_(v){ return (v>=0?"+":"−")+i2mF3_(Math.abs(v)); }
+
+/* 일반공차(inch) 찾기 */
+function i2mGenTol_(p, gen){
+  if(p.ang) return {v:parseFloat(gen.ang)||null, src:"각도"};
+  if(p.frac) { var fv=i2mFracVal_(gen.frac); return {v:fv, src:"분수"}; }
+  var k = p.dp<=1 ? "d1" : p.dp===2 ? "d2" : p.dp===3 ? "d3" : "d4";
+  return {v:parseFloat(gen[k])||null, src:"."+"X".repeat(Math.max(1,Math.min(4,p.dp)))};
+}
+
+/* 한 행 계산 → 표시용 결과 */
+function i2mCalc_(row, gen){
+  var p = i2mParse_(row.raw), o = {p:p, kind:"", mm:"", tol:"", hi:null, lo:null, nom:null, note:p.err||""};
+  var tuS=String(row.tu==null?"":row.tu).trim(), tlS=String(row.tl==null?"":row.tl).trim();
+  if(/^(±|\+\/-|\+-)/.test(tuS) && !tlS){ tlS="-"+tuS.replace(/^(±|\+\/-|\+-)\s*/,""); tuS="+"+tuS.replace(/^(±|\+\/-|\+-)\s*/,""); }
+  if((tuS||tlS) && p.nom!=null && (p.type==="gen"||p.type==="sym"||p.type==="asym")){
+    var pu=i2mTolIn_(tuS,1), pl=i2mTolIn_(tlS,-1);
+    if(pu===false||pl===false){ p.err="공차 칸 숫자 확인"; }
+    else { p.up=pu; p.lo=pl; p.type=(pu===-pl)?"sym":"asym"; p.manual=true; }
+  }
+  var KIND = {gen:"일반공차", sym:"±공차", asym:"편측공차", ref:"참고", basic:"기준(BSC)", max:"MAX", min:"MIN", gdt:"기하공차", thread:"나사", err:"오류", empty:""};
+  o.kind = (KIND[p.type]||p.type)+(p.manual?"(입력)":"");
+  if(p.type==="empty"||p.type==="err") return o;
+  if(p.type==="thread"){ o.mm="변환 안 함"; o.note=o.note||"나사 규격은 inch 그대로 (게이지 판정)"; return o; }
+  var pre = (p.qty?p.qty+" ":"") + (p.pre && p.type!=="gdt" ? p.pre : "");
+  if(p.ang){
+    o.mm = pre + p.nom + "°";
+    var up=p.up, lo=p.lo;
+    if(p.type==="gen"){ var ga=i2mGenTol_(p,gen); if(ga.v==null){o.note="각도 일반공차 미입력";return o;} up=ga.v; lo=-ga.v; o.note="일반공차 ±"+ga.v+"°"; }
+    if(up!=null){ o.tol = up===-lo ? "±"+up+"°" : (up<0?"−":"+")+Math.abs(up)+"° / "+(lo<0||Object.is(lo,-0)?"−":"+")+Math.abs(lo)+"°"; o.hi=p.nom+up; o.lo=p.nom+lo; o.unit="°"; o.nom=p.nom; }
+    else if(p.type==="ref"){ o.mm="("+o.mm+")"; }
+    return o;
+  }
+  var nmm = i2mRound3_(i2mMm_(p.nom));
+  if(p.type==="gdt"){ o.mm = p.pre+(/Ø$/.test(p.pre)?"":" ")+i2mF3_(i2mFloor3_(i2mMm_(p.nom))); o.tol="공차역"; o.hi=i2mFloor3_(i2mMm_(p.nom)); o.lo=0; o.gdt=true; return o; }
+  if(p.chamAng){ o.kind+="(C면취)"; }
+  if(p.type==="ref"){ o.mm="("+pre+i2mF3_(nmm)+")"; o.note=o.note||"참고치수 — 판정 안 함"; return o; }
+  if(p.type==="basic"){ o.mm="["+pre+i2mF3_(nmm)+"]"; o.note=o.note||"기준치수 — 기하공차로 판정"; return o; }
+  if(p.type==="max"){ o.hi=i2mFloor3_(i2mMm_(p.nom)); o.nom=o.hi; o.mm=pre+i2mF3_(o.hi)+" MAX"; return o; }
+  if(p.type==="min"){ o.lo=i2mCeil3_(i2mMm_(p.nom)); o.nom=o.lo; o.mm=pre+i2mF3_(o.lo)+" MIN"; return o; }
+  var up=p.up, lo=p.lo;
+  if(p.type==="gen"){
+    var gt=i2mGenTol_(p,gen);
+    if(gt.v==null){ o.mm=pre+i2mF3_(nmm); o.nom=nmm; o.note="일반공차("+gt.src+") 미입력"; return o; }
+    up=gt.v; lo=-gt.v; o.note=(o.note?o.note+" / ":"")+"일반공차 "+gt.src+" ±"+gt.v;
+  }
+  o.hi = i2mFloor3_(i2mMm_(p.nom+up));
+  o.lo = i2mCeil3_(i2mMm_(p.nom+lo));
+  o.mm = pre + i2mF3_(nmm) + (p.chamAng ? " X "+p.chamAng+"°" : ""); o.nom=nmm;
+  if(p.manual) o.note=(o.note?o.note+" / ":"")+"공차 직접입력 "+(up<0?"−":"+")+Math.abs(up)+" / "+(lo<0||Object.is(lo,-0)?"−":"+")+Math.abs(lo)+" inch";
+  var du = i2mFloor3_(i2mMm_(Math.abs(up))), dl = i2mFloor3_(i2mMm_(Math.abs(lo)));
+  o.tol = (up===-lo) ? "±"+i2mF3_(du) : (up<0?"−":"+")+i2mF3_(du)+" / "+(lo<0||Object.is(lo,-0)?"−":"+")+i2mF3_(dl);
+  return o;
+}
+
+function i2mJudge_(o, meas){
+  var t = String(meas==null?"":meas).trim(); if(!t) return "";
+  var v = parseFloat(t); if(isNaN(v)) return "";
+  if(o.p&&o.p.err) return "";
+  if(o.hi==null && o.lo==null) return "";
+  if(o.hi!=null && v>o.hi+1e-9) return "NG";
+  if(o.lo!=null && v<o.lo-1e-9) return "NG";
+  return "OK";
+}
+
+/* ---------- 저장 ---------- */
+function i2mKeyOf_(rec){ return (String(rec.dwg||"").trim().toUpperCase()+"|"+String(rec.rev||"").trim().toUpperCase()); }
+function i2mLocalLoad_(){ try{ return JSON.parse(localStorage.getItem(I2M_KEY)||"{}")||{}; }catch(e){ return {}; } }
+function i2mLocalSave_(db){ try{ localStorage.setItem(I2M_KEY, JSON.stringify(db)); }catch(e){} }
+function i2mMerge_(a, b){
+  var out = {}, k;
+  for(k in (a||{})) out[k]=a[k];
+  for(k in (b||{})){ if(!out[k] || (b[k].__editedAt||0) > (out[k].__editedAt||0)) out[k]=b[k]; }
+  return out;
+}
+function i2mShared_(){ return typeof qShareLoad_==="function" && typeof qShareSave_==="function"; }
+function i2mLoadDb_(cb){
+  var local = i2mLocalLoad_();
+  if(!i2mShared_()){ cb(local); return; }
+  var done=false, to=setTimeout(function(){ if(!done){ done=true; cb(local); } }, 15000);
+  try{
+    qShareLoad_(I2M_KEY, function(remote){
+      if(done) return; done=true; clearTimeout(to);
+      var db = i2mMerge_(local, (remote && typeof remote==="object") ? remote : {});
+      i2mLocalSave_(db); cb(db);
+    });
+  }catch(e){ if(!done){ done=true; clearTimeout(to); cb(local); } }
+}
+function i2mSaveDb_(db, cb){
+  i2mLocalSave_(db);
+  if(!i2mShared_()){ cb && cb(true,"이 PC에 저장"); return; }
+  try{
+    qShareLoad_(I2M_KEY, function(remote){
+      var merged = i2mMerge_((remote && typeof remote==="object") ? remote : {}, db);
+      i2mState_.db = merged; i2mLocalSave_(merged);
+      try{ cb && cb(true,"공유 저장 중"); qShareSave_(I2M_KEY, merged, "i2m-msg"); }catch(e){ cb && cb(false,"공유 저장 실패 — 이 PC에는 저장됨"); }
+    });
+  }catch(e){ cb && cb(false,"공유 저장 실패 — 이 PC에는 저장됨"); }
+}
+
+/* ---------- 화면 ---------- */
+function i2mNewRec_(){
+  return {dwg:"", rev:"", name:"", cust:"", memo:"",
+    gen:{d1:"0.1", d2:"0.01", d3:"0.005", d4:"0.0005", frac:"", ang:"0.5"},
+    rows:[], __editedAt:0};
+}
+function i2mCss_(){
+  if(document.getElementById("i2m-css")) return;
+  var st=document.createElement("style"); st.id="i2m-css";
+  st.textContent =
+  ".i2m{font-size:13px}.i2m-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}"+
+  ".i2m input,.i2m select,.i2m textarea{font:inherit;padding:5px 7px;border:1px solid #9aa4b2;border-radius:5px;box-sizing:border-box}"+
+  ".i2m button{font:inherit;padding:6px 11px;border:1px solid #6b7686;border-radius:5px;background:#fff;cursor:pointer;min-height:32px}"+
+  ".i2m button.pri{background:#1f4e8c;color:#fff;border-color:#1f4e8c}.i2m button.dan{color:#c62828;border-color:#c62828}"+
+  ".i2m-box{border:1px solid #c5ccd6;border-radius:8px;padding:10px;margin-bottom:10px;background:#fafbfc}"+
+  ".i2m-box h4{margin:0 0 8px;font-size:14px}"+
+  ".i2m-grid{display:flex;flex-wrap:wrap;gap:8px 14px}.i2m-grid label{display:flex;align-items:center;gap:5px;font-weight:600}"+
+  ".i2m-gen input{width:72px;text-align:center}"+
+  ".i2m-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}"+
+  ".i2m-t{border-collapse:collapse;width:100%;min-width:1180px;background:#fff}"+
+  ".i2m-t th,.i2m-t td{border:1px solid #555;padding:4px 5px;text-align:center;vertical-align:middle}"+
+  ".i2m-t th{background:#dfe6ef!important;color:#101828!important;font-weight:700;position:sticky;top:0}"+
+  ".i2m-t tbody tr:nth-child(even) td{background:#f3f6f9}"+
+  ".i2m-t td input{width:100%;text-align:center;border-color:#c0c7d1}"+
+  ".i2m-t td.c-no input{width:44px}.i2m-t td.c-raw input{min-width:190px;font-family:Consolas,monospace}"+
+  ".i2m-t td.c-mm{font-weight:700;font-family:Consolas,monospace;white-space:nowrap}"+
+  ".i2m-t td.c-lim{font-family:Consolas,monospace;white-space:nowrap}"+
+  ".i2m-t td.c-meas input{width:90px}.i2m-t td.c-tu input{width:66px;font-family:Consolas,monospace}.i2m-t td.c-dev{font-family:Consolas,monospace;font-weight:700;white-space:nowrap}.i2m-t td.c-note{font-size:12px;color:#444;min-width:150px}"+
+  ".i2m-ok{color:#1b7f2a;font-weight:700}.i2m-ng{color:#fff;background:#d32f2f!important;font-weight:700}"+
+  ".i2m-err{color:#c62828;font-weight:700}"+
+  ".i2m-help{font-size:12px;color:#555;line-height:1.6}"+
+  "@media(max-width:700px){.i2m-grid label{width:100%}.i2m-grid label input{flex:1}}";
+  document.head.appendChild(st);
+}
+
+function i2mRender_(container){
+  var root = container || document.getElementById("i2m-root"); if(!root) return;
+  i2mCss_();
+  if(!i2mState_){ i2mState_ = {db:i2mLocalLoad_(), cur:i2mNewRec_()}; }
+  root.innerHTML =
+  '<div class="i2m">'+
+   '<div class="i2m-bar"><b style="font-size:15px">📐 INCH → mm 검토</b>'+
+    '<select id="i2m-list" style="min-width:220px"></select>'+
+    '<button onclick="i2mNew_()">새 도면</button>'+
+    '<button class="pri" onclick="i2mSave_()">💾 저장</button>'+
+    '<button onclick="i2mExcel_()">엑셀</button>'+
+    '<button onclick="i2mPrint_()">인쇄</button>'+
+    '<button class="dan" onclick="i2mDel_()">삭제</button>'+
+    '<span id="i2m-msg" style="font-size:12px;color:#1f4e8c"></span></div>'+
+   '<div class="i2m-box"><h4>도면 정보 · 일반공차(표제란, inch)</h4><div class="i2m-grid">'+
+    '<label>도번 <input id="i2m-dwg" style="width:150px"></label>'+
+    '<button type="button" onclick="i2mOpenDwg_()" title="도면 서버에서 이 도번 PDF를 새 탭으로 엽니다">📄 도면 열기</button>'+
+    '<button type="button" onclick="document.getElementById(\'i2m-pdf\').click()" title="메일 등으로 받은 PDF를 새 탭으로 엽니다">📂 PDF 파일 열기</button>'+
+    '<input type="file" id="i2m-pdf" accept="application/pdf,.pdf" style="display:none" onchange="i2mOpenPdf_(this)">'+
+    '<label>REV <input id="i2m-rev" style="width:60px"></label>'+
+    '<label>품명 <input id="i2m-name" style="width:220px"></label>'+
+    '<label>고객 <input id="i2m-cust" style="width:120px"></label>'+
+   '</div><div class="i2m-grid i2m-gen" style="margin-top:8px">'+
+    '<label>.X ± <input data-g="d1"></label><label>.XX ± <input data-g="d2"></label>'+
+    '<label>.XXX ± <input data-g="d3"></label><label>.XXXX ± <input data-g="d4"></label>'+
+    '<label>분수 ± <input data-g="frac" placeholder="예 1/32"></label><label>각도 ±° <input data-g="ang"></label>'+
+   '</div></div>'+
+   '<div class="i2m-box"><h4>치수 입력</h4>'+
+    '<div class="i2m-bar"><button onclick="i2mAdd_()">+ 행 추가</button>'+
+    '<button onclick="i2mBulkToggle_()">여러 줄 붙여넣기</button>'+
+    '<span id="i2m-sum" style="font-weight:700"></span></div>'+
+    '<div id="i2m-bulk" style="display:none;margin-bottom:8px">'+
+     '<textarea id="i2m-bulk-t" rows="5" style="width:100%" placeholder="한 줄에 치수 하나&#10;Ø9.875 +.000/-.002&#10;5.585 ±.003&#10;8X Ø.344&#10;(5.71)&#10;위치도 Ø.010&#10;45°"></textarea>'+
+     '<button class="pri" onclick="i2mBulkAdd_()">추가</button></div>'+
+    '<div class="i2m-scroll"><table class="i2m-t"><thead><tr>'+
+     '<th>No</th><th>도면 표기 (inch)</th><th title="일반공차가 아닐 때만 입력 (inch)">+공차<br>(inch)</th><th title="일반공차가 아닐 때만 입력 (inch)">−공차<br>(inch)</th><th>구분</th><th>mm 치수</th><th>mm 공차</th><th>상한(mm)</th><th>하한(mm)</th><th>측정값(mm)</th><th>판정</th><th>편차(mm)</th><th>비고</th><th></th>'+
+    '</tr></thead><tbody id="i2m-body"></tbody></table></div>'+
+   '</div>'+
+   '<div class="i2m-help">· 입력 예: <code>Ø9.875 +.000/-.002</code>, <code>5.585 ±.003</code>, <code>8X Ø.344</code>(일반공차), <code>(5.71)</code> 참고, <code>[9.375]</code> 또는 <code>9.375 BSC</code> 기준치수, <code>위치도 Ø.010</code>, <code>.030 MAX</code>, <code>45°</code>, <code>1/8</code>(분수)<br>'+
+   '· <b>일반공차가 아닌 치수</b>는 +공차/−공차 칸에 inch로 입력(예 8.751 → <code>.002</code> / <code>0</code>, 5.585 → <code>±.003</code>) — 입력하면 일반공차 대신 적용. 엑셀에서 [표기·+공차·−공차·측정값] 4칸 복사해 붙여넣기 가능.<br>'+
+   '· 편차 = 측정값 − mm 치수.<br>'+
+   '· 일반공차는 소수 자릿수로 자동 적용(.375 → .XXX). 상한은 내림, 하한은 올림(허용범위 안쪽)으로 0.001mm 반올림.<br>'+
+   '· 나사(1/8 Rc, 1/4-20 UNC, NPT 등)는 변환하지 않음. 이 표는 참고용이며 판정 기준은 원본 inch 도면.</div>'+
+  '</div>';
+  i2mBind_(root);
+  i2mFillHead_(); i2mDrawRows_(); i2mDrawList_();
+  i2mLoadDb_(function(db){ i2mState_.db=db; i2mDrawList_(); });
+}
+
+function i2mOpenDwg_(){
+  var d=String(i2mState_.cur.dwg||"").trim();
+  if(!d){ alert("도번을 먼저 입력하세요."); document.getElementById("i2m-dwg").focus(); return; }
+  if(typeof openDrawing==="function") openDrawing(d); else alert("도면 서버 기능이 없습니다. [PDF 파일 열기]를 사용하세요.");
+}
+function i2mOpenPdf_(inp){
+  var f=inp.files&&inp.files[0]; if(!f) return;
+  var url=URL.createObjectURL(f), w=window.open(url,"_blank");
+  if(!w) alert("팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.");
+  var nm=f.name.replace(/\.pdf$/i,""), di=document.getElementById("i2m-dwg");
+  if(di && !di.value.trim()){ di.value=nm; i2mState_.cur.dwg=nm; }
+  setTimeout(function(){ inp.value=""; },0);
+}
+function i2mBind_(root){
+  var g=function(id){return document.getElementById(id);};
+  ["dwg","rev","name","cust"].forEach(function(f){
+    g("i2m-"+f).addEventListener("input",function(){ i2mState_.cur[f]=this.value; });
+  });
+  root.querySelectorAll("[data-g]").forEach(function(inp){
+    inp.addEventListener("input",function(){ i2mState_.cur.gen[this.dataset.g]=this.value.trim(); i2mRefreshAll_(); });
+  });
+  g("i2m-list").addEventListener("change",function(){
+    var k=this.value; if(!k) return;
+    var rec=i2mState_.db[k]; if(!rec) return;
+    i2mState_.cur = JSON.parse(JSON.stringify(rec));
+    if(!i2mState_.cur.gen) i2mState_.cur.gen=i2mNewRec_().gen;
+    i2mFillHead_(); i2mDrawRows_();
+  });
+  var body=g("i2m-body");
+  body.addEventListener("input",function(e){
+    var t=e.target, tr=t.closest("tr"); if(!tr||!t.dataset.f) return;
+    var row=i2mState_.cur.rows[+tr.dataset.i]; if(!row) return;
+    row[t.dataset.f]=t.value;
+    if(t.dataset.f!=="no") i2mRefreshRow_(tr,row);
+  });
+  body.addEventListener("click",function(e){
+    var b=e.target.closest("[data-del]"); if(!b) return;
+    var i=+b.closest("tr").dataset.i, row=i2mState_.cur.rows[i];
+    if(row && (row.raw||row.meas) && !confirm((row.no||i+1)+"번 행을 지울까요?")) return;
+    i2mState_.cur.rows.splice(i,1); i2mDrawRows_();
+  });
+  body.addEventListener("keydown",function(e){
+    if(e.key!=="Enter"||e.target.dataset.f!=="raw") return;
+    e.preventDefault(); var i=+e.target.closest("tr").dataset.i;
+    if(i===i2mState_.cur.rows.length-1) i2mAdd_();
+    else { var n=body.querySelector('tr[data-i="'+(i+1)+'"] input[data-f="raw"]'); n&&n.focus(); }
+  });
+}
+function i2mFillHead_(){
+  var c=i2mState_.cur, g=function(id){return document.getElementById(id);};
+  g("i2m-dwg").value=c.dwg||""; g("i2m-rev").value=c.rev||""; g("i2m-name").value=c.name||""; g("i2m-cust").value=c.cust||"";
+  document.querySelectorAll(".i2m [data-g]").forEach(function(inp){ inp.value=(c.gen&&c.gen[inp.dataset.g])||""; });
+}
+function i2mDrawList_(){
+  var sel=document.getElementById("i2m-list"); if(!sel) return;
+  var db=i2mState_.db, ks=Object.keys(db).filter(function(k){return !db[k].deleted;});
+  ks.sort(function(a,b){return (db[b].__editedAt||0)-(db[a].__editedAt||0);});
+  var curK=i2mKeyOf_(i2mState_.cur);
+  sel.innerHTML='<option value="">— 저장된 도면 ('+ks.length+') —</option>'+ks.map(function(k){
+    var r=db[k]; return '<option value="'+i2mEsc_(k)+'"'+(k===curK?" selected":"")+'>'+i2mEsc_(r.dwg+(r.rev?" REV "+r.rev:"")+(r.name?" · "+r.name:""))+'</option>';
+  }).join("");
+}
+function i2mTolIn_(s, def){
+  s=String(s||"").trim().replace(/[−–—]/g,"-"); if(!s) return 0;
+  var m=s.match(/^([+\-]?)\s*(\d+\/\d+|\d*\.\d+|\d+\.?)$/); if(!m) return false;
+  var v=i2mFracVal_(m[2]); if(v==null||isNaN(v)) return false;
+  return m[1]==="-" ? -v : m[1]==="+" ? v : def*v;
+}
+function i2mDev_(o, meas){
+  var t=String(meas==null?"":meas).trim(), v=parseFloat(t);
+  if(!t||isNaN(v)||o.nom==null||o.gdt||(o.p&&o.p.err)) return "";
+  var d=Math.round((v-o.nom)*1000)/1000; if(Math.abs(d)<5e-4) d=0;
+  return (d>0?"+":d<0?"−":"")+(o.unit==="°"?Math.abs(d)+"°":Math.abs(d).toFixed(3));
+}
+function i2mRowCells_(row, i){
+  var o=i2mCalc_(row, i2mState_.cur.gen), j=i2mJudge_(o,row.meas);
+  var lim=function(v){ return v==null?"-":(o.unit==="°"? (Math.round(v*1000)/1000)+"°" : i2mF3_(v)); };
+  return {
+    kind: o.p.type==="err" ? '<span class="i2m-err">확인</span>' : i2mEsc_(o.kind),
+    mm: i2mEsc_(o.mm), tol: i2mEsc_(o.tol),
+    hi: (o.p.type==="empty"||o.p.type==="thread")?"":lim(o.hi), lo:(o.p.type==="empty"||o.p.type==="thread")?"":lim(o.lo),
+    judge:j, dev:i2mDev_(o,row.meas), note:(o.p.err?'<span class="i2m-err">'+i2mEsc_(o.p.err)+'</span>':i2mEsc_(o.note))
+  };
+}
+function i2mDrawRows_(){
+  var body=document.getElementById("i2m-body"); if(!body) return;
+  var rows=i2mState_.cur.rows;
+  if(!rows.length){ for(var k=0;k<5;k++) rows.push({no:String(k+1),raw:"",meas:"",memo:""}); }
+  body.innerHTML = rows.map(function(row,i){
+    var c=i2mRowCells_(row,i);
+    return '<tr data-i="'+i+'">'+
+      '<td class="c-no"><input data-f="no" value="'+i2mEsc_(row.no)+'"></td>'+
+      '<td class="c-raw"><input data-f="raw" value="'+i2mEsc_(row.raw)+'" placeholder="예 Ø9.875 +.000/-.002"></td>'+
+      '<td class="c-tu"><input data-f="tu" value="'+i2mEsc_(row.tu||"")+'" placeholder="+"></td>'+
+      '<td class="c-tu"><input data-f="tl" value="'+i2mEsc_(row.tl||"")+'" placeholder="−"></td>'+
+      '<td class="c-kind">'+c.kind+'</td><td class="c-mm">'+c.mm+'</td><td class="c-lim c-tol">'+c.tol+'</td>'+
+      '<td class="c-lim c-hi">'+c.hi+'</td><td class="c-lim c-lo">'+c.lo+'</td>'+
+      '<td class="c-meas"><input data-f="meas" inputmode="decimal" value="'+i2mEsc_(row.meas)+'"></td>'+
+      '<td class="c-judge'+(c.judge==="NG"?" i2m-ng":"")+'">'+(c.judge==="OK"?'<span class="i2m-ok">OK</span>':c.judge)+'</td>'+
+      '<td class="c-dev"'+(c.judge==="NG"?' style="color:#c62828"':'')+'>'+c.dev+'</td>'+
+      '<td class="c-note">'+c.note+'</td>'+
+      '<td><button data-del="1" title="행 삭제" style="padding:3px 8px;min-height:28px">✕</button></td></tr>';
+  }).join("");
+  i2mSum_();
+}
+function i2mRefreshRow_(tr,row){
+  var c=i2mRowCells_(row,+tr.dataset.i), q=function(s){return tr.querySelector(s);};
+  q(".c-kind").innerHTML=c.kind; q(".c-mm").innerHTML=c.mm; q(".c-tol").innerHTML=c.tol;
+  q(".c-hi").innerHTML=c.hi; q(".c-lo").innerHTML=c.lo; q(".c-note").innerHTML=c.note;
+  var jd=q(".c-judge"); jd.className="c-judge"+(c.judge==="NG"?" i2m-ng":""); jd.innerHTML=c.judge==="OK"?'<span class="i2m-ok">OK</span>':c.judge;
+  var dv=q(".c-dev"); dv.innerHTML=c.dev; dv.style.color=c.judge==="NG"?"#c62828":"";
+  i2mSum_();
+}
+function i2mRefreshAll_(){
+  document.querySelectorAll("#i2m-body tr").forEach(function(tr){ var r=i2mState_.cur.rows[+tr.dataset.i]; r&&i2mRefreshRow_(tr,r); });
+}
+function i2mSum_(){
+  var el=document.getElementById("i2m-sum"); if(!el) return;
+  var n=0,ok=0,ng=0,er=0;
+  i2mState_.cur.rows.forEach(function(r){
+    if(!String(r.raw||"").trim()) return; n++;
+    var o=i2mCalc_(r,i2mState_.cur.gen), j=i2mJudge_(o,r.meas);
+    if(o.p.err) er++; if(j==="OK") ok++; if(j==="NG") ng++;
+  });
+  el.innerHTML="치수 "+n+"개 · OK "+ok+" · <span style='color:#c62828'>NG "+ng+"</span>"+(er?" · <span style='color:#c62828'>표기 확인 "+er+"</span>":"");
+}
+function i2mNextNo_(){
+  var m=0; i2mState_.cur.rows.forEach(function(r){ var v=parseInt(r.no,10); if(v>m) m=v; }); return String(m+1);
+}
+function i2mAdd_(){
+  i2mState_.cur.rows.push({no:i2mNextNo_(),raw:"",meas:"",memo:""}); i2mDrawRows_();
+  var ins=document.querySelectorAll('#i2m-body input[data-f="raw"]'); ins.length&&ins[ins.length-1].focus();
+}
+function i2mBulkToggle_(){ var b=document.getElementById("i2m-bulk"); b.style.display=b.style.display==="none"?"":"none"; }
+function i2mBulkAdd_(){
+  var t=document.getElementById("i2m-bulk-t"), lines=t.value.split(/\r?\n/).map(function(s){return s.trim();}).filter(Boolean);
+  if(!lines.length) return;
+  var rows=i2mState_.cur.rows;
+  // 비어 있는 기본 행은 정리
+  i2mState_.cur.rows = rows = rows.filter(function(r){ return String(r.raw||"").trim()||String(r.meas||"").trim(); });
+  lines.forEach(function(l){ var c=l.split("\t").map(function(x){ return x.trim(); }); rows.push({no:i2mNextNo_(),raw:c[0]||"",tu:c[1]||"",tl:c[2]||"",meas:c[3]||"",memo:""}); });
+  t.value=""; i2mBulkToggle_(); i2mDrawRows_();
+}
+function i2mMsg_(s,err){ var m=document.getElementById("i2m-msg"); if(m){ m.style.color=err?"#c62828":"#1f4e8c"; m.textContent=s; } }
+function i2mNew_(){
+  if(i2mState_.cur.rows.some(function(r){return String(r.raw||"").trim();}) && !confirm("입력 중인 내용을 비우고 새 도면을 시작할까요? (저장 안 한 내용은 사라집니다)")) return;
+  i2mState_.cur=i2mNewRec_(); i2mFillHead_(); i2mDrawRows_(); i2mDrawList_(); i2mMsg_("");
+}
+function i2mSave_(){
+  var c=i2mState_.cur;
+  if(!String(c.dwg||"").trim()){ alert("도번을 입력하세요."); document.getElementById("i2m-dwg").focus(); return; }
+  c.rows = c.rows.filter(function(r){ return String(r.raw||"").trim()||String(r.meas||"").trim(); });
+  c.__editedAt=Date.now(); c.deleted=false;
+  var k=i2mKeyOf_(c); i2mState_.db[k]=JSON.parse(JSON.stringify(c));
+  i2mMsg_("저장 중…");
+  i2mSaveDb_(i2mState_.db,function(ok,msg){ i2mMsg_(msg,!ok); i2mDrawList_(); });
+  i2mDrawRows_();
+}
+function i2mDel_(){
+  var c=i2mState_.cur, k=i2mKeyOf_(c);
+  if(!i2mState_.db[k]||i2mState_.db[k].deleted){ alert("저장된 도면이 아닙니다."); return; }
+  if(!confirm(c.dwg+(c.rev?" REV "+c.rev:"")+" 검토표를 삭제할까요?")) return;
+  i2mState_.db[k]={dwg:c.dwg,rev:c.rev,deleted:true,__editedAt:Date.now(),rows:[]};
+  i2mSaveDb_(i2mState_.db,function(ok,msg){ i2mMsg_("삭제됨 — "+msg,!ok); });
+  i2mState_.cur=i2mNewRec_(); i2mFillHead_(); i2mDrawRows_(); i2mDrawList_();
+}
+function i2mTableAoa_(){
+  var c=i2mState_.cur, aoa=[["No","도면 표기(inch)","+공차(inch)","−공차(inch)","구분","mm 치수","mm 공차","상한(mm)","하한(mm)","측정값(mm)","판정","편차(mm)","비고"]];
+  c.rows.forEach(function(r){
+    if(!String(r.raw||"").trim()) return;
+    var x=i2mRowCells_(r), strip=function(h){ return String(h).replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,"\""); };
+    aoa.push([r.no,r.raw,r.tu||"",r.tl||"",strip(x.kind),strip(x.mm),strip(x.tol),x.hi,x.lo,r.meas||"",x.judge,x.dev,strip(x.note)]);
+  });
+  return aoa;
+}
+function i2mGenText_(){
+  var g=i2mState_.cur.gen;
+  return "일반공차(inch): .X ±"+(g.d1||"-")+" / .XX ±"+(g.d2||"-")+" / .XXX ±"+(g.d3||"-")+" / .XXXX ±"+(g.d4||"-")+" / 분수 ±"+(g.frac||"-")+" / 각도 ±"+(g.ang||"-")+"°";
+}
+function i2mExcel_(){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리가 아직 로드되지 않았습니다."); return; }
+  var c=i2mState_.cur, aoa=[["INCH → mm 검토표"],["도번",c.dwg,"REV",c.rev,"품명",c.name,"고객",c.cust],[i2mGenText_()],["※ 참고용 — 판정 기준은 원본 inch 도면. 상한 내림·하한 올림(0.001mm)."],[]].concat(i2mTableAoa_());
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=[{wch:6},{wch:26},{wch:9},{wch:9},{wch:10},{wch:18},{wch:18},{wch:11},{wch:11},{wch:11},{wch:7},{wch:34}];
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"INCH-mm");
+  XLSX.writeFile(wb,"INCH_mm_"+(c.dwg||"도번")+(c.rev?"_REV"+c.rev:"")+".xlsx");
+}
+function i2mPrint_(){
+  var c=i2mState_.cur, aoa=i2mTableAoa_();
+  var th=aoa[0].map(function(h){return "<th>"+i2mEsc_(h)+"</th>";}).join("");
+  var tb=aoa.slice(1).map(function(r){ return "<tr>"+r.map(function(v,j){ return "<td"+(j===10&&v==="NG"?' style="background:#d32f2f;color:#fff;font-weight:700"':"")+">"+i2mEsc_(v)+"</td>"; }).join("")+"</tr>"; }).join("");
+  var w=window.open("","_blank"); if(!w){ alert("팝업이 차단되었습니다."); return; }
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>INCH-mm '+i2mEsc_(c.dwg)+'</title><style>'+
+    '@page{size:A4 landscape;margin:10mm}body{font-family:"맑은 고딕",sans-serif;font-size:11px}h2{margin:0 0 6px;font-size:16px}'+
+    '.hd{margin-bottom:6px}table{border-collapse:collapse;width:100%}th,td{border:1.3px solid #000;padding:3px 4px;text-align:center}'+
+    'th{background:#dde3ea}tr:nth-child(even) td{background:#f2f4f7}td:nth-child(2),td:nth-child(4){font-family:Consolas,monospace}'+
+    '.ft{margin-top:6px;font-size:10px;color:#333}</style></head><body>'+
+    '<h2>INCH → mm 검토표</h2><div class="hd">도번 <b>'+i2mEsc_(c.dwg)+'</b> &nbsp; REV <b>'+i2mEsc_(c.rev)+'</b> &nbsp; 품명 '+i2mEsc_(c.name)+' &nbsp; 고객 '+i2mEsc_(c.cust)+'<br>'+i2mEsc_(i2mGenText_())+'</div>'+
+    '<table><thead><tr>'+th+'</tr></thead><tbody>'+tb+'</tbody></table>'+
+    '<div class="ft">※ 참고용 — 판정 기준은 원본 inch 도면. mm 상한은 내림, 하한은 올림(0.001mm). 출력 '+new Date().toLocaleString()+'</div>'+
+    '<script>window.onload=function(){window.print();}<\/script></body></html>');
+  w.document.close();
+}
+
+/* 검토 중 화면 팝업 */
+function i2mOpen_(){
+  var ov=document.getElementById("i2m-ov");
+  if(!ov){
+    ov=document.createElement("div"); ov.id="i2m-ov";
+    ov.style.cssText="position:fixed;inset:0;z-index:99000;background:rgba(16,24,40,.45);display:flex;align-items:flex-start;justify-content:center;padding:2vh 1vw;box-sizing:border-box;";
+    ov.innerHTML='<div style="background:#fff;border-radius:12px;width:100%;max-width:1400px;max-height:96vh;overflow:auto;padding:14px 16px;box-sizing:border-box;position:relative;font-family:\'Pretendard\',\'맑은 고딕\',sans-serif;">'
+      +'<button type="button" onclick="document.getElementById(\'i2m-ov\').style.display=\'none\'" title="닫기 (입력 내용은 유지됨)" style="position:absolute;top:10px;right:12px;font-size:18px;border:1px solid #c5ccd6;background:#fff;border-radius:8px;width:36px;height:36px;cursor:pointer;">✕</button>'
+      +'<div id="i2m-root"></div></div>';
+    document.body.appendChild(ov);
+    i2mRender_(document.getElementById("i2m-root"));
+  } else { ov.style.display="flex"; }
+}
+try{ RV_STAGE.push({ title:"📐 INCH → mm 검토", desc:"inch 도면 치수를 입력하면 mm 치수·공차·상한/하한 자동 환산(허용범위 안쪽 반올림) · 일반공차 자동 · 측정값 OK/NG · 도번별 저장·엑셀·인쇄", open:function(){ i2mOpen_(); } }); }catch(_){}
 </script>
 
 <script type="text/plain" id="layout-src"><!DOCTYPE html>
