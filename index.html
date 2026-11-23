@@ -14716,6 +14716,19 @@ function sdMainQtyDiff_(x){ try{
   var nq=(Number(x.qty)||0)+(mq-tot); if(nq<0) return null;   // 줄여야 할 양이 이 줄보다 크면 자동 조정 안 함(직접 수정)
   return { main:mq, tot:tot, nq:nq };
 }catch(_){ return null; } }
+function sdQtyNum_(v){ var n=Number(String(v==null?"":v).replace(/[^\d.\-]/g,"")); return isFinite(n)&&n>0?n:0; }
+// [추가] 수량 0개로 등록된 줄 자동 보정 — 등록할 때 MAIN 수량을 못 읽어 0이 된 줄(예: 26-98-35)은 MAIN 수량(같은 ORDER 다른 줄 합계 뺀 만큼)으로 채움
+//   0개는 의도한 값일 수 없으므로 묻지 않고 고치고, 변경 이력에 남김
+function sdZeroQtyFix_(){
+  if(typeof mainOrderQtySum_!=="function") return; var md=(typeof mainData!=="undefined"&&mainData)||[]; if(!md.length) return;
+  var ch=false;
+  sdLive_().forEach(function(x){ if(sdDone_(x) || !x.ord || (Number(x.qty)||0)>0) return;
+    var o=String(x.ord).trim(), mq=mainOrderQtySum_(o); if(!(mq>0)) return;
+    var others=sdLive_().filter(function(y){ return y!==x && String(y.ord||"").trim()===o; }).reduce(function(a,y){ return a+(Number(y.qty)||0); },0);
+    var nq=mq-others; if(nq<=0) return;
+    sdPut_(Object.assign({}, x, { qty:nq, __reason:"수량 0개 자동 보정 → MAIN 수량 "+nq+"개" })); ch=true; });
+  if(ch) sdSave_();
+}
 function sdAutoOut_(){
   var m=sdOutTotals_(); if(!Object.keys(m).length) return;
   var by={}; __sd.items.forEach(function(x){ if(x && !x.del && x.ord) (by[String(x.ord).trim()]=by[String(x.ord).trim()]||[]).push(x); });
@@ -14959,6 +14972,7 @@ function sdRender_(){
   if(!__sd.loaded){ root.innerHTML='<div class="sd-empty">불러오는 중…</div>'; sdLoad_(sdRender_); return; }
   try{ sdVisSync_(); }catch(_){}
   if(!__sdVx.loaded && !__sdVx.ing){ __sdVx.ing=true; sdVxLoad_(function(ch){ __sdVx.ing=false; if(ch) sdRender_(); }); }
+  try{ sdZeroQtyFix_(); }catch(_){}
   try{ sdAutoOut_(); }catch(_){}
   var C=sdCompute_(), today=C.today;
   var kpi=function(t,v,sub,cls,key){ return '<div class="sd-kpi '+(cls||"")+'"'+(key?' data-kp="'+key+'" role="button" tabindex="0" title="눌러서 목록 보기"':'')+'><div class="sd-kl">'+t+(key?' <span class="sd-kmore">목록 ›</span>':'')+'</div><div class="sd-kn">'+v+'</div><div class="sd-ks">'+sub+'</div></div>'; };
@@ -16534,7 +16548,7 @@ function mainBulkPop_(pre){
         sel.forEach(function(x){
           if(x.lines.length){ x.lines.forEach(function(l){ var na=(mode==="to")?to:shift(l.avail||String(x.r.dueDate||"").slice(0,10)||mtToday_()); /* 가능일 미정 줄은 최종납기 기준 */ lines.push(x.ord+" "+sdMD_(l.avail)+"→"+sdMD_(na)); sdPut_(Object.assign({}, l, { avail:na, __reason:tag, __files:up })); nUpd++; }); }
           else if(reg){ var due=String(x.r.dueDate||"").slice(0,10), na2=(mode==="to")?to:shift(due||mtToday_()), nid="sd"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-            sdPut_({ id:nid, ord:x.ord, draw:String(x.r.oldDrawingNo||x.r.partNo||"").trim(), due:due||na2, avail:na2, qty:Number(x.r.qty)||0, note:"일괄 변경 등록", done:false, __reason:tag, __files:up });   // [수정] '등록' 기록 1개에 사유·첨부 포함(전에는 등록+일정변경 2개가 남았음)
+            sdPut_({ id:nid, ord:x.ord, draw:String(x.r.oldDrawingNo||x.r.partNo||"").trim(), due:due||na2, avail:na2, qty:sdQtyNum_(x.r.qty)||((typeof mainOrderQtySum_==="function")?mainOrderQtySum_(x.ord):0), note:"일괄 변경 등록", done:false, __reason:tag, __files:up });   // [수정] '등록' 기록 1개에 사유·첨부 포함(전에는 등록+일정변경 2개가 남았음)
             lines.push(x.ord+" (신규) "+sdMD_(na2)); nReg++; } });
         sdSave_();
         // 회의·변경 기록 1건
