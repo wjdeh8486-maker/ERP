@@ -14683,6 +14683,19 @@ function sdOutTotals_(){
       if(take>0){ g(o).ship+=take; used[o]=(used[o]||0)+take; cnt-=take; } } });
   __sdOut={ k:key, iv:iv, rows:rows, m:m }; return m;
 }
+// [추가] 부분 출고 자동 인식 — 재고 출고(입출고 관리번호)·출하 분출 수량이 줄 수량보다 적으면 그만큼은 '이미 나감'
+//   예: 26-342-5 58개 중 49개 선출고 → 이 줄은 남은 9개만 필요 (전에는 다 채워지기 전엔 58개 전체로 계산)
+function sdGoneMap_(){
+  var m=sdOutTotals_(), key=__sd.items.length+"|"+(__sdOut&&__sdOut.k||"")+"|"+__sd.items.reduce(function(a,x){ return a+(x&&x.ts||0); },0);
+  if(__sdGone.k===key) return __sdGone.g;
+  var g={}, by={}; __sd.items.forEach(function(x){ if(x && !x.del && x.ord) (by[String(x.ord).trim()]=by[String(x.ord).trim()]||[]).push(x); });
+  Object.keys(by).forEach(function(o){ var t=m[o]; if(!t) return; var rem=(Number(t.stock)||0)+(Number(t.ship)||0); if(rem<=0) return;
+    var L=by[o].slice().sort(function(a,b){ if(!!a.done!==!!b.done) return a.done?-1:1; var x=a.avail||"9999", y=b.avail||"9999"; return x<y?-1:(x>y?1:String(a.due||"").localeCompare(String(b.due||""))); });
+    L.forEach(function(x){ var q=Number(x.qty)||0, take=Math.min(q, rem); rem-=take; if(!x.done && take>0) g[x.id]=take; }); });
+  __sdGone={ k:key, g:g }; return g;
+}
+var __sdGone={ k:"", g:{} };
+function sdGone_(x){ try{ return (x && !x.done && sdGoneMap_()[x.id])||0; }catch(_){ return 0; } }
 function sdAutoOut_(){
   var m=sdOutTotals_(); if(!Object.keys(m).length) return;
   var by={}; __sd.items.forEach(function(x){ if(x && !x.del && x.ord) (by[String(x.ord).trim()]=by[String(x.ord).trim()]||[]).push(x); });
@@ -14759,7 +14772,7 @@ function sdCompute_(){
   var byDraw={};
   open.forEach(function(x){ var k=x.draw||"(품번 없음)"; if(!byDraw[k]){ var hi=sdHoldInfo_(x.draw, x.ord); var u=used[k]||{ s:0, w:0 }, st2=Math.max(0, hi.stock-u.s), wt2=Math.max(0, hi.wait-u.w);
       byDraw[k]={ draw:k, hold:st2+wt2, wait:wt2, stock:st2, usedS:u.s, usedW:u.w, kind:hi.kind, vision:hi.vision, name:hi.name, need:0, runS:st2, runW:wt2, shortFrom:"", lines:[] }; } x._vision=byDraw[k].vision;
-    var wq=sdWashPart_(x), nd=Math.max(0, x.qty-wq);   // [추가] 이미 세정으로 나간 수량은 보유에서 채울 필요 없음 (예: 3개 중 2개 세정 → 1개만 필요)
+    var wq0=sdWashPart_(x), go=sdGone_(x), wq=Math.max(wq0, go), nd=Math.max(0, x.qty-wq); x._gone=go;   // [수정] 재고 출고·분출로 이미 나간 수량도 뺌 (세정과 같은 물건일 수 있어 큰 쪽만)   // [추가] 이미 세정으로 나간 수량은 보유에서 채울 필요 없음 (예: 3개 중 2개 세정 → 1개만 필요)
     var g=byDraw[k], fs=Math.min(nd, g.runS); g.runS-=fs; var rest=nd-fs, fw=Math.min(rest, g.runW); g.runW-=fw;
     x._washed=wq; x._ready=fs; x._fromWait=fw; x._short=rest-fw; x._insp=nd-fs;   // 검사 필요 = 재고로 못 채운 수량
     if(x._short>0 && !g.shortFrom) g.shortFrom=x.avail; g.need+=nd; g.washed=(g.washed||0)+wq; g.lines.push(x); });
@@ -14807,7 +14820,7 @@ function sdCalHtml_(C){
   var flt=sdSqActive_(), L=flt?sdLive_().filter(sdRowMatch_):sdLive_();
   var ship={}; L.forEach(function(x){ if(!x.avail || x.avail.slice(0,7)!==ym) return; var d=x.avail, k=x.draw||"-";
     ship[d]=ship[d]||{}; var g=ship[d][k]=ship[d][k]||{ q:0, done:0, short:0, late:false, ords:[] };
-    g.q+=x.qty; if(sdDone_(x)) g.done+=x.qty; else { g.short+=(x._short||0); if(x._late) g.late=true; } g.ords.push((x.ord||"-")+" "+x.qty+"개"+(sdDone_(x)?"(완료)":"")); });
+    g.q+=x.qty; if(sdDone_(x)) g.done+=x.qty; else { var go=sdGone_(x); g.gone=(g.gone||0)+go; g.short+=(x._short||0); if(x._late) g.late=true; } g.ords.push((x.ord||"-")+" "+x.qty+"개"+(sdDone_(x)?"(완료)":(sdGone_(x)>0?"(출고 "+sdGone_(x)+"·남음 "+(x.qty-sdGone_(x))+")":""))); });
   // 날짜별 검사 필요 수량: 비젼 = 배정 일정, 그 외 = 출고 전날
   var insp={};
   if(!flt){ Object.keys(C.used||{}).forEach(function(d){ insp[d]=(insp[d]||0)+C.used[d]; });
@@ -14821,17 +14834,17 @@ function sdCalHtml_(C){
   while(cur<=end){ var wk=[]; for(var i=0;i<7;i++){ wk.push(sdYmd_(cur)); cur.setDate(cur.getDate()+1); } weeks.push(wk); }
   var cell=function(ds){
     var inM=ds.slice(0,7)===ym, dow=new Date(ds+"T00:00:00").getDay(), sh=ship[ds]||{}, ks=Object.keys(sh).sort();
-    var sq=0, open=0; ks.forEach(function(k){ sq+=sh[k].q; open+=sh[k].q-sh[k].done; });
+    var sq=0, open=0; ks.forEach(function(k){ sq+=sh[k].q-(sh[k].gone||0); open+=sh[k].q-sh[k].done-(sh[k].gone||0); });   // [수정] 이미 나간(재고 출고·분출) 수량은 출고 합계에서 뺌
     var iq=insp[ds]||0;
     var chips=ks.map(function(k){ var g=sh[k], allDone=g.done>=g.q;
-      return '<div class="sd-cchip'+(allDone?' done':(g.short>0?' short':(g.late?' late':'')))+'"'+(k!=="-"?' data-dwg="'+sdE_(k)+'"':'')+' title="'+sdE_(k+" — "+g.ords.join(", ")+(g.short>0?" · 부족 "+g.short:"")+(k!=="-"?"\n클릭 = 도면 열기":""))+'">'+sdE_(k)+' <b>('+g.q+')</b>'+(g.short>0&&!allDone?' ⚠':'')+'</div>'; }).join("");
+      return '<div class="sd-cchip'+(allDone?' done':(g.short>0?' short':(g.late?' late':'')))+'"'+(k!=="-"?' data-dwg="'+sdE_(k)+'"':'')+' title="'+sdE_(k+" — "+g.ords.join(", ")+(g.short>0?" · 부족 "+g.short:"")+(k!=="-"?"\n클릭 = 도면 열기":""))+'">'+sdE_(k)+' <b>('+((g.done||0)+(g.gone||0)>0&&!allDone?Math.max(0,g.q-g.done-(g.gone||0)):g.q)+')</b>'+((g.done||0)+(g.gone||0)>0&&!allDone?' <small style="opacity:.7;">출고 '+(g.done+(g.gone||0))+'</small>':'')+(g.short>0&&!allDone?' ⚠':'')+'</div>'; }).join("");
     var hol=qmsHolidayName_(ds);
     return '<td class="'+(inM?'':'out ')+(ds===today?'today ':'')+(dow===0||hol?'sun ':(dow===6?'sat ':''))+'"><div class="sd-cd"><span>'+(+ds.slice(8))+(hol?'<small class="sd-hol">'+sdE_(hol)+'</small>':'')+'</span>'
       +(iq?'<span class="sd-ci'+(C.cap && (C.used[ds]||0)>C.cap?' over':'')+(ds<today?' past':'')+'" title="이날 검사해야 할 수량">검사 '+iq+'</span>':'')+'</div>'
       +chips+(sq?'<div class="sd-csum">출고 '+sq+'개</div>':'')+'</td>';
   };
   var rows=weeks.map(function(wk){ var ws=0, wi=0, wsh=0;
-    wk.forEach(function(ds){ if(ds.slice(0,7)!==ym) return; var sh=ship[ds]||{}; Object.keys(sh).forEach(function(k){ ws+=sh[k].q; wsh+=(sh[k].done>=sh[k].q?0:sh[k].short); }); wi+=insp[ds]||0; });
+    wk.forEach(function(ds){ if(ds.slice(0,7)!==ym) return; var sh=ship[ds]||{}; Object.keys(sh).forEach(function(k){ ws+=sh[k].q-(sh[k].gone||0); wsh+=(sh[k].done>=sh[k].q?0:sh[k].short); }); wi+=insp[ds]||0; });
     mShip+=ws; mInsp+=wi; mShort+=wsh;
     return '<tr>'+wk.map(cell).join("")+'<td class="sd-cw"><div>출고 예정 <b>'+ws+'</b>개</div><div>검사할 수량 <b>'+wi+'</b>개</div>'+(wsh?'<div class="r">생산 필요 <b>'+wsh+'</b>개</div>':'')+'</td></tr>'; }).join("");
   var pm=new Date(y,m-1,1), nm=new Date(y,m+1,1), f=function(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"); };
@@ -14973,7 +14986,7 @@ function sdRender_(){
         if(sdDone_(x)){ st=(x.done?"완료":(sdAutoDone_(x.ord)?"납품완료":"세정 완료")); cls="done"; } else if(!x.avail){ st="미정"; cls="tbd"; } else if(x.avail<today){ st="지연"; cls="bad"; } else if(x.avail===today){ st="오늘"; cls="warn"; } else { var n=Math.round((new Date(x.avail+"T00:00:00")-new Date(today+"T00:00:00"))/86400000); st="D-"+n; cls=n<=3?"soon":""; }
         var __wsh=(!sdDone_(x) && sdWashDone_(x.ord) && sdSplit_(x.ord))?(function(){ var d=(typeof cleanDatesFor_==="function")?cleanDatesFor_(x.ord):[]; return '<div class="m" style="font-size:11px;margin-top:2px;white-space:nowrap;" title="세정은 ORDER 단위 기록이라 나뉜 줄은 자동 완료하지 않음 — 이 줄이 세정 나갔으면 완료 체크">🧼 세정 '+(d.length?d.map(sdMD_).join(", "):"진행")+(cleanQtyFor_(x.ord)==null?' · 세정LIST 다시 올리면 수량으로 판정':(' · 세정 '+cleanQtyFor_(x.ord)+'개'))+'</div>'; })():"";   // [추가] 나뉜 줄: 세정 기록은 표시만
         return '<tr class="'+cls+'"><td><span class="sd-st '+cls+'">'+st+'</span>'+__wsh+'</td><td class="k">'+sdE_(x.ord||"-")+'</td><td>'+sdDwgLink_(x.draw)+'</td><td class="sd-nm" title="'+sdE_(sdNm_(x))+'">'+sdE_(sdNm_(x)||"-")+'</td><td>'+sdE_(sdVendorOf_(x.ord)||"-")+'</td><td class="m">'+sdMD_(x.due)+'</td><td>'+(x.avail?('<b>'+sdMD_(x.avail)+'</b> <small class="m">('+sdDow_(x.avail)+')</small>'):'<b class="sd-tbd" title="날짜가 정해지면 ✏️ 수정으로 넣으세요">미정</b>')+'</td>'
-          +'<td class="n"><b>'+x.qty+'</b>'+(x.done && (x.useStock||x.useWait)?' <small class="m">(재고 '+(x.useStock||0)+'·검사 '+(x.useWait||0)+')</small>':'')+(x.done && x.autoOut?' <small class="m" title="자동 완료 근거">(재고출고 '+(x.autoOut.stock||0)+'·분출 '+(x.autoOut.ship||0)+')</small>':'')+(!sdDone_(x) && x._short>0?' <span class="sd-pill bad" title="보유(비젼) 부족">부족 '+x._short+'</span>':'')+'</td><td class="m">'+sdE_(x.note||"")+'</td>'
+          +'<td class="n"><b>'+x.qty+'</b>'+(x.done && (x.useStock||x.useWait)?' <small class="m">(재고 '+(x.useStock||0)+'·검사 '+(x.useWait||0)+')</small>':'')+(x.done && x.autoOut?' <small class="m" title="자동 완료 근거">(재고출고 '+(x.autoOut.stock||0)+'·분출 '+(x.autoOut.ship||0)+')</small>':'')+(!sdDone_(x) && x._gone>0?' <small class="m" title="재고 출고·출하 분출로 이미 나간 수량">(출고 '+x._gone+' · 남음 '+Math.max(0,x.qty-x._gone)+')</small>':'')+(!sdDone_(x) && x._short>0?' <span class="sd-pill bad" title="보유(비젼) 부족">부족 '+x._short+'</span>':'')+'</td><td class="m">'+sdE_(x.note||"")+'</td>'
           +'<td>'+(sdDone_(x)?'<span class="m">-</span>':(x._start?'<span class="'+(x._late?"r":"")+'">'+sdMD_(x._start)+(x._late?' 늦음':'')+'</span>'+(x._ready>0?' <small class="m">(재고 '+x._ready+')</small>':''):(x._ready>=x.qty?'<span class="sd-ready">준비완료</span>':'-')))+'</td>'
           +(function(){ var L=(typeof sdlFor_==="function")?sdlFor_(x.id):[], nf=L.reduce(function(a,e){ return a+((e.files||[]).length); },0), nm=L.filter(function(e){ return !e.auto; }).length; return '<td><button type="button" class="sd-hist" data-hist="'+sdE_(x.id)+'" title="변경·근거 이력 보기 / 고객 요청·근거·첨부 추가">📋 <b>'+L.length+'</b>'+(nf?' 📎'+nf:'')+(nm?'':' <span style="color:#98A2B3;">+근거</span>')+'</button></td>'; })()
           +'<td><input type="checkbox" data-done="'+sdE_(x.id)+'" '+(sdDone_(x)?"checked":"")+(!x.done && sdAutoDone_(x.ord)?' disabled title="MAIN에서 납품완료 → 자동 완료"':(!x.done && sdWashOk_(x))?' disabled title="세정 완료 (나뉜 줄은 세정LIST 수량 기준) → 자동 완료"':(x.doneAuto?' title="재고 출고·분출로 자동 완료 — 체크를 풀면 다시 자동 완료하지 않음"':' title="출고 완료"'))+'>'+((!x.done && sdAutoDone_(x.ord)) || (x.done && x.doneAuto)?' <small class="sd-auto">자동</small>':'')+'</td><td><button type="button" class="sd-x" data-edit="'+sdE_(x.id)+'" title="수정 (관리번호·품번·날짜·수량·비고)" style="font-size:13px;">✏️</button></td><td><button type="button" class="sd-x" data-del="'+sdE_(x.id)+'" title="삭제">✕</button></td></tr>'; }).join(""):'<tr><td colspan="14" class="sd-empty">'+(sdSqActive_()?'조건에 맞는 항목이 없습니다. [초기화]를 눌러 보세요.':'항목이 없습니다. [＋ 추가] 또는 [📋 엑셀·메일 붙여넣기]로 등록하세요.')+'</td></tr>')
@@ -15098,22 +15111,30 @@ function sdChange_(e){
 // [추가] 출고 완료 시 "재고에서 몇 개, 검사해서 몇 개" 입력 → 데이터(재고·검사대기)가 다음 업로드로 줄어들기 전까지 보유에서 미리 빼 둠
 //        (전에는 완료만 표시되고 실제 쓴 재고·검사대기가 그대로 남아, 다음 출고가 부족 없음으로 잘못 보였음)
 function sdDonePop_(it){
-  var C=sdCompute_(), x=C.open.find(function(o){ return o.id===it.id; })||it, q=Number(it.qty)||0;
+  var C=sdCompute_(), x=C.open.find(function(o){ return o.id===it.id; })||it, qAll=Number(it.qty)||0, gone=Math.min(qAll, x._gone||0), q=qAll-gone;   // [수정] 이미 나간 수량(재고 출고·분출) 제외한 남은 수량 기준
   var dS=Math.min(q, x._ready||0), dW=q-dS;
   var old=document.querySelector(".sd-ov"); if(old) old.remove();
   var ov=document.createElement("div"); ov.className="sd-ov";
   ov.innerHTML='<div class="sd-pop" style="width:min(460px,94vw)"><div class="sd-ph"><b>✓ 출고 완료 처리</b><button type="button" data-x="close">닫기 ✕</button></div><div class="sd-pb">'
-    +'<div><b>'+sdE_(it.ord||"-")+'</b> · '+sdE_(it.draw)+' · 가능 '+sdMD_(it.avail)+' · <b>'+q+'개</b></div>'
+    +'<div><b>'+sdE_(it.ord||"-")+'</b> · '+sdE_(it.draw)+' · 가능 '+sdMD_(it.avail)+' · <b>'+qAll+'개</b>'+(gone?' <span class="m">(이미 출고 '+gone+' · <b>남은 '+q+'개</b>)</span>':'')+'</div>'
     +'<div class="m" style="margin:4px 0 10px;">이번 출고를 어디서 채웠는지 적어 주세요. 재고·검사대기 데이터가 다음 업로드로 줄어들 때까지 보유에서 미리 뺍니다.</div>'
     +'<div class="sd-use"><label>재고 사용 (이미 검사 끝난 것)<input type="number" id="sd-u-s" min="0" max="'+q+'" value="'+dS+'"></label>'
     +'<label>검사해서 출고 (검사대기에서)<input type="number" id="sd-u-w" min="0" max="'+q+'" value="'+dW+'"></label></div><div id="sd-u-msg" class="m"></div></div>'
-    +'<div class="sd-pf"><button type="button" class="sd-btn" data-x="ok">완료</button></div></div>';
+    +'<div class="sd-pf"><button type="button" class="sd-btn" data-x="part" style="display:none;margin-right:6px;background:#fff;color:#175CD3;border:1px solid #84CAFF;"></button><button type="button" class="sd-btn" data-x="ok">완료</button></div></div>';
   document.body.appendChild(ov);
-  var sI=ov.querySelector("#sd-u-s"), wI=ov.querySelector("#sd-u-w"), msg=ov.querySelector("#sd-u-msg");
-  var chk=function(){ var a=Number(sI.value)||0, b=Number(wI.value)||0; msg.innerHTML=(a+b===q)?'합계 '+(a+b)+'개 ✓':'<span class="r">합계 '+(a+b)+'개 — 출고 수량 '+q+'개와 다릅니다</span>'; };
+  var sI=ov.querySelector("#sd-u-s"), wI=ov.querySelector("#sd-u-w"), msg=ov.querySelector("#sd-u-msg"), pB=ov.querySelector('[data-x="part"]');
+  // [추가] 부분 출고 — 합계가 출고 수량보다 적으면 "N개만 출고 · 나머지 M개 남김" 버튼 (줄을 나눠 출고분은 완료, 남은 수량은 새 줄로 계속 관리)
+  var chk=function(){ var a=Number(sI.value)||0, b=Number(wI.value)||0, t=a+b; msg.innerHTML=(t===q)?'합계 '+t+'개 ✓':'<span class="r">합계 '+t+'개 — 출고 수량 '+q+'개와 다릅니다</span>'+(t>0&&t<q?' <span class="m">· 일부만 나갔으면 왼쪽 <b>부분 출고</b>를 누르세요</span>':'');
+    if(t>0 && t<q){ pB.style.display=""; pB.textContent="부분 출고 ("+t+"개 출고 · "+(q-t)+"개 남김)"; } else pB.style.display="none"; };
   sI.addEventListener("input", function(){ var a=Math.max(0,Math.min(q,Number(sI.value)||0)); wI.value=q-a; chk(); }); wI.addEventListener("input", chk); chk();
   ov.addEventListener("click", function(e){ var k=e.target.getAttribute && e.target.getAttribute("data-x");
     if(e.target===ov || k==="close"){ ov.remove(); return; }
+    if(k==="part"){ var a1=Math.max(0,Number(sI.value)||0), b1=Math.max(0,Number(wI.value)||0), t1=a1+b1; if(!(t1>0 && t1<q)) return;
+      if(!confirm((gone?"이미 출고 "+gone+"개 + ":"")+t1+"개를 출고 완료로 처리하고, 남은 "+(q-t1)+"개는 같은 관리번호의 새 줄(가능일자 "+sdMD_(it.avail)+")로 남깁니다.\n남은 줄의 가능일자는 나중에 ✏️ 수정으로 바꿀 수 있습니다. 진행할까요?")) return;
+      var now=new Date().toLocaleString("ko-KR");
+      sdPut_(Object.assign({}, it, { qty:gone+t1, done:true, doneAt:now, doneTs:Date.now(), useStock:a1, useWait:b1, partOf:qAll, __reason:"부분 출고 "+(gone+t1)+"개 (전체 "+qAll+"개 중"+(gone?", 데이터상 이미 출고 "+gone+" 포함":"")+") — 남은 "+(q-t1)+"개는 새 줄" }));
+      var rest=Object.assign({}, it, { id:"sd"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), qty:q-t1, done:false, doneAt:"", doneTs:0, useStock:0, useWait:0, doneAuto:false, autoOut:null, partFrom:it.id, __reason:"부분 출고 후 남은 수량 "+(q-t1)+"개 (전체 "+qAll+"개 중 "+(gone+t1)+"개 출고)" });
+      sdPut_(rest); sdSave_(); ov.remove(); sdRender_(); return; }
     if(k==="ok"){ var a=Math.max(0,Number(sI.value)||0), b=Math.max(0,Number(wI.value)||0);
       if(a+b!==q && !confirm("재고 "+a+" + 검사 "+b+" = "+(a+b)+"개로 출고 수량("+q+"개)과 다릅니다. 이대로 완료할까요?")) return;
       var c=Object.assign({}, it, { done:true, doneAt:new Date().toLocaleString("ko-KR"), doneTs:Date.now(), useStock:a, useWait:b }); sdPut_(c); sdSave_(); ov.remove(); sdRender_(); } });
