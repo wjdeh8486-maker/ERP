@@ -14704,6 +14704,18 @@ function sdGoneMap_(){
 }
 var __sdGone={ k:"", g:{} };
 function sdGone_(x){ try{ return (x && !x.done && sdGoneMap_()[x.id])||0; }catch(_){ return 0; } }
+// [추가] MAIN 수량과 다른 줄 찾기 — 등록할 때 MAIN 수량을 그대로 복사해 두므로, 그 뒤 주문 수량이 바뀌면(예: 96→192) 특별납기는 옛 수량으로 남음
+//   같은 ORDER의 줄 합계(완료 포함) ≠ MAIN 수량이면, 그 ORDER의 가장 늦은 미완료 줄에 차이를 표시 → [맞추기]로 그 줄 수량만 조정
+function sdMainQtyDiff_(x){ try{
+  if(!x || sdDone_(x) || !x.ord || typeof mainOrderQtySum_!=="function") return null;
+  var o=String(x.ord).trim(), mq=mainOrderQtySum_(o); if(!(mq>0)) return null;
+  var L=sdLive_().filter(function(y){ return String(y.ord||"").trim()===o; }), tot=L.reduce(function(a,y){ return a+(Number(y.qty)||0); },0);
+  if(tot===mq) return null;
+  var op=L.filter(function(y){ return !sdDone_(y); }).sort(function(a,b){ var p=a.avail||"9999", r=b.avail||"9999"; return p<r?-1:(p>r?1:0); });
+  if(!op.length || op[op.length-1]!==x) return null;   // 표시·조정은 가장 늦은 미완료 줄 하나에만
+  var nq=(Number(x.qty)||0)+(mq-tot); if(nq<0) return null;   // 줄여야 할 양이 이 줄보다 크면 자동 조정 안 함(직접 수정)
+  return { main:mq, tot:tot, nq:nq };
+}catch(_){ return null; } }
 function sdAutoOut_(){
   var m=sdOutTotals_(); if(!Object.keys(m).length) return;
   var by={}; __sd.items.forEach(function(x){ if(x && !x.del && x.ord) (by[String(x.ord).trim()]=by[String(x.ord).trim()]||[]).push(x); });
@@ -14994,7 +15006,7 @@ function sdRender_(){
         if(sdDone_(x)){ st=(x.done?"완료":(sdAutoDone_(x.ord)?"납품완료":"세정 완료")); cls="done"; } else if(!x.avail){ st="미정"; cls="tbd"; } else if(x.avail<today){ st="지연"; cls="bad"; } else if(x.avail===today){ st="오늘"; cls="warn"; } else { var n=Math.round((new Date(x.avail+"T00:00:00")-new Date(today+"T00:00:00"))/86400000); st="D-"+n; cls=n<=3?"soon":""; }
         var __wsh=(!sdDone_(x) && sdWashDone_(x.ord) && sdSplit_(x.ord))?(function(){ var d=(typeof cleanDatesFor_==="function")?cleanDatesFor_(x.ord):[]; return '<div class="m" style="font-size:11px;margin-top:2px;white-space:nowrap;" title="세정은 ORDER 단위 기록이라 나뉜 줄은 자동 완료하지 않음 — 이 줄이 세정 나갔으면 완료 체크">🧼 세정 '+(d.length?d.map(sdMD_).join(", "):"진행")+(cleanQtyFor_(x.ord)==null?' · 세정LIST 다시 올리면 수량으로 판정':(' · 세정 '+cleanQtyFor_(x.ord)+'개'))+'</div>'; })():"";   // [추가] 나뉜 줄: 세정 기록은 표시만
         return '<tr class="'+cls+'"><td><span class="sd-st '+cls+'">'+st+'</span>'+__wsh+'</td><td class="k">'+sdE_(x.ord||"-")+'</td><td>'+sdDwgLink_(x.draw)+'</td><td class="sd-nm" title="'+sdE_(sdNm_(x))+'">'+sdE_(sdNm_(x)||"-")+'</td><td>'+sdE_(sdVendorOf_(x.ord)||"-")+'</td><td class="m">'+sdMD_(x.due)+'</td><td>'+(x.avail?('<b>'+sdMD_(x.avail)+'</b> <small class="m">('+sdDow_(x.avail)+')</small>'):'<b class="sd-tbd" title="날짜가 정해지면 ✏️ 수정으로 넣으세요">미정</b>')+'</td>'
-          +'<td class="n"><b>'+x.qty+'</b>'+(x.done && (x.useStock||x.useWait)?' <small class="m">(재고 '+(x.useStock||0)+'·검사 '+(x.useWait||0)+')</small>':'')+(x.done && x.autoOut?' <small class="m" title="자동 완료 근거">(재고출고 '+(x.autoOut.stock||0)+'·분출 '+(x.autoOut.ship||0)+')</small>':'')+(!sdDone_(x) && x._gone>0?' <small class="m" title="재고 출고·출하 분출로 이미 나간 수량">(출고 '+x._gone+' · 남음 '+Math.max(0,x.qty-x._gone)+')</small>':'')+(!sdDone_(x) && x._short>0?' <span class="sd-pill bad" title="보유(비젼) 부족">부족 '+x._short+'</span>':'')+'</td><td class="m">'+sdE_(x.note||"")+'</td>'
+          +'<td class="n"><b>'+x.qty+'</b>'+(x.done && (x.useStock||x.useWait)?' <small class="m">(재고 '+(x.useStock||0)+'·검사 '+(x.useWait||0)+')</small>':'')+(x.done && x.autoOut?' <small class="m" title="자동 완료 근거">(재고출고 '+(x.autoOut.stock||0)+'·분출 '+(x.autoOut.ship||0)+')</small>':'')+(function(){ var df=sdMainQtyDiff_(x); return df?' <button type="button" class="sd-pill" data-a="mqsync" data-id="'+sdE_(x.id)+'" style="background:#FFFAEB;color:#B54708;border:1px solid #FEC84B;cursor:pointer;" title="MAIN 주문 수량 '+df.main+'개 · 특별납기 줄 합계 '+df.tot+'개 — 누르면 이 줄을 '+df.nq+'개로 맞춤">MAIN '+df.main+' → 맞추기</button>':''; })()+(!sdDone_(x) && x._gone>0?' <small class="m" title="재고 출고·출하 분출로 이미 나간 수량">(출고 '+x._gone+' · 남음 '+Math.max(0,x.qty-x._gone)+')</small>':'')+(!sdDone_(x) && x._short>0?' <span class="sd-pill bad" title="보유(비젼) 부족">부족 '+x._short+'</span>':'')+'</td><td class="m">'+sdE_(x.note||"")+'</td>'
           +'<td>'+(sdDone_(x)?'<span class="m">-</span>':(x._start?'<span class="'+(x._late?"r":"")+'">'+sdMD_(x._start)+(x._late?' 늦음':'')+'</span>'+(x._ready>0?' <small class="m">(재고 '+x._ready+')</small>':''):(x._ready>=x.qty?'<span class="sd-ready">준비완료</span>':'-')))+'</td>'
           +(function(){ var L=(typeof sdlFor_==="function")?sdlFor_(x.id):[], nf=L.reduce(function(a,e){ return a+((e.files||[]).length); },0), nm=L.filter(function(e){ return !e.auto; }).length; return '<td><button type="button" class="sd-hist" data-hist="'+sdE_(x.id)+'" title="변경·근거 이력 보기 / 고객 요청·근거·첨부 추가">📋 <b>'+L.length+'</b>'+(nf?' 📎'+nf:'')+(nm?'':' <span style="color:#98A2B3;">+근거</span>')+'</button></td>'; })()
           +'<td><input type="checkbox" data-done="'+sdE_(x.id)+'" '+(sdDone_(x)?"checked":"")+(!x.done && sdAutoDone_(x.ord)?' disabled title="MAIN에서 납품완료 → 자동 완료"':(!x.done && sdWashOk_(x))?' disabled title="세정 완료 (나뉜 줄은 세정LIST 수량 기준) → 자동 완료"':(x.doneAuto?' title="재고 출고·분출로 자동 완료 — 체크를 풀면 다시 자동 완료하지 않음"':' title="출고 완료"'))+'>'+((!x.done && sdAutoDone_(x.ord)) || (x.done && x.doneAuto)?' <small class="sd-auto">자동</small>':'')+'</td><td><button type="button" class="sd-x" data-edit="'+sdE_(x.id)+'" title="수정 (관리번호·품번·날짜·수량·비고)" style="font-size:13px;">✏️</button></td><td><button type="button" class="sd-x" data-del="'+sdE_(x.id)+'" title="삭제">✕</button></td></tr>'; }).join(""):'<tr><td colspan="14" class="sd-empty">'+(sdSqActive_()?'조건에 맞는 항목이 없습니다. [초기화]를 눌러 보세요.':'항목이 없습니다. [＋ 추가] 또는 [📋 엑셀·메일 붙여넣기]로 등록하세요.')+'</td></tr>')
@@ -15017,6 +15029,9 @@ function sdClick_(e){
   if(k==="search"){ var g2=function(i){ return String((document.getElementById(i)||{}).value||"").trim(); }; __sd.sq={ ord:g2("sd-s-ord"), draw:g2("sd-s-draw"), name:g2("sd-s-name"), avail:g2("sd-s-avail"), note:g2("sd-s-note") }; sdRender_(); return; }
   if(k==="sclear"){ __sd.sq={ ord:"", draw:"", name:"", avail:"", note:"" }; sdRender_(); return; }
   if(k==="sall"){ __sd.sq={ ord:"", draw:"", name:"", avail:"", note:"" }; __sd.filter="all"; sdRender_(); return; }   // 출고 달력의 [전체 보기]
+  if(k==="mqsync"){ var it=__sd.items.find(function(x){ return x.id===a.getAttribute("data-id"); }), df=sdMainQtyDiff_(it); if(!it || !df) return;
+    if(!confirm((it.ord||"")+" — MAIN 주문 수량 "+df.main+"개 / 특별납기 합계 "+df.tot+"개\n\n이 줄(가능 "+sdMD_(it.avail)+") 수량을 "+it.qty+"개 → "+df.nq+"개로 바꿀까요?\n(변경 이력에 남습니다)")) return;
+    sdPut_(Object.assign({}, it, { qty:df.nq, __reason:"MAIN 주문 수량 변경 반영 ("+df.tot+"→"+df.main+")" })); sdSave_(); sdRender_(); return; }
   if(k==="newline"){ sdEditPop_(null); return; }
   if(k==="vxoff" || k==="vxon"){ sdVxSet_(a.getAttribute("data-d"), k==="vxoff"); return; }
   if(k==="bulk"){ var gb=function(){ sdBulkPop_(); }; if(__sdl.loaded) gb(); else sdlLoad_(gb); return; }
