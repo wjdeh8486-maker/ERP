@@ -34464,13 +34464,20 @@ function insDupListInRows_(rows, typeKey){
     sns.forEach(function(sn){
       var k=dw+"|"+sn;
       if(!map[k]) map[k]={ draw:String(r.draw||"").trim(), sn:sn, entries:[] };
-      map[k].entries.push({ date:dt, items:items });
+      var sg=String(r.seg||"").split(",").map(function(x){ return x.trim(); });
+      map[k].entries.push({ date:dt, items:items,
+        stk:(typeKey==="shipping" && sg.indexOf("재고")>=0 && sg.indexOf("분출")<0),
+        out:(typeKey==="shipping" && (sg.indexOf("분출")>=0 || /재고\s*(사용|출고|분출)/.test(String(r.note||"")))) });
     });
   });
   var out=[];
   Object.keys(map).forEach(function(k){
     var m=map[k];
     if(m.entries.length<2) return;   // 1건이면 중복 아님
+    // [추가] 출하검사: '재고'로 등록한 S/N을 나중에 '분출'(또는 비고 재고사용)로 내보낸 행은 같은 제품의 입고→출고 기록 → 한 쌍은 1건으로 봄
+    if(typeKey==="shipping"){ var st=m.entries.filter(function(e){ return e.stk; }).map(function(e){ return e.date; }).sort(), ou=m.entries.filter(function(e){ return e.out && !e.stk; }).map(function(e){ return e.date; }).sort(), pairs=0, used={};
+      st.forEach(function(sd){ for(var j=0;j<ou.length;j++){ if(!used[j] && ou[j]>=sd){ used[j]=1; pairs++; break; } } });
+      if(m.entries.length-pairs<2) return; }
     if(isSplit){
       // 검사항목이 겹치는 쌍이 있는지 확인 (겹치면 중복)
       var overlapItems={}, dupDates={}, hasOverlap=false;
