@@ -20556,6 +20556,22 @@ function dbCol_(x){
   if(st==="수입"){ if(ic){ x._log="수입검사 완료 "+ofMD_(ic.d); return "meas"; } return "inc"; }
   return byMes();
 }
+// [추가] 후처리 칸 건을 검사일보(도번 기준)로 앞으로 — 수입·측정·기능 일보엔 관리번호를 안 적으므로 도번으로 맞춤
+//   · MES가 하루 1번(11시) 업로드라, 그 뒤 후처리 끝나 수입검사한 건이 계속 '후처리'에 남던 문제
+//   · 전 근무일~오늘 검사일보의 도번별 검사 수량을, 이미 그 일보로 단계가 정해진 건(MAIN 수입·측정 상태)에 먼저 쓰고
+//     남은 수량이 카드 수량 이상일 때만 이동 (같은 도번 다른 관리번호 물량을 끌어오지 않게) · 납기 빠른 건부터
+function dbPromoteByLog_(cards){
+  var L=dbLogIdx_(), U=function(v){ return String(v||"").trim().toUpperCase(); }, B={};
+  var bud=function(r){ var k=U(r.oldDrawingNo)||U(r.partNo), k2=U(r.partNo); var m=L.meas[k]||L.meas[k2], ic=L.inc[k]||L.inc[k2]; if(!m && !ic) return null;
+    var key=k||k2; if(!B[key]) B[key]={ inc:ic?ic.n:0, incD:ic?ic.d:"", dim:m?m.dim:0, fn:!!(m&&m.fn), mD:m?m.d:"" }; return B[key]; };
+  cards.forEach(function(c){ if(!c.x._log || c.done) return; var b=bud(c.r); if(!b) return; var q=Number(c.r.qty)||0;   // 이미 일보로 단계가 정해진 건이 먼저 씀
+    if(/^수입검사/.test(c.x._log)) b.inc-=q; else b.dim-=q; });
+  cards.filter(function(c){ return c.col==="post" && !c.done && !c.x._why; })
+    .sort(function(a,b){ return String(a.tgt||"").localeCompare(String(b.tgt||"")) || String(a.r.orderNo||"").localeCompare(String(b.r.orderNo||"")); })
+    .forEach(function(c){ var b=bud(c.r); if(!b) return; var q=Number(c.r.qty)||0; if(q<=0) return; var need=!!(c.x.fn && c.x.fn.length);
+      if(b.dim>=q){ b.dim-=q; if(need && !b.fn){ c.col="func"; c.x._log="치수 완료 "+ofMD_(b.mD)+" (검사일보·도번)"; } else { c.col="ship"; c.x._log=(need?"기능검사 완료 ":"측정 완료 ")+ofMD_(b.mD)+" (검사일보·도번)"; } return; }
+      if(b.inc>=q){ b.inc-=q; c.col="meas"; c.x._log="수입검사 완료 "+ofMD_(b.incD)+" (검사일보·도번)"; } });
+}
 // [추가] 현황판에 직접 추가 · 빼기 (모든 PC 공유, qShare "dbPins") — 관리번호별 { act:"add"|"hide"|"", ts, by, d:날짜 }
 //   추가 = 자동 대상이 아니어도 오늘 현황판에 올림 · 빼기 = 오늘 현황판에서 숨김 (날짜가 바뀌면 자동으로 풀림)
 function dbPinsGet_(){ return (__db.pins&&__db.pins.m)||{}; }
@@ -20612,6 +20628,7 @@ function dbBuild_(){
     var c={ x:x, r:r, col:dbCol_(x), tgt:tgt, isInsp:isInsp, isSd:!!x.sdi, late:(tgt<today && !done && !mainToday && !(isInsp && baseToday)), lateD:((tgt<today && !mainToday && !(isInsp && baseToday))?ofDays_(tgt, today):0), done:done, added:(pa==="add" && !auto), isToday:(tgt===today || mainToday || (isInsp && baseToday)) };
     if(__db.cust && String(r.customer||"").indexOf(__db.cust)<0) return;
     out.push(c); });
+  try{ dbPromoteByLog_(out); }catch(_){}
   out.sort(function(a,b){ return (b.late-a.late) || (b.lateD-a.lateD) || String(a.r.orderNo||"").localeCompare(String(b.r.orderNo||"")); });
   // 단계가 바뀐 카드 표시
   var now=Date.now(), nextPrev={};
