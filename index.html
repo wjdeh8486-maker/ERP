@@ -15237,16 +15237,36 @@ setTimeout(function(){ try{ sdLoad_(function(){ sdMainBanner_(); setTimeout(func
 var __cn=[], __cnEdit=null, __cnF="open", __cnOpen={};
 var CN_STORE=qmsSyncStore_({ tab:"CUSTNOTE_Master", idb:"custNoteStore",
   cols:[["kind","종류"],["cust","고객"],["ref","관리번호"],["title","제목"],["owner","담당"],["rev","현재Rev"],["last","최근통보일"],["next","다음 통보 내용"],["nextDate","다음 통보 예정일"],["status","상태"],["hist","통보 이력(JSON)"],["note","비고"],["created","등록일"],["_ts","_ts"],["_del","_del"]],
-  apply:function(list){ __cn=list||[]; if(!__cnEdit){ try{ cnRender_(); }catch(_){} } cnNavBadge_(); } });   // 입력 중(새 건·수정 폼 열림)엔 화면 다시 그리지 않음 — 입력·첨부 보존
+  apply:function(list){ __cn=list||[]; if(!__cnEdit){ try{ cnRender_(); }catch(_){} } cnNavBadge_(); setTimeout(cnTodayToast_, 1500); } });   // 입력 중(새 건·수정 폼 열림)엔 화면 다시 그리지 않음 — 입력·첨부 보존
 function cnToday_(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function cnHist_(r){ try{ var h=typeof r.hist==="string"?JSON.parse(r.hist||"[]"):(r.hist||[]); return Array.isArray(h)?h:[]; }catch(_){ return []; } }
 function cnDays_(d){ if(!d) return null; var a=new Date(cnToday_()+"T00:00:00"), b=new Date(String(d).slice(0,10)+"T00:00:00"); return Math.round((b-a)/864e5); }
 // 상태: over(예정일 지남) · soon(7일 이내) · tbd(예정일 없음) · ok · closed
 function cnState_(r){ if(r.status==="closed") return "closed"; if(!r.nextDate) return "tbd"; var n=cnDays_(r.nextDate); return n<0?"over":(n<=7?"soon":"ok"); }
-function cnCounts_(){ var c={ over:0, soon:0, tbd:0, ok:0, closed:0 }; __cn.forEach(function(r){ c[cnState_(r)]++; }); return c; }
+function cnCounts_(){ var c={ over:0, soon:0, tbd:0, ok:0, closed:0, today:0 }; __cn.forEach(function(r){ var s=cnState_(r); c[s]++; if(s==="soon" && cnDays_(r.nextDate)===0) c.today++; }); return c; }   // today: 오늘 통보(soon에 포함)
 function cnNavBadge_(){ try{ var el=document.querySelector('.nav-item[data-view="custnote"] .qnav-t b'); if(!el) return; var c=cnCounts_(), n=c.over+c.soon+c.tbd;
   var s=el.querySelector(".cn-bd"); if(!s){ s=document.createElement("span"); s.className="cn-bd"; s.style.cssText="margin-left:5px;border-radius:9px;padding:0 6px;font-size:10.5px;color:#fff;"; el.appendChild(s); }
-  s.textContent=n?String(n):""; s.style.display=n?"":"none"; s.style.background=c.over?"#D92D20":"#F79009"; s.title=n?("예정일 지남 "+c.over+" · 7일 이내 "+c.soon+" · 예정일 미정 "+c.tbd):""; }catch(_){} }
+  s.textContent=n?String(n):""; s.style.display=n?"":"none"; s.style.background=c.over?"#D92D20":"#F79009"; s.title=n?("예정일 지남 "+c.over+" · 오늘 "+c.today+" · 7일 이내 "+c.soon+" · 예정일 미정 "+c.tbd):"";
+  // [추가] 메뉴가 접혀 있어도 보이게 — 위쪽 묶음 버튼(📈 품질관리)에 지남·오늘 건수 점
+  var cat=document.querySelector('.nav-item[data-view="custnote"]'); cat=cat&&cat.closest(".qnav-cat"); var cb=cat&&cat.querySelector(".qnav-btn");
+  if(cb){ var u=cb.querySelector(".cn-bd2"); if(!u){ u=document.createElement("span"); u.className="cn-bd2"; u.style.cssText="margin-left:4px;border-radius:9px;padding:0 6px;font-size:10.5px;font-weight:800;color:#fff;background:#D92D20;"; cb.insertBefore(u, cb.querySelector(".qnav-caret")); }
+    var m=c.over+c.today; u.textContent=m?("📮"+m):""; u.style.display=m?"":"none"; u.title=m?("고객 통보 — 예정일 지남 "+c.over+" · 오늘 "+c.today):""; }
+  }catch(_){} }
+// [추가] 오늘·지난 고객 통보 알림 — 앱을 열고 통보 목록을 불러오면 하루 한 번 화면 오른쪽 아래에 띄움 (닫으면 그날은 다시 안 뜸, 새 건이 생기면 다시)
+function cnTodayToast_(){ try{
+  if(document.getElementById("cn-toast")) return;
+  var L=__cn.filter(function(r){ var s=cnState_(r); return s==="over" || (s==="soon" && cnDays_(r.nextDate)===0); }); if(!L.length) return;
+  var key=cnToday_()+"|"+L.map(function(r){ return r.id; }).sort().join(","); var seen=""; try{ seen=localStorage.getItem("cnToastSeen")||""; }catch(_){} if(seen===key) return;
+  var E=qmsEsc_, t=document.createElement("div"); t.id="cn-toast";
+  t.style.cssText="position:fixed;right:16px;bottom:96px;z-index:99980;width:min(380px,calc(100vw - 32px));background:#fff;border:1px solid #FDA29B;border-left:5px solid #D92D20;border-radius:12px;box-shadow:0 12px 32px rgba(16,24,40,.22);padding:12px 14px;font-size:13px;";
+  t.innerHTML='<div style="display:flex;align-items:center;gap:6px;font-weight:800;color:#B42318;">📮 고객 통보 '+L.length+'건 — 오늘 보내야 합니다<button type="button" data-k="x" style="margin-left:auto;border:none;background:none;font-size:18px;color:#98A2B3;cursor:pointer;">×</button></div>'
+    +L.slice(0,4).map(function(r){ var n=cnDays_(r.nextDate); return '<div style="margin-top:6px;line-height:1.45;"><span style="border-radius:8px;padding:1px 7px;font-size:11px;font-weight:800;color:#fff;background:'+(n<0?'#D92D20':'#F79009')+';">'+(n<0?(-n)+'일 지남':'오늘')+'</span> <b>'+E(r.kind||"")+'</b> '+E(r.title||r.ref||"")+(r.rev?' <span style="color:#667085;">Rev.'+E(r.rev)+'</span>':'')+'<div style="color:#475467;font-size:12px;">다음: '+E(r.next||"-")+'</div></div>'; }).join("")
+    +(L.length>4?'<div style="color:#667085;font-size:12px;margin-top:4px;">외 '+(L.length-4)+'건</div>':'')
+    +'<div style="display:flex;gap:6px;margin-top:10px;"><button type="button" data-k="go" style="flex:1;background:#175CD3;color:#fff;border:none;border-radius:8px;padding:8px;font-weight:700;cursor:pointer;">고객 통보 관리 열기</button><button type="button" data-k="x" style="background:#fff;border:1px solid #D0D5DD;border-radius:8px;padding:8px 12px;cursor:pointer;">오늘 그만 보기</button></div>';
+  document.body.appendChild(t);
+  t.onclick=function(e){ var b=e.target.closest("[data-k]"); if(!b) return; try{ localStorage.setItem("cnToastSeen", key); }catch(_){} t.remove();
+    if(b.getAttribute("data-k")==="go"){ var nv=document.querySelector('.nav-item[data-view="custnote"]'); if(nv) nv.click(); } };
+}catch(_){} }
 function cnShow_(){ CN_STORE.load(); cnRender_(); }
 function cnSave_(rec){ var L=__cn.filter(function(x){ return x.id!==rec.id; }); L.push(rec); __cn=L; CN_STORE.save(L); cnRender_(); cnNavBadge_(); }
 // 다른 화면(NCR·PCN)에서 바로 등록 — 같은 관리번호가 진행 중이면 그 건을 엶
@@ -15463,10 +15483,11 @@ function cnXls_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리�
   qmsMorningAlerts_=function(){ var items=[]; try{ items=orig()||[]; }catch(_){}
     try{ var c=cnCounts_();
       if(c.over) items.unshift({ icon:"📮", title:"고객 통보 예정일 지남 (Rev 미통보)", count:c.over, color:"#C0392B", view:"custnote" });
-      if(c.soon) items.push({ icon:"📮", title:"고객 통보 예정 (7일 이내)", count:c.soon, color:"#B54708", view:"custnote" });
+      if(c.today) items.unshift({ icon:"📮", title:"오늘 고객 통보 (Rev 송부)", count:c.today, color:"#D92D20", view:"custnote" });
+      if(c.soon-c.today>0) items.push({ icon:"📮", title:"고객 통보 예정 (7일 이내)", count:c.soon-c.today, color:"#B54708", view:"custnote" });
       if(c.tbd) items.push({ icon:"📮", title:"고객 통보 다음 예정일 미정", count:c.tbd, color:"#B54708", view:"custnote" }); }catch(_){}
     return items; }; })();
-setTimeout(function(){ try{ CN_STORE.load(); }catch(_){} }, 5000);   // 시작 시 한 번 불러와 알림·메뉴 숫자에 반영
+setTimeout(function(){ try{ CN_STORE.load(); }catch(_){} }, 1200);   // [수정] 5초→1.2초: 아침 '오늘 챙길 것'이 뜨기 전에 통보 목록이 들어오게 (전에는 늦게 들어와 알림에서 빠질 수 있었음)
 /* ===== [추가] MAIN 표에서 바로 특별납기 등록 — 관리번호 옆 ☆ 누르면 등록 창 (품번·납기·수량 자동, 가능일자만 입력, 분할 가능) ===== */
 function sdStarBtn_(ord){
   var o=String(ord||"").trim(); if(!o) return "";
