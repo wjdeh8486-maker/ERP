@@ -21395,7 +21395,8 @@ function ftPoMain_(r){
   var dg=function(v){ return String(v==null?"":v).replace(/\D/g,""); }, cand=(__ftpo._idx[dg(r.po)]||[]).concat(r.req?(__ftpo._idx[dg(r.req)]||[]):[]).filter(function(m,i,a){ return a.indexOf(m)===i; });
   var mk=ftK_(r.mat), dk=ftK_(r.doc), L=cand.filter(function(m){ return (mk && (ftK_(m.partNo)===mk || ftK_(m.oldDrawingNo)===mk)) || (dk && (ftK_(m.oldDrawingNo)===dk || ftK_(m.partNo)===dk)); });
   if(!L.length) return { st:"noreg", ords:[], poHit:cand.length, poDocs:cand.slice(0,4).map(function(m){ return (m.orderNo||"")+" "+(m.oldDrawingNo||m.partNo||""); }) };
-  var sts=L.map(function(m){ var x=""; try{ x=computeProductStatus(m)||""; }catch(_){} return { no:m.orderNo||"", st:x||"생산", qty:Number(m.qty)||0 }; });
+  var sts=L.map(function(m){ var x=""; try{ x=computeProductStatus(m)||""; }catch(_){} var q=Number(m.qty)||0, sp=0; try{ sp=Math.max(0, Number(computeStockPreShip(m))||0); }catch(_){}
+    return { no:m.orderNo||"", st:x||"생산", qty:q, out:(x==="완료"?q:Math.min(q, sp)) }; });   // out: 이미 나간 수량(납품완료 전량 / 선출고)
   var done=sts.every(function(o){ return /완료|출고/.test(o.st); });
   return { st:done?(sts.every(function(o){ return o.st==="완료"; })?"완료":"출고"):"active", ords:sts };
 }
@@ -21422,25 +21423,27 @@ function ftPoCalc_(){
   Object.keys(fgInfo).forEach(function(k){ var I=fgInfo[k], m=FG[k]; I.man=m||null; I.use=m?Math.max(0, ftN_(m.qty)):I.auto; fgPool[k]=S.fg?I.use:0; });
   var L=S.rows.slice(); if(S.order==="rel") L.sort(function(a,b){ return String(a.rel||"9999").localeCompare(String(b.rel||"9999")) || a.no-b.no; });
   var need={}, streak=0, broke=false, ok=0, okQ=0;
-  L.forEach(function(r){ r.inS=false; r.via=""; r.weld=false; var m=ftPoBom_(r); r.k=m?m.k:""; r.can=0; r.short=[]; r.st=""; r.fg=0; r.make=0; r.qm=ftPoMain_(r);
+  L.forEach(function(r){ r.inS=false; r.via=""; r.weld=false; r.out=0; r.nq=r.qty; var m=ftPoBom_(r); r.k=m?m.k:""; r.can=0; r.short=[]; r.st=""; r.fg=0; r.make=0; r.qm=ftPoMain_(r);
     if(!(r.qty>0)){ r.st="skip"; return; }
     // [수정] MAIN 상태가 재고·출고·납품완료면 제품이 이미 있음 → '가능'(피팅 필요 없음) · 나머지(생산·수입·측정 등)는 용접 필요 → 피팅으로 계산
-    var qs=(r.qm.ords||[]).map(function(o){ return o.st; }), have=(r.qm.st==="완료"||r.qm.st==="출고") || (qs.length && qs.every(function(x){ return /재고|출고|완료/.test(x); }));
-    if(have){ r.via=r.qm.st==="완료"?"납품완료":(r.qm.st==="출고"?"출고":"재고"); r.st="ok"; r.can=r.qty; var fk0=ftPoFgKey_(r); if(r.via==="재고" && fgPool[fk0]>0) fgPool[fk0]=Math.max(0, fgPool[fk0]-r.qty); ok++; okQ+=r.qty; if(!broke){ streak++; r.inS=true; } return; }
+    // [추가] 선출고·납품완료로 이미 나간 수량은 빼고 남은 수량(nq)만 필요
+    r.out=Math.min(r.qty, (r.qm.ords||[]).reduce(function(a,o){ return a+(o.out||0); },0)); r.nq=r.qty-r.out;
+    var qs=(r.qm.ords||[]).map(function(o){ return o.st; }), have=(r.nq<=0)||(r.qm.st==="완료"||r.qm.st==="출고") || (qs.length && qs.every(function(x){ return /재고|출고|완료/.test(x); }));
+    if(have){ r.via=r.qm.st==="완료"?"납품완료":(r.qm.st==="출고"?"출고":"재고"); r.st="ok"; r.can=r.qty; var fk0=ftPoFgKey_(r); if(r.via==="재고" && fgPool[fk0]>0) fgPool[fk0]=Math.max(0, fgPool[fk0]-r.nq); ok++; okQ+=r.qty; if(!broke){ streak++; r.inS=true; } return; }
     r.weld=true;
     if(S.exNoreg && r.qm.st==="noreg"){ r.st="noreg"; return; }
-    var fk=ftPoFgKey_(r), fg=Math.min(r.qty, Math.max(0, fgPool[fk]||0)), rem=r.qty-fg;   // 완제품 먼저
-    if(rem<=0){ fgPool[fk]-=fg; r.fg=fg; r.can=r.qty; r.st="ok"; ok++; okQ+=r.qty; if(!broke){ streak++; r.inS=true; } return; }
+    var fk=ftPoFgKey_(r), fg=Math.min(r.nq, Math.max(0, fgPool[fk]||0)), rem=r.nq-fg;   // 완제품 먼저
+    if(rem<=0){ fgPool[fk]-=fg; r.fg=fg; r.can=r.nq; r.st="ok"; ok++; okQ+=r.nq; if(!broke){ streak++; r.inS=true; } return; }
     if(!m || !(m.b.lines||[]).length){ r.st=fg>0?"part":"nobom"; r.fg=fg; r.can=fg; if(fg>0 && S.mode==="part") fgPool[fk]-=fg; broke=true; return; }
     var lines=(m.b.lines||[]).filter(function(l){ return ftN_(l.qty)>0; }), can=rem;
     lines.forEach(function(l){ var s=ftK_(l.spec), q=ftN_(l.qty); need[s]=(need[s]||0)+q*rem; var x=Math.floor((pool[s]||0)/q); if(x<can) can=x; });
     can=Math.max(0,can); r.can=fg+can; r.fg=fg; r.make=can;
     lines.forEach(function(l){ var s=ftK_(l.spec), q=ftN_(l.qty), lack=q*rem-(pool[s]||0); if(lack>0) r.short.push({ spec:l.spec, lack:lack }); });
-    var full=r.can>=r.qty, take=full?rem:(S.mode==="part"?can:0);
+    var full=r.can>=r.nq, take=full?rem:(S.mode==="part"?can:0);
     if(full || S.mode==="part") fgPool[fk]-=fg;
     lines.forEach(function(l){ var s=ftK_(l.spec); pool[s]=(pool[s]||0)-take*ftN_(l.qty); });
     r.st=full?"ok":(r.can>0?"part":"ng");
-    if(r.st==="ok"){ ok++; okQ+=r.qty; if(!broke){ streak++; r.inS=true; } } else broke=true; });
+    if(r.st==="ok"){ ok++; okQ+=r.nq; if(!broke){ streak++; r.inS=true; } } else broke=true; });
   var fit=Object.keys(need).sort().map(function(s){ var e=R.S[s]||{}; return { spec:e.spec||s, name:e.name||"", have:have[s]||0, need:need[s], gap:Math.max(0, need[s]-(have[s]||0)) }; });
   return { L:L, streak:streak, ok:ok, okQ:okQ, fit:fit, nobom:L.filter(function(r){ return r.st==="nobom"; }).length, fgInfo:fgInfo,
     nDone:L.filter(function(r){ return r.qm && (r.qm.st==="완료"||r.qm.st==="출고"); }).length, nNoreg:L.filter(function(r){ return r.qm && r.qm.st==="noreg"; }).length };
@@ -21473,7 +21476,7 @@ function ftPoPop_(){
         +'<div class="ft-card" style="padding:8px 12px;flex:1;min-width:160px;"><div class="m">가능 (건너뛰고 배정 포함)</div><b style="font-size:20px;">'+C.ok+'줄</b> <span class="m">/ '+C.L.filter(function(r){ return r.st!=="skip"; }).length+'줄 · '+C.okQ+'개</span></div>'
         +'<div class="ft-card" style="padding:8px 12px;flex:1;min-width:160px;"><div class="m">부족 피팅 종류</div><b style="font-size:20px;color:#B42318;">'+C.fit.filter(function(f){ return f.gap>0; }).length+'</b>'+(C.nobom?' <span class="m">· BOM 없음 '+C.nobom+'줄</span>':'')+'</div></div>'
       +'<div style="overflow:auto;"><table class="ft-tb" style="min-width:900px;"><thead><tr><th>#</th><th>판정</th><th>QC관리도</th><th>Release</th><th>WBS</th><th>Purch.Doc</th><th>Material</th><th>Document</th><th>Short Text</th><th>PO Qty</th><th>가능</th><th>부족 피팅 (모자란 수)</th>'+(S.rows.some(function(r){ return r.issue; })?'<th>이슈</th>':'')+'</tr></thead><tbody>'
-      +C.L.map(function(r,i){ var inS=!!r.inS, dim=(r.st==="done"||r.st==="noreg"); return '<tr style="'+(inS?'background:#ECFDF3;':(r.st==="ng"?'background:#FEF3F2;':(dim?'opacity:.55;':(r.qm&&r.qm.st==="noreg"?'background:#FFFCF5;':''))))+'"><td class="c">'+(i+1)+'</td><td class="nw">'+(r.via?'<span class="ft-tg ok" title="MAIN 상태 '+E(r.via)+' — 제품 있음, 피팅 필요 없음">가능</span> <span class="m" style="font-size:11px;">'+E(r.via)+'</span>':tg[r.st])+'</td><td class="nw">'+qmTag(r.qm)+'</td><td class="nw">'+E(r.rel)+'</td><td class="s">'+E(r.wbs)+'</td><td>'+E(r.po)+'</td><td>'+E(r.mat)+'</td><td class="nw"><b>'+E(r.doc)+'</b></td><td class="nm s">'+E(r.txt)+'</td><td class="n"><b>'+r.qty+'</b></td><td class="n nw">'+(r.via?'<span class="m">'+r.qty+'</span>':'')+(r.via||r.st==="nobom"||r.st==="skip"||r.st==="done"||r.st==="noreg"?'':(r.can>=r.qty?r.qty:'<b style="color:#B42318;">'+r.can+'</b>'))+(r.fg>0?'<div class="m" style="font-size:11px;">완제품 '+r.fg+(r.make?' + 제작 '+r.make:'')+'</div>':'')+'</td><td class="s">'+r.short.map(function(x){ return E(x.spec)+' <b style="color:#B42318;">-'+x.lack+'</b>'; }).join(", ")+'</td>'+(S.rows.some(function(x){ return x.issue; })?'<td class="s">'+E(r.issue)+'</td>':'')+'</tr>'; }).join("")+'</tbody></table></div>'
+      +C.L.map(function(r,i){ var inS=!!r.inS, dim=(r.st==="done"||r.st==="noreg"); return '<tr style="'+(inS?'background:#ECFDF3;':(r.st==="ng"?'background:#FEF3F2;':(dim?'opacity:.55;':(r.qm&&r.qm.st==="noreg"?'background:#FFFCF5;':''))))+'"><td class="c">'+(i+1)+'</td><td class="nw">'+(r.via?'<span class="ft-tg ok" title="MAIN 상태 '+E(r.via)+' — 제품 있음, 피팅 필요 없음">가능</span> <span class="m" style="font-size:11px;">'+E(r.via)+'</span>':tg[r.st])+'</td><td class="nw">'+qmTag(r.qm)+'</td><td class="nw">'+E(r.rel)+'</td><td class="s">'+E(r.wbs)+'</td><td>'+E(r.po)+'</td><td>'+E(r.mat)+'</td><td class="nw"><b>'+E(r.doc)+'</b></td><td class="nm s">'+E(r.txt)+'</td><td class="n nw"><b>'+r.qty+'</b>'+(r.out>0?'<div class="m" style="font-size:11px;" title="MAIN 선출고·납품완료로 이미 나간 수량">출고 '+r.out+' → <b>'+r.nq+'</b></div>':'')+'</td><td class="n nw">'+(r.via?'<span class="m">'+(r.nq>0?r.nq:r.qty)+'</span>':'')+(r.via||r.st==="nobom"||r.st==="skip"||r.st==="done"||r.st==="noreg"?'':(r.can>=r.qty?r.qty:'<b style="color:#B42318;">'+r.can+'</b>'))+(r.fg>0?'<div class="m" style="font-size:11px;">완제품 '+r.fg+(r.make?' + 제작 '+r.make:'')+'</div>':'')+'</td><td class="s">'+r.short.map(function(x){ return E(x.spec)+' <b style="color:#B42318;">-'+x.lack+'</b>'; }).join(", ")+'</td>'+(S.rows.some(function(x){ return x.issue; })?'<td class="s">'+E(r.issue)+'</td>':'')+'</tr>'; }).join("")+'</tbody></table></div>'
       +(function(){ var F=Object.keys(C.fgInfo).map(function(k){ return C.fgInfo[k]; }).sort(function(a,b){ return ((b.use>0)-(a.use>0)) || String(a.doc).localeCompare(String(b.doc)); }), nMan=F.filter(function(I){ return I.man; }).length;
         return '<div style="margin-top:12px;font-weight:700;">완제품 보유 — 직접 입력 <span class="m" style="font-weight:400;">(이 LIST 제품 전체 · 빈칸이면 재고 관리(입고−출고) 자동값 · 칸에 넣은 수량은 저장되어 다른 PC에서도 같이 씀 · 0이면 완제품 안 씀)</span>'+(nMan?' <button type="button" class="ft-btn sm" data-po="fgclr">↺ 직접 입력 지우기 ('+nMan+')</button>':'')+'</div>'
           +'<div style="overflow:auto;"><table class="ft-tb"><thead><tr><th>Document</th><th>Material</th><th>Short Text</th><th>재고(자동)</th><th>완제품 보유 (직접 입력)</th><th>이 LIST 필요</th></tr></thead><tbody>'
