@@ -21390,8 +21390,10 @@ var __ftpo={ rows:null, head:null, name:"", order:"file", basis:"all", mode:"ful
 //   완료(납품완료)·출고(선출고로 다 나감)는 피팅 필요 없음 → 기본 제외 · MAIN에 없으면 '미등록(미발주)'
 function ftPoMain_(r){
   var md=(typeof mainData!=="undefined" && mainData)||[]; if(!md.length) return { st:"?", ords:[] };
-  if(!__ftpo._idx || __ftpo._idxRef!==md){ var ix={}; md.forEach(function(m){ var po=String(m.po||"").trim(); if(po) (ix[po]=ix[po]||[]).push(m); }); __ftpo._idx=ix; __ftpo._idxRef=md; }
-  var mk=ftK_(r.mat), dk=ftK_(r.doc), L=(__ftpo._idx[String(r.po||"").trim()]||[]).filter(function(m){ return (mk && (ftK_(m.partNo)===mk || ftK_(m.oldDrawingNo)===mk)) || (dk && (ftK_(m.oldDrawingNo)===dk || ftK_(m.partNo)===dk)); });
+  // [수정] MAIN의 PO는 'PR 및 PO' 칸(prpo)에 들어 있음 (PR·PO 번호가 같이 적힌 경우도 있어 숫자 묶음마다 색인)
+  if(!__ftpo._idx || __ftpo._idxRef!==md || __ftpo._idxLen!==md.length){ var ix={}; md.forEach(function(m){ String(m.prpo==null?"":m.prpo).replace(/\d{7,}/g, function(n){ (ix[n]=ix[n]||[]).push(m); return n; }); }); __ftpo._idx=ix; __ftpo._idxRef=md; __ftpo._idxLen=md.length; }
+  var dg=function(v){ return String(v==null?"":v).replace(/\D/g,""); }, cand=(__ftpo._idx[dg(r.po)]||[]).concat(r.req?(__ftpo._idx[dg(r.req)]||[]):[]).filter(function(m,i,a){ return a.indexOf(m)===i; });
+  var mk=ftK_(r.mat), dk=ftK_(r.doc), L=cand.filter(function(m){ return (mk && (ftK_(m.partNo)===mk || ftK_(m.oldDrawingNo)===mk)) || (dk && (ftK_(m.oldDrawingNo)===dk || ftK_(m.partNo)===dk)); });
   if(!L.length) return { st:"noreg", ords:[] };
   var sts=L.map(function(m){ var x=""; try{ x=computeProductStatus(m)||""; }catch(_){} return { no:m.orderNo||"", st:x||"생산", qty:Number(m.qty)||0 }; });
   var done=sts.every(function(o){ return /완료|출고/.test(o.st); });
@@ -21404,11 +21406,11 @@ function ftPoParse_(A){
   var hi=-1; for(var i=0;i<Math.min(A.length,15);i++){ var r=(A[i]||[]).map(function(x){ return String(x==null?"":x).replace(/\s+/g,"").toLowerCase(); }); if(r.indexOf("material")>=0 || r.some(function(x){ return /품목코드/.test(x); })){ hi=i; break; } }
   if(hi<0) return null;
   var H=(A[hi]||[]).map(function(x){ return String(x==null?"":x).trim(); }), f=function(re){ for(var j=0;j<H.length;j++){ if(re.test(H[j].replace(/\s+/g,"").toLowerCase())) return j; } return -1; };
-  var c={ mat:f(/^material$|품목코드/), doc:f(/^document$|도번/), txt:f(/shorttext|품명/), qty:f(/^poqty$/), pr:f(/^prqty$/), rel:f(/release|발주일/), po:f(/purch\.?doc|발주번호|^po$/), wbs:f(/wbs/), issue:f(/이슈/) };
+  var c={ mat:f(/^material$|품목코드/), doc:f(/^document$|도번/), txt:f(/shorttext|품명/), qty:f(/^poqty$/), pr:f(/^prqty$/), rel:f(/release|발주일/), po:f(/purch\.?doc|발주번호|^po$/), req:f(/purch\.?req|구매요청/), wbs:f(/wbs/), issue:f(/이슈/) };
   if(c.qty<0) c.qty=c.pr>=0?c.pr:f(/수량|qty/); if(c.mat<0 || c.qty<0) return null;
   var g=function(r,j){ return j>=0?r[j]:""; }, d8=function(v){ if(v instanceof Date && !isNaN(v)) return v.getFullYear()+"-"+String(v.getMonth()+1).padStart(2,"0")+"-"+String(v.getDate()).padStart(2,"0"); var s=String(v==null?"":v).trim(), m=s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/); return m?(m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0")):s; };
   var rows=[]; A.slice(hi+1).forEach(function(r,ix){ r=r||[]; var mat=String(g(r,c.mat)==null?"":g(r,c.mat)).trim(), q=ftN_(g(r,c.qty)); if(!mat && !String(g(r,c.doc)||"").trim()) return;
-    rows.push({ no:rows.length+1, raw:r, mat:mat, doc:String(g(r,c.doc)||"").trim(), txt:String(g(r,c.txt)||"").trim(), qty:q, rel:d8(g(r,c.rel)), po:String(g(r,c.po)||"").trim(), wbs:String(g(r,c.wbs)||"").trim(), issue:String(g(r,c.issue)||"").trim() }); });
+    rows.push({ no:rows.length+1, raw:r, mat:mat, doc:String(g(r,c.doc)||"").trim(), txt:String(g(r,c.txt)||"").trim(), qty:q, rel:d8(g(r,c.rel)), po:String(g(r,c.po)||"").trim(), req:String(g(r,c.req)||"").trim(), wbs:String(g(r,c.wbs)||"").trim(), issue:String(g(r,c.issue)||"").trim() }); });
   return { head:H, rows:rows };
 }
 function ftPoBom_(r){ var B=__ft.d.bom||{}, k=ftK_(r.mat); if(B[k]) return { k:k, b:B[k] }; var dk=ftK_(r.doc); if(dk){ if(B[dk]) return { k:dk, b:B[dk] }; for(var x in B){ if(B[x].mat && ftK_(B[x].mat)===dk) return { k:x, b:B[x] }; } } return null; }
