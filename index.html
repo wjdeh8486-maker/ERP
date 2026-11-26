@@ -15665,20 +15665,21 @@ function chatOpen_(room){
   __chat.open=true; var p=document.getElementById("chat-panel"); p.classList.add("open");
   if(!__chat.hist){ try{ history.pushState({ qmsChat:1 }, "", location.href); __chat.hist=true; }catch(_){} }   /* 폰 뒤로가기 = 채팅 닫기(페이지 이탈·재로딩 방지) */
   if(!__chat.me){ chatSetup_(); return; }
-  __chat.room=room||null; __chat.view=null; chatPaint_(); chatPoll_(); chatSchedule_();
+  __chat.setup=false; __chat.room=room||null; __chat.view=null; chatPaint_(); chatPoll_(); chatSchedule_();
 }
-function chatClose_(fromPop){ __chat.open=false; var p=document.getElementById("chat-panel"); if(p) p.classList.remove("open"); chatSchedule_();
+function chatClose_(fromPop){ __chat.open=false; __chat.setup=false; var p=document.getElementById("chat-panel"); if(p) p.classList.remove("open"); chatSchedule_();
   if(__chat.hist){ __chat.hist=false; if(fromPop!==true){ try{ history.back(); }catch(_){} } } }
 function chatSetup_(){
-  var p=document.getElementById("chat-panel"), me=__chat.me||{};
+  var p=document.getElementById("chat-panel"), me=__chat.me||{}; __chat.setup=true;
   p.innerHTML='<div class="chat-h"><b>💬 채팅 시작</b><button type="button" data-c="close">✕<span class="chat-cl"> 닫기</span></button></div><div class="chat-setup">'
-    +'<div>처음 한 번만 입력합니다. 다른 사람에게 이 이름으로 보입니다.</div><label>이름<input id="chat-nm" maxlength="20" placeholder="예: 이정도" value="'+chatE_(me.name||"")+'"></label>'
+    +'<div>'+(me.name?'이름·팀을 바꾸면 다음 글부터 새 이름으로 보입니다.':'처음 한 번만 입력합니다. 다른 사람에게 이 이름으로 보입니다.')+'</div><label>이름<input id="chat-nm" maxlength="20" placeholder="예: 이정도" value="'+chatE_(me.name||"")+'"></label>'
     +'<label>팀<select id="chat-tm">'+CHAT_TEAMS.map(function(t){ return '<option'+(me.team===t?' selected':'')+'>'+t+'</option>'; }).join("")+'</select></label>'
-    +'<button type="button" data-c="save" class="chat-pri">시작하기</button><div class="chat-note">※ 사내 간이 채팅입니다. 비밀번호·개인정보 같은 민감한 내용은 보내지 마세요.</div></div>';
+    +'<button type="button" data-c="save" class="chat-pri">'+(me.name?'저장':'시작하기')+'</button>'+(me.name?'<button type="button" data-c="back" style="margin-top:6px;">취소</button>':'')+'<div class="chat-note">※ 사내 간이 채팅입니다. 비밀번호·개인정보 같은 민감한 내용은 보내지 마세요.</div></div>';
   setTimeout(function(){ var i=document.getElementById("chat-nm"); if(i) i.focus(); }, 50);
 }
 function chatPaint_(){
   var p=document.getElementById("chat-panel"); if(!p || !__chat.open) return; if(!__chat.me){ chatSetup_(); return; }
+  if(__chat.setup) return;   // [수정] 이름·팀 바꾸는 중에는 새 글 확인(몇 초마다)이 화면을 목록으로 덮어쓰지 않게
   if(__chat.view==="tasks" && typeof ctPaint_==="function"){ ctPaint_(p); return; }   // [추가] 📋 업무 화면
   var me=__chat.me, keepScroll=false, box=p.querySelector(".chat-msgs"); if(box) keepScroll=(box.scrollHeight-box.scrollTop-box.clientHeight)>60;
   var inp=p.querySelector("#chat-in"), draft=inp?inp.value:"", hadFocus=inp && document.activeElement===inp;
@@ -15713,8 +15714,8 @@ function chatInit_(){
     else chatClose_(true);   /* 목록에서 뒤로 = 채팅 닫기 */
   });
   p.addEventListener("click", function(e){ var t=e.target, c=t.getAttribute && t.getAttribute("data-c");
-    if(c==="close"){ chatClose_(); return; } if(c==="back"){ __chat.room=null; chatPaint_(); return; } if(c==="setup"){ chatSetup_(); return; }
-    if(c==="save"){ var nm=String(document.getElementById("chat-nm").value||"").trim(), tm=document.getElementById("chat-tm").value; if(!nm){ alert("이름을 입력하세요."); return; }
+    if(c==="close"){ __chat.setup=false; chatClose_(); return; } if(c==="back"){ __chat.setup=false; __chat.room=null; chatPaint_(); return; } if(c==="setup"){ chatSetup_(); return; }
+    if(c==="save"){ __chat.setup=false; var nm=String(document.getElementById("chat-nm").value||"").trim(), tm=document.getElementById("chat-tm").value; if(!nm){ alert("이름을 입력하세요."); return; }
       __chat.me={ name:nm, team:tm }; try{ localStorage.setItem("qmsChatMe", JSON.stringify(__chat.me)); }catch(_){}
       try{ fetch(chatUrl_(),{ method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:JSON.stringify({ mode:"chatHello", name:nm, team:tm }) }); }catch(_){}
       __chat.lastUsers=0; __chat.room=null; chatPaint_(); chatPoll_(); return; }
