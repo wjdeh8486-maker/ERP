@@ -21473,7 +21473,7 @@ function ftPoPop_(){
     var last=C.L.filter(function(r){ return r.inS; }).pop()||null;
     pb.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:8px;font-size:13px;"><span class="m">'+E(S.name)+' · '+S.rows.length+'줄</span>'
       +'<label>순서 '+sel("ftpo-o",S.order,[["file","파일 순서"],["rel","Release Date 오래된 순"]])+'</label>'
-      +'<label>재고 '+sel("ftpo-b",S.basis,[["all","NTL + 업체 인계분 + 업체자재"],["vend","NTL + 업체 인계분"],["ntl","NTL 보유만"]])+'</label>'
+      +'<label>재고 '+sel("ftpo-b",S.basis,[["all","전체: NTL + 업체 인계분 + 업체자재"],["vend","고객 사급분만: NTL + 업체 인계분 (업체자재 제외)"],["ntl","NTL 보유만"]])+'</label>'
       +'<label>배정 '+sel("ftpo-m",S.mode,[["full","전량 되는 줄만 (안 되면 다음 줄로)"],["part","되는 만큼 배정 (일부 포함)"]])+'</label>'
       +'<label style="font-weight:700;"><input type="checkbox" id="ftpo-fg"'+(S.fg?' checked':'')+'> 완제품 재고 먼저 사용</label>'
 
@@ -21505,7 +21505,10 @@ function ftPoPop_(){
       var aoa=[["순서","판정","QC관리도","가능 수량","완제품 사용","부족 피팅"].concat(S.head)].concat(C2.L.map(function(r,i){ return [i+1, (r.via?(r.via==="재고"?"가능":"납품완료"):({ ok:"가능", part:"부족", ng:"부족", nobom:"부족", skip:"", done:"납품완료", noreg:"제외" }[r.st]||"")), qn(r.qm), (r.st==="nobom"||r.st==="skip"||r.st==="done"||r.st==="noreg")?"":r.can, r.fg||"", (r.st==="nobom"?"BOM 없음(피팅 구성 미등록)":r.short.map(function(x){ return x.spec+" -"+x.lack; }).join(", "))].concat(r.raw.map(function(v){ return (v instanceof Date)?(v.getFullYear()+"-"+String(v.getMonth()+1).padStart(2,"0")+"-"+String(v.getDate()).padStart(2,"0")):v; })); }));
       var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "가능 판정");
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["규격","품명","보유","필요","부족"]].concat(C2.fit.map(function(f){ return [f.spec,f.name,f.have,f.need,f.gap]; }))), "피팅 필요·보유");
-      XLSX.writeFile(wb, "피팅_가능판정_"+ftToday_()+".xlsx"); };
+      // [추가] 재고 기준 표시 — 고객 사급분만으로 판정한 엑셀임을 알 수 있게
+      var bTxt={ all:"전체 (NTL 보유 + 용접업체 인계분 + 업체자재)", vend:"고객 사급분만 (NTL 보유 + 용접업체 인계분 · 업체자재 제외)", ntl:"NTL 보유만" }[S.basis]||"";
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["항목","내용"],["기준일",ftToday_()],["피팅 재고 기준",bTxt],["완제품 재고",S.fg?"사용 (완제품 먼저 배정)":"사용 안 함"],["배정 방식",S.mode==="part"?"되는 만큼 배정 (일부 포함)":"전량 되는 줄만"],["원본 파일",S.name||""]]), "판정 기준");
+      XLSX.writeFile(wb, "피팅_가능판정_"+(S.basis==="vend"?"고객사급분_":"")+ftToday_()+".xlsx"); };
   };
   draw();
 }
