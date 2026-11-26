@@ -1667,7 +1667,7 @@
   .chat-h b{ flex:1; font-size:15px; } .chat-h button{ border:0; background:rgba(255,255,255,.14); color:#fff; border-radius:8px; min-width:30px; height:30px; cursor:pointer; font-size:15px; }
   .chat-me{ font-size:12px; opacity:.8; }
   .chat-list{ overflow:auto; flex:1; } .chat-sec{ font-size:11.5px; font-weight:700; color:#667085; padding:12px 14px 4px; }
-  .chat-row{ display:flex; align-items:center; gap:8px; padding:10px 14px; cursor:pointer; border-bottom:1px solid #F2F4F7; } .chat-row:hover{ background:#F9FAFB; }
+  .chat-row{ display:flex; align-items:center; gap:8px; padding:10px 14px; cursor:pointer; border-bottom:1px solid #F2F4F7; } .chat-row:hover{ background:#F9FAFB; } .chat-udel{ margin-left:auto; flex:none; border:0; background:none; color:#98A2B3; font-size:13px; padding:4px 8px; border-radius:6px; cursor:pointer; } .chat-udel:hover{ background:#FEE4E2; color:#B42318; }
   .chat-row b{ white-space:nowrap; } .chat-sub{ flex:1; min-width:0; color:#667085; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .chat-n{ min-width:20px; height:20px; border-radius:10px; background:#D92D20; color:#fff; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; padding:0 5px; }
   .chat-dot{ width:9px; height:9px; border-radius:50%; background:#D0D5DD; flex:none; } .chat-dot.on{ background:#12B76A; }
@@ -15689,7 +15689,7 @@ function chatPaint_(){
     p.innerHTML='<div class="chat-h"><b>💬 채팅</b><span class="chat-me">'+chatE_(me.name)+' · '+chatE_(me.team)+'</span>'+(typeof ctHeadBtn_==="function"?ctHeadBtn_():'')+'<button type="button" data-c="setup" title="이름·팀 변경">⚙</button><button type="button" data-c="close">✕<span class="chat-cl"> 닫기</span></button></div>'
       +'<div class="chat-list"><div class="chat-sec">채널</div>'+chatRooms_().filter(function(r){ return r.room.indexOf("team:")===0; }).map(function(r){ return chatRow_(r.room); }).join("")
       +'<div class="chat-sec">1:1 대화</div>'+(chatRooms_().filter(function(r){ return r.room.indexOf("dm:")===0; }).map(function(r){ return chatRow_(r.room); }).join("")||'<div class="chat-empty">아래에서 사람을 골라 대화를 시작하세요</div>')
-      +'<div class="chat-sec">사람 ('+users.length+')</div>'+(users.map(function(u){ return '<div class="chat-row" data-dm="'+chatE_(u.name)+'"><span class="chat-dot'+(online(u)?' on':'')+'"></span><b>'+chatE_(u.name)+'</b><span class="chat-sub">'+chatE_(u.team)+'</span></div>'; }).join("")||'<div class="chat-empty">아직 다른 사용자가 없습니다</div>')+'</div>';
+      +'<div class="chat-sec">사람 ('+users.length+')</div>'+(users.map(function(u){ return '<div class="chat-row" data-dm="'+chatE_(u.name)+'"><span class="chat-dot'+(online(u)?' on':'')+'"></span><b>'+chatE_(u.name)+'</b><span class="chat-sub">'+chatE_(u.team)+'</span><button type="button" class="chat-udel" data-c="udel" data-n="'+chatE_(u.name)+'" title="사람 목록에서 삭제">✕</button></div>'; }).join("")||'<div class="chat-empty">아직 다른 사용자가 없습니다</div>')+'</div>';
     return;
   }
   var room=__chat.room, list=__chat.msgs.filter(function(m){ return m.room===room; }).concat(__chat.pending.filter(function(x){ return x.room===room; })).sort(function(a,b){ return a.ts-b.ts; });
@@ -15715,9 +15715,15 @@ function chatInit_(){
   });
   p.addEventListener("click", function(e){ var t=e.target, c=t.getAttribute && t.getAttribute("data-c");
     if(c==="close"){ __chat.setup=false; chatClose_(); return; } if(c==="back"){ __chat.setup=false; __chat.room=null; chatPaint_(); return; } if(c==="setup"){ chatSetup_(); return; }
+    if(c==="udel"){ var dn=t.getAttribute("data-n"); if(!dn || !confirm("'"+dn+"'을(를) 사람 목록에서 삭제할까요?\n\n· 주고받은 글·대화방은 그대로 남습니다\n· 그 사람이 다시 채팅을 쓰면 목록에 다시 나타납니다")) return;
+      __chat.users=(__chat.users||[]).filter(function(u){ return u.name!==dn; }); chatPaint_();
+      try{ fetch(chatUrl_(),{ method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:JSON.stringify({ mode:"chatUserDel", name:dn }) }); }catch(_){}
+      return; }   // [추가] 사람 목록에서 삭제 (예전 이름·안 쓰는 이름 정리)
     if(c==="save"){ __chat.setup=false; var nm=String(document.getElementById("chat-nm").value||"").trim(), tm=document.getElementById("chat-tm").value; if(!nm){ alert("이름을 입력하세요."); return; }
+      var oldNm=(__chat.me&&__chat.me.name)||"";   // [추가] 이름을 바꾸면 예전 이름은 사람 목록에서 지움
       __chat.me={ name:nm, team:tm }; try{ localStorage.setItem("qmsChatMe", JSON.stringify(__chat.me)); }catch(_){}
-      try{ fetch(chatUrl_(),{ method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:JSON.stringify({ mode:"chatHello", name:nm, team:tm }) }); }catch(_){}
+      if(oldNm && oldNm!==nm) __chat.users=(__chat.users||[]).filter(function(u){ return u.name!==oldNm; });
+      try{ fetch(chatUrl_(),{ method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:JSON.stringify({ mode:"chatHello", name:nm, team:tm, old:(oldNm!==nm?oldNm:"") }) }); }catch(_){}
       __chat.lastUsers=0; __chat.room=null; chatPaint_(); chatPoll_(); return; }
     if(c==="attach"){ var fi=document.getElementById("chat-file"); if(fi) fi.click(); return; }
     if(c==="send"){ var i=document.getElementById("chat-in"), tx=i.value; i.value=""; chatSend_(__chat.room, tx); var i2=document.getElementById("chat-in"); if(i2) i2.focus(); return; }   // 먼저 비우고 보냄(다시 그릴 때 입력칸에 남지 않게)
@@ -20415,7 +20421,7 @@ document.addEventListener("click", function(e){ if(!auActive_()) return; var n=e
 function auRoBanner_(){ var on=auActive_() && auLv_(auCurPk_())==="view", el=document.getElementById("au-ro");
   if(!on){ if(el) el.remove(); return; } if(!el){ el=document.createElement("div"); el.id="au-ro"; el.textContent="👁 보기 전용 — 이 화면에서 바꾼 내용은 저장되지 않습니다"; document.body.appendChild(el); } }
 function auWhite_(body){ var j=null; try{ j=JSON.parse(String(body||"")); }catch(_){ return false; } if(!j) return false;
-  if(/^(chatSend|chatHello|chatUpload|chatRead|read|ocrSpace|writeCache)$/.test(j.mode||"")) return true;
+  if(/^(chatSend|chatHello|chatUserDel|chatUpload|chatRead|read|ocrSpace|writeCache)$/.test(j.mode||"")) return true;
   if(j.mode==="writeQTool" && /^(appVersion|qmsAuth)(#\d+)?$/.test(j.key||"")) return true;
   if(j.action==="upsertRows" && /^(TASK_Master|BOARD_Master|BOARD_Log)$/.test(j.sheetName||"")) return true;
   if(j.mode==="fileUpload" && j.folder==="bd") return true; return false; }
