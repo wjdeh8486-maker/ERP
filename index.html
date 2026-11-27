@@ -3105,13 +3105,14 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
       </div>
       <!-- 2줄: 입력 -->
       <div class="ins-row-input" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:1 1 100%;">
-        <span style="font-size:12px;color:#5A6478;font-weight:700;">검사 유형</span>
+        <span class="ins-dim-keep" style="font-size:12px;color:#5A6478;font-weight:700;">검사 유형</span>
         <select id="insrep-typeSel" style="padding:8px 12px;border:1px solid #0B5CAB;border-radius:8px;font-size:13px;font-weight:700;color:#0B5CAB;background:#F4F8FD;cursor:pointer;">
           <option value="incoming">수입검사</option>
           <option value="shipping">출하검사</option>
           <option value="measureS">측정실(치수·기능) 소형</option>
           <option value="measureL">측정실(치수·기능) 대형</option>
           <option value="processin">공정입고</option>
+          <option value="__dim">📏 중점치수관리</option>
         </select>
         <span id="insrep-matToggle" style="display:none;align-items:center;gap:3px;margin-left:2px;" title="수입검사 구분(제품/소재)"><select id="insrep-matSel" onchange="insSetMatFilter_(this.value)" title="수입검사 구분" style="padding:6px 8px;border:1px solid #C9D3E0;border-radius:6px;font-size:12.5px;font-weight:700;color:#0B5CAB;"><option value="전체">전체(제품+소재)</option><option value="제품">제품</option><option value="소재">소재</option></select></span>
         <span aria-hidden="true" style="width:1px;height:22px;background:#D8DEE8;margin:0 2px;flex:0 0 auto;"></span>
@@ -3418,6 +3419,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
     </div>
     <div class="view" id="view-insrep">
       <div id="insrep-content"></div>
+      <div id="insrep-dim" style="display:none;"></div>
     </div>
     <!-- ===================== 검사이력조회 (품질검사관리 2단계) VIEW ===================== -->
     <div id="topbar-qchist" class="topbar" style="display:none;">
@@ -19420,8 +19422,20 @@ var DIMSPEC_STORE=qmsSyncStore_({ tab:"DIMSPEC_Master", idb:"dimSpecStore",
 var DIMLOT_STORE=qmsSyncStore_({ tab:"DIMLOT_Master", idb:"dimLotStore",
   cols:[["spec","항목ID"],["draw","도번"],["inDate","입고일자"],["inQty","입고수량"],["vals","측정값"],["by","측정자"],["note","비고"],["created","등록일시"],["_ts","_ts"],["_del","_del"]],
   apply:function(list){ __dimLot=list||[]; dimRefresh_(); } });
-function dimRefresh_(){ try{ var v=document.getElementById("view-dimctl"); if(v && v.classList.contains("active") && !__dimSpecForm && !dimTyping_()) dimRender_(); }catch(_){} }
-function dimTyping_(){ var a=document.activeElement; return !!(a && a.closest && a.closest("#dim-root") && /INPUT|TEXTAREA|SELECT/.test(a.tagName) && String(a.value||"")!==""); }
+function dimRefresh_(){ try{ var v=document.getElementById("view-dimctl"), vi=document.getElementById("view-insrep"); if(((v && v.classList.contains("active")) || (window.__insDim && vi && vi.classList.contains("active"))) && !__dimSpecForm && !dimTyping_()) dimRender_(); }catch(_){} }
+// [추가] 검사일보 검사 유형 '📏 중점치수관리' — 같은 화면(dim-root)을 검사일보 안으로 옮겨 보여 줌 (검토 메뉴와 같은 데이터·같은 화면)
+function dimMoveRoot_(host){ var r=document.getElementById("dim-root"), h=document.getElementById(host); if(!h) return; if(!r){ r=document.createElement("div"); r.id="dim-root"; } if(r.parentNode!==h) h.appendChild(r); }
+function insDimMode_(on, keepSel){ window.__insDim=!!on; document.documentElement.classList.toggle("ins-dim", !!on);
+  var c=document.getElementById("insrep-content"), d=document.getElementById("insrep-dim"), sel=document.getElementById("insrep-typeSel");
+  if(c) c.style.display=on?"none":""; if(d) d.style.display=on?"":"none";
+  if(on){ if(sel) sel.value="__dim"; dimMoveRoot_("insrep-dim"); DIMSPEC_STORE.load(); DIMLOT_STORE.load(); dimRender_(); } else if(!keepSel && sel && typeof insType!=="undefined") sel.value=insType; }
+(function(){ var css=document.createElement("style"); css.textContent="html.ins-dim #topbar-insrep .ins-row-view{ display:none !important; } html.ins-dim #topbar-insrep .ins-row-input > *:not(#insrep-typeSel):not(.ins-dim-keep){ display:none !important; }"; document.head.appendChild(css);
+  var bind=function(){ var sel=document.getElementById("insrep-typeSel"); if(!sel || sel.__dimBound) return; sel.__dimBound=true;
+    sel.addEventListener("change", function(e){ if(sel.value==="__dim"){ e.stopImmediatePropagation(); insDimMode_(true); } else if(window.__insDim){ insDimMode_(false, true); var v=sel.value; if(v===insType){ e.stopImmediatePropagation(); try{ insRender(); }catch(_){} } } }, true); };
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", bind); else bind();
+  setTimeout(function(){ try{ if(typeof insRender==="function" && !insRender.__dimKeep){ var o=insRender; insRender=function(){ var r=o.apply(this, arguments); if(window.__insDim){ var s2=document.getElementById("insrep-typeSel"); if(s2) s2.value="__dim"; var rt=document.getElementById("dim-root"); if(!rt || rt.parentNode!==document.getElementById("insrep-dim")){ dimMoveRoot_("insrep-dim"); dimRender_(); } } return r; }; insRender.__dimKeep=true; } }catch(_){} }, 0); })();
+function dimTyping_(){ if(__dimEditLot) return true; var dirty=["dm-vals","dm-qty","dm-note"].some(function(id){ var e=document.getElementById(id); return e && String(e.value||"").trim()!==""; }); if(dirty) return true;   // [수정] 입력 중엔 다시 그리지 않음
+  var a=document.activeElement; return !!(a && a.closest && a.closest("#dim-root") && /INPUT|TEXTAREA|SELECT/.test(a.tagName) && String(a.value||"")!==""); }
 function dimToday_(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function dimWho_(){ try{ if(__au && __au.user && __au.user.name) return __au.user.name; }catch(_){} try{ if(__chat && __chat.me && __chat.me.name) return __chat.me.name; }catch(_){} return ""; }
 function dimNum_(v){ var n=parseFloat(String(v==null?"":v).replace(/[^\d.\-]/g,"")); return isFinite(n)?n:null; }
@@ -19435,7 +19449,7 @@ function dimStats_(vals, L){ var n=vals.length; if(!n) return { n:0 }; var s=0; 
   return { n:n, min:Math.min.apply(null,vals), max:Math.max.apply(null,vals), avg:m, sd:sd, ng:ng, warn:wr, ppk:(sd>0?Math.min(L.usl-m, m-L.lsl)/(3*sd):null) }; }
 function dimF_(x, d){ return (x==null||!isFinite(x))?"-":Number(x).toFixed(d==null?2:d); }
 function dimLotsOf_(id){ return __dimLot.filter(function(r){ return r.spec===id; }).sort(function(a,b){ return String(a.inDate+a.created).localeCompare(String(b.inDate+b.created)); }); }
-function dimShow_(specId){ if(specId) __dimSel=specId; DIMSPEC_STORE.load(); DIMLOT_STORE.load(); dimRender_(); }
+function dimShow_(specId){ if(specId) __dimSel=specId; dimMoveRoot_("view-dimctl"); DIMSPEC_STORE.load(); DIMLOT_STORE.load(); dimRender_(); }
 function dimChart_(sp, lots){ var L=dimLim_(sp), pts=[], seps=[]; lots.forEach(function(r, li){ var v=dimVals_(r.vals); if(li>0) seps.push({ i:pts.length, d:r.inDate }); else seps.push({ i:0, d:r.inDate }); v.forEach(function(x){ pts.push(x); }); });
   if(!pts.length) return '<div style="padding:24px;text-align:center;color:#98A2B3;">측정값을 입력하면 추세 그래프가 나옵니다</div>';
   var W=920, H=260, pl=56, pr=14, pt=14, pb=34, lo=Math.min(L.lsl, Math.min.apply(null,pts)), hi=Math.max(L.usl, Math.max.apply(null,pts)), pad=(hi-lo)*0.12||0.5; lo-=pad; hi+=pad;
@@ -19485,7 +19499,7 @@ function dimRender_(){
       var jd=s.ng?'<b style="color:#D92D20;">NG</b>':(s.warn?'<b style="color:#B54708;">주의</b>':'<b style="color:#067647;">OK</b>');
       var vs=v.map(function(x){ var j=dimJudge_(x,L); return j==="ok"?String(x):'<b style="color:'+(j==="ng"?"#D92D20":"#B54708")+';">'+x+'</b>'; }).join(", ");
       return '<tr style="border-bottom:1px solid #F2F4F7;"><td style="padding:7px 6px;">'+E(r.inDate)+'</td><td>'+E(r.inQty||"-")+'</td><td'+(miss?' style="color:#B54708;font-weight:700;" title="입고수량과 측정 수가 다릅니다"':'')+'>'+v.length+(miss?" ⚠":"")+'</td><td>'+dimF_(s.min)+'</td><td>'+dimF_(s.max)+'</td><td>'+dimF_(s.avg,3)+'</td><td>'+((s.ng||0)+(s.warn||0))+'</td><td>'+jd+'</td><td>'+E(r.by||"")+'</td><td style="text-align:left;">'+E(r.note||"")+'</td><td style="text-align:left;max-width:280px;font-size:12px;color:#475467;">'+vs+'</td>'
-        +'<td style="white-space:nowrap;"><button type="button" data-dm="editlot" data-id="'+E(r.id)+'" style="'+bs+'padding:3px 8px;font-size:12px;">수정</button> <button type="button" data-dm="dellot" data-id="'+E(r.id)+'" style="'+bs+'padding:3px 8px;font-size:12px;color:#B42318;border-color:#FDA29B;">삭제</button></td></tr>'; }).join("")
+        +'<td style="white-space:nowrap;"><button type="button" data-dm="lbl" data-id="'+E(r.id)+'" title="검사표 인쇄 — A4 가로 1장에 2부(제품 부착용 · 품질 보관용)" style="'+bs+'padding:3px 8px;font-size:12px;color:#175CD3;border-color:#84ADFF;">🖨 검사표</button> <button type="button" data-dm="editlot" data-id="'+E(r.id)+'" style="'+bs+'padding:3px 8px;font-size:12px;">수정</button> <button type="button" data-dm="dellot" data-id="'+E(r.id)+'" style="'+bs+'padding:3px 8px;font-size:12px;color:#B42318;border-color:#FDA29B;">삭제</button></td></tr>'; }).join("")
      :'<tr><td colspan="12" style="padding:20px;color:#98A2B3;">아직 입력한 Lot이 없습니다</td></tr>')+'</tbody></table></div></div>';
   root.innerHTML=h; dimBind_(root); dimPrev_();
 }
@@ -19513,11 +19527,12 @@ function dimBind_(root){
       var qn=dimNum_(qty); if(qn && qn!==vals.length && !confirm("입고수량("+qn+")과 측정 수("+vals.length+")가 다릅니다. 그대로 저장할까요?")) return;
       var r=Object.assign({}, __dimEditLot||{ id:"dl"+Date.now().toString(36)+Math.random().toString(36).slice(2,5), created:dimToday_()+" "+new Date().toTimeString().slice(0,5) });
       r.spec=sp.id; r.draw=sp.draw; r.inDate=dt; r.inQty=qty; r.vals=vals.join(", "); r.by=String((document.getElementById("dm-by")||{}).value||"").trim(); r.note=String((document.getElementById("dm-note")||{}).value||"").trim();
-      __dimLot=__dimLot.filter(function(x){ return x.id!==r.id; }).concat([r]); DIMLOT_STORE.save(__dimLot); __dimEditLot=null; dimRender_(); }
+      __dimLot=__dimLot.filter(function(x){ return x.id!==r.id; }).concat([r]); DIMLOT_STORE.save(__dimLot); var wasNew=!__dimEditLot; __dimEditLot=null; dimRender_(); if(wasNew) setTimeout(function(){ if(confirm("저장했습니다.\n\n검사표를 인쇄할까요?\n(A4 가로 1장 — 왼쪽 제품 부착용 · 오른쪽 품질 보관용)")) dimSheetPrint_(r.id); }, 50); }
     else if(a==="editlot"){ __dimEditLot=Object.assign({}, __dimLot.filter(function(x){ return x.id===id; })[0]||null); dimRender_(); var f3=document.getElementById("dm-vals"); if(f3) f3.scrollIntoView({ block:"center" }); }
     else if(a==="cancellot"){ __dimEditLot=null; dimRender_(); }
     else if(a==="dellot"){ var r2=__dimLot.filter(function(x){ return x.id===id; })[0]; if(!r2||!confirm(r2.inDate+" 입고 Lot("+dimVals_(r2.vals).length+"개 측정)을 삭제할까요?")) return; __dimLot=__dimLot.filter(function(x){ return x.id!==id; }); DIMLOT_STORE.save(__dimLot); dimRender_(); }
     else if(a==="xlsx" && sp) dimXlsx_(sp);
+    else if(a==="lbl") dimSheetPrint_(id);
   }; });
 }
 function dimXlsxBasic_(sp){
@@ -19641,6 +19656,48 @@ function dimXlsxSheet_(EJ, sp){
     a.href=URL.createObjectURL(bl); a.download="중점치수_관리현황_"+sp.draw+"_"+String(sp.name).replace(/[\\\/:*?"<>|\s]+/g,"")+"_"+dimToday_()+".xlsx"; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500); })
     .catch(function(){ dimXlsxBasic_(sp); });
 }
+// [추가] 중점 치수 검사표 (A4 가로 1장 = 같은 내용 2부: 왼쪽 제품 부착용 / 오른쪽 품질 보관용) — 입고 Lot(입고일자)마다 인쇄
+function dimSheetPrint_(lotId){
+  var r=__dimLot.filter(function(x){ return x.id===lotId; })[0]; if(!r){ alert("Lot을 찾지 못했습니다."); return; }
+  var sp=__dimSpec.filter(function(s){ return s.id===r.spec; })[0]; if(!sp){ alert("항목 정보를 찾지 못했습니다."); return; }
+  var L=dimLim_(sp), v=dimVals_(r.vals), s=dimStats_(v,L), E=qmsEsc_, pass=!s.ng, jd=s.ng?"불합격":"합격";
+  var insD=String(r.created||"").slice(0,10)||dimToday_();
+  // 측정값 표: 값 개수에 맞춰 열 묶음(번호·값) 수와 글자 크기 조정
+  var dec=Math.max(1, Math.min(4, String(r.vals||"").split(/[\s,;\/]+/).reduce(function(m,t){ var d=(String(t).split(".")[1]||"").replace(/\D/g,"").length; return Math.max(m,d); },0))), fv=function(x){ return Number(x).toFixed(dec); };   // 측정값 소수 자릿수 통일(170 → 170.0)
+  var n=v.length, groups=n<=15?1:n<=30?2:n<=60?3:4, per=Math.ceil(Math.max(n,1)/groups), fs=n<=30?"9.5pt":n<=60?"8.5pt":"7.5pt";
+  var mt='<table class="mv" style="font-size:'+fs+';"><tr>'; for(var g=0;g<groups;g++) mt+='<th>No</th><th>측정값</th><th>판정</th>'; mt+='</tr>';
+  for(var i=0;i<per;i++){ mt+='<tr>'; for(var g2=0;g2<groups;g2++){ var k=g2*per+i; if(k<n){ var j=dimJudge_(v[k],L); mt+='<td class="no">'+(k+1)+'</td><td class="val'+(j==="ng"?" ng":j==="warn"?" wr":"")+'">'+fv(v[k])+'</td><td class="'+(j==="ng"?"ng":"")+'">'+(j==="ng"?"NG":j==="warn"?"주의":"OK")+'</td>'; } else mt+='<td></td><td></td><td></td>'; } mt+='</tr>'; }
+  mt+='</table>';
+  var half=function(kind){ return '<div class="half"><div class="top"><div class="ttl">중점 치수 검사표</div><div class="kind">'+kind+'</div></div>'
+    +'<table class="inf"><tr><th>도 번</th><td>'+E(sp.draw)+'</td><th>항 목</th><td>'+E(sp.name)+'</td></tr>'
+    +'<tr><th>기 준</th><td>'+E(dimTolTxt_(sp))+'</td><th>공차 범위</th><td>'+L.lsl+' ~ '+L.usl+'</td></tr>'
+    +'<tr><th>입고일자</th><td>'+E(r.inDate||"")+'</td><th>입고수량</th><td>'+E(r.inQty||"-")+'</td></tr>'
+    +'<tr><th>측정 시점</th><td>'+E(sp.stage||"-")+'</td><th>측정 방법</th><td>전수 측정</td></tr></table>'
+    +'<div class="sec">측정 결과 (전수 '+n+'개)</div>'+mt
+    +'<table class="sum"><tr><th>측정 수</th><th>최소</th><th>최대</th><th>평균</th><th>공차 이탈</th><th>종합 판정</th></tr>'
+    +'<tr><td>'+n+'</td><td>'+dimF_(s.min)+'</td><td>'+dimF_(s.max)+'</td><td>'+dimF_(s.avg,3)+'</td><td class="'+(s.ng?"ng":"")+'">'+(s.ng||0)+'</td><td class="jd '+(pass?"ok":"ng")+'">'+jd+'</td></tr></table>'
+    +(r.note?'<div class="note">비고: '+E(r.note)+'</div>':'')
+    +'<div class="bot"><div class="co">㈜ 엔티엘 품질팀</div><table class="sg"><tr><th>검사일</th><th>검사자</th><th>확인</th></tr><tr><td>'+E(insD)+'</td><td>'+E(r.by||"")+'</td><td></td></tr></table></div></div>'; };
+  var win=(typeof qmsPrintWin_==="function")?qmsPrintWin_():window.open("","_blank"); if(!win) return;
+  win.document.write('<html><head><title>중점 치수 검사표</title><meta charset="utf-8"><style>'
+    +'@page{ size:A4 landscape; margin:7mm; } *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; } body{ font-family:"Malgun Gothic",sans-serif; margin:0; color:#111; }'
+    +'.pg{ display:flex; width:283mm; height:196mm; }'
+    +'.half{ flex:1; height:100%; padding:3mm 6mm; display:flex; flex-direction:column; gap:2.2mm; overflow:hidden; }'
+    +'.half:first-child{ border-right:0.4mm dashed #98A2B3; } .cut{ }'
+    +'.top{ display:flex; align-items:center; justify-content:space-between; border-bottom:0.7mm solid #16345a; padding-bottom:1.5mm; }'
+    +'.ttl{ font-size:17pt; font-weight:800; color:#16345a; } .kind{ font-size:10pt; font-weight:800; color:#fff; background:#16345a; border-radius:1.5mm; padding:1mm 3mm; }'
+    +'table{ border-collapse:collapse; width:100%; } th, td{ border:0.3mm solid #16345a; padding:1.1mm 1.6mm; text-align:center; font-size:9.5pt; }'
+    +'th{ background:#eaf1fb; color:#16345a; font-weight:700; white-space:nowrap; }'
+    +'.inf th{ width:19mm; } .inf td{ font-weight:700; }'
+    +'.sec{ font-weight:800; font-size:10pt; color:#16345a; margin-top:1mm; }'
+    +'.mv th, .mv td{ padding:0.5mm 1mm; font-size:inherit; } .mv td.no{ color:#667085; } .mv td.val{ font-weight:700; } .ng{ color:#D92D20; font-weight:800; } .wr{ color:#B54708; }'
+    +'.sum td{ font-weight:700; font-size:10.5pt; } .sum td.jd{ font-size:13pt; font-weight:800; } .sum td.ok{ color:#067647; }'
+    +'.note{ font-size:9pt; border:0.3mm solid #D0D5DD; padding:1.2mm 2mm; }'
+    +'.bot{ margin-top:auto; display:flex; align-items:flex-end; justify-content:space-between; gap:4mm; } .co{ font-weight:800; color:#16345a; font-size:10pt; }'
+    +'.sg{ width:72mm; } .sg td{ height:11mm; font-size:9pt; font-weight:700; }'
+    +'</style></head><body><div class="pg">'+half("제품 부착용")+half("품질 보관용")+'</div></body></html>');
+  win.document.close(); win.focus(); setTimeout(function(){ win.print(); }, 300);
+}
 // 수입검사일보: 중점 치수 대상 도번 입력 → 안내 (한 화면에서 같은 도번은 1번만)
 (function(){ var shown={}; document.addEventListener("change", function(e){ try{ var t=e.target; if(!t || !t.getAttribute || t.getAttribute("data-key")!=="draw" || !t.closest("#insrep-content")) return;
   if(typeof insType==="undefined" || insType!=="incoming") return; var d=String(t.value||"").trim().toUpperCase(); if(!d) return;
@@ -19651,7 +19708,7 @@ function dimXlsxSheet_(EJ, sp){
   x.innerHTML='<div style="font-weight:800;color:#175CD3;">📏 중점 치수 측정 대상 — '+qmsEsc_(d)+'</div>'+L.map(function(s){ return '<div style="margin-top:5px;">'+qmsEsc_(s.name)+' <b>'+qmsEsc_(dimTolTxt_(s))+'</b> <span style="color:#667085;">'+qmsEsc_(s.stage||"")+'</span></div>'; }).join("")
     +'<div style="display:flex;gap:6px;margin-top:10px;"><button type="button" data-k="go" style="flex:1;background:#175CD3;color:#fff;border:none;border-radius:8px;padding:8px;font-weight:700;cursor:pointer;">측정값 입력하러 가기</button><button type="button" data-k="x" style="background:#fff;border:1px solid #D0D5DD;border-radius:8px;padding:8px 12px;cursor:pointer;">닫기</button></div>';
   document.body.appendChild(x);
-  x.onclick=function(ev){ var b=ev.target.closest("[data-k]"); if(!b) return; x.remove(); if(b.getAttribute("data-k")==="go"){ __dimSel=L[0].id; var nv=document.querySelector('.nav-item[data-view="dimctl"]'); if(nv) nv.click(); } };
+  x.onclick=function(ev){ var b=ev.target.closest("[data-k]"); if(!b) return; x.remove(); if(b.getAttribute("data-k")==="go"){ __dimSel=L[0].id; insDimMode_(true); } };   // 검사일보 안에서 바로 중점치수관리로
 }catch(_){} }, true); })();
 function coaRender_(){
   var root=document.getElementById("coa-root"); if(!root) return;
