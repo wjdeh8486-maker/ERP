@@ -14179,6 +14179,77 @@ function chgDelete_(id){ var c=__chgAll[id]; if(!c) return;
   c=Object.assign({}, c, { del:"1", updated:chgNow_(), ts:Date.now() }); __chgAll[id]=c; chgRebuild_(); chgSave_(); chgPost_([c]); chgRefreshViews_(); }
 
 // ── 신고서 엑셀 (단계 이력 포함)
+// ===== [추가] 📄 PCN 불러오기 — PCN 승인 신청서(pptx)의 '변경 개요' 표(No·공장·변경 내용·5M+1E·등급·적용 예정일)를 한 줄씩 변경점으로 등록 =====
+//   미리보기에서 줄 선택·세부항목 고치기 · 이미 같은 변경 내용이 등록돼 있으면 기본 해제(2중 등록 방지)
+function chgPcnCat_(m, txt){ var s=String(m||"")+" "+String(txt||"");
+  if(/Lay-?\s*Out/i.test(String(m||""))) return "Lay-Out 변경";   // 5M+1E 칸을 먼저 봄
+  if(/검사실|검사동|측정실|크린룸|Environment|Measurement/i.test(s) && /이전|이동|매입/.test(s)) return "생산지 변경(이전/신설)";
+  if(/Lay-?\s*Out|재배치|위치\s*이동/i.test(s)) return "Lay-Out 변경";
+  if(/Machine|설비|MCT|선반/i.test(s)) return "설비 변경(신규/개조)";
+  if(/Material|재질|소재/i.test(s)) return "재질 변경"; if(/Measurement|측정/i.test(s)) return "측정방법 변경";
+  if(/Method|방법|공정/i.test(s)) return "QC공정도/작업방법 변경"; if(/\bMan\b|작업자/i.test(s)) return "중요공정 작업자 변경"; return "기타"; }
+function chgPcnParse_(buf, cb){
+  var go=function(){ if(typeof JSZip==="undefined"){ cb(null); return; }
+    JSZip.loadAsync(buf).then(function(z){ var names=Object.keys(z.files).filter(function(n){ return /^ppt\/slides\/slide\d+\.xml$/.test(n); }).sort(function(a,b){ return (+a.replace(/\D/g,""))-(+b.replace(/\D/g,"")); });
+      return Promise.all(names.map(function(n){ return z.file(n).async("string"); })); })
+    .then(function(xs){ var dec=function(s){ return s.replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,"&"); };
+      var txt=function(x){ return dec((x.match(/<a:t>([^<]*)<\/a:t>/g)||[]).map(function(t){ return t.replace(/<\/?a:t>/g,""); }).join("")).replace(/\s+/g," ").trim(); };
+      var out={ rows:[], cust:"", reason:"", date:"", title:"", rev:"" };
+      xs.forEach(function(x, si){
+        if(si<2){ var all=txt(x); if(!out.date){ var md=/(20\d\d)\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{1,2})/.exec(all); if(md) out.date=md[1]+"-"+("0"+md[2]).slice(-2)+"-"+("0"+md[3]).slice(-2); }
+          if(!out.title){ var mt=/([^\s].{0,30}?(?:신청서|통보서))/.exec(all); if(mt) out.title=mt[1].trim(); } if(!out.rev){ var mr=/Rev\.?\s*(\d+)/i.exec(all); if(mr) out.rev=mr[1]; } }
+        (x.match(/<a:tbl>[\s\S]*?<\/a:tbl>/g)||[]).forEach(function(tb){ var trs=(tb.match(/<a:tr[\s\S]*?<\/a:tr>/g)||[]).map(function(tr){ return (tr.match(/<a:tc[\s\S]*?<\/a:tc>/g)||[]).map(txt); });
+          trs.forEach(function(c){ var k=String(c[0]||"");
+            if(!out.cust && /^수신$/.test(k)) out.cust=String(c[1]||"").replace(/\s*(품질.*|귀하.*)$/,"").trim();
+            if(!out.reason && /변경\s*사유/.test(k)) out.reason=String(c[1]||"").trim(); });
+          var h=trs[0]||[], ix=function(re){ for(var i=0;i<h.length;i++) if(re.test(h[i])) return i; return -1; };
+          var iC=ix(/변경\s*내용/), iG=ix(/등급/), iM=ix(/5M|4M/), iF=ix(/공장|구분/), iD=ix(/적용|예정/), iN=ix(/^No/i);
+          if(iC<0 || iG<0) return;
+          trs.slice(1).forEach(function(c){ var no=String(c[iN<0?0:iN]||"").trim(); if(!/^\d+$/.test(no) || !c[iC]) return;
+            out.rows.push({ no:+no, fac:iF>=0?c[iF]:"", what:c[iC], m:iM>=0?c[iM]:"", grade:c[iG]||"", when:iD>=0?c[iD]:"", slide:si+1 }); }); }); });
+      var seen={}; out.rows=out.rows.filter(function(r){ if(seen[r.no]) return false; seen[r.no]=1; return true; }).sort(function(a,b){ return a.no-b.no; });
+      cb(out); }).catch(function(){ cb(null); }); };
+  if(typeof JSZip!=="undefined") go(); else if(typeof qmsPptxLoad_==="function") qmsPptxLoad_(function(){ go(); }); else cb(null); }
+function chgPcnPick_(){ var inp=document.createElement("input"); inp.type="file"; inp.accept=".pptx";
+  inp.onchange=function(){ var f=inp.files&&inp.files[0]; if(!f) return; var rd=new FileReader(); rd.onload=function(){ chgPcnParse_(new Uint8Array(rd.result), function(m){ if(!m || !m.rows.length){ alert("'변경 개요' 표(No·변경 내용·등급)를 찾지 못했습니다.\nPCN 승인 신청서 양식의 pptx인지 확인하세요."); return; } if(!m.rev){ var r=/(?:rev\.?|_r)\s*(\d+)/i.exec(f.name); if(r) m.rev=r[1]; } chgPcnPop_(m, f.name); }); }; rd.readAsArrayBuffer(f); };
+  inp.click(); }
+function chgPcnPop_(m, fname){
+  var E=chgEsc_, norm=function(t){ return String(t||"").replace(/[\s\[\]()·,—\-]/g,"").slice(0,40); };
+  var have={}; (__chgData||[]).forEach(function(c){ have[norm(c.after)]=c; });
+  var R=m.rows.map(function(r){ var done=/완료/.test(r.when) && !/예정|후/.test(r.when), md=/(20\d\d)\s*\.?\s*(\d{1,2})/.exec(r.when);
+    return { r:r, sel:!have[norm(r.what)], dup:!!have[norm(r.what)], cat:chgPcnCat_(r.m, r.what), apply:done&&md?(md[1]+"-"+("0"+md[2]).slice(-2)+"-01"):"" }; });
+  var ref=(m.title||"PCN 승인 신청서")+(m.rev?" Rev."+m.rev:"");
+  var ov=document.createElement("div"); ov.className="sd-ov"; ov.id="chg-pcn-ov";
+  var draw=function(){ var n=R.filter(function(x){ return x.sel; }).length;
+    ov.innerHTML='<div class="sd-pop" style="width:min(1100px,97vw);max-height:92vh;display:flex;flex-direction:column;"><div class="sd-ph"><b>📄 PCN 불러오기 — '+E(fname||"")+'</b><button type="button" data-x="close">닫기 ✕</button></div><div style="padding:12px 16px;overflow:auto;">'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:12.5px;margin-bottom:8px;">'
+      +'<label>발생일(신고일)<input id="cpn-date" type="date" value="'+E(m.date||chgToday_())+'" style="width:100%;padding:6px;border:1px solid #D0D5DD;border-radius:7px;"></label>'
+      +'<label>고객<input id="cpn-cust" value="'+E(m.cust||"")+'" style="width:100%;padding:6px;border:1px solid #D0D5DD;border-radius:7px;"></label>'
+      +'<label style="grid-column:span 2;">고객 통보/승인<input id="cpn-notify" value="'+E(ref+" 제출 (사전 신고)")+'" style="width:100%;padding:6px;border:1px solid #D0D5DD;border-radius:7px;"></label>'
+      +'<label style="grid-column:1/-1;">사유 (모든 줄 공통)<input id="cpn-reason" value="'+E(m.reason||"")+'" style="width:100%;padding:6px;border:1px solid #D0D5DD;border-radius:7px;"></label></div>'
+      +'<div style="font-size:12px;color:#667085;margin-bottom:6px;">표 1줄 = 변경점 1건 · 등급은 세부항목에 따라 자동(QMS 기준) · <b>적용 완료</b>로 적힌 줄은 적용일이 채워짐 · 이미 같은 내용이 등록된 줄은 체크 해제</div>'
+      +'<div style="overflow:auto;border:1px solid #EAECF0;border-radius:10px;"><table style="width:100%;min-width:900px;border-collapse:collapse;font-size:12.5px;"><thead><tr style="background:#F9FAFB;"><th style="padding:7px;"><input type="checkbox" id="cpn-all"'+(R.every(function(x){ return x.sel; })?' checked':'')+'></th><th>No</th><th>공장</th><th style="text-align:left;">변경 내용</th><th>5M+1E (PCN 등급)</th><th>세부항목 → 등급</th><th>적용 예정</th><th>적용일</th></tr></thead><tbody>'
+      +R.map(function(x,i){ var g=chgGradeOf_(x.cat,false);
+        return '<tr style="border-top:1px solid #F2F4F7;'+(x.sel?'':'color:#98A2B3;')+'"><td style="text-align:center;padding:6px;"><input type="checkbox" data-cps="'+i+'"'+(x.sel?' checked':'')+'></td><td style="text-align:center;">'+x.r.no+'</td><td style="text-align:center;white-space:nowrap;">'+E(x.r.fac)+'</td><td style="padding:6px;">'+E(x.r.what)+(x.dup?' <b style="color:#B54708;">(이미 등록됨)</b>':'')+'</td><td style="text-align:center;font-size:12px;">'+E(x.r.m)+'<div style="color:#667085;">'+E(x.r.grade)+'</div></td>'
+          +'<td style="text-align:center;"><select data-cpc="'+i+'" style="padding:4px;border:1px solid #D0D5DD;border-radius:6px;max-width:170px;">'+chgCatOpts_().map(function(o){ return '<option'+(o===x.cat?' selected':'')+'>'+E(o)+'</option>'; }).join("")+'</select> '+chgGradeBadge_(g)+'</td>'
+          +'<td style="text-align:center;font-size:12px;white-space:nowrap;">'+E(x.r.when)+'</td><td style="text-align:center;"><input type="date" data-cpa="'+i+'" value="'+E(x.apply)+'" style="padding:3px;border:1px solid #D0D5DD;border-radius:6px;"></td></tr>'; }).join("")
+      +'</tbody></table></div></div><div class="sd-pf" style="padding:10px 16px;display:flex;justify-content:flex-end;gap:8px;"><button type="button" class="sd-btn pri" data-x="go">선택 '+n+'건 변경점으로 등록</button></div></div>'; };
+  var keep=function(){ ["date","cust","notify","reason"].forEach(function(k){ var e=ov.querySelector("#cpn-"+k); if(e) m["__"+k]=e.value; }); };
+  draw(); document.body.appendChild(ov);
+  ov.addEventListener("change", function(e){ var t=e.target; keep();
+    if(t.id==="cpn-all"){ R.forEach(function(x){ x.sel=t.checked; }); }
+    else if(t.hasAttribute("data-cps")) R[+t.getAttribute("data-cps")].sel=t.checked;
+    else if(t.hasAttribute("data-cpc")) R[+t.getAttribute("data-cpc")].cat=t.value;
+    else if(t.hasAttribute("data-cpa")) R[+t.getAttribute("data-cpa")].apply=t.value; else return;
+    draw(); ["date","cust","notify","reason"].forEach(function(k){ var el=ov.querySelector("#cpn-"+k); if(el && m["__"+k]!=null) el.value=m["__"+k]; }); });
+  ov.addEventListener("click", function(e){ var x=e.target.getAttribute && e.target.getAttribute("data-x"); if(e.target===ov || x==="close"){ ov.remove(); return; } if(x!=="go") return;
+    if(ov.__busy) return; keep(); var L=R.filter(function(y){ return y.sel; }); if(!L.length){ alert("등록할 줄을 고르세요."); return; }
+    var dt=m.__date||m.date||chgToday_(), who=chgWho_(), list=[];
+    L.forEach(function(y, j){ var c={ id:"CHG"+Date.now().toString(36)+j+Math.floor(Math.random()*1000), type:"내부4M", date:dt, part:String(y.r.fac||"").trim()||"공장 전체", customer:String(m.__cust||"").trim(), cat:y.cat,
+        before:"", after:String(y.r.what||"").trim(), reason:String(m.__reason||"").trim(), reporter:who, notify:String(m.__notify||"").trim(), notifyDate:dt, applyDate:y.apply||"",
+        note:"PCN No."+y.r.no+(y.r.when?" · 적용 예정 "+y.r.when:"")+(y.r.grade?" · PCN 등급 "+y.r.grade:"")+(fname?" · "+fname:"") };
+      c.grade=chgGrade_(c); c.created=chgNow_(); c.updated=chgNow_(); c.ts=Date.now(); c.del=""; __chgAll[c.id]=c; list.push(c); });
+    ov.__busy=true; chgRebuild_(); chgSave_(); chgPost_(list); ov.remove(); chgRefreshViews_(); alert("변경점 "+list.length+"건을 등록했습니다.\n각 줄을 눌러 승인·적용·초도품 등 다음 단계를 이어서 입력하세요."); }); }
 function chgMakeReportXlsx_(c){
   if(!c) return; if(typeof XLSX==="undefined"||!XLSX.utils){ alert("엑셀 라이브러리 로딩 중입니다."); return; }
   var isRev=chgIsRev_(c), C=insNcrCell_, ws={};
@@ -14246,7 +14317,7 @@ function renderChgPanel(){
   panel.innerHTML='<div class="table-wrap" style="padding:14px;">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">'
     +  '<div style="font-weight:800;font-size:16px;color:#1F2A44;">🔄 변경점 관리 <span style="font-size:12px;color:#8A93A6;font-weight:600;">· 신고 → 승인 → 통보/구재고 → 적용 → 초도품 → 유효성 → 문서 → 종결</span></div>'
-    +  '<div><button type="button" onclick="chgOpen_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 13px;font-weight:700;cursor:pointer;margin-right:6px;">➕ 변경점 등록</button>'
+    +  '<div><button type="button" onclick="chgPcnPick_()" title="PCN 승인 신청서(pptx)의 변경 개요 표를 한 번에 변경점으로" style="background:#fff;color:#0B7A8A;border:1px solid #0B7A8A;border-radius:8px;padding:7px 12px;font-weight:700;cursor:pointer;margin-right:6px;">📄 PCN 불러오기</button><button type="button" onclick="chgOpen_()" style="background:#0B7A8A;color:#fff;border:none;border-radius:8px;padding:7px 13px;font-weight:700;cursor:pointer;margin-right:6px;">➕ 변경점 등록</button>'
     +  '<button type="button" onclick="chgEnsure_(true)" title="시트에서 최신 내용 다시 불러오기" style="background:#fff;color:#1F2A44;border:1px solid #C9D3E0;border-radius:8px;padding:7px 11px;font-weight:700;cursor:pointer;">🔄</button></div></div>'
     +cards+sub
     +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'
