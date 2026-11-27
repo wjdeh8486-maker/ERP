@@ -5941,7 +5941,10 @@ function mainCompactCss_(){ if(document.getElementById("main-compact-css")) retu
  +"html.main-compact #main-tableBody .badge{ padding-top:1px !important; padding-bottom:1px !important; }"
  +"#main-compactBtn{ float:right; margin:2px 20px 0 8px; height:28px; padding:0 12px; border:1px solid #C7D2E5; border-radius:8px; background:#fff; color:#1F2A44; font-size:12.5px; font-weight:700; cursor:pointer; }"
  +"#main-compactBtn:hover{ background:#F2F6FC; }"
- +"@media (max-width:899px){ #main-compactBtn{ display:none; } }";
+ +"html.main-fold #view-main .summary-row, html.main-fold #view-main .calendar-toolbar-row, html.main-fold #view-main #main-hideHint, html.main-fold #topbar-main .quick-links{ display:none !important; }"
+ +"#main-foldBtn{ float:right; margin:2px 0 0 8px; height:28px; padding:0 12px; border:1px solid #175CD3; border-radius:8px; background:#EFF4FF; color:#175CD3; font-size:12.5px; font-weight:700; cursor:pointer; }"
+ +"html.main-fold #main-foldBtn{ background:#175CD3; color:#fff; }"
+ +"@media (max-width:899px){ #main-compactBtn, #main-foldBtn{ display:none; } }";
   document.head.appendChild(s); }
 function mainCompactFit_(){
   var tw=document.querySelector("#view-main .table-wrap"), v=document.getElementById("view-main"); if(!tw) return;
@@ -5949,7 +5952,14 @@ function mainCompactFit_(){
   var top=tw.getBoundingClientRect().top+(window.scrollY||0), h=Math.max(360, Math.floor(innerHeight-Math.max(0, top-(window.scrollY||0))-14));
   if(top>innerHeight*0.7) h=Math.max(360, innerHeight-90);   // 위쪽이 너무 길면 한 화면 높이로 (페이지를 조금 내리면 목록이 꽉 참)
   tw.style.maxHeight=h+"px"; tw.style.overflow="auto"; }
+// [추가] 위쪽 접기 — 태블릿·작은 화면에서 현황 카드·필터 줄·바로가기를 숨겨 목록을 넓게 (기기별 저장, 높이 900px 미만 화면은 처음부터 접힘)
+function mainFoldOn_(){ var v=null; try{ v=localStorage.getItem("qmsMainFold"); }catch(_){} if(v==="1") return true; if(v==="0") return false; return innerHeight<900 && innerWidth>=900; }
 function mainCompactApply_(){ mainCompactCss_(); var on=mainCompactOn_(); document.documentElement.classList.toggle("main-compact", on);
+  var fold=mainFoldOn_(); document.documentElement.classList.toggle("main-fold", fold);
+  var q0=document.getElementById("main-qtySum"), fb=document.getElementById("main-foldBtn");
+  if(q0 && !fb){ fb=document.createElement("button"); fb.type="button"; fb.id="main-foldBtn"; q0.parentNode.insertBefore(fb, q0);
+    fb.onclick=function(){ try{ localStorage.setItem("qmsMainFold", mainFoldOn_()?"0":"1"); }catch(_){} mainCompactApply_(); }; }
+  if(fb){ fb.textContent=fold?"▼ 현황·필터 펼치기":"▲ 현황·필터 접기"; fb.title=fold?"숨긴 현황 카드·필터 줄·바로가기를 다시 보이기":"현황 카드·필터 줄·바로가기를 숨기고 목록을 넓게"; }
   var q=document.getElementById("main-qtySum"), b=document.getElementById("main-compactBtn");
   if(q && !b){ b=document.createElement("button"); b.type="button"; b.id="main-compactBtn"; q.parentNode.insertBefore(b, q);
     b.onclick=function(){ try{ localStorage.setItem("qmsMainCompact", mainCompactOn_()?"0":"1"); }catch(_){} mainCompactApply_(); }; }
@@ -19510,7 +19520,7 @@ function dimBind_(root){
     else if(a==="xlsx" && sp) dimXlsx_(sp);
   }; });
 }
-function dimXlsx_(sp){
+function dimXlsxBasic_(sp){
   if(typeof XLSX==="undefined"){ alert("엑셀 모듈을 불러오는 중입니다. 잠시 후 다시 눌러 주세요."); return; }
   var L=dimLim_(sp), lots=dimLotsOf_(sp.id), all=[].concat.apply([], lots.map(function(r){ return dimVals_(r.vals); })), st=dimStats_(all,L), J={ ok:"OK", warn:"관리기준 이탈", ng:"NG(공차 이탈)" };
   var head=[["중점 치수 관리 — "+sp.draw+" · "+sp.name],["기준",dimTolTxt_(sp),"공차 범위",L.lsl+" ~ "+L.usl],["측정 시점",sp.stage||"","관련 대책서",sp.ref||""],["Lot 수",lots.length,"측정 수",st.n||0],["최소",st.n?+dimF_(st.min,3):"","최대",st.n?+dimF_(st.max,3):""],["평균",st.n?+dimF_(st.avg,3):"","표준편차",st.n>1?+dimF_(st.sd,4):""],["Ppk",st.ppk!=null?+dimF_(st.ppk,2):"","공차 이탈",st.ng||0],[]];
@@ -19523,6 +19533,114 @@ function dimXlsx_(sp){
   sty(w1, head.length); sty(w2, 0);
   XLSX.utils.book_append_sheet(wb, w1, "Lot 요약"); XLSX.utils.book_append_sheet(wb, w2, "전체 측정값");
   XLSX.writeFile(wb, "중점치수_"+sp.draw+"_"+String(sp.name).replace(/[\\\/:*?"<>|\s]+/g,"")+"_"+dimToday_()+".xlsx"); }
+// [추가] 중점 치수 엑셀 — 1장 관리 현황표(기준·공정능력·그래프·검사 이력·특이사항·결재란, A4 세로 1장 맞춤) + 전체 측정값 시트
+//   ExcelJS(그림 넣기 가능)를 처음 누를 때만 불러옴 · 못 불러오면 기존 간단 엑셀로
+function dimExcelJsLoad_(cb){ if(window.ExcelJS){ cb(window.ExcelJS); return; }
+  var q=window.__ejsQ=window.__ejsQ||[]; q.push(cb); if(q.length>1) return;
+  var s=document.createElement("script"); s.src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js";
+  var done=function(ok){ var l=window.__ejsQ||[]; window.__ejsQ=[]; l.forEach(function(f){ try{ f(ok?window.ExcelJS:null); }catch(_){} }); };
+  s.onload=function(){ done(!!window.ExcelJS); }; s.onerror=function(){ done(false); }; document.head.appendChild(s); }
+function dimChartPng_(sp, lots, kind, W, H){   // kind: "trend" | "hist"
+  var c=document.createElement("canvas"), k=2; c.width=W*k; c.height=H*k; var g=c.getContext("2d"); g.scale(k,k);
+  var L=dimLim_(sp), pts=[], seps=[]; lots.forEach(function(r){ var v=dimVals_(r.vals); seps.push({ i:pts.length, d:String(r.inDate||"").slice(5) }); v.forEach(function(x){ pts.push(x); }); });
+  var st=dimStats_(pts, L), F="Malgun Gothic, 맑은 고딕, sans-serif";
+  g.fillStyle="#fff"; g.fillRect(0,0,W,H); g.strokeStyle="#98A2B3"; g.lineWidth=1; g.strokeRect(0.5,0.5,W-1,H-1);
+  g.fillStyle="#101828"; g.font="bold 13px "+F; g.fillText(kind==="trend"?"측정값 추세 (입고 Lot 순)":"분포 · 공정능력 (Ppk)", 10, 18);
+  var pl=46, pr=12, pt=30, pb=30, cw=W-pl-pr, ch=H-pt-pb;
+  if(!pts.length){ g.fillStyle="#98A2B3"; g.font="12px "+F; g.fillText("측정값 없음", W/2-30, H/2); return c.toDataURL("image/png"); }
+  var mn=Math.min(L.lsl, st.min), mx=Math.max(L.usl, st.max), pad=(mx-mn)*0.15||0.5; mn-=pad; mx+=pad;
+  if(kind==="trend"){
+    var X=function(i){ return pl+(pts.length<=1?cw/2:i*cw/(pts.length-1)); }, Y=function(v){ return pt+(mx-v)*ch/(mx-mn); };
+    var hl=function(v,col,dash,lab){ g.save(); g.strokeStyle=col; g.lineWidth=1.4; g.setLineDash(dash?[5,4]:[]); g.beginPath(); g.moveTo(pl,Y(v)); g.lineTo(W-pr,Y(v)); g.stroke(); g.restore(); g.fillStyle=col; g.font="11px "+F; g.textAlign="right"; g.fillText(lab, pl-4, Y(v)+4); g.textAlign="left"; };
+    hl(L.usl,"#D92D20",false,"USL "+L.usl); hl(L.lsl,"#D92D20",false,"LSL "+L.lsl); hl(L.nom,"#667085",true,String(L.nom)); if(L.cl!==null){ hl(L.cu,"#F79009",true,""); hl(L.cl,"#F79009",true,""); }
+    g.font="10px "+F; seps.forEach(function(s,ix){ var x=s.i>0?X(s.i)-cw/Math.max(1,pts.length-1)/2:pl; if(ix>0){ g.save(); g.strokeStyle="#D0D5DD"; g.setLineDash([2,3]); g.beginPath(); g.moveTo(x,pt); g.lineTo(x,H-pb); g.stroke(); g.restore(); } g.fillStyle="#475467"; if(seps.length<=12 || ix%Math.ceil(seps.length/12)===0) g.fillText(s.d, x+2, H-pb+14); });
+    g.strokeStyle="rgba(23,92,211,.55)"; g.lineWidth=1.2; g.beginPath(); pts.forEach(function(v,i){ if(i) g.lineTo(X(i),Y(v)); else g.moveTo(X(i),Y(v)); }); g.stroke();
+    pts.forEach(function(v,i){ var j=dimJudge_(v,L); g.fillStyle=j==="ng"?"#D92D20":j==="warn"?"#F79009":"#175CD3"; g.beginPath(); g.arc(X(i),Y(v),j==="ok"?2.6:4,0,Math.PI*2); g.fill(); });
+  } else {
+    var nb=Math.max(8, Math.min(24, Math.round(Math.sqrt(pts.length)*2))), bw=(mx-mn)/nb, cnt=[]; for(var b=0;b<nb;b++) cnt.push(0);
+    pts.forEach(function(v){ var b=Math.min(nb-1, Math.max(0, Math.floor((v-mn)/bw))); cnt[b]++; });
+    var pdf=function(x){ return st.sd>0?Math.exp(-0.5*Math.pow((x-st.avg)/st.sd,2))/(st.sd*Math.sqrt(2*Math.PI)):0; };
+    var peak=Math.max(Math.max.apply(null,cnt), st.sd>0?pdf(st.avg)*pts.length*bw:0)*1.15||1;
+    var X2=function(v){ return pl+(v-mn)*cw/(mx-mn); }, Y2=function(n){ return pt+ch-n*ch/peak; };
+    for(var b2=0;b2<nb;b2++){ var lo=mn+b2*bw, mid=lo+bw/2, j2=dimJudge_(mid,L); g.fillStyle=j2==="ng"?"rgba(217,45,32,.55)":"rgba(23,92,211,.45)"; if(cnt[b2]) g.fillRect(X2(lo)+1, Y2(cnt[b2]), Math.max(1,X2(lo+bw)-X2(lo)-2), pt+ch-Y2(cnt[b2])); }
+    if(st.sd>0){ g.strokeStyle="#101828"; g.lineWidth=1.6; g.beginPath(); for(var i=0;i<=120;i++){ var x=mn+(mx-mn)*i/120, y=Y2(pdf(x)*pts.length*bw); if(i) g.lineTo(X2(x),y); else g.moveTo(X2(x),y); } g.stroke(); }
+    var vl=function(v,col,dash,lab){ g.save(); g.strokeStyle=col; g.lineWidth=1.6; g.setLineDash(dash?[5,4]:[]); g.beginPath(); g.moveTo(X2(v),pt); g.lineTo(X2(v),pt+ch); g.stroke(); g.restore(); g.fillStyle=col; g.font="bold 10.5px "+F; g.textAlign="center"; g.fillText(lab, X2(v), pt+ch+14); g.textAlign="left"; };
+    vl(L.lsl,"#D92D20",false,"LSL "+L.lsl); vl(L.usl,"#D92D20",false,"USL "+L.usl); vl(L.nom,"#667085",true,"기준 "+L.nom); if(st.n) vl(st.avg,"#175CD3",true,"");
+    g.strokeStyle="#D0D5DD"; g.beginPath(); g.moveTo(pl,pt+ch+0.5); g.lineTo(W-pr,pt+ch+0.5); g.stroke();
+    var pk=st.ppk, pc=pk==null?"#667085":pk>=1.33?"#067647":pk>=1?"#B54708":"#D92D20";
+    g.textAlign="right"; g.font="bold 15px "+F; g.fillStyle=pc; g.fillText("Ppk "+(pk==null?"-":pk.toFixed(2)), W-pr-2, 19);
+    g.font="10.5px "+F; g.fillStyle="#475467"; g.fillText("n="+st.n+" · 평균 "+dimF_(st.avg,3)+" · σ "+dimF_(st.sd,3), W-pr-2, pt+10); g.textAlign="left";
+  }
+  return c.toDataURL("image/png");
+}
+function dimXlsx_(sp){
+  dimExcelJsLoad_(function(EJ){ if(!EJ){ dimXlsxBasic_(sp); return; } try{ dimXlsxSheet_(EJ, sp); }catch(e){ console.warn(e); dimXlsxBasic_(sp); } }); }
+function dimXlsxSheet_(EJ, sp){
+  var L=dimLim_(sp), lots=dimLotsOf_(sp.id), all=[].concat.apply([], lots.map(function(r){ return dimVals_(r.vals); })), st=dimStats_(all,L);
+  var wb=new EJ.Workbook(), ws=wb.addWorksheet("관리 현황", { views:[{ showGridLines:false }] });
+  var FN="맑은 고딕", NAV="1F2A44", LB="E4ECF7", BD={ style:"thin", color:{ argb:"FF98A2B3" } }, box={ top:BD, left:BD, bottom:BD, right:BD };
+  var widths=[10,10,9,9,9,9,9,9,9,10,14]; ws.columns=widths.map(function(w){ return { width:w }; });
+  var cell=function(a, v, o){ var c=ws.getCell(a); c.value=v; o=o||{}; c.font={ name:FN, size:o.sz||9.5, bold:!!o.b, color:{ argb:"FF"+(o.c||"101828") } }; c.alignment={ horizontal:o.h||"center", vertical:"middle", wrapText:true };
+    if(o.fill) c.fill={ type:"pattern", pattern:"solid", fgColor:{ argb:"FF"+o.fill } }; if(o.nb!==true) c.border=box; if(o.fmt) c.numFmt=o.fmt; return c; };
+  var mrg=function(r, v, o){ ws.mergeCells(r); var a=r.split(":")[0]; cell(a, v, o); var p=r.split(":"); var s=ws.getCell(p[0]), e=ws.getCell(p[1]); for(var y=s.row;y<=e.row;y++) for(var x=s.col;x<=e.col;x++){ var cc=ws.getCell(y,x); cc.border=o&&o.nb?undefined:box; if(o&&o.fill) cc.fill={ type:"pattern", pattern:"solid", fgColor:{ argb:"FF"+o.fill } }; } };
+  var bar=function(r, t){ mrg("A"+r+":K"+r, t, { b:true, sz:10.5, c:"FFFFFF", fill:NAV, h:"left" }); ws.getRow(r).height=18; };
+  var n=function(x,d){ return (x==null||!isFinite(x))?"-":+Number(x).toFixed(d==null?2:d); };
+  // 제목 + 결재란
+  mrg("A1:H2", "중점 치수 관리 현황표", { b:true, sz:17, nb:false }); ws.getRow(1).height=20; ws.getRow(2).height=20;
+  cell("I1","작성",{ b:true, fill:LB }); cell("J1","검토",{ b:true, fill:LB }); cell("K1","승인",{ b:true, fill:LB });
+  mrg("I2:I3",""); mrg("J2:J3",""); mrg("K2:K3","");
+  mrg("A3:H3", sp.draw+" · "+sp.name+"   |   출력일 "+dimToday_()+"   |   NTL 품질팀", { sz:9.5, c:"475467" }); ws.getRow(3).height=22;
+  // 1. 관리 기준
+  bar(5, "1. 관리 기준");
+  var kv=function(r, pairs){ var cols=[["A","B:C"],["D","E:G"],["H","I:K"]]; pairs.forEach(function(p,i){ cell(cols[i][0]+r, p[0], { b:true, fill:LB }); mrg(cols[i][1].split(":").map(function(c){ return c+r; }).join(":"), p[1], { }); }); ws.getRow(r).height=18; };
+  var tl=Math.abs(dimNum_(sp.tolL)||0), tu=Math.abs(dimNum_(sp.tolU)||0);
+  kv(6, [["도번", sp.draw], ["항목명", sp.name], ["측정 시점", sp.stage||"-"]]);
+  kv(7, [["기준값", String(sp.nom)], ["공차", tl===tu?"± "+String(sp.tolU||tu).replace(/^[+\-]/,""):"+"+tu+" / −"+tl], ["공차 범위", L.lsl+" ~ "+L.usl]]);
+  kv(8, [["관리기준", L.cl!==null?(L.cl+" ~ "+L.cu):"공차와 동일"], ["측정 방법", "입고 Lot 전수 측정"], ["관련 대책서", sp.ref||"-"]]);
+  // 2. 공정능력 현황
+  bar(10, "2. 공정능력 현황");
+  var pk=st.ppk, pj=pk==null?"-":pk>=1.33?"양호":pk>=1?"보통":"부족", pjc=pk==null?"101828":pk>=1.33?"067647":pk>=1?"B54708":"D92D20";
+  var rate=st.n?(st.ng/st.n*100):0;
+  var KH=["Lot 수","측정 수","최소","최대","평균","표준편차","Ppk","Ppk 판정","공차 이탈","이탈률","관리 상태"];
+  var KV=[lots.length, st.n||0, n(st.min,3), n(st.max,3), n(st.avg,3), n(st.sd,4), n(pk,2), pj, st.ng||0, st.n?(+rate.toFixed(1))+"%":"-", st.ng?"이탈 발생":"정상"];
+  KH.forEach(function(t,i){ cell(String.fromCharCode(65+i)+"11", t, { b:true, fill:LB, sz:9 }); });
+  KV.forEach(function(v,i){ cell(String.fromCharCode(65+i)+"12", v, { b:(i===6||i===7||i===10), sz:10.5, c:(i===6||i===7)?pjc:(i===8||i===10)&&st.ng?"D92D20":"101828" }); });
+  ws.getRow(11).height=17; ws.getRow(12).height=22;
+  mrg("A13:K13", "Ppk = min(USL−평균, 평균−LSL) ÷ (3×σ)  ·  판정: 1.33 이상 양호 / 1.00~1.33 보통 / 1.00 미만 부족"+(st.n&&st.n<30?"  ·  ※ 측정 30개 미만 — 참고값":""), { sz:8.5, c:"667085", nb:true, h:"left" });
+  // 3. 그래프 (추세 + 분포/Ppk)
+  bar(15, "3. 관리 그래프");
+  var px=function(w){ return Math.round(w*6.8+3); }, wA=widths.slice(0,6).reduce(function(a,b){ return a+px(b); },0), wB=widths.slice(6).reduce(function(a,b){ return a+px(b); },0), GR=14, gh=GR*18;
+  for(var r=16;r<16+GR;r++) ws.getRow(r).height=13.5;
+  var i1=wb.addImage({ base64:dimChartPng_(sp, lots, "trend", wA, gh), extension:"png" }), i2=wb.addImage({ base64:dimChartPng_(sp, lots, "hist", wB, gh), extension:"png" });
+  ws.addImage(i1, { tl:{ col:0, row:15 }, ext:{ width:wA-4, height:gh } }); ws.addImage(i2, { tl:{ col:6, row:15 }, ext:{ width:wB-4, height:gh } });
+  // 4. 검사 이력 (Lot별)
+  var r0=16+GR+1; bar(r0, "4. 검사 이력 (입고 Lot별)");
+  var HH=["No","입고일자","입고수량","측정 수","최소","최대","평균","공차 이탈","판정","측정자","비고"]; HH.forEach(function(t,i){ cell(String.fromCharCode(65+i)+(r0+1), t, { b:true, fill:LB, sz:9 }); }); ws.getRow(r0+1).height=17;
+  var MAXL=22, show=lots.slice(-MAXL), rr=r0+2;
+  show.forEach(function(lt, ix){ var v=dimVals_(lt.vals), s=dimStats_(v,L), q=dimNum_(lt.inQty), ngv=v.filter(function(x){ return dimJudge_(x,L)==="ng"; });
+    var row=[lots.length-show.length+ix+1, lt.inDate, q||lt.inQty||"", v.length, n(s.min,3), n(s.max,3), n(s.avg,3), s.ng||0, s.ng?"NG":(s.warn?"주의":"OK"), lt.by||"", (lt.note||"")];
+    row.forEach(function(v2,i){ cell(String.fromCharCode(65+i)+rr, v2, { sz:9, b:i===8, c:i===8?(s.ng?"D92D20":s.warn?"B54708":"067647"):(i===3&&q&&q!==v.length?"B54708":"101828"), h:i===10?"left":"center" }); });
+    ws.getRow(rr).height=16; rr++; });
+  if(!show.length){ mrg("A"+rr+":K"+rr, "입력된 Lot 없음", { c:"98A2B3" }); rr++; }
+  if(lots.length>MAXL){ mrg("A"+rr+":K"+rr, "※ 최근 "+MAXL+" Lot만 표시 — 전체 "+lots.length+" Lot은 '전체 측정값' 시트 참조", { sz:8.5, c:"667085", nb:true, h:"left" }); rr++; }
+  // 5. 특이사항 / 조치
+  rr++; bar(rr, "5. 특이사항 · 조치"); rr++;
+  var ngLots=lots.filter(function(lt){ return dimStats_(dimVals_(lt.vals),L).ng; }).slice(-3);
+  var notes=ngLots.map(function(lt){ var ngv=dimVals_(lt.vals).filter(function(x){ return dimJudge_(x,L)==="ng"; }); return lt.inDate+" 입고 Lot: 공차 이탈 "+ngv.length+"개 ("+ngv.join(", ")+") → 조치: "; });
+  while(notes.length<3) notes.push("");
+  notes.forEach(function(t){ mrg("A"+rr+":K"+rr, t, { sz:9, h:"left" }); ws.getRow(rr).height=20; rr++; });
+  mrg("A"+rr+":K"+rr, "NTL QMS · 중점 치수 관리 — 측정값은 QMS에 입고 Lot마다 기록·관리됩니다", { sz:8, c:"98A2B3", nb:true, h:"right" });
+  ws.pageSetup={ paperSize:9, orientation:"portrait", fitToPage:true, fitToWidth:1, fitToHeight:1, horizontalCentered:true, margins:{ left:0.4, right:0.4, top:0.5, bottom:0.5, header:0.2, footer:0.2 }, printArea:"A1:K"+rr };
+  // 전체 측정값 시트
+  var w2=wb.addWorksheet("전체 측정값"); w2.columns=[{ width:12 },{ width:8 },{ width:11 },{ width:16 }];
+  var h2=["입고일자","순번","측정값","판정"]; w2.addRow(h2); w2.getRow(1).eachCell(function(c){ c.font={ name:FN, bold:true }; c.fill={ type:"pattern", pattern:"solid", fgColor:{ argb:"FF"+LB } }; c.border=box; c.alignment={ horizontal:"center" }; });
+  var J={ ok:"OK", warn:"관리기준 이탈", ng:"NG(공차 이탈)" };
+  lots.forEach(function(lt){ dimVals_(lt.vals).forEach(function(v,i){ var j=dimJudge_(v,L), row=w2.addRow([lt.inDate, i+1, v, J[j]]); row.eachCell(function(c){ c.font={ name:FN, color:{ argb:j==="ng"?"FFD92D20":"FF101828" } }; c.border=box; c.alignment={ horizontal:"center" }; }); }); });
+  w2.views=[{ state:"frozen", ySplit:1 }];
+  wb.xlsx.writeBuffer().then(function(buf){ var bl=new Blob([buf],{ type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), a=document.createElement("a");
+    a.href=URL.createObjectURL(bl); a.download="중점치수_관리현황_"+sp.draw+"_"+String(sp.name).replace(/[\\\/:*?"<>|\s]+/g,"")+"_"+dimToday_()+".xlsx"; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500); })
+    .catch(function(){ dimXlsxBasic_(sp); });
+}
 // 수입검사일보: 중점 치수 대상 도번 입력 → 안내 (한 화면에서 같은 도번은 1번만)
 (function(){ var shown={}; document.addEventListener("change", function(e){ try{ var t=e.target; if(!t || !t.getAttribute || t.getAttribute("data-key")!=="draw" || !t.closest("#insrep-content")) return;
   if(typeof insType==="undefined" || insType!=="incoming") return; var d=String(t.value||"").trim().toUpperCase(); if(!d) return;
