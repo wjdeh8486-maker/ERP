@@ -22368,8 +22368,9 @@ function smShipPop_(){ var R=smShipPend_(); if(!R){ alert("MAIN 데이터가 아
 //   같은 품번에서 할당됐는데 아직 안 쓴 다른 관리번호도 같이 골라 한 번에 (한 번에 생산해 입고된 경우)
 //   사용할 할당은 그 관리번호에 붙은 할당에서 자동으로 (ORDER NO.를 적은 할당 먼저) — 할당 잔량을 넘지 않음
 function smOrdUsePop_(no0, pj0){ var R=smOrders_()||[], E=ftE_, me=R.filter(function(r){ return !r.o.done && ftK_(r.o.no)===ftK_(no0) && ftK_(r.o.pj)===ftK_(pj0); })[0]; if(!me){ alert("이 관리번호를 찾지 못했습니다."); return; }
-  var L=R.filter(function(r){ return !r.o.done && r.k===me.k && smQ_(r.al-r.used)>0; }).sort(function(a,b){ return (a===me?-1:b===me?1:0) || String(a.o.due||"").localeCompare(String(b.o.due||"")); });
-  var sel=L.map(function(r){ return r===me; }), qty=L.map(function(r){ return smQ_(Math.min(r.al-r.used, Math.max(0, r.need-r.used)||r.al-r.used)); });
+  var L=R.filter(function(r){ return !r.o.done && r.k===me.k && smUseMax_(r)>0; }).sort(function(a,b){ return (a===me?-1:b===me?1:0) || String(a.o.due||"").localeCompare(String(b.o.due||"")); });
+  if(!L.length){ alert("⛔ 이 관리번호는 이미 필요한 만큼 사용했습니다 (2중 사용 방지)."); return; }
+  var sel=L.map(function(r){ return r===me; }), qty=L.map(function(r){ return smUseMax_(r); });
   var ov=ftOv_("🔧 사용 — "+E(me.p.draw||me.p.partNo)+" "+E(me.p.name), 820), body=ov.querySelector(".sd-pb");
   var draw=function(){ var n=0, q=0; L.forEach(function(r,i){ if(sel[i]){ n++; q+=ftN_(qty[i]); } });
     body.innerHTML='<div class="ft-g"><label>사용일<input id="sou-date" type="date" value="'+E(body.__date||ftToday_())+'"></label><label style="grid-column:span 3;">비고<input id="sou-note" value="'+E(body.__note||"")+'" placeholder="예: 4건 한 번에 생산"></label></div>'
@@ -22381,6 +22382,9 @@ function smOrdUsePop_(no0, pj0){ var R=smOrders_()||[], E=ftE_, me=R.filter(func
   body.addEventListener("input", function(e){ var t=e.target; if(t.id==="sou-date") body.__date=t.value; if(t.id==="sou-note") body.__note=t.value; if(t.hasAttribute("data-souq")) qty[+t.getAttribute("data-souq")]=t.value; });
   body.addEventListener("change", function(e){ var t=e.target; if(t.id==="sou-all"){ sel=sel.map(function(){ return t.checked; }); draw(); } else if(t.hasAttribute("data-sou")){ sel[+t.getAttribute("data-sou")]=t.checked; draw(); } else if(t.hasAttribute("data-souq")) draw(); });
   ov.addEventListener("click", function(e){ if(!(e.target.getAttribute && e.target.getAttribute("data-x")==="sougo")) return;
+    if(ov.__busy) return; var F={}, over=[]; (smOrders_()||[]).forEach(function(r){ F[smOK_(r.o.no, r.o.pj)]=r; });   // [추가] 2중 사용 막기
+    L.forEach(function(r,i){ if(!sel[i]) return; var q=smQ_(ftN_(qty[i])), f=F[smOK_(r.o.no, r.o.pj)], m=f?smUseMax_(f):0; if(q>m+0.001) over.push(r.o.no+" — 이번 "+q+" > 더 쓸 수 있는 "+m); });
+    if(over.length){ alert("⛔ 2중 사용 — 필요한 것보다 많이 쓸 수 없습니다:\n\n"+over.join("\n")); return; } ov.__busy=true;
     var dt=String((body.querySelector("#sou-date")||{}).value||ftToday_()), note=String((body.querySelector("#sou-note")||{}).value||"").trim(), C=smCalc_(), left={}, who=ftWho_(), out=[], short=[];
     Object.keys(C.A).forEach(function(id){ left[id]=C.A[id].left; });
     L.forEach(function(r,i){ if(!sel[i]) return; var need=smQ_(ftN_(qty[i])); if(need<=0) return;
@@ -22466,6 +22470,8 @@ function smProdHtml_(){
     +(L.length?L.map(row).join(""):'<tr><td colspan="12" class="ft-empty">해당 품목이 없습니다</td></tr>')+'</tbody></table></div>'; }
 // ── 동작
 function smChange_(e){ var t=e.target;
+  if(t.classList.contains("sm-osel")){ __sm.osel=__sm.osel||{}; var ok=t.getAttribute("data-ok"); if(t.checked) __sm.osel[ok]=1; else delete __sm.osel[ok]; smRender_(); return; }   // [추가] 일괄 처리 선택
+  if(t.id==="sm-osel-all"){ __sm.osel=__sm.osel||{}; document.querySelectorAll(".sm-osel").forEach(function(c){ var ok=c.getAttribute("data-ok"); if(t.checked) __sm.osel[ok]=1; else delete __sm.osel[ok]; }); smRender_(); return; }
   if(t.classList.contains("sm-per")){ var k=t.getAttribute("data-k"), n=ftN_(t.value); __sm.d.per=__sm.d.per||{}; if(n>0) __sm.d.per[k]={ k:k, n:n, ts:(__sm.d.per[k]||{}).ts||0 }; else delete __sm.d.per[k]; smSave_(); smRender_(); return; }
   if(t.id==="sm-onlyopen"){ __sm.onlyOpen=t.checked; smRender_(); return; }
   if(t.id==="sm-tagf"){ __sm.tagF=t.value; smRender_(); return; }
@@ -22490,6 +22496,7 @@ function smClick_(e){ var t=e.target, tb=t.closest("[data-stab]"), a=t.closest("
   if(k==="snowo"){ __sm.aNoWo=!__sm.aNoWo; smRender_(); return; }   // [추가] 작업 지시 안 한 할당만 보기 ↔ 전체
   if(k==="saq"){ var aqi=document.getElementById("sm-aq"); __sm.aq=aqi?aqi.value.trim():""; smRender_(); return; } if(k==="saqx"){ __sm.aq=""; smRender_(); return; }
   if(k==="sfrac") return smFracPop_();
+  if(k==="sbalc") return smBulkAllocPop_(); if(k==="sbwo") return smBulkWoPop_(); if(k==="sbuse") return smBulkUsePop_(); if(k==="sbclr"){ __sm.osel={}; smRender_(); return; }   // [추가] 일괄 할당·작업 지시·사용
   if(k==="sordu") return smOrdUsePop_(a.getAttribute("data-o")||"", a.getAttribute("data-pj")||"");
   if(k==="spxlsx") return smXlsx_(); if(k==="sship") return smShipPop_(); if(k==="sshipundo") return smShipUndo_(); if(k==="scxlsx") return smXlsxCust_();
   if(k==="smrest"){ if(!confirm("지운 자료를 되살릴까요?")) return; if(shRestore_(__sm.d, id)){ smSave_(); smRender_(); } return; }
@@ -22558,7 +22565,9 @@ function smTxPop_(type, editId){
       ord=String(st.orderNo||"").trim(); if(ord){ var P1=smProducts_()||{}; Object.keys(P1).some(function(k){ var hit=P1[k].orders.concat(P1[k].doneOrders||[]).some(function(o){ return ftK_(o.no)===ftK_(ord); }); if(hit){ prod=P1[k].partNo||k; var per1=smPer_(k); made=per1?q*per1:0; } return hit; }); } }
     else if(type==="use"){ al=(__sm.d.alloc||[]).filter(function(a){ return a.id===st.allocId; })[0]; if(!al){ alert("고객 할당을 고르세요. 사급 소재는 할당분만 사용할 수 있습니다."); return; }
       var C=smCalc_(), left=C.A[al.id].left+(old&&old.allocId===al.id?ftN_(old.qty):0); if(q>left){ alert("할당 잔량("+left+"개)보다 많습니다. 고객사에 추가 할당을 요청하세요."); return; }
-      mat=al.mat; prod=al.prod; ord=String(st.orderNo||"").trim()||al.orderNo||""; if(!ord && !confirm("사용한 관리번호(ORDER NO.)가 비어 있습니다. 그대로 저장할까요?")) return; var per=smPer_(smProdKeyOf_(al.prod)); made=per?q*per:0; }
+      mat=al.mat; prod=al.prod; ord=String(st.orderNo||"").trim()||al.orderNo||""; if(!ord && !confirm("사용한 관리번호(ORDER NO.)가 비어 있습니다. 그대로 저장할까요?")) return; var per=smPer_(smProdKeyOf_(al.prod)); made=per?q*per:0;
+      if(ord && String(ord).split(/[,\/\s]+/).filter(Boolean).length===1){ var rw=(smOrders_()||[]).filter(function(r){ return !r.o.done && ftK_(r.o.no)===ftK_(ord); }), mx=smQ_(rw.reduce(function(s1,r){ return s1+Math.max(0, r.need-r.used); },0)+(old&&old.type==="use"&&ftK_(old.orderNo)===ftK_(ord)?ftN_(old.qty):0));   // [추가] 2중 사용 막기 — 관리번호 필요량 넘게 사용 금지
+        if(rw.length && q>mx+0.001){ alert("⛔ 2중 사용 — "+ord+"에 더 쓸 수 있는 소재는 "+mx+"개입니다 (이번 "+q+"개)."+(mx===0?"\n이미 필요한 만큼 사용했습니다.":"")); return; } } }
     if(!String(mat||"").trim()){ alert("소재(규격)를 넣으세요."); return; }
     var mk=ftK_(mat); if(!__sm.d.items[mk]) __sm.d.items[mk]={ name:String(mat).trim(), unit:"EA" };
     var note=st.note.trim(); if(type==="buy" && String(st.vend||"").trim()) note=("구매처 "+String(st.vend).trim()+(note?" · "+note:""));
@@ -22594,25 +22603,33 @@ function smAllocPop_(editId, prod0, ord0, pj0){
   ov.addEventListener("click", function(e){ if(!(e.target.getAttribute && e.target.getAttribute("data-x")==="asave")) return;
     var q=ftN_(st.qty); if(!String(st.mat).trim() || !String(st.prod).trim() || q<=0){ alert("소재·제품·할당 수량을 넣으세요."); return; }
     var C=smCalc_(); if(old && C.A[old.id] && q<C.A[old.id].used){ alert("이미 "+C.A[old.id].used+"개를 사용했습니다. 그보다 적게 줄일 수 없습니다."); return; }
+    if(ov.__busy) return;
+    if(!smHistOf_(String(st.prod).trim(), String(st.orderNo).trim())){   // [추가] 2중 할당 막기 — 필요(부족분)보다 많이 할당 금지 (수정이면 원래 수량만큼 여유)
+      var G=smGapOf_(String(st.prod).trim(), String(st.orderNo).trim(), String(st.pj||"").trim()), room=smQ_(G.gap+(old && !old.hist?ftN_(old.qty):0));
+      if(G.rows.length && q>room+0.001){ alert("⛔ 2중 할당 — "+(String(st.orderNo).trim()?"이 관리번호":"이 품번")+"에 더 할당할 수 있는 소재는 "+room+"개입니다 (이번 "+q+"개).\n"+(room===0?"이미 필요한 만큼 할당돼 있습니다.":"수량을 "+room+" 이하로 고치세요.")); return; } }
+    ov.__busy=true;
     var mk=ftK_(st.mat); if(!__sm.d.items[mk]) __sm.d.items[mk]={ name:String(st.mat).trim(), unit:"EA" };
     var o={ date:st.date||ftToday_(), mat:String(st.mat).trim(), prod:String(st.prod).trim(), orderNo:String(st.orderNo).trim(), pj:String(st.pj||"").trim(), qty:q, note:String(st.note).trim() };
     o.hist=smHistOf_(o.prod, o.orderNo);   // 출고 완료 관리번호 → 이력 할당
     if(old && !o.hist) delete old.hist;
     if(o.hist && st.wdate && !(old&&old.wo)) o.wo={ date:st.wdate, to:String(st.wto||"").trim(), note:String(st.wnote||"").trim(), by:String(st.wby||"").trim()||ftWho_() };
     if(old){ Object.keys(o).forEach(function(k){ old[k]=o[k]; }); old.ts2=Date.now(); } else { o.id=smId_("sa"); o.by=ftWho_(); o.ts=Date.now(); __sm.d.alloc.push(o); }
-    smSave_(); ov.remove(); if(!o.hist) __sm.tab="alloc"; smRender_(); }); }
+    smSave_(); ov.remove(); if(!o.hist && __sm.tab!=="ord") __sm.tab="alloc"; smRender_(); }); }   // [수정] 관리번호별 현황에서 할당하면 그 화면 그대로
 // [추가] 현장 작업 지시 — 할당받은 건을 현장에 지시했는지 기록 (+ 작업지시서 인쇄)
 function smWoPop_(id){
-  var E=ftE_, a=(__sm.d.alloc||[]).filter(function(x){ return x.id===id; })[0]; if(!a) return; var C=smCalc_(), x=C.A[a.id], per=smPer_(smProdKeyOf_(a.prod)), P=smProducts_()||{}, p=P[smProdKeyOf_(a.prod)], it=__sm.d.items[ftK_(a.mat)]||{};
+  var E=ftE_, a=(__sm.d.alloc||[]).filter(function(x){ return x.id===id; })[0]; if(!a) return;
+  if(a.wo){ alert("⛔ 이미 작업 지시된 할당입니다 ("+(a.wo.date||"")+(a.wo.to?" · "+a.wo.to:"")+").\n2중 지시는 할 수 없습니다 — 작업지시서만 다시 뽑으려면 할당·작업지시 탭의 🖨 인쇄를 쓰세요."); return; }   // [추가] 2중 작업 지시 막기
+  var C=smCalc_(), x=C.A[a.id], per=smPer_(smProdKeyOf_(a.prod)), P=smProducts_()||{}, p=P[smProdKeyOf_(a.prod)], it=__sm.d.items[ftK_(a.mat)]||{};
   var ov=ftOv_("📣 현장 작업 지시 — "+E(a.prod), 640), body=ov.querySelector(".sd-pb");
   body.innerHTML='<div class="m" style="padding:8px 10px;background:#F9FAFB;border-radius:8px;margin-bottom:8px;">소재 <b>'+E(it.name||a.mat)+'</b> · '+(a.hist?'📦 출고 완료 이력 · 할당 <b>'+ftN_(a.qty)+'</b>개':'할당 잔량 <b>'+x.left+'</b>개')+' → 제품 <b>'+E(a.prod)+'</b>'+(p?' ('+E(p.draw)+' · '+E(p.name)+')':'')+(per?' · 약 <b>'+((a.hist?ftN_(a.qty):x.left)*per)+'</b>개 생산':'')+(a.orderNo?' · '+E(a.orderNo):'')+'</div>'
     +'<div class="ft-g"><label>지시일<input id="swo-date" type="date" value="'+E(a.hist?(a.date||ftToday_()):ftToday_())+'"></label><label style="grid-column:span 3;">지시 대상 (현장·담당자)<input id="swo-to" placeholder="예: 가공1팀 김OO"></label><label style="grid-column:span 4;">메모<input id="swo-note" placeholder="예: 11/3까지 가공"></label></div>'
     +'<label class="m" style="display:flex;align-items:center;gap:5px;"><input type="checkbox" id="swo-print"'+(a.hist?'':' checked')+' style="width:16px;height:16px;margin:0;flex:none;"> 저장하면서 작업지시서 인쇄</label>';
   ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn pri" data-x="wsave">지시 완료로 저장</button>';
   ov.addEventListener("click", function(e){ if(!(e.target.getAttribute && e.target.getAttribute("data-x")==="wsave")) return;
+    if(a.wo || ov.__busy) return; ov.__busy=true;
     a.wo={ date:ov.querySelector("#swo-date").value||ftToday_(), to:ov.querySelector("#swo-to").value.trim(), note:ov.querySelector("#swo-note").value.trim(), by:ftWho_() };
     var pr=ov.querySelector("#swo-print").checked; smSave_(); ov.remove(); smRender_(); if(pr) smWoPrint_(a); }); }
-function smWoPrint_(a){
+function smWoPrint_(a, ret){
   var E=ftE_, C=smCalc_(), x=C.A[a.id]||{ left:a.qty, used:0 }; if(a.hist) x={ left:ftN_(a.qty), used:0 };
   var q0=ftN_(a.qty)||ftN_(x.left)||0;   /* [수정] 작업지시서는 '사용' 입력과 상관없이 할당 수량 그대로 (재출력해도 같은 수량) */ var per=smPer_(smProdKeyOf_(a.prod)), P=smProducts_()||{}, p=P[smProdKeyOf_(a.prod)], it=__sm.d.items[ftK_(a.mat)]||{}, w=a.wo||{};
   var orders=p?p.orders.slice(0,12):[];
@@ -22630,7 +22647,9 @@ function smWoPrint_(a){
     +'<table class="sg"><tr><th>지시자</th><th>작업자 확인</th><th>소재 출고 확인</th><th>완료 확인</th></tr><tr><td>'+E(w.by||"")+'</td><td></td><td></td><td></td></tr></table></div>';
   // [수정] A4 한 장에 위(현장용)·아래(보관용) 2부 — 가운데 점선으로 잘라 보관
   html=html.split('<div class="half">');
-  var one='<div class="half">'+html[1]; html=html[0]+one.replace('@@CP@@','현장용')+'<div class="cut"><span>✂ 자르는 선</span></div>'+one.replace('@@CP@@','보관용')+'</body></html>';
+  var one='<div class="half">'+html[1], page=one.replace('@@CP@@','현장용')+'<div class="cut"><span>✂ 자르는 선</span></div>'+one.replace('@@CP@@','보관용');
+  if(ret) return { head:html[0], page:page };   // [추가] 일괄 작업 지시 — 여러 장 한 번에 인쇄용
+  html=html[0]+page+'</body></html>';
   var wn=(typeof qmsPrintWin_==="function")?qmsPrintWin_():window.open("","_blank"); if(!wn){ alert("인쇄 창을 열 수 없습니다."); return; }
   wn.document.write(html); wn.document.close(); setTimeout(function(){ try{ wn.focus(); wn.print(); }catch(_){} }, 300); }
 // [추가] 관리번호(ORDER NO.)별 현황 — 출고 전 AL3003 주문마다 필요 소재 · 할당 · 사용 · 작업 지시를 한 줄로
@@ -22674,6 +22693,99 @@ function smOrders_(){
       var alq=exM.reduce(function(s1,a){ return s1+(String(a.orderNo||"").split(/[,\/\s]+/).filter(Boolean).length===1 && (a.pj || one)?ftN_(a.qty):0); },0);
       var r={ p:P[k], k:k, o:o, per:smPer_(k), need:0, used:u, buy:(bK[K(n,o.pj)]||0)+(one?(bN[n]||0):0), al:Math.max(u,alq), wo:[], allocs:[], gap:0, st:"done" }; als.forEach(function(a){ if(r.allocs.indexOf(a)<0) r.allocs.push(a); if(a.wo && r.wo.indexOf(a.wo)<0) r.wo.push(a.wo); }); rows.push(r); }); }); }
   return rows; }
+// ===== [추가] 관리번호별 현황 — 체크해서 일괄 할당 · 일괄 작업 지시 · 일괄 사용 =====
+//   선택 키 = ORDER NO.+PROJECT NO. (smOK_) · 처리 후 선택 해제 · 탭은 관리번호별 현황 그대로
+// [추가] 2중 할당·2중 작업 지시·2중 사용 막기 — 저장 직전에 최신 값으로 다시 계산
+function smGapOf_(prod, orderNo, pj){ var R=(smOrders_()||[]).filter(function(r){ return !r.o.done; }), k=smProdKeyOf_(prod), nos=String(orderNo||"").split(/[,\/\s]+/).map(ftK_).filter(Boolean);
+  var L=nos.length?R.filter(function(r){ return nos.indexOf(ftK_(r.o.no))>=0 && (!pj || ftK_(r.o.pj)===ftK_(pj)); }):R.filter(function(r){ return r.k===k; });
+  return { rows:L, gap:smQ_(L.reduce(function(s,r){ return s+r.gap; },0)) }; }
+function smUseMax_(r){ return smQ_(Math.max(0, Math.min(r.al-r.used, r.need-r.used))); }   // 이 관리번호에 더 쓸 수 있는 소재 (할당 잔량·필요 남은 것 중 작은 값)
+function smSelRows_(){ var S=__sm.osel||{}, R=smOrders_()||[]; return R.filter(function(r){ return !r.o.done && S[smOK_(r.o.no, r.o.pj)]; }); }
+function smMatName_(r){ var mk=smMatOfProd_(r.k)[0], I=__sm.d.items||{}; if(mk) return (I[mk]||{}).name||mk; var ks=Object.keys(I); return ks.length===1?(I[ks[0]].name||ks[0]):""; }
+function smBulkBar_(){ var n=Object.keys(__sm.osel||{}).filter(function(k){ return __sm.osel[k]; }).length; if(!n) return '<div class="m" style="margin:-2px 0 6px;">☑ 왼쪽 칸을 체크하면 여러 관리번호를 한 번에 <b>할당 · 작업 지시 · 사용</b>할 수 있습니다</div>';
+  return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-2px 0 8px;padding:8px 10px;background:#F4F3FF;border:1px solid #BDB4FE;border-radius:10px;"><b style="color:#5925DC;">☑ 선택 '+n+'건</b>'
+    +'<button type="button" class="ft-btn sm" data-a="sbalc" style="color:#6941C6;border-color:#BDB4FE;background:#fff;font-weight:800;">📌 일괄 할당</button>'
+    +'<button type="button" class="ft-btn sm" data-a="sbwo" style="color:#B54708;border-color:#FEC84B;background:#FFFAEB;font-weight:800;">📣 일괄 작업 지시</button>'
+    +'<button type="button" class="ft-btn sm" data-a="sbuse" style="color:#175CD3;border-color:#B2DDFF;background:#EFF8FF;font-weight:800;">🔧 일괄 사용</button>'
+    +'<button type="button" class="ft-btn sm" data-a="sbclr">선택 해제</button></div>'; }
+function smBulkAllocPop_(){
+  var E=ftE_, R=smSelRows_().filter(function(r){ return r.gap>0; }); if(!R.length){ alert("선택한 관리번호 중 할당이 부족한(❌·⚠) 건이 없습니다."); return; }
+  var qty=R.map(function(r){ return r.gap; }), mat=R.map(smMatName_), sel=R.map(function(){ return true; }), st={ date:ftToday_(), note:"", wo:false, wdate:ftToday_(), wto:"", wnote:"", pr:true };
+  var ov=ftOv_("📌 일괄 할당 — "+R.length+"건", 980), body=ov.querySelector(".sd-pb");
+  var draw=function(){ var C=smCalc_(), need={}; R.forEach(function(r,i){ if(sel[i]) need[ftK_(mat[i])]=smQ_((need[ftK_(mat[i])]||0)+ftN_(qty[i])); });
+    var warn=Object.keys(need).filter(function(k){ var e=C.S[k]; return !e || need[k]>Math.max(0,e.free); }).map(function(k){ var e=C.S[k]; return (e?e.name:k)+": 이번 "+need[k]+" > 미할당 보유 "+(e?Math.max(0,e.free):0); });
+    var n=sel.filter(Boolean).length, q=R.reduce(function(s,r,i){ return s+(sel[i]?ftN_(qty[i]):0); },0);
+    body.innerHTML='<div class="ft-g"><label>할당일<input id="sba-date" type="date" value="'+E(st.date)+'"></label><label style="grid-column:span 3;">할당 근거·비고<input id="sba-note" value="'+E(st.note)+'" placeholder="예: 고객 메일 11/27 할당 요청 회신"></label></div>'
+      +'<div class="m" style="margin:6px 0;">관리번호마다 <b>따로</b> 할당 등록됩니다 · 수량(소재) = 부족분 자동 · 고칠 수 있음 · 소재가 비어 있으면 넣어 주세요</div>'
+      +'<div class="ft-card" style="max-height:44vh;overflow:auto;"><table class="ft-tb"><thead><tr><th><input type="checkbox" id="sba-all"'+(sel.every(Boolean)?' checked':'')+' style="width:16px;height:16px;"></th><th>ORDER NO.</th><th>PROJECT NO.</th><th>도번 · 품명</th><th>납기</th><th>필요</th><th>할당됨</th><th>소재</th><th>이번 할당</th></tr></thead><tbody>'
+      +R.map(function(r,i){ return '<tr'+(sel[i]?'':' style="color:#98A2B3;"')+'><td class="c"><input type="checkbox" data-sba="'+i+'"'+(sel[i]?' checked':'')+' style="width:16px;height:16px;"></td><td class="nw"><b>'+E(r.o.no)+'</b></td><td class="s">'+E(r.o.pj)+'</td><td><b>'+E(r.p.draw||r.p.partNo)+'</b><div class="m">'+E(r.p.name)+'</div></td><td class="nw">'+E(r.o.due||"")+'</td><td class="n">'+r.need+'</td><td class="n">'+(r.al||"")+'</td><td><input data-sbm="'+i+'" list="sm-mats" value="'+E(mat[i])+'" style="width:130px;'+(mat[i]?'':'border-color:#F79009;background:#FFFAEB;')+'"></td><td><input data-sbq="'+i+'" type="number" step="any" min="0" value="'+E(qty[i])+'" style="width:80px;"></td></tr>'; }).join("")+'</tbody></table></div>'+smMatList_()
+      +'<div style="margin-top:8px;font-weight:800;">선택 '+n+'건 · 소재 '+smQ_(q)+'개 할당</div>'
+      +(warn.length?'<div style="margin-top:6px;padding:8px 10px;background:#FEF3F2;border:1px solid #FDA29B;border-radius:8px;color:#B42318;font-weight:700;">⚠ 미할당 보유보다 많습니다 — '+E(warn.join(" · "))+'<div class="m" style="color:#B42318;font-weight:400;">고객이 실제로 할당해 준 수량인지 확인하세요 (그래도 저장은 됩니다)</div></div>':'')
+      +'<div style="margin-top:10px;padding:8px 10px;background:#FFFAEB;border:1px solid #FEC84B;border-radius:8px;"><label class="m" style="display:flex;align-items:center;gap:6px;font-weight:700;color:#B54708;"><input type="checkbox" id="sba-wo"'+(st.wo?' checked':'')+' style="width:16px;height:16px;margin:0;"> 저장하면서 현장 작업 지시까지 같이 (지시 완료로 기록)</label>'
+      +(st.wo?'<div class="ft-g" style="margin-top:6px;"><label>지시일<input id="sba-wdate" type="date" value="'+E(st.wdate)+'"></label><label style="grid-column:span 3;">지시 대상 (현장·담당자)<input id="sba-wto" value="'+E(st.wto)+'" placeholder="예: 가공1팀 김OO"></label><label style="grid-column:span 4;">메모<input id="sba-wnote" value="'+E(st.wnote)+'"></label></div><label class="m" style="display:flex;align-items:center;gap:5px;margin-top:4px;"><input type="checkbox" id="sba-pr"'+(st.pr?' checked':'')+' style="width:16px;height:16px;margin:0;"> 작업지시서 인쇄 (관리번호마다 1장 · 현장용/보관용)</label>':'')+'</div>'; };
+  draw(); ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn pri" data-x="sbago">일괄 할당 저장</button>';
+  body.addEventListener("input", function(e){ var t=e.target; if(t.id==="sba-date") st.date=t.value; if(t.id==="sba-note") st.note=t.value; if(t.id==="sba-wdate") st.wdate=t.value; if(t.id==="sba-wto") st.wto=t.value; if(t.id==="sba-wnote") st.wnote=t.value;
+    if(t.hasAttribute("data-sbq")) qty[+t.getAttribute("data-sbq")]=t.value; if(t.hasAttribute("data-sbm")) mat[+t.getAttribute("data-sbm")]=t.value; });
+  body.addEventListener("change", function(e){ var t=e.target; if(t.id==="sba-all"){ sel=sel.map(function(){ return t.checked; }); draw(); } else if(t.hasAttribute("data-sba")){ sel[+t.getAttribute("data-sba")]=t.checked; draw(); } else if(t.id==="sba-wo"){ st.wo=t.checked; draw(); } else if(t.id==="sba-pr"){ st.pr=t.checked; } else if(t.hasAttribute("data-sbq")||t.hasAttribute("data-sbm")) draw(); });
+  ov.addEventListener("click", function(e){ if(!(e.target.getAttribute && e.target.getAttribute("data-x")==="sbago")) return;
+    var bad=R.filter(function(r,i){ return sel[i] && ftN_(qty[i])>0 && !String(mat[i]).trim(); }); if(bad.length){ alert("소재가 비어 있는 줄이 있습니다: "+bad.map(function(r){ return r.o.no; }).join(", ")); return; }
+    if(ov.__busy) return; var F={}, over=[]; (smOrders_()||[]).forEach(function(r){ F[smOK_(r.o.no, r.o.pj)]=r; });   // 2중 할당 막기 — 최신 부족분으로 다시 확인
+    R.forEach(function(r,i){ if(!sel[i]) return; var q=smQ_(ftN_(qty[i])), f=F[smOK_(r.o.no, r.o.pj)], g=f?f.gap:0; if(q>g+0.001) over.push(r.o.no+(r.o.pj?" / "+r.o.pj:"")+" — 이번 "+q+" > 부족 "+g+(g===0?" (이미 할당 완료)":"")); });
+    if(over.length){ alert("⛔ 2중 할당 — 필요한 것보다 많이 할당할 수 없습니다:\n\n"+over.join("\n")+"\n\n수량을 부족분 이하로 고치거나 그 줄의 체크를 빼세요."); return; } ov.__busy=true;
+    var who=ftWho_(), made=[];
+    R.forEach(function(r,i){ var q=smQ_(ftN_(qty[i])); if(!sel[i] || q<=0) return; var m=String(mat[i]).trim(), mk=ftK_(m); if(!__sm.d.items[mk]) __sm.d.items[mk]={ name:m, unit:"EA" };
+      var o={ id:smId_("sa"), date:st.date||ftToday_(), mat:m, prod:String(r.p.partNo||r.k), orderNo:String(r.o.no), pj:String(r.o.pj||""), qty:q, note:String(st.note||"").trim()||"일괄 할당", by:who, ts:Date.now() };
+      if(st.wo) o.wo={ date:st.wdate||ftToday_(), to:String(st.wto||"").trim(), note:String(st.wnote||"").trim(), by:who };
+      __sm.d.alloc.push(o); made.push(o); });
+    if(!made.length){ alert("저장할 할당이 없습니다."); return; }
+    __sm.osel={}; smSave_(); ov.remove(); smRender_();
+    if(st.wo && st.pr) smWoPrintMany_(made); else alert("할당 "+made.length+"건 저장했습니다."+(st.wo?"":"\n(작업 지시는 [📣 일괄 작업 지시]로 한 번에 할 수 있습니다)")); }); }
+function smBulkWoPop_(){
+  var E=ftE_, R=smSelRows_(), L=[]; R.forEach(function(r){ r.allocs.forEach(function(a){ if(!a.wo && !a.hist && L.indexOf(a)<0) L.push(a); }); });
+  if(!L.length){ alert("선택한 관리번호에 작업 지시 안 한 할당이 없습니다.\n(할당이 없으면 먼저 [📌 일괄 할당])"); return; }
+  var C=smCalc_(), ov=ftOv_("📣 일괄 작업 지시 — 할당 "+L.length+"건", 820), body=ov.querySelector(".sd-pb");
+  body.innerHTML='<div class="ft-g"><label>지시일<input id="sbw-date" type="date" value="'+E(ftToday_())+'"></label><label style="grid-column:span 3;">지시 대상 (현장·담당자)<input id="sbw-to" placeholder="예: 가공1팀 김OO"></label><label style="grid-column:span 4;">메모<input id="sbw-note" placeholder="예: 12/3까지 가공"></label></div>'
+    +'<div class="ft-card" style="max-height:44vh;overflow:auto;margin-top:6px;"><table class="ft-tb"><thead><tr><th>할당일</th><th>소재</th><th>제품</th><th>ORDER NO.</th><th>할당</th><th>잔량</th></tr></thead><tbody>'
+    +L.map(function(a){ var x=C.A[a.id]||{}; return '<tr><td class="nw">'+E(a.date)+'</td><td>'+E((__sm.d.items[ftK_(a.mat)]||{}).name||a.mat)+'</td><td><b>'+E(a.prod)+'</b></td><td class="s">'+E(a.orderNo||"-")+(a.pj?' / '+E(a.pj):'')+'</td><td class="n">'+E(a.qty)+'</td><td class="n">'+E(x.left!=null?x.left:"")+'</td></tr>'; }).join("")+'</tbody></table></div>'
+    +'<label class="m" style="display:flex;align-items:center;gap:5px;margin-top:8px;"><input type="checkbox" id="sbw-print" checked style="width:16px;height:16px;margin:0;"> 저장하면서 작업지시서 인쇄 (할당마다 1장 · 현장용/보관용)</label>';
+  ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn pri" data-x="sbwgo">'+L.length+'건 지시 완료로 저장</button>';
+  ov.addEventListener("click", function(e){ if(!(e.target.getAttribute && e.target.getAttribute("data-x")==="sbwgo")) return;
+    var w={ date:ov.querySelector("#sbw-date").value||ftToday_(), to:ov.querySelector("#sbw-to").value.trim(), note:ov.querySelector("#sbw-note").value.trim(), by:ftWho_() }, pr=ov.querySelector("#sbw-print").checked;
+    if(ov.__busy) return; var L2=L.filter(function(a){ return !a.wo; }); if(!L2.length){ alert("⛔ 이미 모두 작업 지시된 할당입니다."); return; } ov.__busy=true;   // 2중 작업 지시 막기
+    L2.forEach(function(a){ a.wo=Object.assign({}, w); a.ts2=Date.now(); }); __sm.osel={}; smSave_(); ov.remove(); smRender_(); if(pr) smWoPrintMany_(L2); if(L2.length<L.length) alert((L.length-L2.length)+"건은 이미 지시돼 있어 건너뛰었습니다."); }); }
+function smBulkUsePop_(){
+  var E=ftE_, R=smSelRows_().filter(function(r){ return smUseMax_(r)>0; }); if(!R.length){ alert("선택한 관리번호에 쓸 수 있는 할당 잔량이 없습니다.\n(할당이 없으면 먼저 [📌 일괄 할당])"); return; }
+  var sel=R.map(function(){ return true; }), qty=R.map(function(r){ return smUseMax_(r); });
+  var ov=ftOv_("🔧 일괄 사용 — "+R.length+"건", 920), body=ov.querySelector(".sd-pb");
+  var draw=function(){ var n=0, q=0; R.forEach(function(r,i){ if(sel[i]){ n++; q+=ftN_(qty[i]); } });
+    body.innerHTML='<div class="ft-g"><label>사용일<input id="sbu-date" type="date" value="'+E(body.__date||ftToday_())+'"></label><label style="grid-column:span 3;">비고<input id="sbu-note" value="'+E(body.__note||"")+'" placeholder="예: 일괄 생산 투입"></label></div>'
+      +'<div class="m" style="margin:6px 0;">품번이 달라도 함께 처리됩니다 · 수량(소재) = 할당 잔량 안에서 자동 · 고칠 수 있음</div>'
+      +'<div class="ft-card" style="max-height:46vh;overflow:auto;"><table class="ft-tb"><thead><tr><th><input type="checkbox" id="sbu-all"'+(sel.every(Boolean)?' checked':'')+' style="width:16px;height:16px;"></th><th>ORDER NO.</th><th>PROJECT NO.</th><th>도번 · 품명</th><th>필요</th><th>할당</th><th>사용</th><th>이번 사용 (소재)</th></tr></thead><tbody>'
+      +R.map(function(r,i){ return '<tr'+(sel[i]?'':' style="color:#98A2B3;"')+'><td class="c"><input type="checkbox" data-sbu="'+i+'"'+(sel[i]?' checked':'')+' style="width:16px;height:16px;"></td><td class="nw"><b>'+E(r.o.no)+'</b></td><td class="s">'+E(r.o.pj)+'</td><td><b>'+E(r.p.draw||r.p.partNo)+'</b><div class="m">'+E(r.p.name)+'</div></td><td class="n">'+r.need+'</td><td class="n">'+r.al+'</td><td class="n">'+(r.used||'')+'</td><td><input data-sbuq="'+i+'" type="number" step="any" min="0" value="'+E(qty[i])+'" style="width:90px;"></td></tr>'; }).join("")+'</tbody></table></div>'
+      +'<div style="margin-top:8px;font-weight:800;">선택 '+n+'건 · 소재 '+smQ_(q)+'개 사용</div>'; };
+  draw(); ov.querySelector(".sd-pf").innerHTML='<button type="button" class="sd-btn pri" data-x="sbugo">일괄 사용 저장</button>';
+  body.addEventListener("input", function(e){ var t=e.target; if(t.id==="sbu-date") body.__date=t.value; if(t.id==="sbu-note") body.__note=t.value; if(t.hasAttribute("data-sbuq")) qty[+t.getAttribute("data-sbuq")]=t.value; });
+  body.addEventListener("change", function(e){ var t=e.target; if(t.id==="sbu-all"){ sel=sel.map(function(){ return t.checked; }); draw(); } else if(t.hasAttribute("data-sbu")){ sel[+t.getAttribute("data-sbu")]=t.checked; draw(); } else if(t.hasAttribute("data-sbuq")) draw(); });
+  ov.addEventListener("click", function(e){ if(!(e.target.getAttribute && e.target.getAttribute("data-x")==="sbugo")) return;
+    if(ov.__busy) return; var F={}, over=[]; (smOrders_()||[]).forEach(function(r){ F[smOK_(r.o.no, r.o.pj)]=r; });   // 2중 사용 막기 — 최신 값으로
+    R.forEach(function(r,i){ if(!sel[i]) return; var q=smQ_(ftN_(qty[i])), f=F[smOK_(r.o.no, r.o.pj)], m=f?smUseMax_(f):0; if(q>m+0.001) over.push(r.o.no+(r.o.pj?" / "+r.o.pj:"")+" — 이번 "+q+" > 더 쓸 수 있는 "+m+(m===0?" (이미 사용 완료)":"")); });
+    if(over.length){ alert("⛔ 2중 사용 — 필요한 것보다 많이 쓸 수 없습니다:\n\n"+over.join("\n")); return; } ov.__busy=true;
+    var dt=String((body.querySelector("#sbu-date")||{}).value||ftToday_()), note=String((body.querySelector("#sbu-note")||{}).value||"").trim(), C=smCalc_(), left={}, who=ftWho_(), out=[], short=[];
+    Object.keys(C.A).forEach(function(id){ left[id]=C.A[id].left; });
+    R.forEach(function(r,i){ if(!sel[i]) return; var need=smQ_(ftN_(qty[i])); if(need<=0) return;
+      var als=r.allocs.filter(function(a){ return !a.hist && left[a.id]>0; }).sort(function(a,b){ var x=String(a.orderNo||"").trim()?0:1, y=String(b.orderNo||"").trim()?0:1; return x-y || String(a.date).localeCompare(String(b.date)); });
+      als.forEach(function(a){ if(need<=0) return; var g=smQ_(Math.min(need, left[a.id])); if(g<=0) return; left[a.id]=smQ_(left[a.id]-g); need=smQ_(need-g); out.push({ r:r, a:a, q:g }); });
+      if(need>0) short.push(r.o.no+" ("+need+" 부족)"); });
+    if(!out.length){ alert("사용할 할당 잔량이 없습니다."); return; }
+    if(short.length && !confirm("할당 잔량이 모자라 일부만 사용됩니다:\n"+short.join("\n")+"\n\n그래도 저장할까요?")) return;
+    out.forEach(function(x){ var per=smPer_(x.r.k); __sm.d.tx.push({ id:smId_("sm"), type:"use", date:dt, mat:x.a.mat, qty:x.q, allocId:x.a.id, prod:x.a.prod, orderNo:x.r.o.no, pj:x.r.o.pj||"", made:per?smQ_(x.q*per):0, note:note||"일괄 사용", by:who, ts:Date.now() }); });
+    __sm.osel={}; smSave_(); ov.remove(); smRender_(); alert("사용 "+out.length+"건 저장했습니다."); }); }
+// 작업지시서 여러 장 — 할당마다 A4 1장(현장용·보관용)
+function smWoPrintMany_(list){ if(!list || !list.length) return; if(list.length===1){ smWoPrint_(list[0]); return; }
+  var parts=list.map(function(a){ return smWoPrint_(a, true); }).filter(Boolean); if(!parts.length) return;
+  var html=parts[0].head+parts.map(function(p,i){ return '<div style="'+(i<parts.length-1?'page-break-after:always;':'')+'">'+p.page+'</div>'; }).join("")+'</body></html>';
+  var wn=(typeof qmsPrintWin_==="function")?qmsPrintWin_():window.open("","_blank"); if(!wn){ alert("인쇄 창을 열 수 없습니다."); return; }
+  wn.document.write(html); wn.document.close(); setTimeout(function(){ try{ wn.focus(); wn.print(); }catch(_){} }, 400); }
 function smOrdHtml_(){
   var E=ftE_, R=smOrders_(); if(!R) return '<div class="ft-empty"><b style="color:#B42318;">MAIN 데이터가 아직 없습니다 — MAIN 화면을 한 번 연 뒤 다시 누르세요</b></div>';
   var t=ftToday_(), tf=__sm.tagF||"", lateOnly=!!__sm.lateOnly, q=ftK_(__sm.q);
@@ -22687,14 +22799,15 @@ function smOrdHtml_(){
     +'<label class="m" style="display:flex;align-items:center;gap:5px;white-space:nowrap;"><input type="checkbox" id="sm-lateonly"'+(lateOnly?' checked':'')+' style="width:16px;height:16px;margin:0;flex:none;"> 미납(납기 지남)만</label><label class="m" style="display:flex;align-items:center;gap:5px;white-space:nowrap;" title="출고·납품 완료된 관리번호도 함께 보기 (할당·사용 기록 없어도)"><input type="checkbox" id="sm-withdone"'+(__sm.withDone?' checked':'')+' style="width:16px;height:16px;margin:0;flex:none;"> 출고 완료 포함</label><span style="flex:1;"></span>'+(Object.keys(__sm.d.excl||{}).length?'<button type="button" class="ft-btn sm" data-a="sgoexcl" title="LIST에서 뺀 품목 보기·되돌리기">🚫 제외한 품목 '+Object.keys(__sm.d.excl||{}).length+'</button>':'')+'<button type="button" class="ft-btn sm" data-a="soxlsx">📥 엑셀</button>'+(function(){ var n=smFracCands_().length; return n?'<button type="button" class="ft-btn sm" data-a="sfrac" style="color:#B54708;border-color:#FEC84B;" title="예전에 올림(1개)으로 넣은 할당·사용을 0.25 단위로">🔢 0.25 단위로 맞추기 '+n+'</button>':''; })()+'</div>'
     +'<div class="ft-kp" style="grid-template-columns:repeat(6,minmax(0,1fr));">'+kp("","출고 전 주문 (전체)","#101828").replace(/>\d+건</, ">"+all.filter(function(r){ return r.st!=="done"; }).length+"건<")+kp("none","❌ 할당 없음","#B42318")+kp("part","⚠ 일부 할당","#B54708")+kp("full","✅ 할당 완료","#067647")+kp("use","🔧 사용 완료","#175CD3")+(__sm.withDone?kp("done","📦 출고·납품 완료","#344054"):'')+'<div><span>할당 요청할 소재 (부족 합)'+(function(){ var n={}; all.forEach(function(r){ if(!r.per && r.st!=="done") n[r.k]=1; }); var c=Object.keys(n).length; return c?' · <small style="color:#B54708;font-weight:700;font-size:12px;">생산수 미정 '+c+'품번</small>':''; })()+'</span><b style="color:'+(gapSum?'#B42318':'#067647')+';">'+gapSum+'개</b></div></div>'
     +'<div class="m" style="margin:-2px 0 8px;">MAIN의 출고 전 '+E(__sm.d.cfg.kw||"AL3003")+' 주문을 관리번호별로 · <b>1소재당 생산 칸에 숫자를 넣으면 (품번마다 한 번) 같은 품번 모든 줄에 적용</b> · 필요 소재 = 미출고 ÷ 1소재당 생산 (0.25 단위까지) · 할당은 ORDER NO.를 적은 할당 → 같은 품번 납기 빠른 주문 순으로 나눠 봄 · 위 칸을 누르면 그 상태만</div>'
-    +'<div class="ft-card sm-sc"><table class="ft-tb ftp"><thead><tr><th>상태</th><th>ORDER NO.</th><th>PROJECT NO.</th><th>도번 · 품명</th><th>구분</th><th>납기</th><th>미출고</th><th title="소재 1개로 이 제품을 몇 개 만드는지 — 품번마다 한 번만 넣으면 모든 관리번호에 적용">1소재당 생산</th><th>필요 소재</th><th>할당</th><th>사용 (이 관리번호)</th><th>부족</th><th>작업 지시</th><th></th></tr></thead><tbody>'
+    +smBulkBar_()+'<div class="ft-card sm-sc"><table class="ft-tb ftp"><thead><tr><th class="c"><input type="checkbox" id="sm-osel-all" title="보이는 출고 전 관리번호 모두 선택"'+(function(){ var O=L.filter(function(r){ return !r.o.done; }), S=__sm.osel||{}; return (O.length && O.every(function(r){ return S[smOK_(r.o.no, r.o.pj)]; }))?' checked':''; })()+' style="width:16px;height:16px;"></th><th>상태</th><th>ORDER NO.</th><th>PROJECT NO.</th><th>도번 · 품명</th><th>구분</th><th>납기</th><th>미출고</th><th title="소재 1개로 이 제품을 몇 개 만드는지 — 품번마다 한 번만 넣으면 모든 관리번호에 적용">1소재당 생산</th><th>필요 소재</th><th>할당</th><th>사용 (이 관리번호)</th><th>부족</th><th>작업 지시</th><th></th></tr></thead><tbody>'
     +(L.length?L.map(function(r){ var o=r.o, p=r.p;
-      return '<tr'+(r.st==="none"?' style="background:#FFFBFA;"':'')+'><td>'+badge[r.st]+'</td><td class="nw"><b>'+E(o.no)+'</b></td><td class="s">'+E(o.pj)+'</td><td><b>'+E(p.draw||p.partNo)+'</b><div class="m">'+E(p.name)+'</div></td>'
+      var okk=smOK_(o.no, o.pj), ck=!!(__sm.osel||{})[okk];
+      return '<tr'+(ck?' style="background:#F4F3FF;"':(r.st==="none"?' style="background:#FFFBFA;"':''))+'><td class="c">'+(o.done?'':'<input type="checkbox" class="sm-osel" data-ok="'+E(okk)+'"'+(ck?' checked':'')+' style="width:16px;height:16px;">')+'</td><td>'+badge[r.st]+'</td><td class="nw"><b>'+E(o.no)+'</b></td><td class="s">'+E(o.pj)+'</td><td><b>'+E(p.draw||p.partNo)+'</b><div class="m">'+E(p.name)+'</div></td>'
         +'<td>'+Object.keys(p.tags).map(function(x){ return '<span class="ft-tg" style="'+(x==="표기 없음"?'background:#F2F4F7;color:#667085;':'background:#F4F3FF;color:#6941C6;')+'white-space:nowrap;">'+E(x)+'</span>'; }).join(" ")+'</td>'
         +'<td class="nw">'+E(o.due)+'<div>'+(o.done?'<span class="m">'+(o.ship?'출고 '+E(o.ship):'출고 완료')+'</span>':ftLateTxt_(o.due))+'</div></td><td class="n">'+(o.done?'<span class="m">0</span>':o.rest)+'</td><td class="nw"><input class="sm-per" data-k="'+E(r.k)+'" type="number" min="0" step="1" value="'+(r.per||"")+'" placeholder="?" style="width:62px;'+(r.per?'':'border-color:#F79009;background:#FFFAEB;')+'" title="소재 1개로 이 제품을 몇 개 만드는지"> 개</td><td class="n"><b>'+r.need+'</b>'+(r.per?'':'<div class="m" style="color:#B54708;">1개=1개로 계산</div>')+'</td>'
         +'<td class="n" style="color:#067647;"><b>'+(r.al||'')+'</b>'+(r.allocs.length?'<div class="m">'+r.allocs.map(function(a){ return '<span class="ft-lnk" role="button" data-a="saedit" data-id="'+E(a.id)+'" title="이 할당 고치기·지우기 ('+E(a.date)+' · '+E(a.qty)+'개'+(a.orderNo?' · '+E(a.orderNo):'')+')" style="font-size:inherit;cursor:pointer;text-decoration:underline;">'+E(a.date.slice(5))+'('+E(a.qty)+')</span>'; }).join(", ")+' 할당</div>':'')+'</td><td class="n" style="color:#175CD3;">'+(r.used||'')+(r.buy?'<div class="m" style="color:#B54708;">구매분 '+r.buy+'</div>':'')+'</td><td class="n'+(r.gap?' neg':'')+'"><b>'+(r.gap||'')+'</b></td>'
         +'<td class="nw">'+(r.wo.length?r.wo.map(function(w){ return '<div style="color:#067647;font-weight:700;">✅ '+E(w.date.slice(5))+(w.to?' · '+E(w.to):'')+'</div>'; }).join(""):(r.al>(r.buy||0)?'<span style="color:#B54708;font-weight:700;">미지시</span>':'<span class="m">-</span>'))+'</td>'
-        +'<td class="nw">'+((r.gap||o.done)?'<button type="button" class="ft-btn sm" data-a="salloc" data-k="'+E(p.partNo||p.k)+'" data-o="'+E(o.no)+'" data-pj="'+E(o.pj||"")+'" title="'+(o.done?'출고 완료 관리번호 — 할당·지시 이력 등록':'이 관리번호로 할당 등록')+'">📌 할당</button>':'')+(function(){ var nw=r.allocs.filter(function(a){ return !a.wo; })[0]; return nw?'<button type="button" class="ft-btn sm" data-a="swo" data-id="'+E(nw.id)+'" style="color:#B54708;border-color:#FEC84B;background:#FFFAEB;" title="이 할당의 현장 작업 지시 기록">📣 지시</button>':''; })()+((!o.done && smQ_(r.al-r.used)>0)?'<button type="button" class="ft-btn sm" data-a="sordu" data-o="'+E(o.no)+'" data-pj="'+E(o.pj||"")+'" style="color:#175CD3;border-color:#B2DDFF;background:#EFF8FF;font-weight:800;" title="할당분 사용 — 날짜만 넣으면 됨 (같은 품번 다른 관리번호도 함께 고를 수 있음)">🔧 사용</button>':'')+'<button type="button" class="ft-btn sm del" data-a="sexcl" data-k="'+E(r.k)+'" data-l="'+E((p.draw||p.partNo)+' '+p.name)+'" title="이 품목을 LIST에서 빼기 (같은 품목 모든 관리번호)">✕ 제외</button>'+'</td></tr>'; }).join(""):'<tr><td colspan="14" class="ft-empty">해당 주문이 없습니다</td></tr>')+'</tbody></table></div>'; }
+        +'<td class="nw">'+((r.gap||o.done)?'<button type="button" class="ft-btn sm" data-a="salloc" data-k="'+E(p.partNo||p.k)+'" data-o="'+E(o.no)+'" data-pj="'+E(o.pj||"")+'" title="'+(o.done?'출고 완료 관리번호 — 할당·지시 이력 등록':'이 관리번호로 할당 등록')+'">📌 할당</button>':'')+(function(){ var nw=r.allocs.filter(function(a){ return !a.wo; })[0]; return nw?'<button type="button" class="ft-btn sm" data-a="swo" data-id="'+E(nw.id)+'" style="color:#B54708;border-color:#FEC84B;background:#FFFAEB;" title="이 할당의 현장 작업 지시 기록">📣 지시</button>':''; })()+((!o.done && smQ_(r.al-r.used)>0)?'<button type="button" class="ft-btn sm" data-a="sordu" data-o="'+E(o.no)+'" data-pj="'+E(o.pj||"")+'" style="color:#175CD3;border-color:#B2DDFF;background:#EFF8FF;font-weight:800;" title="할당분 사용 — 날짜만 넣으면 됨 (같은 품번 다른 관리번호도 함께 고를 수 있음)">🔧 사용</button>':'')+'<button type="button" class="ft-btn sm del" data-a="sexcl" data-k="'+E(r.k)+'" data-l="'+E((p.draw||p.partNo)+' '+p.name)+'" title="이 품목을 LIST에서 빼기 (같은 품목 모든 관리번호)">✕ 제외</button>'+'</td></tr>'; }).join(""):'<tr><td colspan="15" class="ft-empty">해당 주문이 없습니다</td></tr>')+'</tbody></table></div>'; }
 function smOrdXlsx_(){ if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리 로딩 중입니다."); return; } var R=smOrders_()||[], nm={ none:"할당 없음", part:"일부 할당", full:"할당 완료", use:"사용 완료" };
   var a=[["상태","ORDER NO.","PROJECT NO.","품번","기존도번","품명","구분","납기","미출고","1소재당 생산","필요 소재","할당","사용","부족","작업 지시"]];
   R.forEach(function(r){ a.push([nm[r.st], r.o.no, r.o.pj, r.p.partNo, r.p.draw, r.p.name, Object.keys(r.p.tags).join(", "), r.o.due, r.o.rest, r.per||"미정", r.need, r.al, r.used, r.gap, r.wo.map(function(w){ return w.date+(w.to?" "+w.to:""); }).join(", ")||(r.al?"미지시":"")]); });
