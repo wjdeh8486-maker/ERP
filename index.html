@@ -2149,6 +2149,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
         <div class="nav-item nav-sub" data-view="board" title="공지·요청·공유 — 대상자별 미확인·확인·진행 중·완료, 기한 지남 표시"><span class="qnav-i">📋</span><span class="qnav-t"><b>게시판</b><small>공유·요청 · 누가 확인·완료했는지 (검토 중)</small></span></div>
         <div class="nav-item nav-sub" data-view="mailbox"><span class="qnav-i">📥</span><span class="qnav-t"><b>메일 수집함</b><small>메일 자동 수집 → 확인 후 반영 (검토 중)</small></span></div>
         <div class="nav-item nav-sub" data-view="coareq"><span class="qnav-i">📄</span><span class="qnav-t"><b>성적서 요청</b><small>CoA 요청 · S/N 검사 기록 확인 (검토 중)</small></span></div>
+        <div class="nav-item nav-sub" data-view="dimctl" title="입고 Lot별 중점 치수 전수 측정 기록 · 추세 · Ppk"><span class="qnav-i">📏</span><span class="qnav-t"><b>중점 치수 관리</b><small>입고 Lot별 전수 측정·추세 (검토 중)</small></span></div>
       </div></div>
   </div>
   <button type="button" id="sideNavToggle" class="side-nav-toggle" title="메뉴 접기/펴기">◀</button>
@@ -2513,6 +2514,7 @@ var QMS_GS_URL = "https://script.google.com/macros/s/AKfycbyGUt0yGmidzisFSPjwb2X
     <div class="view" id="view-review"><div id="rv-root"></div></div>
     <div class="view" id="view-mailbox"><div id="mb-root"></div></div>
     <div class="view" id="view-coareq"><div id="coa-root"></div></div>
+    <div class="view" id="view-dimctl"><div id="dim-root"></div></div>
     <div class="view" id="view-measprog"><div id="mp-root"></div></div>
     <div class="view" id="view-management" style="padding:0;">
       <div id="management-print-page" style="padding:16px;">
@@ -5361,6 +5363,7 @@ document.querySelectorAll(".nav-item").forEach(item=>{
     if(target==="review" && typeof rvRender_==="function"){ rvRender_(); }   // 검토
     if(target==="mailbox" && typeof mbRender_==="function"){ mbRender_(); }   // 메일 수집함
     if(target==="coareq" && typeof coaRender_==="function"){ coaRender_(); }   // 성적서 요청
+    if(target==="dimctl" && typeof dimShow_==="function"){ dimShow_(); }   // 중점 치수 관리
     if(target==="measprog" && typeof mpRender_==="function"){ mpRender_(); }   // 측정 자동 프로그램
     if(target==="main" && typeof sdMainBanner_==="function"){ try{ sdMainBanner_(); }catch(_){} }
     if(target==="insrep"){
@@ -19395,6 +19398,143 @@ function coaRowsFromMail_(it){
     .filter(function(r){ return (r.dwg||r.partName) && (!r.vendor || /엔티엘|ntl/i.test(r.vendor)); });
 }
 function coaOpen_(){ var nav=document.querySelector('.nav-item[data-view="coareq"]'); if(nav) nav.click(); }
+/* ==================== 📏 중점 치수 관리 (검토 중) ====================
+   입고 Lot마다 중점 치수를 전수 측정해 쌓고, 추세·이탈·Ppk를 보는 화면 (대책서 유효성 증빙 · 실사 CTQ/Ppk 대응)
+   · 항목(DIMSPEC_Master): 도번 · 항목명 · 기준 · 공차(−/+) · 관리기준(선택, ±) · 측정 시점 · 관련 대책서
+   · Lot(DIMLOT_Master): 항목 · 입고일자 · 입고수량 · 측정값(전수, S/N 없음) · 측정자 · 비고
+   · 수입검사일보에 해당 도번을 입력하면 "📏 중점 치수 측정 대상" 안내 */
+var __dimSpec=[], __dimLot=[], __dimSel="", __dimEditLot=null, __dimSpecForm=null;
+var DIMSPEC_STORE=qmsSyncStore_({ tab:"DIMSPEC_Master", idb:"dimSpecStore",
+  cols:[["draw","도번"],["name","항목명"],["nom","기준"],["tolL","공차-"],["tolU","공차+"],["ctrl","관리기준±"],["stage","측정 시점"],["ref","관련 대책서"],["note","비고"],["created","등록일"],["_ts","_ts"],["_del","_del"]],
+  apply:function(list){ __dimSpec=list||[]; dimRefresh_(); } });
+var DIMLOT_STORE=qmsSyncStore_({ tab:"DIMLOT_Master", idb:"dimLotStore",
+  cols:[["spec","항목ID"],["draw","도번"],["inDate","입고일자"],["inQty","입고수량"],["vals","측정값"],["by","측정자"],["note","비고"],["created","등록일시"],["_ts","_ts"],["_del","_del"]],
+  apply:function(list){ __dimLot=list||[]; dimRefresh_(); } });
+function dimRefresh_(){ try{ var v=document.getElementById("view-dimctl"); if(v && v.classList.contains("active") && !__dimSpecForm && !dimTyping_()) dimRender_(); }catch(_){} }
+function dimTyping_(){ var a=document.activeElement; return !!(a && a.closest && a.closest("#dim-root") && /INPUT|TEXTAREA|SELECT/.test(a.tagName) && String(a.value||"")!==""); }
+function dimToday_(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function dimWho_(){ try{ if(__au && __au.user && __au.user.name) return __au.user.name; }catch(_){} try{ if(__chat && __chat.me && __chat.me.name) return __chat.me.name; }catch(_){} return ""; }
+function dimNum_(v){ var n=parseFloat(String(v==null?"":v).replace(/[^\d.\-]/g,"")); return isFinite(n)?n:null; }
+function dimVals_(t){ return String(t||"").split(/[\s,;\/]+/).map(function(x){ return dimNum_(x); }).filter(function(x){ return x!==null; }); }
+function dimLim_(sp){ var nom=dimNum_(sp.nom)||0, l=Math.abs(dimNum_(sp.tolL)||0), u=Math.abs(dimNum_(sp.tolU)||0), c=dimNum_(sp.ctrl);
+  return { nom:nom, lsl:+(nom-l).toFixed(4), usl:+(nom+u).toFixed(4), cl:(c?+(nom-Math.abs(c)).toFixed(4):null), cu:(c?+(nom+Math.abs(c)).toFixed(4):null) }; }
+function dimJudge_(v, L){ if(v<L.lsl || v>L.usl) return "ng"; if(L.cl!==null && (v<L.cl || v>L.cu)) return "warn"; return "ok"; }
+function dimTolTxt_(sp){ var l=Math.abs(dimNum_(sp.tolL)||0), u=Math.abs(dimNum_(sp.tolU)||0); var us=String(sp.tolU||u).replace(/^[+\-]/,""), ls=String(sp.tolL||l).replace(/^[+\-]/,""); return (sp.nom||"")+(l===u?" ± "+us:" +"+us+" / −"+ls)+(dimNum_(sp.ctrl)?" (관리 ±"+Math.abs(dimNum_(sp.ctrl))+")":""); }
+function dimStats_(vals, L){ var n=vals.length; if(!n) return { n:0 }; var s=0; vals.forEach(function(v){ s+=v; }); var m=s/n, q=0; vals.forEach(function(v){ q+=(v-m)*(v-m); });
+  var sd=n>1?Math.sqrt(q/(n-1)):0, ng=0, wr=0; vals.forEach(function(v){ var j=dimJudge_(v,L); if(j==="ng") ng++; else if(j==="warn") wr++; });
+  return { n:n, min:Math.min.apply(null,vals), max:Math.max.apply(null,vals), avg:m, sd:sd, ng:ng, warn:wr, ppk:(sd>0?Math.min(L.usl-m, m-L.lsl)/(3*sd):null) }; }
+function dimF_(x, d){ return (x==null||!isFinite(x))?"-":Number(x).toFixed(d==null?2:d); }
+function dimLotsOf_(id){ return __dimLot.filter(function(r){ return r.spec===id; }).sort(function(a,b){ return String(a.inDate+a.created).localeCompare(String(b.inDate+b.created)); }); }
+function dimShow_(specId){ if(specId) __dimSel=specId; DIMSPEC_STORE.load(); DIMLOT_STORE.load(); dimRender_(); }
+function dimChart_(sp, lots){ var L=dimLim_(sp), pts=[], seps=[]; lots.forEach(function(r, li){ var v=dimVals_(r.vals); if(li>0) seps.push({ i:pts.length, d:r.inDate }); else seps.push({ i:0, d:r.inDate }); v.forEach(function(x){ pts.push(x); }); });
+  if(!pts.length) return '<div style="padding:24px;text-align:center;color:#98A2B3;">측정값을 입력하면 추세 그래프가 나옵니다</div>';
+  var W=920, H=260, pl=56, pr=14, pt=14, pb=34, lo=Math.min(L.lsl, Math.min.apply(null,pts)), hi=Math.max(L.usl, Math.max.apply(null,pts)), pad=(hi-lo)*0.12||0.5; lo-=pad; hi+=pad;
+  var X=function(i){ return pl+(pts.length<=1?(W-pl-pr)/2:i*(W-pl-pr)/(pts.length-1)); }, Y=function(v){ return pt+(hi-v)*(H-pt-pb)/(hi-lo); };
+  var line=function(v, c, dash, lab){ return '<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="'+c+'" stroke-width="1.5"'+(dash?' stroke-dasharray="5 4"':'')+'/><text x="'+(pl-6)+'" y="'+(Y(v)+4)+'" text-anchor="end" font-size="11" fill="'+c+'">'+lab+'</text>'; };
+  var g=line(L.usl,"#D92D20",false,L.usl)+line(L.lsl,"#D92D20",false,L.lsl)+line(L.nom,"#667085",true,L.nom)+(L.cl!==null?line(L.cu,"#F79009",true,L.cu)+line(L.cl,"#F79009",true,L.cl):"");
+  seps.forEach(function(s){ var x=X(s.i)-(s.i>0?(W-pl-pr)/Math.max(1,pts.length-1)/2:0); g+=(s.i>0?'<line x1="'+x+'" x2="'+x+'" y1="'+pt+'" y2="'+(H-pb)+'" stroke="#D0D5DD" stroke-dasharray="2 3"/>':'')+'<text x="'+(x+3)+'" y="'+(H-pb+14)+'" font-size="10.5" fill="#475467">'+String(s.d||"").slice(5)+'</text>'; });
+  var path=pts.map(function(v,i){ return (i?"L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1); }).join(" ");
+  g+='<path d="'+path+'" fill="none" stroke="#175CD3" stroke-width="1.3" opacity=".55"/>';
+  pts.forEach(function(v,i){ var j=dimJudge_(v,L); g+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(v).toFixed(1)+'" r="'+(j==="ok"?3:4.5)+'" fill="'+(j==="ng"?"#D92D20":j==="warn"?"#F79009":"#175CD3")+'"><title>'+v+'</title></circle>'; });
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;" font-family="Pretendard,Malgun Gothic,sans-serif">'+g+'</svg>'
+    +'<div style="font-size:11.5px;color:#667085;margin-top:2px;">● 파랑 정상 · 주황 관리기준 이탈 · 빨강 공차 이탈 — 빨간 선 = 공차 한계, 회색 점선 = 기준, 세로 점선 = Lot 구분(입고일)</div>'; }
+function dimRender_(){
+  var root=document.getElementById("dim-root"); if(!root) return; var E=qmsEsc_;
+  var S=__dimSpec.slice().sort(function(a,b){ return String(a.draw+a.name).localeCompare(String(b.draw+b.name)); });
+  if(__dimSel && !S.some(function(s){ return s.id===__dimSel; })) __dimSel=""; if(!__dimSel && S.length) __dimSel=S[0].id;
+  var sp=S.filter(function(s){ return s.id===__dimSel; })[0], bs="border:1px solid #D0D5DD;background:#fff;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;";
+  var h='<div style="padding:16px 20px;max-width:1400px;">'
+   +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;"><h2 style="margin:0;font-size:22px;">📏 중점 치수 관리</h2><span style="font-size:12px;color:#B54708;background:#FFF6E5;border-radius:6px;padding:2px 8px;font-weight:700;">검토 중</span>'
+   +'<span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;"><button type="button" data-dm="newspec" style="'+bs+'background:#101828;color:#fff;border-color:#101828;">+ 항목 등록</button>'+(sp?'<button type="button" data-dm="xlsx" style="'+bs+'">⬇ 엑셀</button>':'')+'</span></div>'
+   +'<div style="font-size:12.5px;color:#667085;margin-bottom:12px;">입고 Lot마다 중점 치수를 전수 측정해 쌓습니다 — 추세·이탈·Ppk 확인, 대책서 유효성 증빙용 엑셀</div>';
+  if(__dimSpecForm){ var f=__dimSpecForm;
+    h+='<div style="border:1px solid #B2CCFF;background:#F5F8FF;border-radius:12px;padding:14px;margin-bottom:14px;"><b>'+(f.id?"항목 수정":"새 항목 등록")+'</b><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-top:10px;font-size:12.5px;">'
+     +[["draw","도번","56126-00"],["name","항목명","동파이프 절곡 높이"],["nom","기준값","170"],["tolL","공차 − (아래)","1.0"],["tolU","공차 + (위)","1.0"],["ctrl","관리기준 ± (선택)",""],["stage","측정 시점","수입검사 · 에폭시 작업 전"],["ref","관련 대책서","QA-NCR-2026-0001"],["note","비고",""]].map(function(c){ return '<label>'+c[1]+'<input data-df="'+c[0]+'" value="'+E(f[c[0]]!=null?f[c[0]]:"")+'" placeholder="'+E(c[2])+'" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #D0D5DD;border-radius:7px;margin-top:3px;font-size:13px;"></label>'; }).join("")
+     +'</div><div style="margin-top:10px;display:flex;gap:6px;"><button type="button" data-dm="savespec" style="'+bs+'background:#175CD3;color:#fff;border-color:#175CD3;">저장</button><button type="button" data-dm="cancelspec" style="'+bs+'">취소</button>'+(f.id?'<button type="button" data-dm="delspec" style="'+bs+'color:#B42318;border-color:#FDA29B;margin-left:auto;">항목 삭제</button>':'')+'</div></div>'; }
+  if(!S.length){ h+='<div style="padding:30px;text-align:center;color:#667085;border:1px dashed #D0D5DD;border-radius:12px;">등록된 항목이 없습니다 — <b>+ 항목 등록</b>으로 도번·치수·공차를 먼저 등록하세요</div></div>'; root.innerHTML=h; dimBind_(root); return; }
+  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">'+S.map(function(s){ var on=s.id===__dimSel, st=dimStats_([].concat.apply([], dimLotsOf_(s.id).map(function(r){ return dimVals_(r.vals); })), dimLim_(s));
+    return '<button type="button" data-dm="sel" data-id="'+E(s.id)+'" style="'+bs+(on?'background:#EFF4FF;border-color:#175CD3;color:#175CD3;':'')+'">'+E(s.draw)+' · '+E(s.name)+(st.ng?' <span style="color:#D92D20;">NG '+st.ng+'</span>':'')+'</button>'; }).join("")+'</div>';
+  var L=dimLim_(sp), lots=dimLotsOf_(sp.id), all=[].concat.apply([], lots.map(function(r){ return dimVals_(r.vals); })), st=dimStats_(all, L);
+  var card=function(t,v,c){ return '<div style="flex:1;min-width:110px;border:1px solid #EAECF0;border-radius:10px;padding:8px 12px;background:#fff;"><div style="font-size:11.5px;color:#667085;">'+t+'</div><div style="font-size:19px;font-weight:800;color:'+(c||"#101828")+';">'+v+'</div></div>'; };
+  h+='<div style="border:1px solid #EAECF0;border-radius:12px;padding:12px 14px;background:#fff;margin-bottom:12px;">'
+   +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><b style="font-size:16px;">'+E(sp.draw)+' · '+E(sp.name)+'</b><span style="font-weight:800;color:#175CD3;">'+E(dimTolTxt_(sp))+'</span><span style="font-size:12px;color:#667085;">'+E(sp.stage||"")+(sp.ref?' · 대책서 '+E(sp.ref):'')+'</span><button type="button" data-dm="editspec" style="'+bs+'margin-left:auto;padding:3px 10px;font-size:12px;">항목 수정</button></div>'
+   +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">'+card("Lot",lots.length)+card("측정 수",st.n||0)+card("공차 이탈",st.ng||0,st.ng?"#D92D20":"#067647")+(L.cl!==null?card("관리기준 이탈",st.warn||0,st.warn?"#B54708":"#067647"):"")+card("최소 / 최대",st.n?dimF_(st.min)+" / "+dimF_(st.max):"-")+card("평균",st.n?dimF_(st.avg,3):"-")+card("Ppk"+(st.n&&st.n<30?" (참고·30개 미만)":""),st.ppk!=null?dimF_(st.ppk):"-",st.ppk!=null&&st.ppk<1.33?"#B54708":null)+'</div>'
+   +'<div style="margin-top:12px;">'+dimChart_(sp, lots)+'</div></div>';
+  var el=__dimEditLot||{};
+  h+='<div style="border:1px solid #B2CCFF;background:#F5F8FF;border-radius:12px;padding:12px 14px;margin-bottom:12px;"><b>'+(el.id?"Lot 수정":"입고 Lot 측정 입력")+'</b>'
+   +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:12.5px;align-items:flex-end;">'
+   +'<label>입고일자<input type="date" id="dm-date" value="'+E(el.inDate||dimToday_())+'" style="display:block;padding:6px 8px;border:1px solid #D0D5DD;border-radius:7px;margin-top:3px;"></label>'
+   +'<label>입고수량<input id="dm-qty" inputmode="numeric" value="'+E(el.inQty||"")+'" style="display:block;width:90px;padding:6px 8px;border:1px solid #D0D5DD;border-radius:7px;margin-top:3px;"></label>'
+   +'<label>측정자<input id="dm-by" value="'+E(el.by||dimWho_())+'" style="display:block;width:110px;padding:6px 8px;border:1px solid #D0D5DD;border-radius:7px;margin-top:3px;"></label>'
+   +'<label style="flex:1;min-width:160px;">비고<input id="dm-note" value="'+E(el.note||"")+'" style="display:block;width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #D0D5DD;border-radius:7px;margin-top:3px;"></label></div>'
+   +'<label style="display:block;margin-top:8px;font-size:12.5px;">측정값 (전수 — 띄어쓰기·쉼표·줄바꿈으로 구분, 엑셀에서 한 열 복사해 붙여넣기 가능)<textarea id="dm-vals" rows="3" style="display:block;width:100%;box-sizing:border-box;padding:8px;border:1px solid #D0D5DD;border-radius:7px;margin-top:3px;font-size:14px;font-family:inherit;">'+E(el.vals||"")+'</textarea></label>'
+   +'<div id="dm-prev" style="margin-top:6px;font-size:12.5px;"></div>'
+   +'<div style="margin-top:8px;display:flex;gap:6px;"><button type="button" data-dm="savelot" style="'+bs+'background:#175CD3;color:#fff;border-color:#175CD3;">'+(el.id?"수정 저장":"저장")+'</button>'+(el.id?'<button type="button" data-dm="cancellot" style="'+bs+'">취소</button>':'')+'</div></div>';
+  h+='<div style="overflow:auto;border:1px solid #EAECF0;border-radius:12px;background:#fff;"><table style="width:100%;min-width:860px;border-collapse:collapse;font-size:13px;text-align:center;"><thead><tr style="background:#F9FAFB;">'+["입고일자","입고수량","측정 수","최소","최대","평균","이탈","판정","측정자","비고","측정값",""].map(function(t){ return '<th style="padding:8px 6px;border-bottom:1px solid #EAECF0;font-size:12px;color:#475467;">'+t+'</th>'; }).join("")+'</tr></thead><tbody>'
+   +(lots.length?lots.slice().reverse().map(function(r){ var v=dimVals_(r.vals), s=dimStats_(v,L), q=dimNum_(r.inQty), miss=(q && v.length!==q);
+      var jd=s.ng?'<b style="color:#D92D20;">NG</b>':(s.warn?'<b style="color:#B54708;">주의</b>':'<b style="color:#067647;">OK</b>');
+      var vs=v.map(function(x){ var j=dimJudge_(x,L); return j==="ok"?String(x):'<b style="color:'+(j==="ng"?"#D92D20":"#B54708")+';">'+x+'</b>'; }).join(", ");
+      return '<tr style="border-bottom:1px solid #F2F4F7;"><td style="padding:7px 6px;">'+E(r.inDate)+'</td><td>'+E(r.inQty||"-")+'</td><td'+(miss?' style="color:#B54708;font-weight:700;" title="입고수량과 측정 수가 다릅니다"':'')+'>'+v.length+(miss?" ⚠":"")+'</td><td>'+dimF_(s.min)+'</td><td>'+dimF_(s.max)+'</td><td>'+dimF_(s.avg,3)+'</td><td>'+((s.ng||0)+(s.warn||0))+'</td><td>'+jd+'</td><td>'+E(r.by||"")+'</td><td style="text-align:left;">'+E(r.note||"")+'</td><td style="text-align:left;max-width:280px;font-size:12px;color:#475467;">'+vs+'</td>'
+        +'<td style="white-space:nowrap;"><button type="button" data-dm="editlot" data-id="'+E(r.id)+'" style="'+bs+'padding:3px 8px;font-size:12px;">수정</button> <button type="button" data-dm="dellot" data-id="'+E(r.id)+'" style="'+bs+'padding:3px 8px;font-size:12px;color:#B42318;border-color:#FDA29B;">삭제</button></td></tr>'; }).join("")
+     :'<tr><td colspan="12" style="padding:20px;color:#98A2B3;">아직 입력한 Lot이 없습니다</td></tr>')+'</tbody></table></div></div>';
+  root.innerHTML=h; dimBind_(root); dimPrev_();
+}
+function dimPrev_(){ var p=document.getElementById("dm-prev"), t=document.getElementById("dm-vals"); if(!p||!t) return; var sp=__dimSpec.filter(function(s){ return s.id===__dimSel; })[0]; if(!sp){ p.innerHTML=""; return; }
+  var L=dimLim_(sp), v=dimVals_(t.value), s=dimStats_(v,L), q=dimNum_((document.getElementById("dm-qty")||{}).value);
+  p.innerHTML=!v.length?'<span style="color:#98A2B3;">측정값을 넣으면 바로 판정합니다 (공차 '+L.lsl+' ~ '+L.usl+')</span>'
+    :'측정 <b>'+v.length+'</b>개'+(q&&q!==v.length?' <b style="color:#B54708;">(입고수량 '+q+'개와 다름)</b>':'')+' · 최소 '+dimF_(s.min)+' · 최대 '+dimF_(s.max)+' · 평균 '+dimF_(s.avg,3)+' · '+(s.ng?'<b style="color:#D92D20;">공차 이탈 '+s.ng+'개</b>':'<b style="color:#067647;">공차 이탈 없음</b>')+(s.warn?' · <b style="color:#B54708;">관리기준 이탈 '+s.warn+'개</b>':''); }
+function dimBind_(root){
+  var t=document.getElementById("dm-vals"), q=document.getElementById("dm-qty"); if(t) t.oninput=dimPrev_; if(q) q.oninput=dimPrev_;
+  root.querySelectorAll("[data-dm]").forEach(function(b){ b.onclick=function(){ var a=b.getAttribute("data-dm"), id=b.getAttribute("data-id"), sp=__dimSpec.filter(function(s){ return s.id===__dimSel; })[0];
+    if(a==="sel"){ __dimSel=id; __dimEditLot=null; dimRender_(); }
+    else if(a==="newspec"){ __dimSpecForm={ tolL:"", tolU:"" }; dimRender_(); }
+    else if(a==="editspec" && sp){ __dimSpecForm=Object.assign({}, sp); dimRender_(); }
+    else if(a==="cancelspec"){ __dimSpecForm=null; dimRender_(); }
+    else if(a==="savespec"){ var f=Object.assign({}, __dimSpecForm||{}); root.querySelectorAll("[data-df]").forEach(function(i){ f[i.getAttribute("data-df")]=String(i.value||"").trim(); });
+      f.draw=f.draw.toUpperCase(); if(!f.draw||!f.name||dimNum_(f.nom)===null){ alert("도번·항목명·기준값을 입력하세요."); return; }
+      if(dimNum_(f.tolL)===null && dimNum_(f.tolU)!==null) f.tolL=f.tolU; if(dimNum_(f.tolU)===null && dimNum_(f.tolL)!==null) f.tolU=f.tolL;
+      if(dimNum_(f.tolL)===null){ alert("공차를 입력하세요 (예: 1.0)"); return; }
+      if(!f.id){ f.id="ds"+Date.now().toString(36)+Math.random().toString(36).slice(2,5); f.created=dimToday_(); }
+      __dimSpec=__dimSpec.filter(function(s){ return s.id!==f.id; }).concat([f]); DIMSPEC_STORE.save(__dimSpec); __dimSel=f.id; __dimSpecForm=null; dimRender_(); }
+    else if(a==="delspec"){ var f2=__dimSpecForm; if(!f2||!f2.id) return; var n=dimLotsOf_(f2.id).length; if(n){ alert("이 항목에 입력한 Lot이 "+n+"건 있어 삭제할 수 없습니다.\n(Lot을 먼저 지우거나, 항목명을 바꿔 계속 쓰세요)"); return; }
+      if(!confirm("이 항목을 삭제할까요?")) return; __dimSpec=__dimSpec.filter(function(s){ return s.id!==f2.id; }); DIMSPEC_STORE.save(__dimSpec); __dimSpecForm=null; __dimSel=""; dimRender_(); }
+    else if(a==="savelot" && sp){ var vals=dimVals_((document.getElementById("dm-vals")||{}).value), qty=String((document.getElementById("dm-qty")||{}).value||"").trim(), dt=(document.getElementById("dm-date")||{}).value||dimToday_();
+      if(!vals.length){ alert("측정값을 입력하세요."); return; }
+      var qn=dimNum_(qty); if(qn && qn!==vals.length && !confirm("입고수량("+qn+")과 측정 수("+vals.length+")가 다릅니다. 그대로 저장할까요?")) return;
+      var r=Object.assign({}, __dimEditLot||{ id:"dl"+Date.now().toString(36)+Math.random().toString(36).slice(2,5), created:dimToday_()+" "+new Date().toTimeString().slice(0,5) });
+      r.spec=sp.id; r.draw=sp.draw; r.inDate=dt; r.inQty=qty; r.vals=vals.join(", "); r.by=String((document.getElementById("dm-by")||{}).value||"").trim(); r.note=String((document.getElementById("dm-note")||{}).value||"").trim();
+      __dimLot=__dimLot.filter(function(x){ return x.id!==r.id; }).concat([r]); DIMLOT_STORE.save(__dimLot); __dimEditLot=null; dimRender_(); }
+    else if(a==="editlot"){ __dimEditLot=Object.assign({}, __dimLot.filter(function(x){ return x.id===id; })[0]||null); dimRender_(); var f3=document.getElementById("dm-vals"); if(f3) f3.scrollIntoView({ block:"center" }); }
+    else if(a==="cancellot"){ __dimEditLot=null; dimRender_(); }
+    else if(a==="dellot"){ var r2=__dimLot.filter(function(x){ return x.id===id; })[0]; if(!r2||!confirm(r2.inDate+" 입고 Lot("+dimVals_(r2.vals).length+"개 측정)을 삭제할까요?")) return; __dimLot=__dimLot.filter(function(x){ return x.id!==id; }); DIMLOT_STORE.save(__dimLot); dimRender_(); }
+    else if(a==="xlsx" && sp) dimXlsx_(sp);
+  }; });
+}
+function dimXlsx_(sp){
+  if(typeof XLSX==="undefined"){ alert("엑셀 모듈을 불러오는 중입니다. 잠시 후 다시 눌러 주세요."); return; }
+  var L=dimLim_(sp), lots=dimLotsOf_(sp.id), all=[].concat.apply([], lots.map(function(r){ return dimVals_(r.vals); })), st=dimStats_(all,L), J={ ok:"OK", warn:"관리기준 이탈", ng:"NG(공차 이탈)" };
+  var head=[["중점 치수 관리 — "+sp.draw+" · "+sp.name],["기준",dimTolTxt_(sp),"공차 범위",L.lsl+" ~ "+L.usl],["측정 시점",sp.stage||"","관련 대책서",sp.ref||""],["Lot 수",lots.length,"측정 수",st.n||0],["최소",st.n?+dimF_(st.min,3):"","최대",st.n?+dimF_(st.max,3):""],["평균",st.n?+dimF_(st.avg,3):"","표준편차",st.n>1?+dimF_(st.sd,4):""],["Ppk",st.ppk!=null?+dimF_(st.ppk,2):"","공차 이탈",st.ng||0],[]];
+  var s1=head.concat([["입고일자","입고수량","측정 수","최소","최대","평균","공차 이탈","관리기준 이탈","판정","측정자","비고"]]).concat(lots.map(function(r){ var v=dimVals_(r.vals), s=dimStats_(v,L);
+    return [r.inDate, dimNum_(r.inQty)||r.inQty||"", v.length, +dimF_(s.min,3), +dimF_(s.max,3), +dimF_(s.avg,3), s.ng, s.warn, s.ng?"NG":(s.warn?"주의":"OK"), r.by||"", r.note||""]; }));
+  var s2=[["입고일자","순번","측정값","판정"]]; lots.forEach(function(r){ dimVals_(r.vals).forEach(function(v,i){ s2.push([r.inDate, i+1, v, J[dimJudge_(v,L)]]); }); });
+  var wb=XLSX.utils.book_new(), w1=XLSX.utils.aoa_to_sheet(s1), w2=XLSX.utils.aoa_to_sheet(s2);
+  w1["!cols"]=[12,10,9,9,9,9,10,12,8,10,24].map(function(w){ return { wch:w }; }); w2["!cols"]=[12,7,10,16].map(function(w){ return { wch:w }; });
+  var sty=function(ws, hr){ Object.keys(ws).forEach(function(k){ if(k.charAt(0)==="!") return; var c=XLSX.utils.decode_cell(k); ws[k].s={ alignment:{ horizontal:"center", vertical:"center" }, border:{ top:{style:"thin",color:{rgb:"98A2B3"}}, bottom:{style:"thin",color:{rgb:"98A2B3"}}, left:{style:"thin",color:{rgb:"98A2B3"}}, right:{style:"thin",color:{rgb:"98A2B3"}} }, font:{ bold:c.r===hr||c.r===0, color:{ rgb:(String(ws[k].v).indexOf("NG")===0?"D92D20":"101828") } }, fill:(c.r===hr?{ fgColor:{ rgb:"E4ECF7" } }:undefined) }; }); };
+  sty(w1, head.length); sty(w2, 0);
+  XLSX.utils.book_append_sheet(wb, w1, "Lot 요약"); XLSX.utils.book_append_sheet(wb, w2, "전체 측정값");
+  XLSX.writeFile(wb, "중점치수_"+sp.draw+"_"+String(sp.name).replace(/[\\\/:*?"<>|\s]+/g,"")+"_"+dimToday_()+".xlsx"); }
+// 수입검사일보: 중점 치수 대상 도번 입력 → 안내 (한 화면에서 같은 도번은 1번만)
+(function(){ var shown={}; document.addEventListener("change", function(e){ try{ var t=e.target; if(!t || !t.getAttribute || t.getAttribute("data-key")!=="draw" || !t.closest("#insrep-content")) return;
+  if(typeof insType==="undefined" || insType!=="incoming") return; var d=String(t.value||"").trim().toUpperCase(); if(!d) return;
+  if(!__dimSpec.length){ try{ DIMSPEC_STORE.load(); }catch(_){} }
+  var L=__dimSpec.filter(function(s){ var sd=String(s.draw||"").toUpperCase(); return sd && (d===sd || d.indexOf(sd)===0); }); if(!L.length || shown[d+dimToday_()]) return; shown[d+dimToday_()]=1;
+  var old=document.getElementById("dim-toast"); if(old) old.remove(); var x=document.createElement("div"); x.id="dim-toast";
+  x.style.cssText="position:fixed;right:16px;bottom:96px;z-index:99980;width:min(380px,calc(100vw - 32px));background:#fff;border:1px solid #84ADFF;border-left:5px solid #175CD3;border-radius:12px;box-shadow:0 12px 32px rgba(16,24,40,.22);padding:12px 14px;font-size:13px;";
+  x.innerHTML='<div style="font-weight:800;color:#175CD3;">📏 중점 치수 측정 대상 — '+qmsEsc_(d)+'</div>'+L.map(function(s){ return '<div style="margin-top:5px;">'+qmsEsc_(s.name)+' <b>'+qmsEsc_(dimTolTxt_(s))+'</b> <span style="color:#667085;">'+qmsEsc_(s.stage||"")+'</span></div>'; }).join("")
+    +'<div style="display:flex;gap:6px;margin-top:10px;"><button type="button" data-k="go" style="flex:1;background:#175CD3;color:#fff;border:none;border-radius:8px;padding:8px;font-weight:700;cursor:pointer;">측정값 입력하러 가기</button><button type="button" data-k="x" style="background:#fff;border:1px solid #D0D5DD;border-radius:8px;padding:8px 12px;cursor:pointer;">닫기</button></div>';
+  document.body.appendChild(x);
+  x.onclick=function(ev){ var b=ev.target.closest("[data-k]"); if(!b) return; x.remove(); if(b.getAttribute("data-k")==="go"){ __dimSel=L[0].id; var nv=document.querySelector('.nav-item[data-view="dimctl"]'); if(nv) nv.click(); } };
+}catch(_){} }, true); })();
 function coaRender_(){
   var root=document.getElementById("coa-root"); if(!root) return;
   if(!__coa.loaded){ root.innerHTML='<div class="sd-empty">불러오는 중…</div>'; coaLoad_(coaRender_); return; }
