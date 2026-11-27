@@ -5951,8 +5951,12 @@ function mainCompactCss_(){ if(document.getElementById("main-compact-css")) retu
 function mainCompactFit_(){
   var tw=document.querySelector("#view-main .table-wrap"), v=document.getElementById("view-main"); if(!tw) return;
   if(!document.documentElement.classList.contains("main-compact") || innerWidth<900 || !v || !v.classList.contains("active") || tw.offsetParent===null){ tw.style.maxHeight=""; return; }
-  var top=tw.getBoundingClientRect().top+(window.scrollY||0), h=Math.max(360, Math.floor(innerHeight-Math.max(0, top-(window.scrollY||0))-14));
-  if(top>innerHeight*0.7) h=Math.max(360, innerHeight-90);   // 위쪽이 너무 길면 한 화면 높이로 (페이지를 조금 내리면 목록이 꽉 참)
+  var top=tw.getBoundingClientRect().top+(window.scrollY||0), h=Math.max(360, Math.floor(innerHeight-top-14));   // [수정] 페이지 맨 위 기준으로 계산(스크롤 위치에 따라 달라지지 않게)
+  var navH=0; try{ var sn=document.getElementById("sideNav"); if(sn){ var ps=getComputedStyle(sn).position; if(ps==="sticky"||ps==="fixed") navH=Math.ceil(sn.getBoundingClientRect().height); } }catch(_){}   // 위에 붙어 있는 메뉴 높이(태블릿은 2줄)
+  var full=Math.max(360, innerHeight-navH-8);
+  if(top>innerHeight*0.7) h=full;   // 위쪽이 너무 길면 한 화면 높이로 (페이지를 조금 내리면 목록이 꽉 참)
+  var coarse=false; try{ coarse=matchMedia("(pointer:coarse)").matches; }catch(_){}
+  if(coarse) h=Math.max(h, full);   // [추가] 태블릿(터치): 목록 상자를 거의 한 화면 높이로 — 페이지를 살짝 올리면 목록이 화면 가득(상자가 작게 보이던 문제)
   tw.style.maxHeight=h+"px"; tw.style.overflow="auto"; }
 // [추가] 위쪽 접기 — 태블릿·작은 화면에서 현황 카드·필터 줄·바로가기를 숨겨 목록을 넓게 (기기별 저장, 높이 900px 미만 화면은 처음부터 접힘)
 function mainFoldOn_(){ var v=null; try{ v=localStorage.getItem("qmsMainFold"); }catch(_){} if(v==="1") return true; if(v==="0") return false; return innerHeight<900 && innerWidth>=900; }
@@ -5970,7 +5974,9 @@ function mainCompactApply_(){ mainCompactCss_(); var on=mainCompactOn_(); docume
 (function(){ var go=function(){ try{ mainCompactApply_(); }catch(_){} }; if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", go); else go();
   var t=null; window.addEventListener("resize", function(){ clearTimeout(t); t=setTimeout(mainCompactFit_, 150); });
   try{ var mo=new MutationObserver(function(){ clearTimeout(t); t=setTimeout(mainCompactFit_, 120); }); var v=document.getElementById("view-main"); if(v) mo.observe(v, { attributes:true, attributeFilter:["class"], childList:true });
-    ["main-holdBanner","main-sdBanner"].forEach(function(id){ var e=document.getElementById(id); if(e) mo.observe(e, { attributes:true, attributeFilter:["style"] }); }); }catch(_){} })();
+    ["main-holdBanner","main-sdBanner"].forEach(function(id){ var e=document.getElementById(id); if(e) mo.observe(e, { attributes:true, attributeFilter:["style"] }); }); }catch(_){}
+  try{ if(window.ResizeObserver){ var ro=new ResizeObserver(function(){ clearTimeout(t); t=setTimeout(mainCompactFit_, 150); }); ["main-searchGroupSlotBottom","main-holdBanner","topbar-main"].forEach(function(id){ var e=document.getElementById(id); if(e) ro.observe(e); }); var sr=document.querySelector("#view-main .summary-row"); if(sr) ro.observe(sr); } }catch(_){}   // [추가] 위쪽 알림·카드 높이가 늦게 바뀌어도 목록 상자 다시 맞춤
+})();
 function mainRenderAll(data){ mainRenderStats(data); mainRenderTable(data); mainRenderCards(data); mainListRevealed = true; if(typeof reqUpdateButton==="function") reqUpdateButton(); try{ if(typeof mainCompactFit_==="function") requestAnimationFrame(mainCompactFit_); }catch(_){} }
 const ALL_MAIN_STATUSES = ["생산","재고","출고","완료","외관","측정","비젼","수입","OK"];
 let mainSelectedStatuses = ALL_MAIN_STATUSES.slice();
